@@ -33,12 +33,26 @@ return new class extends Migration
             $table->enum('visibility', ['tenant', 'admin'])->default('admin');
             $table->json('context')->nullable();
 
-            // Indexes
             $table->index(['tenant_user_id', 'visibility', 'occurred_at', 'id'], 'idx_audit_logs_tenant_vis_time_id');
             $table->index(['actor_id', 'occurred_at'], 'idx_audit_logs_actor_time');
             $table->index(['subject_type', 'subject_id', 'occurred_at'], 'idx_audit_logs_subject_time');
             $table->index(['action', 'occurred_at'], 'idx_audit_logs_action_time');
             $table->index('request_id', 'idx_audit_logs_request_id');
+        });
+
+        Schema::create('audit_seals', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('from_id');
+            $table->unsignedBigInteger('to_id');
+            $table->char('hash', 64);
+            $table->char('previous_hash', 64)->nullable();
+            $table->char('hmac', 64);
+            $table->string('key_id', 16)->default('v1');
+            $table->dateTime('sealed_at', 6);
+            $table->boolean('archived')->default(false);
+            $table->char('archive_sha256', 64)->nullable();
+
+            $table->unique('to_id', 'uk_audit_seals_to_id');
         });
     }
 
@@ -47,6 +61,7 @@ return new class extends Migration
      */
     public function down(): void
     {
+        Schema::dropIfExists('audit_seals');
         Schema::dropIfExists('audit_logs');
     }
 };

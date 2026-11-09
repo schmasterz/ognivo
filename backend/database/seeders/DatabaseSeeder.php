@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Models\Host;
+use App\Models\Image;
 use App\Models\IpPool;
+use App\Models\QuotaGroup;
 use App\Models\User;
 use App\Models\UserQuota;
 use App\Models\VirtualMachine;
@@ -28,7 +30,81 @@ final class DatabaseSeeder extends Seeder
         $adminRole = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
         $customerRole = Role::firstOrCreate(['name' => 'customer', 'guard_name' => 'web']);
 
-        // 2. Default Admin User
+        // 2. Quota Groups
+        $standardTier = QuotaGroup::firstOrCreate(
+            ['name' => 'Standard Tier'],
+            [
+                'description' => 'Default standard resource quota assigned to new user registrations',
+                'is_default' => true,
+                'max_vms' => 2,
+                'max_cpu_cores' => 4,
+                'max_ram_mb' => 4096,
+                'max_storage_gb' => 80,
+                'max_ips' => 1,
+                'max_snapshots' => 3,
+            ]
+        );
+
+        QuotaGroup::firstOrCreate(
+            ['name' => 'Developer Tier'],
+            [
+                'description' => 'Expanded capacity for active developers and multi-service container stacks',
+                'is_default' => false,
+                'max_vms' => 8,
+                'max_cpu_cores' => 16,
+                'max_ram_mb' => 16384,
+                'max_storage_gb' => 300,
+                'max_ips' => 4,
+                'max_snapshots' => 10,
+            ]
+        );
+
+        QuotaGroup::firstOrCreate(
+            ['name' => 'Enterprise Tier'],
+            [
+                'description' => 'Maximum resource allocations for production clustering and heavy compute workloads',
+                'is_default' => false,
+                'max_vms' => 32,
+                'max_cpu_cores' => 64,
+                'max_ram_mb' => 65536,
+                'max_storage_gb' => 1500,
+                'max_ips' => 16,
+                'max_snapshots' => 30,
+            ]
+        );
+
+        // 3. Allowed OS Images
+        $defaultImages = [
+            [
+                'name' => 'images:ubuntu/24.04',
+                'source' => 'https://images.linuxcontainers.org',
+                'protocol' => 'simplestreams',
+                'os_type' => 'linux',
+                'enabled' => true,
+            ],
+            [
+                'name' => 'images:debian/12',
+                'source' => 'https://images.linuxcontainers.org',
+                'protocol' => 'simplestreams',
+                'os_type' => 'linux',
+                'enabled' => true,
+            ],
+            [
+                'name' => 'images:alpine/3.20',
+                'source' => 'https://images.linuxcontainers.org',
+                'protocol' => 'simplestreams',
+                'os_type' => 'linux',
+                'enabled' => true,
+            ],
+        ];
+
+        $imageIds = [];
+        foreach ($defaultImages as $imgData) {
+            $image = Image::firstOrCreate(['name' => $imgData['name']], $imgData);
+            $imageIds[] = $image->id;
+        }
+
+        // 4. Default Admin User
         $admin = User::firstOrCreate(
             ['email' => 'admin@ognivo.local'],
             [
@@ -50,12 +126,13 @@ final class DatabaseSeeder extends Seeder
             ]
         );
 
-        // 3. Default Demo Customer
+        // 5. Default Demo Customer
         $customer = User::firstOrCreate(
             ['email' => 'customer@ognivo.local'],
             [
                 'name' => 'Demo Customer',
                 'password' => Hash::make('password'),
+                'quota_group_id' => $standardTier->id,
             ]
         );
         $customer->assignRole($customerRole);
@@ -63,6 +140,7 @@ final class DatabaseSeeder extends Seeder
         UserQuota::firstOrCreate(
             ['user_id' => $customer->id],
             [
+                'quota_group_id' => $standardTier->id,
                 'max_vms' => 3,
                 'max_cpu_cores' => 6,
                 'max_ram_mb' => 8192,
@@ -72,61 +150,53 @@ final class DatabaseSeeder extends Seeder
             ]
         );
 
-        // 4. Default Demo Hosts (Using Fake Driver for local/testing development)
+        // 6. Default Demo Hosts
         if (! app()->isProduction()) {
-            $euHost = Host::firstOrCreate(
-                ['name' => 'eu-west-1'],
-                [
-                    'region' => 'Europe West (Frankfurt)',
-                    'endpoint_url' => 'https://eu-west-1.incus.local:8443',
-                    'driver' => 'fake',
-                    'is_active' => true,
-                    'total_cpu_cores' => 64,
-                    'total_ram_mb' => 262144,
-                    'total_storage_gb' => 8000,
-                ]
-            );
+            $hosts = [
+                Host::firstOrCreate(
+                    ['name' => 'eu-west-1'],
+                    [
+                        'region' => 'Europe West (Frankfurt)',
+                        'endpoint_url' => 'https://eu-west-1.incus.local:8443',
+                        'driver' => 'fake',
+                        'is_active' => true,
+                        'total_cpu_cores' => 64,
+                        'total_ram_mb' => 262144,
+                        'total_storage_gb' => 8000,
+                    ]
+                ),
+                Host::firstOrCreate(
+                    ['name' => 'us-east-1'],
+                    [
+                        'region' => 'US East (N. Virginia)',
+                        'endpoint_url' => 'https://us-east-1.incus.local:8443',
+                        'driver' => 'fake',
+                        'is_active' => true,
+                        'total_cpu_cores' => 64,
+                        'total_ram_mb' => 262144,
+                        'total_storage_gb' => 8000,
+                    ]
+                ),
+                Host::firstOrCreate(
+                    ['name' => 'bg-sofia-1'],
+                    [
+                        'region' => 'Europe East (Sofia)',
+                        'endpoint_url' => 'https://bg-sofia-1.incus.local:8443',
+                        'driver' => 'fake',
+                        'is_active' => true,
+                        'total_cpu_cores' => 32,
+                        'total_ram_mb' => 131072,
+                        'total_storage_gb' => 4000,
+                    ]
+                ),
+            ];
 
-            Host::firstOrCreate(
-                ['name' => 'us-east-1'],
-                [
-                    'region' => 'US East (N. Virginia)',
-                    'endpoint_url' => 'https://us-east-1.incus.local:8443',
-                    'driver' => 'fake',
-                    'is_active' => true,
-                    'total_cpu_cores' => 64,
-                    'total_ram_mb' => 262144,
-                    'total_storage_gb' => 8000,
-                ]
-            );
-
-            Host::firstOrCreate(
-                ['name' => 'bg-sofia-1'],
-                [
-                    'region' => 'Europe East (Sofia)',
-                    'endpoint_url' => 'https://bg-sofia-1.incus.local:8443',
-                    'driver' => 'fake',
-                    'is_active' => true,
-                    'total_cpu_cores' => 32,
-                    'total_ram_mb' => 131072,
-                    'total_storage_gb' => 4000,
-                ]
-            );
-
-            Host::firstOrCreate(
-                ['name' => 'node-1-development'],
-                [
-                    'endpoint_url' => 'https://127.0.0.1:8443',
-                    'driver' => 'fake',
-                    'is_active' => true,
-                    'total_cpu_cores' => 32,
-                    'total_ram_mb' => 65536,
-                    'total_storage_gb' => 2000,
-                ]
-            );
+            foreach ($hosts as $host) {
+                $host->images()->syncWithoutDetaching($imageIds);
+            }
         }
 
-        // 5. Default IP Pool
+        // 7. Default IP Pool
         $primaryHost = Host::where('is_active', true)->first() ?? Host::first();
         if ($primaryHost !== null) {
             IpPool::firstOrCreate(
@@ -151,7 +221,7 @@ final class DatabaseSeeder extends Seeder
             );
         }
 
-        // 6. Default Development Instances (Containers & VMs)
+        // 8. Default Development Instances (Containers & VMs)
         if (! app()->isProduction() && $primaryHost !== null) {
             VirtualMachine::firstOrCreate(
                 ['name' => 'dev-container-01'],

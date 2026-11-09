@@ -37,6 +37,7 @@ services:
     image: redis:7.4.12-alpine
     container_name: ognivo-redis
     restart: always
+    command: redis-server --appendonly yes
     env_file:
       - .env.production
     networks:
@@ -95,7 +96,7 @@ services:
     image: ognivo-backend:prod
     container_name: ognivo-queue
     restart: always
-    command: php artisan queue:work --verbose --tries=3 --timeout=300 --max-time=3600
+    command: php artisan queue:work --verbose --tries=3 --timeout=600 --max-time=3600
     env_file:
       - .env.production
     environment:
