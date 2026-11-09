@@ -118,6 +118,13 @@ jobs:
       REDIS_PORT: 6379
       REDIS_CLIENT: predis
       REDIS_QUEUE_RETRY_AFTER: 700
+      # Audit DB users are created by `audit:grants` (runs as root via the migration connection).
+      # MySQL 8 cannot implicitly create users via GRANT, so passwords must be non-empty here.
+      AUDIT_DB_USERNAME: audit_writer
+      AUDIT_DB_PASSWORD: ci_audit_writer_pw
+      AUDIT_MAINT_DB_USERNAME: audit_maintenance
+      AUDIT_MAINT_DB_PASSWORD: ci_audit_maint_pw
+      AUDIT_STRICT_GRANTS: false
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

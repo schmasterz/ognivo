@@ -63,6 +63,20 @@ final class AuditGrantsCommand extends Command
             $this->comment('User creation note: '.$e->getMessage());
         }
 
+        // 1b. Fail fast with a clear message if audit users are missing (MySQL 8 cannot create users via GRANT)
+        foreach ([$auditWriter => 'AUDIT_DB_PASSWORD', $auditMaint => 'AUDIT_MAINT_DB_PASSWORD'] as $user => $passwordEnv) {
+            try {
+                $exists = $connection->select('SELECT 1 FROM mysql.user WHERE User = ? LIMIT 1', [$user]) !== [];
+            } catch (Throwable) {
+                $exists = true; // Cannot inspect mysql.user; let GRANT report the real error
+            }
+            if (! $exists) {
+                $this->error("MySQL user '{$user}' does not exist. Set {$passwordEnv} so audit:grants can create it, or create it manually (see docker/mysql-init/01-create-users.sh).");
+
+                return Command::FAILURE;
+            }
+        }
+
         // 2. Grant table-level permissions to audit_writer (INSERT, SELECT on audit_logs and audit_seals)
         $connection->statement("GRANT SELECT, INSERT ON `{$dbName}`.`audit_logs` TO '{$auditWriter}'@'%'");
         $connection->statement("GRANT SELECT, INSERT ON `{$dbName}`.`audit_seals` TO '{$auditWriter}'@'%'");
