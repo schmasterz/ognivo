@@ -10,7 +10,6 @@ use App\Models\User;
 use App\Models\VirtualMachine;
 use App\Services\Hypervisor\Drivers\FakeHypervisorDriver;
 use App\Services\Hypervisor\Drivers\IncusDriver;
-use App\Services\Hypervisor\HypervisorGateway;
 use App\Services\PanelCertificateService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -80,7 +79,7 @@ final class HypervisorConsoleDriverTest extends TestCase
 
     public function test_fake_driver_creates_console_session_for_vm(): void
     {
-        $fakeDriver = new FakeHypervisorDriver();
+        $fakeDriver = new FakeHypervisorDriver;
         $session = $fakeDriver->createConsoleSession($this->vm, 'console');
 
         $this->assertSame('fake-op-console-'.$this->vm->id, $session['operation_id']);
@@ -91,7 +90,7 @@ final class HypervisorConsoleDriverTest extends TestCase
 
     public function test_fake_driver_creates_console_session_for_container(): void
     {
-        $fakeDriver = new FakeHypervisorDriver();
+        $fakeDriver = new FakeHypervisorDriver;
         $session = $fakeDriver->createConsoleSession($this->container, 'console');
 
         $this->assertSame('fake-op-console-'.$this->container->id, $session['operation_id']);
@@ -100,7 +99,7 @@ final class HypervisorConsoleDriverTest extends TestCase
 
     public function test_fake_driver_rejects_vga_on_container(): void
     {
-        $fakeDriver = new FakeHypervisorDriver();
+        $fakeDriver = new FakeHypervisorDriver;
 
         $this->expectException(InvalidArgumentException::class);
         $fakeDriver->createConsoleSession($this->container, 'vga');

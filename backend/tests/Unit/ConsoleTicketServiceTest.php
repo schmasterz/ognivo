@@ -4,22 +4,16 @@ declare(strict_types=1);
 
 namespace Tests\Unit;
 
-use App\Audit\AuditAction;
 use App\Audit\AuditContext;
-use App\Audit\AuditEntry;
-use App\Audit\AuditLogger;
-use App\Audit\AuditOutcome;
 use App\Models\Host;
 use App\Models\User;
 use App\Models\VirtualMachine;
 use App\Services\ConsoleTicketService;
-use App\Services\Hypervisor\Drivers\FakeHypervisorDriver;
 use App\Services\Hypervisor\HypervisorManager;
 use App\States\Vm\Running;
 use App\States\Vm\Stopped;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Redis;
-use Laravel\Sanctum\PersonalAccessToken;
 use Spatie\Permission\Models\Role;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;

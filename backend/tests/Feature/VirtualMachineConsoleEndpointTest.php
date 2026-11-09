@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Audit\AuditContext;
 use App\Models\Host;
 use App\Models\User;
 use App\Models\VirtualMachine;

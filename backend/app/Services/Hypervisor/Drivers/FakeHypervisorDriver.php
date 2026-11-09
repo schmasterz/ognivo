@@ -514,7 +514,7 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
             throw new \RuntimeException(sprintf('Fake driver forced failure creating console session for VM %s', $vm->name));
         }
 
-        $opId = 'fake-op-console-' . $vm->id;
+        $opId = 'fake-op-console-'.$vm->id;
 
         return [
             'operation_id' => $opId,

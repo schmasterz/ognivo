@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Audit\AuditAction;
-use App\Audit\AuditContext;
 use App\Audit\AuditEntry;
 use App\Audit\AuditLogger;
 use App\Audit\AuditOutcome;
@@ -24,8 +23,6 @@ use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
-use Laravel\Sanctum\PersonalAccessToken;
 use RuntimeException;
 use Throwable;
 

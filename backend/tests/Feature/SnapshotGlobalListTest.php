@@ -45,7 +45,7 @@ final class SnapshotGlobalListTest extends TestCase
             'user_id' => $user->id,
             'host_id' => $host->id,
             'name' => $name,
-            'incus_project' => 'project-' . $user->id,
+            'incus_project' => 'project-'.$user->id,
             'instance_type' => 'virtual-machine',
             'status' => Running::class,
             'cpu_cores' => 2,
