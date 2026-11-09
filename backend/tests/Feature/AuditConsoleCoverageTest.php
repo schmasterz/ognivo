@@ -11,6 +11,7 @@ use App\Models\VirtualMachine;
 use App\Services\VmLifecycleService;
 use App\States\Vm\Running;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Redis;
 use Spatie\Permission\Models\Role;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
@@ -66,6 +67,8 @@ final class AuditConsoleCoverageTest extends TestCase
 
     public function test_console_ticket_issued_audited_without_ticket_value(): void
     {
+        Redis::spy();
+
         $service = app(VmLifecycleService::class);
 
         $ticket = $service->issueConsoleTicket($this->vm, $this->owner);

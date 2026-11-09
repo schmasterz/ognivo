@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use Illuminate\Console\Command;
+use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 use Illuminate\Support\Facades\Artisan;
 use RuntimeException;
 use Tests\TestCase;
@@ -14,6 +15,11 @@ final class AuditCommandGuardTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        $kernel = $this->app->make(Kernel::class);
+        if ($kernel instanceof ConsoleKernel) {
+            $kernel->rerouteSymfonyCommandEvents();
+        }
 
         // Register a test audit command
         Artisan::command('audit:test-command', function () {
