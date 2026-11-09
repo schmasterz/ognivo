@@ -74,7 +74,7 @@ final class SnapshotController extends Controller
             });
         }
 
-        $perPage = min(max((int) $request->query('per_page', 15), 1), 100);
+        $perPage = min(max($request->integer('per_page', 15), 1), 100);
         $paginator = $query->orderByDesc('created_at')
             ->orderByDesc('id')
             ->paginate($perPage);

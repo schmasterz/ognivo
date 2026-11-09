@@ -50,6 +50,11 @@ trait Auditable
     protected array $auditBeforeState = [];
 
     /**
+     * Optional custom AuditAction for this model's update.
+     */
+    protected AuditAction|string|null $auditAction = null;
+
+    /**
      * Boot the trait for an Eloquent model.
      */
     public static function bootAuditable(): void
@@ -116,10 +121,12 @@ trait Auditable
         foreach ($fields as $field) {
             if ($field === 'role' && $this instanceof User) {
                 /** @var Collection<int, Role> $roles */
+                /** @psalm-suppress UndefinedThisPropertyFetch */
                 $roles = $this->roles;
                 /** @var Role|null $firstRole */
                 $firstRole = $roles->first();
                 $currentRole = $this->originalRole ?? $firstRole?->name;
+                /** @psalm-suppress InaccessibleProperty */
                 $this->auditBeforeState['role'] = $currentRole;
 
                 continue;
@@ -149,6 +156,7 @@ trait Auditable
         } else {
             foreach ($this->auditBeforeState as $field => $oldVal) {
                 /** @var Collection<int, Role>|null $roles */
+                /** @psalm-suppress UndefinedThisPropertyFetch */
                 $roles = $this instanceof User ? $this->roles : null;
                 /** @var Role|null $firstRole */
                 $firstRole = $roles?->first();
@@ -264,7 +272,7 @@ trait Auditable
      */
     protected function resolveAuditAction(): AuditAction|string
     {
-        if (property_exists($this, 'auditAction') && $this->auditAction !== null) {
+        if ($this->auditAction !== null) {
             return $this->auditAction instanceof AuditAction ? $this->auditAction : Cast::string($this->auditAction);
         }
 
@@ -286,8 +294,9 @@ trait Auditable
             return Cast::int($this->id);
         }
 
-        if (isset($this->user_id) && is_numeric($this->user_id)) {
-            return Cast::int($this->user_id);
+        $userId = $this->getAttribute('user_id');
+        if ($userId !== null && is_numeric($userId)) {
+            return Cast::int($userId);
         }
 
         return null;
@@ -298,7 +307,7 @@ trait Auditable
      */
     protected function resolveAuditVisibility(): string
     {
-        if ($this instanceof User || isset($this->user_id)) {
+        if ($this instanceof User || $this->getAttribute('user_id') !== null) {
             return 'tenant';
         }
 

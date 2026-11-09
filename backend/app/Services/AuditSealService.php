@@ -211,6 +211,7 @@ final class AuditSealService
         /** @var AuditSeal|null $prevSeal */
         $prevSeal = null;
 
+        /** @var AuditSeal $firstSeal */
         $firstSeal = $seals->first();
         $prevSeal = AuditSeal::where('id', '<', $firstSeal->id)->orderBy('id', 'desc')->first();
 

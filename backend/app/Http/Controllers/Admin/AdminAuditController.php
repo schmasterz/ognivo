@@ -43,7 +43,7 @@ final class AdminAuditController extends Controller
     public function export(AuditFilterRequest $request): StreamedResponse
     {
         $dto = $request->toDTO();
-        $format = strtolower($request->query('format', 'ndjson'));
+        $format = $request->string('format', 'ndjson')->lower()->value();
         if ($format !== 'csv') {
             $format = 'ndjson';
         }

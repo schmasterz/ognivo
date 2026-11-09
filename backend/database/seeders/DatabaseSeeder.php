@@ -11,8 +11,8 @@ use App\Models\QuotaGroup;
 use App\Models\User;
 use App\Models\UserQuota;
 use App\Models\VirtualMachine;
+use App\Services\AuthService;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\Hash;
 use Spatie\Permission\Models\Role;
 
 final class DatabaseSeeder extends Seeder
@@ -105,11 +105,12 @@ final class DatabaseSeeder extends Seeder
         }
 
         // 4. Default Admin User
+        $authService = app(AuthService::class);
         $admin = User::firstOrCreate(
             ['email' => 'admin@ognivo.local'],
             [
                 'name' => 'System Administrator',
-                'password' => Hash::make('password'),
+                ...$authService->generateCredentials('password'),
             ]
         );
         $admin->assignRole($adminRole);
@@ -131,7 +132,7 @@ final class DatabaseSeeder extends Seeder
             ['email' => 'customer@ognivo.local'],
             [
                 'name' => 'Demo Customer',
-                'password' => Hash::make('password'),
+                ...$authService->generateCredentials('password'),
                 'quota_group_id' => $standardTier->id,
             ]
         );

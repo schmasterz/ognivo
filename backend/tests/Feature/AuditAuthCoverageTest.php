@@ -13,7 +13,6 @@ use App\Services\AuthService;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -33,9 +32,8 @@ final class AuditAuthCoverageTest extends TestCase
 
     public function test_auth_login_success(): void
     {
-        $user = User::factory()->create([
+        $user = User::factory()->withPassword('SecretPass123!')->create([
             'email' => 'login.success@example.com',
-            'password' => Hash::make('SecretPass123!'),
             'status' => 'active',
         ]);
 
@@ -88,9 +86,8 @@ final class AuditAuthCoverageTest extends TestCase
 
     public function test_auth_login_failed_with_known_user(): void
     {
-        $user = User::factory()->create([
+        $user = User::factory()->withPassword('CorrectPass123!')->create([
             'email' => 'known.user@example.com',
-            'password' => Hash::make('CorrectPass123!'),
             'status' => 'active',
         ]);
 
@@ -187,10 +184,9 @@ final class AuditAuthCoverageTest extends TestCase
 
     public function test_auth_password_changed_and_email_changed(): void
     {
-        $user = User::factory()->create([
+        $user = User::factory()->withPassword('CurrentPass123!')->create([
             'name' => 'Profile User',
             'email' => 'old.email@example.com',
-            'password' => Hash::make('CurrentPass123!'),
             'status' => 'active',
         ]);
         $user->createToken('session-1');

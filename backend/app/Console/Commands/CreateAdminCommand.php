@@ -6,8 +6,8 @@ namespace App\Console\Commands;
 
 use App\Models\User;
 use App\Models\UserQuota;
+use App\Services\AuthService;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 
@@ -66,7 +66,7 @@ final class CreateAdminCommand extends Command
         $user = User::create([
             'name' => $name,
             'email' => $email,
-            'password' => Hash::make($password),
+            ...app(AuthService::class)->generateCredentials($password),
             'status' => 'active',
         ]);
         $user->email_verified_at = now();

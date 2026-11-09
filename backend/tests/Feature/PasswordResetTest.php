@@ -7,8 +7,8 @@ namespace Tests\Feature;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\Notifications\QueuedResetPasswordNotification;
+use App\Services\AuthService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
 use Tests\TestCase;
@@ -60,7 +60,7 @@ final class PasswordResetTest extends TestCase
 
         $res->assertOk();
         $user->refresh();
-        $this->assertTrue(Hash::check('NewSecurePass123!', $user->password));
+        $this->assertTrue(app(AuthService::class)->verifyAndUpgradePassword($user, 'NewSecurePass123!'));
         $this->assertSame(0, $user->tokens()->count());
 
         // Token is single-use

@@ -18,8 +18,10 @@ use App\Models\User;
 use App\Models\UserQuota;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\PersonalAccessToken;
+use RuntimeException;
 use Spatie\Permission\Models\Role;
 
 /**
@@ -27,6 +29,10 @@ use Spatie\Permission\Models\Role;
  */
 final class AuthService
 {
+    private const string BASE62_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+
+    private const int SALT_LENGTH = 24;
+
     public function __construct(
         private readonly ?AuditLogger $auditLogger = null,
     ) {}
@@ -34,6 +40,125 @@ final class AuthService
     private function logger(): AuditLogger
     {
         return $this->auditLogger ?? app(AuditLogger::class);
+    }
+
+    /**
+     * Generate a cryptographically secure random Base62 salt string.
+     */
+    public function generateBase62Salt(int $length = self::SALT_LENGTH): string
+    {
+        $salt = '';
+        for ($i = 0; $i < $length; $i++) {
+            $salt .= self::BASE62_ALPHABET[random_int(0, 61)];
+        }
+
+        return $salt;
+    }
+
+    /**
+     * Compute HMAC-SHA256 pre-hash binding the per-user salt, plaintext password, and server secret key.
+     */
+    private function computePreHash(string $plainPassword, string $salt, string $pepperKey): string
+    {
+        return hash_hmac('sha256', $salt.':'.$plainPassword, $pepperKey);
+    }
+
+    /**
+     * Resolve the active server-side application key.
+     */
+    private function activeKey(): string
+    {
+        /** @var mixed $key */
+        $key = config('app.key');
+        if (! is_string($key) || $key === '') {
+            throw new RuntimeException('Application key (app.key) is not configured.');
+        }
+
+        return $key;
+    }
+
+    /**
+     * Resolve the list of previous application keys for seamless key rotation.
+     *
+     * @return list<string>
+     */
+    private function previousKeys(): array
+    {
+        /** @var mixed $keys */
+        $keys = config('app.previous_keys', []);
+        if (! is_array($keys)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($keys as $key) {
+            if (is_string($key) && $key !== '') {
+                $result[] = $key;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Generate a fresh Base62 salt and salted password hash pair atomically.
+     *
+     * @return array{password: string, password_salt: string}
+     */
+    public function generateCredentials(string $plainPassword): array
+    {
+        $salt = $this->generateBase62Salt();
+        $preHash = $this->computePreHash($plainPassword, $salt, $this->activeKey());
+
+        return [
+            'password' => Hash::make($preHash),
+            'password_salt' => $salt,
+        ];
+    }
+
+    /**
+     * Atomically assign a freshly generated password hash and Base62 salt onto a user model.
+     */
+    public function applyPassword(User $user, string $plainPassword): void
+    {
+        $credentials = $this->generateCredentials($plainPassword);
+        $user->password = $credentials['password'];
+        $user->password_salt = $credentials['password_salt'];
+    }
+
+    /**
+     * Verify a plaintext password against the user's stored salt and active/previous keys,
+     * transparently upgrading and rotating the salt and hash when needed.
+     */
+    public function verifyAndUpgradePassword(User $user, string $plainPassword): bool
+    {
+        if ($user->password_salt === '' || $user->password === '') {
+            return false;
+        }
+
+        $activePreHash = $this->computePreHash($plainPassword, $user->password_salt, $this->activeKey());
+
+        if (Hash::check($activePreHash, $user->password)) {
+            if (Hash::needsRehash($user->password)) {
+                $this->applyPassword($user, $plainPassword);
+                $user->save();
+            }
+
+            return true;
+        }
+
+        foreach ($this->previousKeys() as $previousKey) {
+            $previousPreHash = $this->computePreHash($plainPassword, $user->password_salt, $previousKey);
+
+            if (Hash::check($previousPreHash, $user->password)) {
+                $this->applyPassword($user, $plainPassword);
+                $user->save();
+
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -53,7 +178,7 @@ final class AuthService
             $user = User::create([
                 'name' => $dto->name,
                 'email' => $dto->email,
-                'password' => Hash::make($dto->password),
+                ...$this->generateCredentials($dto->password),
                 'status' => 'pending',
             ]);
 
@@ -114,7 +239,7 @@ final class AuthService
         /** @var User|null $user */
         $user = User::where('email', $attemptedEmail)->first();
 
-        if ($user === null || ! Hash::check($dto->password, $user->password)) {
+        if ($user === null || ! $this->verifyAndUpgradePassword($user, $dto->password)) {
             $this->logger()->recordIndependent(new AuditEntry(
                 action: AuditAction::AuthLoginFailed,
                 outcome: AuditOutcome::Failed,
@@ -233,7 +358,7 @@ final class AuthService
         }
 
         if ($emailChanged || $passwordChanged) {
-            if ($dto->currentPassword === null || $dto->currentPassword === '' || ! Hash::check($dto->currentPassword, $user->password)) {
+            if ($dto->currentPassword === null || $dto->currentPassword === '' || ! $this->verifyAndUpgradePassword($user, $dto->currentPassword)) {
                 throw ValidationException::withMessages([
                     'current_password' => [__('messages.auth.current_password_invalid')],
                 ]);
@@ -242,7 +367,7 @@ final class AuthService
 
         return DB::transaction(function () use ($user, $dto, $oldEmail, $emailChanged, $passwordChanged): User {
             if ($passwordChanged) {
-                $user->password = Hash::make((string) $dto->password);
+                $this->applyPassword($user, (string) $dto->password);
 
                 // Revoke all tokens except the current one
                 /** @var mixed $currentToken */
@@ -305,6 +430,20 @@ final class AuthService
             }
 
             return $user->fresh(['roles', 'quota']) ?? $user;
+        });
+    }
+
+    /**
+     * Atomically reset a user's password, rotate remember token, revoke API tokens, and record audit logs.
+     */
+    public function resetPassword(User $user, string $plainPassword): void
+    {
+        DB::transaction(function () use ($user, $plainPassword): void {
+            $this->applyPassword($user, $plainPassword);
+            $user->setRememberToken(Str::random(60));
+            $user->save();
+            $user->tokens()->delete();
+            $this->recordPasswordReset($user);
         });
     }
 

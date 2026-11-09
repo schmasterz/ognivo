@@ -195,6 +195,7 @@ final class AuditRedactor
                         $subLargestKey = (string) $subK;
                     }
                 }
+                /** @psalm-suppress PossiblyNullArrayOffset */
                 unset($data[$largestKey][$subLargestKey]);
 
                 continue;

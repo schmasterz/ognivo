@@ -51,7 +51,7 @@ final class VmStateChangedListener
 
         $operationId = $ctx->getOperationId()
             ?? (isset($vm->operation_id) ? Cast::int($vm->operation_id) : null)
-            ?? (request()->hasHeader('X-Operation-Id') ? (int) request()->header('X-Operation-Id') : null);
+            ?? (request()->hasHeader('X-Operation-Id') ? Cast::int(request()->header('X-Operation-Id')) : null);
 
         $context = [
             'previous_state' => $previousState,

@@ -13,6 +13,7 @@ use App\DTO\Cast;
 use App\Models\AuditLog;
 use App\Services\AuditSealService;
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 
 final class AuditPseudonymiseCommand extends Command
@@ -38,7 +39,7 @@ final class AuditPseudonymiseCommand extends Command
     {
         AuditConfigValidator::validateProductionAuditCommand('audit:pseudonymise');
 
-        $userId = (int) $this->argument('userId');
+        $userId = Cast::int($this->argument('userId'));
         $salt = Cast::string(config('audit.pseudonym_salt', ''));
         $hash = substr(hash('sha256', $userId.':'.$salt), 0, 8);
         $pseudonym = "user-{$hash}";
@@ -47,10 +48,10 @@ final class AuditPseudonymiseCommand extends Command
 
         /** @var Collection<int, AuditLog> $rows */
         $rows = AuditLog::on($maintConn)
-            ->where(function ($q) use ($userId): void {
+            ->where(function (Builder $q) use ($userId): void {
                 $q->where('actor_id', $userId)
                     ->orWhere('tenant_user_id', $userId)
-                    ->orWhere(function ($sq) use ($userId): void {
+                    ->orWhere(function (Builder $sq) use ($userId): void {
                         $sq->whereIn('subject_type', ['user', 'App\\Models\\User'])
                             ->where('subject_id', (string) $userId);
                     });

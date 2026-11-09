@@ -50,14 +50,16 @@ final class AuditQueryService
         if ($filters->category !== null && $filters->category !== '') {
             $cat = $filters->category;
             $query->where(function (Builder $q) use ($cat): void {
+                /** @psalm-suppress InvalidArgument */
                 $q->where('action', 'like', $cat.'.%')
-                    ->orWhere('action', $cat);
+                    ->orWhere('action', '=', $cat);
             });
         }
 
         // Action filter
         if ($filters->action !== null && $filters->action !== '') {
-            $query->where('action', $filters->action);
+            /** @psalm-suppress InvalidArgument */
+            $query->where('action', '=', $filters->action);
         }
 
         // Outcome filter
@@ -72,7 +74,7 @@ final class AuditQueryService
 
         // Subject ID filter
         if ($filters->subjectId !== null && $filters->subjectId !== '') {
-            $query->where('subject_id', (string) $filters->subjectId);
+            $query->where('subject_id', $filters->subjectId);
         }
 
         // Request ID filter

@@ -97,7 +97,7 @@ final class AuditEntryResource extends JsonResource
             /** @var User|null $impersonator */
             $impersonator = User::find($log->impersonator_id);
             $impersonatorLabel = $impersonator !== null
-                ? ($impersonator->email ?? $impersonator->name ?? "Admin #{$log->impersonator_id}")
+                ? ($impersonator->email !== '' ? $impersonator->email : ($impersonator->name !== '' ? $impersonator->name : "Admin #{$log->impersonator_id}"))
                 : "Admin #{$log->impersonator_id}";
             $actor['impersonator'] = $impersonatorLabel;
             $actor['impersonator_label'] = $impersonatorLabel;

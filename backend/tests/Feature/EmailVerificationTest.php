@@ -9,7 +9,6 @@ use App\Models\SystemSetting;
 use App\Models\User;
 use App\Notifications\QueuedVerifyEmailNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -66,9 +65,8 @@ final class EmailVerificationTest extends TestCase
 
     public function test_pending_user_cannot_login_until_verified(): void
     {
-        $user = User::factory()->create([
+        $user = User::factory()->withPassword('password123')->create([
             'email' => 'pending@example.com',
-            'password' => Hash::make('password123'),
             'status' => 'pending',
             'email_verified_at' => null,
         ]);
@@ -84,9 +82,8 @@ final class EmailVerificationTest extends TestCase
 
     public function test_suspended_or_inactive_user_cannot_login(): void
     {
-        User::factory()->create([
+        User::factory()->withPassword('password123')->create([
             'email' => 'suspended@example.com',
-            'password' => Hash::make('password123'),
             'status' => 'suspended',
         ]);
 
@@ -96,9 +93,8 @@ final class EmailVerificationTest extends TestCase
         ]);
         $resSuspended->assertUnprocessable();
 
-        User::factory()->create([
+        User::factory()->withPassword('password123')->create([
             'email' => 'inactive@example.com',
-            'password' => Hash::make('password123'),
             'status' => 'inactive',
         ]);
 
@@ -111,9 +107,8 @@ final class EmailVerificationTest extends TestCase
 
     public function test_user_can_verify_email_via_api_with_valid_signature_and_status_becomes_active(): void
     {
-        $user = User::factory()->create([
+        $user = User::factory()->withPassword('password123')->create([
             'email' => 'verify.me@example.com',
-            'password' => Hash::make('password123'),
             'status' => 'pending',
             'email_verified_at' => null,
         ]);

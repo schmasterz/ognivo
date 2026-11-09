@@ -52,7 +52,7 @@ final class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->scoped(AuditContext::class, static fn (): AuditContext => new AuditContext);
-        $this->app->singleton(AuditLogger::class, static fn ($app): AuditLogger => new AuditLogger($app instanceof Application ? $app->make(AuditContext::class) : app(AuditContext::class)));
+        $this->app->singleton(AuditLogger::class, static fn (Application $app): AuditLogger => new AuditLogger($app->make(AuditContext::class)));
 
         $this->app->bind(TlsPeerCertificateFetcherInterface::class, TlsPeerCertificateFetcher::class);
         $this->app->bind(

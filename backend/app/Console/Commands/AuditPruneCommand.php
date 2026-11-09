@@ -141,7 +141,9 @@ final class AuditPruneCommand extends Command
 
         foreach ($sealsByMonth as $month => $seals) {
             $sealIds = array_map(fn (AuditSeal $s): int => (int) $s->id, $seals);
+            /** @psalm-suppress ArgumentTypeCoercion */
             $minId = min(array_map(fn (AuditSeal $s): int => (int) $s->from_id, $seals));
+            /** @psalm-suppress ArgumentTypeCoercion */
             $maxId = max(array_map(fn (AuditSeal $s): int => (int) $s->to_id, $seals));
 
             $archivePath = $archiveDir.'/'.$month.'.ndjson.gz';
@@ -162,7 +164,7 @@ final class AuditPruneCommand extends Command
 
             foreach ($rows as $log) {
                 $resource = (new AdminAuditEntryResource($log))->resolve();
-                $line = json_encode($resource, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)."\n";
+                $line = (string) json_encode($resource, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)."\n";
                 gzwrite($gz, $line);
             }
             gzclose($gz);

@@ -238,6 +238,7 @@ final class AuditContext
 
         $user = Auth::user();
         if ($user !== null) {
+            /** @psalm-suppress NoInterfaceProperties */
             $label = Cast::string($user->email ?? $user->name);
             $userId = Cast::string($user->getAuthIdentifier());
 

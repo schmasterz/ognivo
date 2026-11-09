@@ -110,11 +110,6 @@
       <code><![CDATA[empty($recipientInput)]]></code>
     </RiskyTruthyFalsyComparison>
   </file>
-  <file src="app/Http/Controllers/PasswordResetController.php">
-    <InvalidTemplateParam>
-      <code><![CDATA[$user->tokens()]]></code>
-    </InvalidTemplateParam>
-  </file>
   <file src="app/Http/Requests/Admin/CreateHostRequest.php">
     <RiskyTruthyFalsyComparison>
       <code><![CDATA[app()->environment(['local', 'testing'])]]></code>
@@ -264,9 +259,6 @@
     </RiskyTruthyFalsyComparison>
   </file>
   <file src="app/Services/AuthService.php">
-    <InvalidTemplateParam>
-      <code><![CDATA[$user->tokens()]]></code>
-    </InvalidTemplateParam>
     <PossiblyInvalidCast>
       <code><![CDATA[__('messages.auth.verification_email_sent')]]></code>
     </PossiblyInvalidCast>
@@ -476,14 +468,6 @@
       <code><![CDATA[empty($smtp['password'])]]></code>
       <code><![CDATA[empty($url)]]></code>
     </RiskyTruthyFalsyComparison>
-  </file>
-  <file src="app/Services/UserService.php">
-    <InvalidTemplateParam>
-      <code><![CDATA[$user->tokens()]]></code>
-      <code><![CDATA[$user->tokens()]]></code>
-      <code><![CDATA[$user->tokens()]]></code>
-      <code><![CDATA[$user->tokens()]]></code>
-    </InvalidTemplateParam>
   </file>
   <file src="app/Services/VmLifecycleService.php">
     <ClassMustBeFinal>

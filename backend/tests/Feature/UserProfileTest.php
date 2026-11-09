@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Services\AuthService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Hash;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -22,10 +22,9 @@ final class UserProfileTest extends TestCase
 
         Role::firstOrCreate(['name' => 'customer', 'guard_name' => 'web']);
 
-        $this->user = User::factory()->create([
+        $this->user = User::factory()->withPassword('CurrentSecret123!')->create([
             'name' => 'John Doe',
             'email' => 'john@test.local',
-            'password' => Hash::make('CurrentSecret123!'),
         ]);
         $this->user->assignRole('customer');
     }
@@ -61,7 +60,7 @@ final class UserProfileTest extends TestCase
         $response->assertStatus(200);
 
         $this->user->refresh();
-        $this->assertTrue(Hash::check('BrandNewPassword999!', $this->user->password));
+        $this->assertTrue(app(AuthService::class)->verifyAndUpgradePassword($this->user, 'BrandNewPassword999!'));
     }
 
     public function test_user_cannot_change_password_with_invalid_current_password(): void

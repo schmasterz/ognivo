@@ -75,6 +75,8 @@ final class IncusTrustService
         // Run connection check to confirm
         $this->connectionChecker->check($host);
 
+        $parsedEndpointHost = parse_url((string) $host->endpoint_url, PHP_URL_HOST);
+
         $this->logger()->record(new AuditEntry(
             action: AuditAction::HostRetrusted,
             outcome: AuditOutcome::Success,
@@ -83,7 +85,7 @@ final class IncusTrustService
             visibility: 'admin',
             context: [
                 'name' => $host->name,
-                'endpoint_host' => parse_url((string) $host->endpoint_url, PHP_URL_HOST) ?: (string) $host->endpoint_url,
+                'endpoint_host' => is_string($parsedEndpointHost) && $parsedEndpointHost !== '' ? $parsedEndpointHost : (string) $host->endpoint_url,
                 'server_fingerprint' => $host->server_fingerprint,
             ],
         ));
@@ -109,6 +111,8 @@ final class IncusTrustService
 
             $this->connectionChecker->check($host);
 
+            $parsedFakeHost = parse_url((string) $host->endpoint_url, PHP_URL_HOST);
+
             $this->logger()->record(new AuditEntry(
                 action: AuditAction::HostRetrusted,
                 outcome: AuditOutcome::Success,
@@ -117,7 +121,7 @@ final class IncusTrustService
                 visibility: 'admin',
                 context: [
                     'name' => $host->name,
-                    'endpoint_host' => parse_url((string) $host->endpoint_url, PHP_URL_HOST) ?: (string) $host->endpoint_url,
+                    'endpoint_host' => is_string($parsedFakeHost) && $parsedFakeHost !== '' ? $parsedFakeHost : (string) $host->endpoint_url,
                     'server_fingerprint' => $host->server_fingerprint,
                 ],
             ));
@@ -139,6 +143,8 @@ final class IncusTrustService
 
         $this->connectionChecker->check($host);
 
+        $parsedRetrustHost = parse_url((string) $host->endpoint_url, PHP_URL_HOST);
+
         $this->logger()->record(new AuditEntry(
             action: AuditAction::HostRetrusted,
             outcome: AuditOutcome::Success,
@@ -147,7 +153,7 @@ final class IncusTrustService
             visibility: 'admin',
             context: [
                 'name' => $host->name,
-                'endpoint_host' => parse_url((string) $host->endpoint_url, PHP_URL_HOST) ?: (string) $host->endpoint_url,
+                'endpoint_host' => is_string($parsedRetrustHost) && $parsedRetrustHost !== '' ? $parsedRetrustHost : (string) $host->endpoint_url,
                 'server_fingerprint' => $host->server_fingerprint,
             ],
         ));
@@ -333,6 +339,8 @@ final class IncusTrustService
 
         $this->connectionChecker->check($host);
 
+        $parsedCertHost = parse_url((string) $host->endpoint_url, PHP_URL_HOST);
+
         $this->logger()->record(new AuditEntry(
             action: AuditAction::HostRetrusted,
             outcome: AuditOutcome::Success,
@@ -341,7 +349,7 @@ final class IncusTrustService
             visibility: 'admin',
             context: [
                 'name' => $host->name,
-                'endpoint_host' => parse_url((string) $host->endpoint_url, PHP_URL_HOST) ?: (string) $host->endpoint_url,
+                'endpoint_host' => is_string($parsedCertHost) && $parsedCertHost !== '' ? $parsedCertHost : (string) $host->endpoint_url,
                 'server_fingerprint' => $host->server_fingerprint,
             ],
         ));

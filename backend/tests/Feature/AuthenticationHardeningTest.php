@@ -7,9 +7,9 @@ namespace Tests\Feature;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\Notifications\QueuedVerifyEmailNotification;
+use App\Services\AuthService;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\RateLimiter;
 use Spatie\Permission\Models\Role;
@@ -69,9 +69,8 @@ final class AuthenticationHardeningTest extends TestCase
     public function test_email_change_without_current_password_returns_422(): void
     {
         /** @var User $user */
-        $user = User::factory()->create([
+        $user = User::factory()->withPassword('Secret12345!')->create([
             'email' => 'original@example.com',
-            'password' => Hash::make('Secret12345!'),
             'status' => 'active',
         ]);
         $user->assignRole('customer');
@@ -88,9 +87,8 @@ final class AuthenticationHardeningTest extends TestCase
     public function test_email_change_with_invalid_current_password_returns_422(): void
     {
         /** @var User $user */
-        $user = User::factory()->create([
+        $user = User::factory()->withPassword('Secret12345!')->create([
             'email' => 'original@example.com',
-            'password' => Hash::make('Secret12345!'),
             'status' => 'active',
         ]);
         $user->assignRole('customer');
@@ -110,9 +108,8 @@ final class AuthenticationHardeningTest extends TestCase
         Notification::fake();
 
         /** @var User $user */
-        $user = User::factory()->create([
+        $user = User::factory()->withPassword('Secret12345!')->create([
             'email' => 'original@example.com',
-            'password' => Hash::make('Secret12345!'),
             'status' => 'active',
             'email_verified_at' => now(),
         ]);
@@ -144,9 +141,8 @@ final class AuthenticationHardeningTest extends TestCase
         );
 
         /** @var User $user */
-        $user = User::factory()->create([
+        $user = User::factory()->withPassword('Secret12345!')->create([
             'email' => 'original@example.com',
-            'password' => Hash::make('Secret12345!'),
             'status' => 'active',
             'email_verified_at' => now(),
         ]);
@@ -217,7 +213,7 @@ final class AuthenticationHardeningTest extends TestCase
         /** @var User|null $admin */
         $admin = User::where('email', $email)->first();
         $this->assertNotNull($admin);
-        $this->assertTrue(Hash::check($password, $admin->password));
+        $this->assertTrue(app(AuthService::class)->verifyAndUpgradePassword($admin, $password));
         $this->assertTrue($admin->hasRole('admin'));
     }
 }

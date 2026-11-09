@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Audit\AuditConfigValidator;
+use App\DTO\Cast;
 use App\Mail\AuditVerificationFailedMail;
 use App\Models\User;
 use App\Services\AuditSealService;
@@ -36,7 +37,7 @@ final class AuditVerifyCommand extends Command
         AuditConfigValidator::validateProductionAuditCommand('audit:verify');
 
         $lastOption = $this->option('last');
-        $limit = ($lastOption !== null && $lastOption !== '') ? (int) $lastOption : null;
+        $limit = ($lastOption !== null && $lastOption !== '') ? Cast::int($lastOption) : null;
 
         $result = $sealService->verifySeals($limit);
 

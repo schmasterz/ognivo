@@ -65,6 +65,7 @@ trait AuditAssertionTrait
     {
         $forbidden = [
             'password',
+            'password_salt',
             'password_confirmation',
             'token',
             'trust_token',

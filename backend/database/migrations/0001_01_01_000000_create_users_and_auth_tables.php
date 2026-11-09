@@ -35,6 +35,7 @@ return new class extends Migration
             $table->string('project_name', 64)->nullable()->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
+            $table->string('password_salt', 32);
             $table->foreignId('quota_group_id')->nullable()->constrained('quota_groups')->nullOnDelete();
             $table->rememberToken();
             $table->timestamps();

@@ -105,6 +105,8 @@ final class HostNodeService
             'settings' => $dto->settings,
         ]);
 
+        $parsedCreateHost = parse_url($host->endpoint_url, PHP_URL_HOST);
+
         $this->logger()->record(new AuditEntry(
             action: AuditAction::HostCreated,
             outcome: AuditOutcome::Success,
@@ -113,7 +115,7 @@ final class HostNodeService
             visibility: 'admin',
             context: [
                 'name' => $host->name,
-                'endpoint_host' => parse_url($host->endpoint_url, PHP_URL_HOST) ?: $host->endpoint_url,
+                'endpoint_host' => is_string($parsedCreateHost) && $parsedCreateHost !== '' ? $parsedCreateHost : $host->endpoint_url,
                 'server_fingerprint' => $host->server_fingerprint,
             ],
         ));
@@ -184,6 +186,8 @@ final class HostNodeService
 
         $host->ipPools()->update(['host_id' => null]);
 
+        $parsedDeleteHost = parse_url($host->endpoint_url, PHP_URL_HOST);
+
         $this->logger()->record(new AuditEntry(
             action: AuditAction::HostDeleted,
             outcome: AuditOutcome::Success,
@@ -192,7 +196,7 @@ final class HostNodeService
             visibility: 'admin',
             context: [
                 'name' => $host->name,
-                'endpoint_host' => parse_url($host->endpoint_url, PHP_URL_HOST) ?: $host->endpoint_url,
+                'endpoint_host' => is_string($parsedDeleteHost) && $parsedDeleteHost !== '' ? $parsedDeleteHost : $host->endpoint_url,
                 'server_fingerprint' => $host->server_fingerprint,
             ],
         ));

@@ -23,7 +23,6 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Laravel\Sanctum\PersonalAccessToken;
 use Spatie\Permission\Models\Role;
@@ -36,11 +35,17 @@ final class UserService
     public function __construct(
         private readonly HypervisorManager $hypervisorManager,
         private readonly ?AuditLogger $auditLogger = null,
+        private readonly ?AuthService $authService = null,
     ) {}
 
     private function logger(): AuditLogger
     {
         return $this->auditLogger ?? app(AuditLogger::class);
+    }
+
+    private function auth(): AuthService
+    {
+        return $this->authService ?? app(AuthService::class);
     }
 
     /**
@@ -132,7 +137,7 @@ final class UserService
                 'name' => $dto->name,
                 'email' => $dto->email,
                 'status' => $dto->status,
-                'password' => Hash::make($dto->password),
+                ...$this->auth()->generateCredentials($dto->password),
                 'quota_group_id' => $targetGroup?->id,
             ]);
 
@@ -236,8 +241,8 @@ final class UserService
                 $user->quota_group_id = $dto->quotaGroupId;
             }
 
-            if ($dto->password !== null) {
-                $user->password = Hash::make($dto->password);
+            if ($dto->password !== null && $dto->password !== '') {
+                $this->auth()->applyPassword($user, $dto->password);
             }
             $user->save();
 

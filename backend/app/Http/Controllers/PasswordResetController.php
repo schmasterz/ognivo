@@ -11,7 +11,6 @@ use App\Services\AuthService;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Password;
-use Illuminate\Support\Str;
 use Spatie\RouteAttributes\Attributes\Post;
 
 /**
@@ -54,20 +53,12 @@ final class PasswordResetController extends Controller
     public function reset(ResetPasswordRequest $request): JsonResponse
     {
         /** @var array{token: string, email: string, password: string} $data */
-        $data = $request->only('email', 'password', 'password_confirmation', 'token');
+        $data = $request->only(['email', 'password', 'password_confirmation', 'token']);
 
         $status = Password::reset(
             $data,
             function (User $user, string $password): void {
-                $user->forceFill([
-                    'password' => $password,
-                    'remember_token' => Str::random(60),
-                ])->save();
-
-                // Revoke all existing API tokens so old sessions are invalidated
-                $user->tokens()->delete();
-
-                $this->authService->recordPasswordReset($user);
+                $this->authService->resetPassword($user, $password);
 
                 event(new PasswordReset($user));
             }

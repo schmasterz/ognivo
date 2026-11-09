@@ -90,10 +90,11 @@ class VmLifecycleService
                 ],
             ));
 
-            abort(409, __('messages.vm.invalid_state_transition', [
+            $msg = __('messages.vm.invalid_state_transition', [
                 'action' => $action,
                 'state' => (string) $vm->status,
-            ]));
+            ]);
+            abort(409, is_string($msg) ? $msg : 'Invalid state transition.');
         }
 
         $isAdmin = $user !== null && $user->hasRole('admin');
