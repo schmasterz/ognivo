@@ -1,0 +1,51 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Requests\Admin;
+
+use App\DTO\Host\CreateHostDTO;
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+
+/**
+ * Form Request validating creation of a new hypervisor host node.
+ */
+final class CreateHostRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function rules(): array
+    {
+        $allowFake = app()->environment(['local', 'testing']) || (bool) config('app.allow_fake_driver');
+        $allowedDrivers = $allowFake ? ['fake', 'incus', 'lxd'] : ['incus', 'lxd'];
+
+        return [
+            'name' => ['required', 'string', 'max:255', 'unique:hosts,name'],
+            'region' => ['nullable', 'string', 'max:255'],
+            'endpoint_url' => ['required_without:token', 'nullable', 'string', 'max:255'],
+            'driver' => ['nullable', 'string', Rule::in($allowedDrivers)],
+            'token' => ['nullable', 'string'],
+            'expected_fingerprint' => ['nullable', 'string', 'max:128'],
+            'is_active' => ['nullable', 'boolean'],
+            'total_cpu_cores' => ['nullable', 'integer', 'min:1'],
+            'total_ram_mb' => ['nullable', 'integer', 'min:1024'],
+            'total_storage_gb' => ['nullable', 'integer', 'min:10'],
+            'settings' => ['nullable', 'array'],
+        ];
+    }
+
+    public function toDTO(): CreateHostDTO
+    {
+        /** @var array<string, mixed> $validated */
+        $validated = $this->validated();
+
+        return CreateHostDTO::fromArray($validated);
+    }
+}

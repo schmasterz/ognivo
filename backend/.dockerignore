@@ -1,0 +1,12 @@
+vendor
+bootstrap/cache/*.php
+storage/*.key
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+.env
+.env.*
+.git
+.phpunit.result.cache
+.phpunit.cache

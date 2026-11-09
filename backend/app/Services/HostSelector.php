@@ -1,0 +1,237 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services;
+
+use App\Models\Host;
+use App\Models\Image;
+use App\Models\IpPool;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
+
+/**
+ * Service selecting the optimal compute host for VM provisioning based on health,
+ * image availability, IP capacity, and committed resource load with overcommit factors.
+ */
+class HostSelector
+{
+    public function __construct(
+        private readonly IpManagementService $ipService,
+    ) {}
+
+    /**
+     * Select the optimal compute node given provisioning filters.
+     *
+     * @param array{
+     *     os_image?: string|Image|null,
+     *     image?: string|Image|null,
+     *     instance_type?: string|null,
+     *     cpu_cores?: int|null,
+     *     ram_mb?: int|null,
+     *     disk_gb?: int|null
+     * } $filters
+     */
+    public function select(array $filters = []): ?Host
+    {
+        $query = Host::query()
+            ->where('is_active', true)
+            ->where('status', 'ok')
+            ->whereNotIn('status', ['fingerprint_mismatch', 'not_trusted', 'unreachable']);
+
+        $isLocalOrTesting = app()->environment('local', 'testing')
+            || in_array(config('app.env'), ['local', 'testing'], true);
+
+        if (! $isLocalOrTesting) {
+            $query->where('driver', '!=', 'fake');
+        }
+
+        $imageName = $filters['os_image'] ?? ($filters['image'] ?? null);
+        if ($imageName instanceof Image) {
+            $imageName = $imageName->name;
+        }
+
+        if (is_string($imageName) && $imageName !== '') {
+            $image = Image::where('name', $imageName)->where('enabled', true)->first();
+            if ($image === null) {
+                return null;
+            }
+
+            $query->whereHas('images', function (Builder $q) use ($image): void {
+                $q->where('images.id', $image->id)->where('images.enabled', true);
+            });
+        }
+
+        /** @var Collection<int, Host> $candidateHosts */
+        $candidateHosts = $query->get();
+
+        if ($candidateHosts->isEmpty()) {
+            return null;
+        }
+
+        // Filter candidates that have at least one active pool with free addresses
+        $eligibleHosts = [];
+        foreach ($candidateHosts as $host) {
+            if ($this->hostHasFreeIpPool($host)) {
+                $eligibleHosts[] = $host;
+            }
+        }
+
+        if (empty($eligibleHosts)) {
+            return null;
+        }
+
+        if (count($eligibleHosts) === 1) {
+            return $eligibleHosts[0];
+        }
+
+        return $this->pickLeastLoadedHost($eligibleHosts);
+    }
+
+    /**
+     * Validate that an explicitly specified host meets all provisioning requirements.
+     *
+     * @param array{
+     *     os_image?: string|Image|null,
+     *     image?: string|Image|null,
+     *     instance_type?: string|null
+     * } $filters
+     *
+     * @throws ValidationException
+     */
+    public function validateHost(Host $host, array $filters = []): void
+    {
+        if (! $host->is_active) {
+            throw ValidationException::withMessages([
+                'host_id' => [__('messages.host.not_active_or_available')],
+            ]);
+        }
+
+        if ($host->status !== 'ok' || in_array($host->status, ['fingerprint_mismatch', 'not_trusted', 'unreachable'], true)) {
+            throw ValidationException::withMessages([
+                'host_id' => ['The selected compute node is not healthy or available.'],
+            ]);
+        }
+
+        $isLocalOrTesting = app()->environment('local', 'testing')
+            || in_array(config('app.env'), ['local', 'testing'], true);
+
+        if (! $isLocalOrTesting && $host->driver === 'fake') {
+            throw ValidationException::withMessages([
+                'host_id' => ['Fake driver compute nodes are not permitted in this environment.'],
+            ]);
+        }
+
+        $imageName = $filters['os_image'] ?? ($filters['image'] ?? null);
+        if ($imageName instanceof Image) {
+            $imageName = $imageName->name;
+        }
+
+        if (is_string($imageName) && $imageName !== '') {
+            $image = Image::where('name', $imageName)->where('enabled', true)->first();
+            if ($image === null) {
+                throw ValidationException::withMessages([
+                    'os_image' => ['The selected image is not in the allowlist or is disabled.'],
+                ]);
+            }
+
+            if (! $image->hosts()->where('hosts.id', $host->id)->exists()) {
+                throw ValidationException::withMessages([
+                    'os_image' => ['The selected image is not available on the chosen compute node.'],
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Check if a host has an active IP pool with free addresses.
+     */
+    public function hostHasFreeIpPool(Host $host): bool
+    {
+        $activePools = IpPool::where('host_id', $host->id)
+            ->where('active', true)
+            ->orderBy('id', 'asc')
+            ->get();
+
+        foreach ($activePools as $pool) {
+            $util = $this->ipService->getPoolUtilization($pool);
+            if (($util['free'] ?? 0) > 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Among candidate hosts, choose the least loaded one based on committed resources
+     * divided by host totals (when available) with overcommit factors, tie-breaking by id.
+     *
+     * @param  list<Host>  $hosts
+     */
+    private function pickLeastLoadedHost(array $hosts): Host
+    {
+        $hostIds = array_map(fn (Host $h) => $h->id, $hosts);
+
+        $usages = DB::table('virtual_machines')
+            ->whereIn('host_id', $hostIds)
+            ->whereNotIn('status', ['failed', 'deleted'])
+            ->groupBy('host_id')
+            ->selectRaw('host_id, COALESCE(SUM(cpu_cores), 0) as cpu, COALESCE(SUM(ram_mb), 0) as ram, COALESCE(SUM(disk_gb), 0) as disk')
+            ->get()
+            ->keyBy('host_id');
+
+        $cpuOvercommit = (float) config('provisioning.cpu_overcommit', 1.0);
+        if ($cpuOvercommit <= 0) {
+            $cpuOvercommit = 1.0;
+        }
+        $ramOvercommit = (float) config('provisioning.ram_overcommit', 1.0);
+        if ($ramOvercommit <= 0) {
+            $ramOvercommit = 1.0;
+        }
+
+        $scored = [];
+        foreach ($hosts as $host) {
+            $usage = $usages->get($host->id);
+            $committedCpu = (float) ($usage->cpu ?? 0);
+            $committedRam = (float) ($usage->ram ?? 0);
+            $committedDisk = (float) ($usage->disk ?? 0);
+
+            $hasTotals = ($host->total_cpu_cores > 0 || $host->total_ram_mb > 0 || $host->total_storage_gb > 0);
+
+            if ($hasTotals) {
+                $cpuScore = $host->total_cpu_cores > 0
+                    ? ($committedCpu / ($host->total_cpu_cores * $cpuOvercommit))
+                    : 0.0;
+                $ramScore = $host->total_ram_mb > 0
+                    ? ($committedRam / ($host->total_ram_mb * $ramOvercommit))
+                    : 0.0;
+                $diskScore = $host->total_storage_gb > 0
+                    ? ($committedDisk / (float) $host->total_storage_gb)
+                    : 0.0;
+
+                $load = ($cpuScore + $ramScore + $diskScore) / 3.0;
+            } else {
+                $load = (float) ($committedCpu + ($committedRam / 1024) + $committedDisk);
+            }
+
+            $scored[] = [
+                'host' => $host,
+                'load' => $load,
+                'id' => $host->id,
+            ];
+        }
+
+        usort($scored, function (array $a, array $b): int {
+            if (abs($a['load'] - $b['load']) > 0.000001) {
+                return $a['load'] <=> $b['load'];
+            }
+
+            return $a['id'] <=> $b['id'];
+        });
+
+        return $scored[0]['host'];
+    }
+}

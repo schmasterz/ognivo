@@ -1,0 +1,47 @@
+# Pinned Node.js Alpine image for production build
+FROM node:26-alpine AS builder
+
+RUN apk add --no-cache bash libc6-compat
+
+WORKDIR /app
+
+# Copy package dependencies
+COPY package*.json ./
+
+# Clean install of all dependencies including devDependencies for build
+RUN npm ci
+
+# Copy full frontend source code
+COPY . .
+
+# Build arguments for Next.js compile-time inlined public variables
+ARG NEXT_PUBLIC_API_URL=/api
+ARG NEXT_PUBLIC_REVERB_APP_KEY=8atqs5wayajshmsj2sqn
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_REVERB_APP_KEY=${NEXT_PUBLIC_REVERB_APP_KEY}
+
+# Compile Next.js production bundle
+RUN npm run build
+
+# Production runner stage
+FROM node:26-alpine AS runner
+
+RUN apk add --no-cache bash libc6-compat
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=3000
+
+# Install production dependencies only
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+# Copy built application and static assets
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/package.json ./package.json
+
+EXPOSE 3000
+
+CMD ["npm", "run", "start"]

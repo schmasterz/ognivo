@@ -1,0 +1,373 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Called ''env'' outside of the config directory which returns null when the config is cached, use ''config''\.$#'
+			identifier: larastan.noEnvCallsOutsideOfConfig
+			count: 11
+			path: app/Console/Commands/CheckProductionConfigCommand.php
+
+		-
+			message: '#^Cannot cast mixed to string\.$#'
+			identifier: cast.string
+			count: 5
+			path: app/Console/Commands/CheckProductionConfigCommand.php
+
+		-
+			message: '#^Parameter \#2 \$array of function implode expects array\<string\>, array\<mixed, mixed\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Console/Commands/CheckProductionConfigCommand.php
+
+		-
+			message: '#^Parameter \#1 \$values of method Illuminate\\Database\\Eloquent\\Builder\<Illuminate\\Database\\Eloquent\\Model\>\:\:update\(\) expects array\<model property of Illuminate\\Database\\Eloquent\\Model, mixed\>, array\<string, mixed\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Console/Commands/ReencryptSecretsCommand.php
+
+		-
+			message: '#^Part \$record\-\>getKey\(\) \(mixed\) of encapsed string cannot be cast to string\.$#'
+			identifier: encapsedStringPart.nonString
+			count: 1
+			path: app/Console/Commands/ReencryptSecretsCommand.php
+
+		-
+			message: '#^Cannot cast mixed to string\.$#'
+			identifier: cast.string
+			count: 1
+			path: app/Http/Controllers/Admin/HostNodeController.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>id" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Http/Controllers/VirtualMachineController.php
+
+		-
+			message: '#^Cannot cast mixed to int\.$#'
+			identifier: cast.int
+			count: 2
+			path: app/Http/Requests/Admin/CreateIpPoolRequest.php
+
+		-
+			message: '#^Cannot cast mixed to string\.$#'
+			identifier: cast.string
+			count: 1
+			path: app/Http/Requests/Admin/CreateIpPoolRequest.php
+
+		-
+			message: '#^Cannot cast mixed to int\.$#'
+			identifier: cast.int
+			count: 2
+			path: app/Http/Requests/Admin/UpdateIpPoolRequest.php
+
+		-
+			message: '#^Cannot cast mixed to string\.$#'
+			identifier: cast.string
+			count: 3
+			path: app/Http/Requests/Admin/UpdateIpPoolRequest.php
+
+		-
+			message: '#^Expression on left side of \?\? is not nullable\.$#'
+			identifier: nullCoalesce.expr
+			count: 1
+			path: app/Http/Resources/IpAllocationResource.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between App\\Models\\Host and null will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 2
+			path: app/Http/Resources/IpAllocationResource.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between App\\Models\\IpPool and null will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 2
+			path: app/Http/Resources/IpAllocationResource.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between App\\Models\\User and null will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Http/Resources/IpAllocationResource.php
+
+		-
+			message: '#^Anonymous function never returns null so it can be removed from the return type\.$#'
+			identifier: return.unusedType
+			count: 1
+			path: app/Http/Resources/IpPoolResource.php
+
+		-
+			message: '#^Cannot access offset ''allocated'' on mixed\.$#'
+			identifier: offsetAccess.nonOffsetAccessible
+			count: 1
+			path: app/Http/Resources/IpPoolResource.php
+
+		-
+			message: '#^Cannot access offset ''cooling'' on mixed\.$#'
+			identifier: offsetAccess.nonOffsetAccessible
+			count: 2
+			path: app/Http/Resources/IpPoolResource.php
+
+		-
+			message: '#^Cannot access offset ''free'' on mixed\.$#'
+			identifier: offsetAccess.nonOffsetAccessible
+			count: 1
+			path: app/Http/Resources/IpPoolResource.php
+
+		-
+			message: '#^Cannot access offset ''total'' on mixed\.$#'
+			identifier: offsetAccess.nonOffsetAccessible
+			count: 1
+			path: app/Http/Resources/IpPoolResource.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between App\\Models\\Host and null will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Http/Resources/IpPoolResource.php
+
+		-
+			message: '#^Ternary operator condition is always true\.$#'
+			identifier: ternary.alwaysTrue
+			count: 1
+			path: app/Http/Resources/IpPoolResource.php
+
+		-
+			message: '#^Cannot access offset ''free'' on mixed\.$#'
+			identifier: offsetAccess.nonOffsetAccessible
+			count: 1
+			path: app/Http/Resources/TenantIpPoolResource.php
+
+		-
+			message: '#^Cannot access property \$id on mixed\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: app/Jobs/DeleteUserWorkloadsJob.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<non\-falsy\-string\>\) to function array_filter does not contain falsy values, the array will always stay the same\.$#'
+			identifier: arrayFilter.same
+			count: 1
+			path: app/Jobs/DeleteUserWorkloadsJob.php
+
+		-
+			message: '#^Parameter \#1 \$host of method App\\Services\\Hypervisor\\HypervisorManager\:\:driverForHost\(\) expects App\\Models\\Host\|null, mixed given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Jobs/DeleteUserWorkloadsJob.php
+
+		-
+			message: '#^Parameter \#3 \.\.\.\$values of function sprintf expects bool\|float\|int\|string\|null, mixed given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Jobs/DeleteUserWorkloadsJob.php
+
+		-
+			message: '#^Parameter \#1 \$network of method App\\Jobs\\ProvisionVmJob\:\:extractObservedIp\(\) expects array\<string, mixed\>, mixed given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Jobs/ProvisionVmJob.php
+
+		-
+			message: '#^Class App\\Models\\DriftReport uses generic trait Illuminate\\Database\\Eloquent\\Factories\\HasFactory but does not specify its types\: TFactory$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/DriftReport.php
+
+		-
+			message: '#^Expression on left side of \?\? is not nullable\.$#'
+			identifier: nullCoalesce.expr
+			count: 2
+			path: app/Models/IpAllocation.php
+
+		-
+			message: '#^Cannot cast mixed to int\.$#'
+			identifier: cast.int
+			count: 1
+			path: app/Models/IpPool.php
+
+		-
+			message: '#^Cannot cast mixed to float\.$#'
+			identifier: cast.double
+			count: 5
+			path: app/Services/HostSelector.php
+
+		-
+			message: '#^Offset ''free'' on array\{total\: int, allocated\: int, cooling\: int, free\: int, percent\: float\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/Services/HostSelector.php
+
+		-
+			message: '#^Call to function is_array\(\) with array\<string, mixed\> will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: app/Services/Hypervisor/Drivers/AbstractIncusLxdDriver.php
+
+		-
+			message: '#^Cannot cast mixed to string\.$#'
+			identifier: cast.string
+			count: 3
+			path: app/Services/Hypervisor/Drivers/AbstractIncusLxdDriver.php
+
+		-
+			message: '#^Method App\\Services\\Hypervisor\\Drivers\\AbstractIncusLxdDriver\:\:getInstanceState\(\) should return array\<string, mixed\> but returns array\<mixed\>\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Services/Hypervisor/Drivers/AbstractIncusLxdDriver.php
+
+		-
+			message: '#^Variable \$metadata in PHPDoc tag @var does not exist\.$#'
+			identifier: varTag.variableNotFound
+			count: 1
+			path: app/Services/Hypervisor/Drivers/AbstractIncusLxdDriver.php
+
+		-
+			message: '#^Offset ''project'' on array\{name\: string, project\: string, status\: string\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/Services/Hypervisor/Drivers/FakeHypervisorDriver.php
+
+		-
+			message: '#^Property App\\Services\\Hypervisor\\Drivers\\FakeHypervisorDriver\:\:\$projects \(list\<string\>\) does not accept array\<int\<0, max\>, string\>\.$#'
+			identifier: assign.propertyType
+			count: 1
+			path: app/Services/Hypervisor/Drivers/FakeHypervisorDriver.php
+
+		-
+			message: '#^Cannot cast mixed to string\.$#'
+			identifier: cast.string
+			count: 4
+			path: app/Services/Hypervisor/IncusEventSyncService.php
+
+		-
+			message: '#^Method App\\Services\\Hypervisor\\IncusEventSyncService\:\:handleLifecycleEvent\(\) should return App\\Models\\VirtualMachine\|null but returns mixed\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Services/Hypervisor/IncusEventSyncService.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>dns_servers" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Services/Hypervisor/InstanceSpecBuilder.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>ip_string" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Services/Hypervisor/InstanceSpecBuilder.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>parent_interface" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Services/Hypervisor/InstanceSpecBuilder.php
+
+		-
+			message: '#^Parameter \#1 \$attributes of static method Illuminate\\Database\\Eloquent\\Builder\<App\\Models\\Host\>\:\:create\(\) expects array\<model property of App\\Models\\Host, mixed\>, array\<string, mixed\> given\.$#'
+			identifier: argument.type
+			count: 2
+			path: app/Services/IncusTrustService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\IpPool\:\:\$utilization\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/IpManagementService.php
+
+		-
+			message: '#^Call to function is_string\(\) with string will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 2
+			path: app/Services/IpManagementService.php
+
+		-
+			message: '#^Cannot cast mixed to int\.$#'
+			identifier: cast.int
+			count: 6
+			path: app/Services/IpManagementService.php
+
+		-
+			message: '#^Cannot cast mixed to string\.$#'
+			identifier: cast.string
+			count: 3
+			path: app/Services/IpManagementService.php
+
+		-
+			message: '#^Parameter \#1 \$time of static method Carbon\\Carbon\:\:parse\(\) expects Carbon\\Month\|Carbon\\WeekDay\|DateTimeInterface\|float\|int\|string\|null, mixed given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Services/IpManagementService.php
+
+		-
+			message: '#^Method App\\Services\\PanelCertificateService\:\:generate\(\) should return App\\Models\\PanelCertificate but returns mixed\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Services/PanelCertificateService.php
+
+		-
+			message: '#^Property App\\Services\\UserService\:\:\$hypervisorManager is never read, only written\.$#'
+			identifier: property.onlyWritten
+			count: 1
+			path: app/Services/UserService.php
+
+		-
+			message: '#^Unreachable statement \- code above always terminates\.$#'
+			identifier: deadCode.unreachable
+			count: 1
+			path: app/Services/UserService.php
+
+		-
+			message: '#^Cannot call method getStatusCode\(\) on class\-string\|object\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Services/VmLifecycleService.php
+
+		-
+			message: '#^Cannot call method releaseIp\(\) on App\\Services\\IpManagementService\|null\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Services/VmLifecycleService.php
+
+		-
+			message: '#^Negated boolean expression is always true\.$#'
+			identifier: booleanNot.alwaysTrue
+			count: 1
+			path: app/Services/VmLifecycleService.php
+
+		-
+			message: '#^Parameter \#1 \$object_or_class of function method_exists expects object\|string, mixed given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Services/VmLifecycleService.php
+
+		-
+			message: '#^Using nullsafe method call on non\-nullable type Illuminate\\Http\\Client\\Response\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Services/VmLifecycleService.php
+
+		-
+			message: '#^Offset ''free'' on array\{total\: int, allocated\: int, cooling\: int, free\: int, percent\: float\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/Services/VmProvisioningService.php
+
+		-
+			message: '#^Parameter \#1 \$array of function array_unique expects an array of values castable to string, array\<mixed\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Services/VmReconciliationService.php
+
+		-
+			message: '#^Parameter \#1 \$project of method App\\Services\\Hypervisor\\Contracts\\HypervisorDriverInterface\:\:listInstances\(\) expects string\|null, mixed given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Services/VmReconciliationService.php
+
+		-
+			message: '#^Parameter \#3 \.\.\.\$values of function sprintf expects bool\|float\|int\|string\|null, mixed given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Services/VmReconciliationService.php

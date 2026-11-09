@@ -1,0 +1,29 @@
+# System files
+*opencode*
+implementations
+tasks
+backend/.env
+/.codex
+/.cursor/
+/.idea/
+/.docs/
+/docs/
+
+# Environments
+.env.development
+.env.production
+
+# Dependencies
+node_modules/
+console-proxy/node_modules/
+frontend/node_modules/
+
+
+# TLS Certificates and Private Keys
+docker/certs/*.key
+docker/certs/*.crt
+
+# Backups
+backups/
+
+

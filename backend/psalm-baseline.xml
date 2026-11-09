@@ -1,0 +1,520 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<files psalm-version="6.20.3@23d217da099cc4a9a3bd03b644c1adf520022375">
+  <file src="app/Console/Commands/AllocateIpTestCommand.php">
+    <RiskyCast>
+      <code><![CDATA[$this->argument('pool')]]></code>
+      <code><![CDATA[$this->argument('vm')]]></code>
+    </RiskyCast>
+  </file>
+  <file src="app/Console/Commands/BackfillHostPinsCommand.php">
+    <MissingClosureParamType>
+      <code><![CDATA[$q]]></code>
+    </MissingClosureParamType>
+    <MixedPropertyAssignment>
+      <code><![CDATA[$host]]></code>
+    </MixedPropertyAssignment>
+  </file>
+  <file src="app/Console/Commands/CheckProductionConfigCommand.php">
+    <MixedArgumentTypeCoercion>
+      <code><![CDATA[$configOrigins]]></code>
+    </MixedArgumentTypeCoercion>
+  </file>
+  <file src="app/Console/Commands/CleanupLeftoverPanelCertKeysCommand.php">
+    <RiskyTruthyFalsyComparison>
+      <code><![CDATA[glob(rtrim($dir, '/').'/incus_*key_*')]]></code>
+      <code><![CDATA[glob(rtrim($dir, '/').'/panel_cert_*.crt')]]></code>
+      <code><![CDATA[glob(rtrim($dir, '/').'/panel_cert_*.key')]]></code>
+      <code><![CDATA[scandir($lxdCertsDir)]]></code>
+    </RiskyTruthyFalsyComparison>
+  </file>
+  <file src="app/Console/Commands/CreateAdminCommand.php">
+    <PossiblyInvalidCast>
+      <code><![CDATA[$this->argument('email')]]></code>
+    </PossiblyInvalidCast>
+    <PropertyTypeCoercion>
+      <code><![CDATA[now()]]></code>
+    </PropertyTypeCoercion>
+  </file>
+  <file src="app/Console/Commands/IncusListenCommand.php">
+    <ClassMustBeFinal>
+      <code><![CDATA[IncusListenCommand]]></code>
+    </ClassMustBeFinal>
+    <InvalidArgument>
+      <code><![CDATA[$hostArg]]></code>
+    </InvalidArgument>
+    <PossiblyFalseArgument>
+      <code><![CDATA[json_encode($event)]]></code>
+    </PossiblyFalseArgument>
+    <TypeDoesNotContainType>
+      <code><![CDATA[$this->shouldStop]]></code>
+      <code><![CDATA[$this->shouldStop]]></code>
+    </TypeDoesNotContainType>
+  </file>
+  <file src="app/Console/Commands/ReencryptSecretsCommand.php">
+    <LessSpecificReturnStatement>
+      <code><![CDATA[$models]]></code>
+    </LessSpecificReturnStatement>
+    <MoreSpecificReturnType>
+      <code><![CDATA[array<class-string<Model>, list<string>>]]></code>
+    </MoreSpecificReturnType>
+    <RiskyTruthyFalsyComparison>
+      <code><![CDATA[glob(app_path('Models/*.php'))]]></code>
+    </RiskyTruthyFalsyComparison>
+    <UnsafeInstantiation>
+      <code><![CDATA[new $className]]></code>
+    </UnsafeInstantiation>
+  </file>
+  <file src="app/Console/Commands/VmReconcileCommand.php">
+    <ClassMustBeFinal>
+      <code><![CDATA[VmReconcileCommand]]></code>
+    </ClassMustBeFinal>
+    <InvalidArgument>
+      <code><![CDATA[$hostArg]]></code>
+    </InvalidArgument>
+  </file>
+  <file src="app/DTO/Host/CreateHostDTO.php">
+    <RiskyTruthyFalsyComparison>
+      <code><![CDATA[app()->environment(['local', 'testing'])]]></code>
+    </RiskyTruthyFalsyComparison>
+  </file>
+  <file src="app/Events/AdminVirtualMachineStatusUpdated.php">
+    <MissingOverrideAttribute>
+      <code><![CDATA[public function broadcastOn(): array]]></code>
+    </MissingOverrideAttribute>
+  </file>
+  <file src="app/Events/SnapshotStatusUpdated.php">
+    <ClassMustBeFinal>
+      <code><![CDATA[SnapshotStatusUpdated]]></code>
+    </ClassMustBeFinal>
+    <MissingOverrideAttribute>
+      <code><![CDATA[public function broadcastOn(): array]]></code>
+    </MissingOverrideAttribute>
+  </file>
+  <file src="app/Events/VirtualMachineStatusUpdated.php">
+    <MissingOverrideAttribute>
+      <code><![CDATA[public function broadcastOn(): array]]></code>
+    </MissingOverrideAttribute>
+  </file>
+  <file src="app/Exceptions/IpPoolExhaustedException.php">
+    <ClassMustBeFinal>
+      <code><![CDATA[IpPoolExhaustedException]]></code>
+    </ClassMustBeFinal>
+  </file>
+  <file src="app/Http/Controllers/Admin/AdminDriftController.php">
+    <PropertyTypeCoercion>
+      <code><![CDATA[now()]]></code>
+    </PropertyTypeCoercion>
+  </file>
+  <file src="app/Http/Controllers/Admin/SystemOverviewController.php">
+    <RiskyTruthyFalsyComparison>
+      <code><![CDATA[empty($recipientInput)]]></code>
+    </RiskyTruthyFalsyComparison>
+  </file>
+  <file src="app/Http/Controllers/PasswordResetController.php">
+    <InvalidTemplateParam>
+      <code><![CDATA[$user->tokens()]]></code>
+    </InvalidTemplateParam>
+  </file>
+  <file src="app/Http/Requests/Admin/CreateHostRequest.php">
+    <RiskyTruthyFalsyComparison>
+      <code><![CDATA[app()->environment(['local', 'testing'])]]></code>
+    </RiskyTruthyFalsyComparison>
+  </file>
+  <file src="app/Http/Requests/Admin/CreateIpPoolRequest.php">
+    <PossiblyInvalidArgument>
+      <code><![CDATA[__('messages.ip.ipv6_not_supported_v1')]]></code>
+    </PossiblyInvalidArgument>
+  </file>
+  <file src="app/Http/Requests/Admin/UpdateHostRequest.php">
+    <RiskyTruthyFalsyComparison>
+      <code><![CDATA[app()->environment(['local', 'testing'])]]></code>
+    </RiskyTruthyFalsyComparison>
+  </file>
+  <file src="app/Http/Requests/Admin/UpdateIpPoolRequest.php">
+    <RiskyTruthyFalsyComparison>
+      <code><![CDATA[$gateway]]></code>
+      <code><![CDATA[empty($gateway)]]></code>
+    </RiskyTruthyFalsyComparison>
+  </file>
+  <file src="app/Http/Resources/IpAllocationResource.php">
+    <DocblockTypeContradiction>
+      <code><![CDATA[$allocation->pool]]></code>
+      <code><![CDATA[300]]></code>
+      <code><![CDATA[null]]></code>
+      <code><![CDATA[null]]></code>
+      <code><![CDATA[null]]></code>
+      <code><![CDATA[null]]></code>
+      <code><![CDATA[null]]></code>
+    </DocblockTypeContradiction>
+    <RedundantConditionGivenDocblockType>
+      <code><![CDATA[$allocation->pool !== null]]></code>
+      <code><![CDATA[$allocation->pool !== null]]></code>
+      <code><![CDATA[$allocation->pool->host !== null]]></code>
+      <code><![CDATA[$allocation->pool->host !== null]]></code>
+      <code><![CDATA[$allocation->pool?->cooldown_seconds]]></code>
+      <code><![CDATA[$allocation->pool?->cooldown_seconds]]></code>
+      <code><![CDATA[$allocation->user !== null]]></code>
+    </RedundantConditionGivenDocblockType>
+  </file>
+  <file src="app/Http/Resources/IpPoolResource.php">
+    <DocblockTypeContradiction>
+      <code><![CDATA[$pool->subnet]]></code>
+      <code><![CDATA['eth0']]></code>
+      <code><![CDATA['routed']]></code>
+      <code><![CDATA[300]]></code>
+      <code><![CDATA[null]]></code>
+    </DocblockTypeContradiction>
+    <MixedArrayAccess>
+      <code><![CDATA[$utilization['allocated']]]></code>
+      <code><![CDATA[$utilization['cooling']]]></code>
+      <code><![CDATA[$utilization['free']]]></code>
+      <code><![CDATA[$utilization['total']]]></code>
+    </MixedArrayAccess>
+    <RedundantCondition>
+      <code><![CDATA[$isAdmin]]></code>
+    </RedundantCondition>
+    <RedundantConditionGivenDocblockType>
+      <code><![CDATA[$pool->cidr]]></code>
+      <code><![CDATA[$pool->cooldown_seconds]]></code>
+      <code><![CDATA[$pool->host !== null]]></code>
+      <code><![CDATA[$pool->network_mode]]></code>
+      <code><![CDATA[$pool->parent_interface]]></code>
+    </RedundantConditionGivenDocblockType>
+    <TypeDoesNotContainType>
+      <code><![CDATA[new TenantHostResource($pool->host)]]></code>
+    </TypeDoesNotContainType>
+  </file>
+  <file src="app/Http/Resources/TenantIpPoolResource.php">
+    <MixedArrayAccess>
+      <code><![CDATA[$utilization['free']]]></code>
+    </MixedArrayAccess>
+  </file>
+  <file src="app/Jobs/DeleteUserWorkloadsJob.php">
+    <MixedPropertyAssignment>
+      <code><![CDATA[$freshUser]]></code>
+    </MixedPropertyAssignment>
+    <PossiblyNullArgument>
+      <code><![CDATA[$exception?->getMessage()]]></code>
+    </PossiblyNullArgument>
+    <RiskyTruthyFalsyComparison>
+      <code><![CDATA[empty($this->user->project_name)]]></code>
+    </RiskyTruthyFalsyComparison>
+  </file>
+  <file src="app/Jobs/ExecuteVmActionJob.php">
+    <PossiblyNullArgument>
+      <code><![CDATA[$exception?->getMessage()]]></code>
+    </PossiblyNullArgument>
+  </file>
+  <file src="app/Jobs/ProvisionVmJob.php">
+    <PossiblyNullArgument>
+      <code><![CDATA[$exception?->getMessage()]]></code>
+    </PossiblyNullArgument>
+    <PropertyTypeCoercion>
+      <code><![CDATA[now()]]></code>
+    </PropertyTypeCoercion>
+    <RiskyTruthyFalsyComparison>
+      <code><![CDATA[$this->allocationId]]></code>
+    </RiskyTruthyFalsyComparison>
+  </file>
+  <file src="app/Listeners/SyncUserQuotaToHypervisorProjectListener.php">
+    <ClassMustBeFinal>
+      <code><![CDATA[SyncUserQuotaToHypervisorProjectListener]]></code>
+    </ClassMustBeFinal>
+  </file>
+  <file src="app/Models/IpAllocation.php">
+    <DocblockTypeContradiction>
+      <code><![CDATA[$this->pool]]></code>
+      <code><![CDATA[$this->pool]]></code>
+      <code><![CDATA[300]]></code>
+      <code><![CDATA[300]]></code>
+    </DocblockTypeContradiction>
+    <RedundantConditionGivenDocblockType>
+      <code><![CDATA[$this->pool?->cooldown_seconds]]></code>
+      <code><![CDATA[$this->pool?->cooldown_seconds]]></code>
+      <code><![CDATA[$this->pool?->cooldown_seconds]]></code>
+      <code><![CDATA[$this->pool?->cooldown_seconds]]></code>
+    </RedundantConditionGivenDocblockType>
+  </file>
+  <file src="app/Models/IpPool.php">
+    <RedundantCast>
+      <code><![CDATA[(string) $pool->cidr]]></code>
+    </RedundantCast>
+    <RiskyTruthyFalsyComparison>
+      <code><![CDATA[empty($pool->subnet)]]></code>
+      <code><![CDATA[empty($pool->subnet)]]></code>
+    </RiskyTruthyFalsyComparison>
+  </file>
+  <file src="app/Notifications/QueuedVerifyEmailNotification.php">
+    <PossiblyInvalidArgument>
+      <code><![CDATA[__('messages.auth.verify_email_action')]]></code>
+      <code><![CDATA[__('messages.auth.verify_email_greeting', ['name' => $name])]]></code>
+      <code><![CDATA[__('messages.auth.verify_email_subject')]]></code>
+    </PossiblyInvalidArgument>
+  </file>
+  <file src="app/Providers/AppServiceProvider.php">
+    <NoInterfaceProperties>
+      <code><![CDATA[now()->addHours(24)->timestamp]]></code>
+    </NoInterfaceProperties>
+    <PossiblyNullOperand>
+      <code><![CDATA[$request->ip()]]></code>
+    </PossiblyNullOperand>
+    <RiskyTruthyFalsyComparison>
+      <code><![CDATA[$this->app->environment('testing')]]></code>
+      <code><![CDATA[app()->environment('local', 'testing')]]></code>
+    </RiskyTruthyFalsyComparison>
+  </file>
+  <file src="app/Services/AuthService.php">
+    <InvalidTemplateParam>
+      <code><![CDATA[$user->tokens()]]></code>
+    </InvalidTemplateParam>
+    <PossiblyInvalidCast>
+      <code><![CDATA[__('messages.auth.verification_email_sent')]]></code>
+    </PossiblyInvalidCast>
+  </file>
+  <file src="app/Services/HostNodeService.php">
+    <RiskyTruthyFalsyComparison>
+      <code><![CDATA[app()->environment(['local', 'testing'])]]></code>
+      <code><![CDATA[app()->environment(['local', 'testing'])]]></code>
+    </RiskyTruthyFalsyComparison>
+  </file>
+  <file src="app/Services/HostSelector.php">
+    <ClassMustBeFinal>
+      <code><![CDATA[HostSelector]]></code>
+    </ClassMustBeFinal>
+    <DocblockTypeContradiction>
+      <code><![CDATA[in_array($host->status, ['fingerprint_mismatch', 'not_trusted', 'unreachable'], true)]]></code>
+    </DocblockTypeContradiction>
+    <InvalidOperand>
+      <code><![CDATA[$committedRam / 1024]]></code>
+      <code><![CDATA[$host->total_cpu_cores * $cpuOvercommit]]></code>
+      <code><![CDATA[$host->total_ram_mb * $ramOvercommit]]></code>
+    </InvalidOperand>
+    <RedundantCast>
+      <code><![CDATA[(float) ($committedCpu + ($committedRam / 1024) + $committedDisk)]]></code>
+    </RedundantCast>
+    <RiskyTruthyFalsyComparison>
+      <code><![CDATA[app()->environment('local', 'testing')]]></code>
+      <code><![CDATA[app()->environment('local', 'testing')]]></code>
+    </RiskyTruthyFalsyComparison>
+  </file>
+  <file src="app/Services/Hypervisor/Drivers/AbstractIncusLxdDriver.php">
+    <MixedReturnTypeCoercion>
+      <code><![CDATA[array]]></code>
+      <code><![CDATA[isset($data['metadata']) && is_array($data['metadata']) ? $data['metadata'] : []]]></code>
+    </MixedReturnTypeCoercion>
+    <PossiblyFalseArgument>
+      <code><![CDATA[is_string($err) ? $err : json_encode($err)]]></code>
+    </PossiblyFalseArgument>
+    <PossiblyInvalidArgument>
+      <code><![CDATA[$response]]></code>
+    </PossiblyInvalidArgument>
+    <PossiblyUndefinedMethod>
+      <code><![CDATA[json]]></code>
+      <code><![CDATA[json]]></code>
+      <code><![CDATA[status]]></code>
+      <code><![CDATA[status]]></code>
+      <code><![CDATA[successful]]></code>
+      <code><![CDATA[successful]]></code>
+      <code><![CDATA[successful]]></code>
+    </PossiblyUndefinedMethod>
+    <RedundantConditionGivenDocblockType>
+      <code><![CDATA[is_array($item)]]></code>
+    </RedundantConditionGivenDocblockType>
+  </file>
+  <file src="app/Services/Hypervisor/Exceptions/FingerprintMismatchException.php">
+    <ClassMustBeFinal>
+      <code><![CDATA[FingerprintMismatchException]]></code>
+    </ClassMustBeFinal>
+  </file>
+  <file src="app/Services/Hypervisor/Exceptions/MissingPinException.php">
+    <ClassMustBeFinal>
+      <code><![CDATA[MissingPinException]]></code>
+    </ClassMustBeFinal>
+  </file>
+  <file src="app/Services/Hypervisor/HypervisorGateway.php">
+    <ClassMustBeFinal>
+      <code><![CDATA[HypervisorGateway]]></code>
+    </ClassMustBeFinal>
+  </file>
+  <file src="app/Services/Hypervisor/HypervisorManager.php">
+    <RiskyTruthyFalsyComparison>
+      <code><![CDATA[app()->environment(['local', 'testing'])]]></code>
+    </RiskyTruthyFalsyComparison>
+  </file>
+  <file src="app/Services/Hypervisor/IncusEventSyncService.php">
+    <ClassMustBeFinal>
+      <code><![CDATA[IncusEventSyncService]]></code>
+    </ClassMustBeFinal>
+    <InvalidArgument>
+      <code><![CDATA[function ($query) use ($project): void {
+                $query->where('incus_project', $project);
+
+                // Fallback: resolve tenant user with this project name
+                $user = User::where('project_name', $project)->first();
+                if ($user !== null) {
+                    $query->orWhere('user_id', $user->id);
+                }
+            }]]></code>
+    </InvalidArgument>
+    <UndefinedMethod>
+      <code><![CDATA[orWhere]]></code>
+      <code><![CDATA[where]]></code>
+    </UndefinedMethod>
+  </file>
+  <file src="app/Services/Hypervisor/InstanceSpecBuilder.php">
+    <ClassMustBeFinal>
+      <code><![CDATA[InstanceSpecBuilder]]></code>
+    </ClassMustBeFinal>
+    <DocblockTypeContradiction>
+      <code><![CDATA[$allocation->pool]]></code>
+    </DocblockTypeContradiction>
+    <RedundantConditionGivenDocblockType>
+      <code><![CDATA[$allocation->pool?->dns_servers]]></code>
+    </RedundantConditionGivenDocblockType>
+    <RiskyTruthyFalsyComparison>
+      <code><![CDATA[$macAddress]]></code>
+      <code><![CDATA[empty($dnsServers)]]></code>
+    </RiskyTruthyFalsyComparison>
+  </file>
+  <file src="app/Services/Hypervisor/TenantProjectProvisioner.php">
+    <ClassMustBeFinal>
+      <code><![CDATA[TenantProjectProvisioner]]></code>
+    </ClassMustBeFinal>
+    <MissingClosureParamType>
+      <code><![CDATA[$q]]></code>
+      <code><![CDATA[$vmQ]]></code>
+    </MissingClosureParamType>
+    <MissingClosureReturnType>
+      <code><![CDATA[fn ($vmQ) => $vmQ->where('user_id', $user->id)]]></code>
+    </MissingClosureReturnType>
+    <PossiblyUndefinedMethod>
+      <code><![CDATA[successful]]></code>
+    </PossiblyUndefinedMethod>
+  </file>
+  <file src="app/Services/Hypervisor/TlsPeerCertificateFetcher.php">
+    <RiskyTruthyFalsyComparison>
+      <code><![CDATA[empty($matches[2])]]></code>
+    </RiskyTruthyFalsyComparison>
+  </file>
+  <file src="app/Services/Hypervisor/Transports/FakeIncusEventTransport.php">
+    <ClassMustBeFinal>
+      <code><![CDATA[FakeIncusEventTransport]]></code>
+    </ClassMustBeFinal>
+  </file>
+  <file src="app/Services/Hypervisor/Transports/WebSocketIncusEventTransport.php">
+    <ClassMustBeFinal>
+      <code><![CDATA[WebSocketIncusEventTransport]]></code>
+    </ClassMustBeFinal>
+    <RedundantCast>
+      <code><![CDATA[(int) $parsed['port']]]></code>
+      <code><![CDATA[(int) (2 ** $retryCount)]]></code>
+    </RedundantCast>
+  </file>
+  <file src="app/Services/IpManagementService.php">
+    <MixedArrayOffset>
+      <code><![CDATA[$occupied[$alloc->ip_string]]]></code>
+    </MixedArrayOffset>
+    <MixedReturnTypeCoercion>
+      <code><![CDATA[[
+            'total' => $usableTotal,
+            'allocated' => $allocatedCount,
+            'cooling' => $coolingCount,
+            'free' => $freeCount,
+            'percent' => $percent,
+        ]]]></code>
+      <code><![CDATA[array{total: int, allocated: int, cooling: int, free: int, percent: float}]]></code>
+    </MixedReturnTypeCoercion>
+    <PossiblyUndefinedMethod>
+      <code><![CDATA[body]]></code>
+      <code><![CDATA[json]]></code>
+      <code><![CDATA[status]]></code>
+      <code><![CDATA[successful]]></code>
+    </PossiblyUndefinedMethod>
+    <RedundantConditionGivenDocblockType>
+      <code><![CDATA['is_string']]></code>
+      <code><![CDATA[is_string($ex)]]></code>
+      <code><![CDATA[is_string($exIp)]]></code>
+    </RedundantConditionGivenDocblockType>
+    <RiskyTruthyFalsyComparison>
+      <code><![CDATA[$dto->firstUsable]]></code>
+      <code><![CDATA[$dto->lastUsable]]></code>
+      <code><![CDATA[empty($pool->gateway)]]></code>
+    </RiskyTruthyFalsyComparison>
+    <TooManyArguments>
+      <code><![CDATA[select]]></code>
+    </TooManyArguments>
+    <UndefinedMagicPropertyAssignment>
+      <code><![CDATA[$pool->utilization]]></code>
+    </UndefinedMagicPropertyAssignment>
+  </file>
+  <file src="app/Services/SystemOverviewService.php">
+    <PossiblyInvalidCast>
+      <code><![CDATA[__('messages.admin.smtp_disabled')]]></code>
+    </PossiblyInvalidCast>
+    <PossiblyNullArrayAccess>
+      <code><![CDATA[$smtp['from_address']]]></code>
+      <code><![CDATA[$smtp['from_name']]]></code>
+      <code><![CDATA[$smtp['host']]]></code>
+      <code><![CDATA[$smtp['password']]]></code>
+      <code><![CDATA[$smtp['username']]]></code>
+    </PossiblyNullArrayAccess>
+    <PossiblyUndefinedArrayOffset>
+      <code><![CDATA[$smtp['from_address']]]></code>
+      <code><![CDATA[$smtp['from_name']]]></code>
+      <code><![CDATA[$smtp['host']]]></code>
+      <code><![CDATA[$smtp['password']]]></code>
+      <code><![CDATA[$smtp['username']]]></code>
+    </PossiblyUndefinedArrayOffset>
+    <RiskyTruthyFalsyComparison>
+      <code><![CDATA[empty($data['password'])]]></code>
+      <code><![CDATA[empty($fromAddress)]]></code>
+      <code><![CDATA[empty($fromName)]]></code>
+      <code><![CDATA[empty($host)]]></code>
+      <code><![CDATA[empty($smtp['from_address'])]]></code>
+      <code><![CDATA[empty($smtp['from_name'])]]></code>
+      <code><![CDATA[empty($smtp['host'])]]></code>
+      <code><![CDATA[empty($smtp['password'])]]></code>
+      <code><![CDATA[empty($url)]]></code>
+    </RiskyTruthyFalsyComparison>
+  </file>
+  <file src="app/Services/UserService.php">
+    <InvalidTemplateParam>
+      <code><![CDATA[$user->tokens()]]></code>
+      <code><![CDATA[$user->tokens()]]></code>
+      <code><![CDATA[$user->tokens()]]></code>
+      <code><![CDATA[$user->tokens()]]></code>
+    </InvalidTemplateParam>
+  </file>
+  <file src="app/Services/VmLifecycleService.php">
+    <ClassMustBeFinal>
+      <code><![CDATA[VmLifecycleService]]></code>
+    </ClassMustBeFinal>
+    <DocblockTypeContradiction>
+      <code><![CDATA[$e->response]]></code>
+      <code><![CDATA['default']]></code>
+    </DocblockTypeContradiction>
+    <PossiblyNullReference>
+      <code><![CDATA[releaseIp]]></code>
+    </PossiblyNullReference>
+    <RedundantConditionGivenDocblockType>
+      <code><![CDATA[$e->response?->status()]]></code>
+      <code><![CDATA[$vm->incus_project]]></code>
+    </RedundantConditionGivenDocblockType>
+  </file>
+  <file src="app/Services/VmReconciliationService.php">
+    <ClassMustBeFinal>
+      <code><![CDATA[VmReconciliationService]]></code>
+    </ClassMustBeFinal>
+  </file>
+  <file src="app/Services/VmSnapshotService.php">
+    <ClassMustBeFinal>
+      <code><![CDATA[VmSnapshotService]]></code>
+    </ClassMustBeFinal>
+    <DocblockTypeContradiction>
+      <code><![CDATA[VirtualMachine::findOrFail($snapshotOrVm->virtual_machine_id)]]></code>
+    </DocblockTypeContradiction>
+    <RedundantConditionGivenDocblockType>
+      <code><![CDATA[$snapshotOrVm->virtualMachine]]></code>
+    </RedundantConditionGivenDocblockType>
+  </file>
+</files>

@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<psalm
+    errorLevel="1"
+    phpVersion="8.5"
+    resolveFromConfigFile="true"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="https://getpsalm.org/schema/config"
+    xsi:schemaLocation="https://getpsalm.org/schema/config vendor/vimeo/psalm/config.xsd"
+    findUnusedCode="false"
+    errorBaseline="psalm-baseline.xml"
+>
+    <projectFiles>
+        <directory name="app" />
+        <ignoreFiles>
+            <directory name="vendor" />
+        </ignoreFiles>
+    </projectFiles>
+    <issueHandlers>
+        <UndefinedMagicMethod>
+            <errorLevel type="suppress">
+                <directory name="app" />
+            </errorLevel>
+        </UndefinedMagicMethod>
+        <UndefinedInterfaceMethod>
+            <errorLevel type="suppress">
+                <directory name="app" />
+            </errorLevel>
+        </UndefinedInterfaceMethod>
+        <UndefinedMagicPropertyFetch>
+            <errorLevel type="suppress">
+                <directory name="app" />
+            </errorLevel>
+        </UndefinedMagicPropertyFetch>
+        <MixedMethodCall>
+            <errorLevel type="suppress">
+                <directory name="app" />
+            </errorLevel>
+        </MixedMethodCall>
+        <MixedPropertyFetch>
+            <errorLevel type="suppress">
+                <directory name="app" />
+            </errorLevel>
+        </MixedPropertyFetch>
+        <MixedAssignment>
+            <errorLevel type="suppress">
+                <directory name="app" />
+            </errorLevel>
+        </MixedAssignment>
+        <MixedOperand>
+            <errorLevel type="suppress">
+                <directory name="app" />
+            </errorLevel>
+        </MixedOperand>
+        <MixedArgument>
+            <errorLevel type="suppress">
+                <directory name="app" />
+            </errorLevel>
+        </MixedArgument>
+        <MixedReturnStatement>
+            <errorLevel type="suppress">
+                <directory name="app" />
+            </errorLevel>
+        </MixedReturnStatement>
+        <PropertyNotSetInConstructor>
+            <errorLevel type="suppress">
+                <directory name="app" />
+            </errorLevel>
+        </PropertyNotSetInConstructor>
+        <NonInvariantDocblockPropertyType>
+            <errorLevel type="suppress">
+                <directory name="app" />
+            </errorLevel>
+        </NonInvariantDocblockPropertyType>
+        <MissingTemplateParam>
+            <errorLevel type="suppress">
+                <directory name="app" />
+            </errorLevel>
+        </MissingTemplateParam>
+        <RedundantCastGivenDocblockType>
+            <errorLevel type="suppress">
+                <directory name="app" />
+            </errorLevel>
+        </RedundantCastGivenDocblockType>
+    </issueHandlers>
+</psalm>

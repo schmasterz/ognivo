@@ -1,0 +1,326 @@
+name: ognivo
+
+services:
+  # 1. Database (MySQL 8.4 LTS - pinned, internal only, no host port published)
+  db:
+    image: mysql:8.4.13
+    container_name: ognivo-db
+    restart: always
+    env_file:
+      - .env.production
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-ognivo}
+      MYSQL_USER: ${DB_USERNAME:-ognivo_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-secret_password}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-secret_password}
+      AUDIT_DB_USERNAME: ${AUDIT_DB_USERNAME:-audit_writer}
+      AUDIT_DB_PASSWORD: ${AUDIT_DB_PASSWORD:-}
+      AUDIT_MAINT_DB_USERNAME: ${AUDIT_MAINT_DB_USERNAME:-audit_maintenance}
+      AUDIT_MAINT_DB_PASSWORD: ${AUDIT_MAINT_DB_PASSWORD:-}
+      DB_MIGRATION_USERNAME: ${DB_MIGRATION_USERNAME:-migration_user}
+      DB_MIGRATION_PASSWORD: ${DB_MIGRATION_PASSWORD:-}
+      AUDIT_STRICT_GRANTS: ${AUDIT_STRICT_GRANTS:-true}
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./docker/mysql-init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root --password=$$MYSQL_ROOT_PASSWORD || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # 2. Redis Cache & Queue Driver (Alpine - pinned)
+  redis:
+    image: redis:7.4.12-alpine
+    container_name: ognivo-redis
+    restart: always
+    env_file:
+      - .env.production
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # 3. Backend API (PHP 8.5 FPM - compiled dependencies, no bind mounts)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    image: ognivo-backend:prod
+    container_name: ognivo-backend
+    restart: always
+    env_file:
+      - .env.production
+    environment:
+      AUDIT_DB_USERNAME: ${AUDIT_DB_USERNAME:-audit_writer}
+      AUDIT_DB_PASSWORD: ${AUDIT_DB_PASSWORD:-}
+      AUDIT_MAINT_DB_USERNAME: ${AUDIT_MAINT_DB_USERNAME:-audit_maintenance}
+      AUDIT_MAINT_DB_PASSWORD: ${AUDIT_MAINT_DB_PASSWORD:-}
+      DB_MIGRATION_USERNAME: ${DB_MIGRATION_USERNAME:-migration_user}
+      DB_MIGRATION_PASSWORD: ${DB_MIGRATION_PASSWORD:-}
+      AUDIT_STRICT_GRANTS: ${AUDIT_STRICT_GRANTS:-true}
+      AUDIT_HMAC_KEY_ID: ${AUDIT_HMAC_KEY_ID:-v1}
+      AUDIT_HMAC_KEY: ${AUDIT_HMAC_KEY:-}
+      AUDIT_PSEUDONYM_SALT: ${AUDIT_PSEUDONYM_SALT:-}
+      AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-400}
+      AUDIT_SEAL_DELAY_SECONDS: ${AUDIT_SEAL_DELAY_SECONDS:-120}
+      AUDIT_ATTEMPTED_EMAIL_DAYS: ${AUDIT_ATTEMPTED_EMAIL_DAYS:-30}
+      AUDIT_LOG_STDERR: ${AUDIT_LOG_STDERR:-false}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "SCRIPT_NAME=/ping SCRIPT_FILENAME=/ping REQUEST_METHOD=GET cgi-fcgi -bind -connect 127.0.0.1:9000 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # 4. Laravel Queue Worker
+  queue-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    image: ognivo-backend:prod
+    container_name: ognivo-queue
+    restart: always
+    command: php artisan queue:work --verbose --tries=3 --timeout=300 --max-time=3600
+    env_file:
+      - .env.production
+    environment:
+      RUN_MIGRATIONS: "false"
+      RUN_SEEDERS: "false"
+      AUDIT_DB_USERNAME: ${AUDIT_DB_USERNAME:-audit_writer}
+      AUDIT_DB_PASSWORD: ${AUDIT_DB_PASSWORD:-}
+      AUDIT_MAINT_DB_USERNAME: ${AUDIT_MAINT_DB_USERNAME:-audit_maintenance}
+      AUDIT_MAINT_DB_PASSWORD: ${AUDIT_MAINT_DB_PASSWORD:-}
+      DB_MIGRATION_USERNAME: ${DB_MIGRATION_USERNAME:-migration_user}
+      DB_MIGRATION_PASSWORD: ${DB_MIGRATION_PASSWORD:-}
+      AUDIT_STRICT_GRANTS: ${AUDIT_STRICT_GRANTS:-true}
+      AUDIT_HMAC_KEY_ID: ${AUDIT_HMAC_KEY_ID:-v1}
+      AUDIT_HMAC_KEY: ${AUDIT_HMAC_KEY:-}
+      AUDIT_PSEUDONYM_SALT: ${AUDIT_PSEUDONYM_SALT:-}
+      AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-400}
+      AUDIT_SEAL_DELAY_SECONDS: ${AUDIT_SEAL_DELAY_SECONDS:-120}
+      AUDIT_ATTEMPTED_EMAIL_DAYS: ${AUDIT_ATTEMPTED_EMAIL_DAYS:-30}
+      AUDIT_LOG_STDERR: ${AUDIT_LOG_STDERR:-false}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  # 5. Laravel Task Scheduler
+  scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    image: ognivo-backend:prod
+    container_name: ognivo-scheduler
+    restart: always
+    command: php artisan schedule:work
+    env_file:
+      - .env.production
+    environment:
+      RUN_MIGRATIONS: "false"
+      RUN_SEEDERS: "false"
+      AUDIT_DB_USERNAME: ${AUDIT_DB_USERNAME:-audit_writer}
+      AUDIT_DB_PASSWORD: ${AUDIT_DB_PASSWORD:-}
+      AUDIT_MAINT_DB_USERNAME: ${AUDIT_MAINT_DB_USERNAME:-audit_maintenance}
+      AUDIT_MAINT_DB_PASSWORD: ${AUDIT_MAINT_DB_PASSWORD:-}
+      DB_MIGRATION_USERNAME: ${DB_MIGRATION_USERNAME:-migration_user}
+      DB_MIGRATION_PASSWORD: ${DB_MIGRATION_PASSWORD:-}
+      AUDIT_STRICT_GRANTS: ${AUDIT_STRICT_GRANTS:-true}
+      AUDIT_HMAC_KEY_ID: ${AUDIT_HMAC_KEY_ID:-v1}
+      AUDIT_HMAC_KEY: ${AUDIT_HMAC_KEY:-}
+      AUDIT_PSEUDONYM_SALT: ${AUDIT_PSEUDONYM_SALT:-}
+      AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-400}
+      AUDIT_SEAL_DELAY_SECONDS: ${AUDIT_SEAL_DELAY_SECONDS:-120}
+      AUDIT_ATTEMPTED_EMAIL_DAYS: ${AUDIT_ATTEMPTED_EMAIL_DAYS:-30}
+      AUDIT_LOG_STDERR: ${AUDIT_LOG_STDERR:-false}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  # 6. Incus Lifecycle Events Listener
+  incus-events:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    image: ognivo-backend:prod
+    container_name: ognivo-incus-events
+    restart: always
+    command: php artisan incus:listen
+    env_file:
+      - .env.production
+    environment:
+      RUN_MIGRATIONS: "false"
+      RUN_SEEDERS: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  # 7. Laravel Reverb WebSocket Server (Port NOT published to host)
+  reverb:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    image: ognivo-backend:prod
+    container_name: ognivo-reverb
+    restart: always
+    command: php artisan reverb:start --host=0.0.0.0 --port=8080
+    env_file:
+      - .env.production
+    environment:
+      RUN_MIGRATIONS: "false"
+      RUN_SEEDERS: "false"
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null http://127.0.0.1:8080/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # 8. Frontend (Next.js production build: next start, internal only)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    image: ognivo-frontend:prod
+    container_name: ognivo-frontend
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    depends_on:
+      - backend
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # 0. One-shot TLS Certificate Initializer
+  cert-init:
+    image: alpine:3.21
+    container_name: ognivo-cert-init
+    restart: "no"
+    command: >
+      sh -c "
+        set -e
+        apk add --no-cache openssl >/dev/null 2>&1
+        if [ ! -s /etc/nginx/certs/server.crt ] || [ ! -s /etc/nginx/certs/server.key ]; then
+          echo '[cert-init] Generating self-signed TLS certificate...'
+          mkdir -p /etc/nginx/certs
+          openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/nginx/certs/server.key -out /etc/nginx/certs/server.crt -subj '/CN=localhost' >/dev/null 2>&1
+          chmod 600 /etc/nginx/certs/server.key
+          chmod 644 /etc/nginx/certs/server.crt
+          echo '[cert-init] Self-signed TLS certificate generated successfully.'
+        else
+          echo '[cert-init] TLS certificate already present in volume.'
+        fi
+      "
+    volumes:
+      - certs:/etc/nginx/certs
+    networks:
+      - app-network
+
+  # 9. Web Server (Nginx - pinned, HTTPS on 443 + HTTP redirect, WebSocket restricted to ^/app/)
+  webserver:
+    image: nginx:1.27.5-alpine
+    container_name: ognivo-nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
+      - certs:/etc/nginx/certs:ro
+    depends_on:
+      cert-init:
+        condition: service_completed_successfully
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+      reverb:
+        condition: service_healthy
+      console-proxy:
+        condition: service_healthy
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -k -f https://127.0.0.1/up || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # 10. Interactive Console WebSocket Proxy
+  console-proxy:
+    build:
+      context: ./console-proxy
+      dockerfile: Dockerfile
+    image: ognivo-console-proxy:prod
+    container_name: ognivo-console-proxy
+    restart: always
+    environment:
+      PORT: 8085
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8085/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  db_data:
+  certs:
