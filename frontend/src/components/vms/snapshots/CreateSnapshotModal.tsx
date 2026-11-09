@@ -16,7 +16,7 @@ interface CreateSnapshotModalProps {
   remaining: number;
 }
 
-const SNAPSHOT_NAME_REGEX = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
+const SNAPSHOT_NAME_REGEX = /^[a-z0-9](?:[a-z0-9_-]{0,61}[a-z0-9])?$/;
 
 export function CreateSnapshotModal({
   isOpen,

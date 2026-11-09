@@ -450,7 +450,7 @@ final class VmSnapshotApiTest extends TestCase
             '-leading-hyphen',
             'trailing-hyphen-',
             '../traversal',
-            str_repeat('a', 65),
+            str_repeat('a', 64),
         ];
 
         foreach ($invalidNames as $badName) {
@@ -463,7 +463,7 @@ final class VmSnapshotApiTest extends TestCase
                 ->assertJsonValidationErrors(['name']);
         }
 
-        // Create a valid snapshot
+        // Create a valid snapshot (including underscores) and a max-length 63-char snapshot
         $this->actingAs($this->customerA)
             ->postJson("/api/vms/{$this->vmA->id}/snapshots", [
                 'name' => 'valid-snap_01',
@@ -478,10 +478,16 @@ final class VmSnapshotApiTest extends TestCase
             ->assertStatus(422)
             ->assertJsonValidationErrors(['name']);
 
-        // Same name on a different VM is allowed
+        // Same name (and max-length 63-char name) on a different VM is allowed
         $this->actingAs($this->customerB)
             ->postJson("/api/vms/{$this->vmB->id}/snapshots", [
                 'name' => 'valid-snap_01',
+            ])
+            ->assertStatus(202);
+
+        $this->actingAs($this->customerB)
+            ->postJson("/api/vms/{$this->vmB->id}/snapshots", [
+                'name' => str_repeat('a', 63),
             ])
             ->assertStatus(202);
     }

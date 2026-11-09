@@ -3,6 +3,7 @@
 implementations
 tasks
 backend/.env
+/.agents/
 /.codex
 /.cursor/
 /.idea/

@@ -42,8 +42,8 @@ final class CreateSnapshotRequest extends FormRequest
                 'required',
                 'string',
                 'min:1',
-                'max:64',
-                'regex:/^[a-z0-9](?:[a-z0-9_-]{0,62}[a-z0-9])?$/',
+                'max:63',
+                'regex:/^[a-z0-9](?:[a-z0-9_-]{0,61}[a-z0-9])?$/',
                 Rule::unique('vm_snapshots', 'name')->where(
                     fn (Builder $query): Builder => $query->where('virtual_machine_id', $vmId)
                 ),

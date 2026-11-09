@@ -136,6 +136,66 @@ final class HypervisorSnapshotDriverTest extends TestCase
         $this->assertFalse($driver->deleteSnapshot($this->vm, 'never-existed'));
     }
 
+    public function test_fake_driver_isolates_snapshots_between_tenants_with_identical_vm_names(): void
+    {
+        $driver = new FakeHypervisorDriver;
+
+        $otherUser = User::factory()->create([
+            'project_name' => 'tenant-other-proj',
+        ]);
+
+        $vmTenantA = VirtualMachine::create([
+            'user_id' => $this->user->id,
+            'host_id' => $this->incusHost->id,
+            'name' => 'shared-vm-name',
+            'incus_project' => 'tenant-snap-proj',
+            'instance_type' => 'virtual-machine',
+            'status' => 'running',
+            'cpu_cores' => 1,
+            'ram_mb' => 1024,
+            'disk_gb' => 10,
+            'os_image' => 'images:ubuntu/24.04',
+        ]);
+
+        $vmTenantB = VirtualMachine::create([
+            'user_id' => $otherUser->id,
+            'host_id' => $this->incusHost->id,
+            'name' => 'shared-vm-name',
+            'incus_project' => 'tenant-other-proj',
+            'instance_type' => 'virtual-machine',
+            'status' => 'running',
+            'cpu_cores' => 1,
+            'ram_mb' => 1024,
+            'disk_gb' => 10,
+            'os_image' => 'images:ubuntu/24.04',
+        ]);
+
+        $driver->setStateMarker($vmTenantA, 'marker-a-v1');
+        $driver->setStateMarker($vmTenantB, 'marker-b-v1');
+
+        $this->assertTrue($driver->createSnapshot($vmTenantA, 'same-snap', false));
+        $this->assertTrue($driver->createSnapshot($vmTenantB, 'same-snap', true));
+
+        $listA = $driver->listSnapshots($vmTenantA);
+        $listB = $driver->listSnapshots($vmTenantB);
+
+        $this->assertCount(1, $listA);
+        $this->assertCount(1, $listB);
+        $this->assertFalse($listA[0]['stateful']);
+        $this->assertTrue($listB[0]['stateful']);
+
+        $driver->setStateMarker($vmTenantA, 'marker-a-v2');
+        $driver->setStateMarker($vmTenantB, 'marker-b-v2');
+
+        $this->assertTrue($driver->restoreSnapshot($vmTenantA, 'same-snap'));
+        $this->assertSame('marker-a-v1', $driver->getStateMarker($vmTenantA));
+        $this->assertSame('marker-b-v2', $driver->getStateMarker($vmTenantB));
+
+        $this->assertTrue($driver->deleteSnapshot($vmTenantA, 'same-snap'));
+        $this->assertCount(0, $driver->listSnapshots($vmTenantA));
+        $this->assertCount(1, $driver->listSnapshots($vmTenantB));
+    }
+
     public function test_fake_driver_respects_set_fail_action_for_snapshot_operations(): void
     {
         $driver = new FakeHypervisorDriver;

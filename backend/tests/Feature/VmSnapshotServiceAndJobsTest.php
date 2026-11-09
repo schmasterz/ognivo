@@ -508,6 +508,13 @@ final class VmSnapshotServiceAndJobsTest extends TestCase
             'name' => 'deleted-externally',
         ]);
 
+        // In-flight creating snapshot not yet present on hypervisor (must be preserved during sync)
+        $inFlightSnap = VmSnapshot::factory()->creating()->create([
+            'virtual_machine_id' => $this->vm->id,
+            'user_id' => $this->customer->id,
+            'name' => 'in-flight-creating',
+        ]);
+
         // Snapshot present in both DB and hypervisor
         $keptSnap = VmSnapshot::factory()->creating()->create([
             'virtual_machine_id' => $this->vm->id,
@@ -536,6 +543,13 @@ final class VmSnapshotServiceAndJobsTest extends TestCase
         // Stale snapshot was removed
         $this->assertDatabaseMissing('vm_snapshots', ['id' => $staleSnap->id]);
 
+        // In-flight creating snapshot was preserved
+        $this->assertDatabaseHas('vm_snapshots', [
+            'id' => $inFlightSnap->id,
+            'name' => 'in-flight-creating',
+            'status' => VmSnapshot::STATUS_CREATING,
+        ]);
+
         // Existing snapshot was synced to ready
         $this->assertDatabaseHas('vm_snapshots', [
             'id' => $keptSnap->id,
@@ -553,6 +567,7 @@ final class VmSnapshotServiceAndJobsTest extends TestCase
         ]);
 
         // Also test direct syncFromHypervisor when external snapshot is deleted on hypervisor
+        $inFlightSnap->delete();
         $this->fakeDriver->deleteSnapshot($this->vm, 'created-externally');
         $synced = app(VmSnapshotService::class)->syncFromHypervisor($this->vm);
 

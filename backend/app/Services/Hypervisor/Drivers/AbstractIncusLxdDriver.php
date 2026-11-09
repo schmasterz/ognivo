@@ -387,7 +387,7 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
         /** @var Response $response */
         $response = $this->client()
             ->withQueryParameters(['project' => $vm->incus_project])
-            ->post(sprintf('/1.0/instances/%s/snapshots', $vm->name), [
+            ->post(sprintf('/1.0/instances/%s/snapshots', rawurlencode($vm->name)), [
                 'name' => $name,
                 'stateful' => $stateful,
             ]);
@@ -409,7 +409,7 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
                 'project' => $vm->incus_project,
                 'recursion' => 1,
             ])
-            ->get(sprintf('/1.0/instances/%s/snapshots', $vm->name));
+            ->get(sprintf('/1.0/instances/%s/snapshots', rawurlencode($vm->name)));
 
         if (! $response->successful()) {
             return [];
@@ -461,7 +461,7 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
         /** @var Response $response */
         $response = $this->client()
             ->withQueryParameters(['project' => $vm->incus_project])
-            ->put(sprintf('/1.0/instances/%s', $vm->name), [
+            ->put(sprintf('/1.0/instances/%s', rawurlencode($vm->name)), [
                 'restore' => $name,
             ]);
 
@@ -474,7 +474,7 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
         /** @var Response $response */
         $response = $this->client()
             ->withQueryParameters(['project' => $vm->incus_project])
-            ->delete(sprintf('/1.0/instances/%s/snapshots/%s', $vm->name, $name));
+            ->delete(sprintf('/1.0/instances/%s/snapshots/%s', rawurlencode($vm->name), rawurlencode($name)));
 
         return $this->handleOperationResponse($response, $vm->incus_project);
     }

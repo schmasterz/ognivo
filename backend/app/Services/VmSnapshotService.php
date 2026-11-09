@@ -355,8 +355,8 @@ class VmSnapshotService
                     if ($dbSnapshot->isDirty()) {
                         $dbSnapshot->save();
                     }
-                } else {
-                    // Snapshot no longer exists on hypervisor -> remove stale DB row
+                } elseif (! in_array($dbSnapshot->status, [VmSnapshot::STATUS_CREATING, VmSnapshot::STATUS_DELETING], true)) {
+                    // Snapshot no longer exists on hypervisor -> remove stale DB row (preserve in-flight creating/deleting jobs)
                     $dbSnapshot->delete();
                 }
             }
@@ -471,7 +471,7 @@ class VmSnapshotService
      */
     private function assertValidSnapshotName(string $name): void
     {
-        if ($name === '' || preg_match('/^[a-z0-9](?:[a-z0-9_-]{0,62}[a-z0-9])?$/', $name) !== 1) {
+        if ($name === '' || preg_match('/^[a-z0-9](?:[a-z0-9_-]{0,61}[a-z0-9])?$/', $name) !== 1) {
             throw new InvalidSnapshotNameException($name);
         }
     }
