@@ -105,27 +105,6 @@ export function AuthView({ onAuthSuccess }: AuthViewProps) {
     }
   };
 
-  const handleQuickLogin = async (demoEmail: string) => {
-    setEmail(demoEmail);
-    setPassword("password");
-    setError(null);
-    setLoading(true);
-
-    try {
-      await api.login(demoEmail, "password");
-      const me = await api.getMe();
-      onAuthSuccess(me.user, me.roles);
-    } catch (err: unknown) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("Demo login failed.");
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-[#090d16] text-gray-900 dark:text-white transition-colors relative">
       {/* Top Controls */}
@@ -353,34 +332,6 @@ export function AuthView({ onAuthSuccess }: AuthViewProps) {
               )}
             </button>
           </form>
-
-          {/* Seeded Quick Login */}
-          <div className="mt-6 pt-5 border-t border-gray-200 dark:border-gray-800">
-            <span className="block text-[11px] text-gray-500 dark:text-gray-400 uppercase tracking-wider text-center font-medium mb-2.5">
-              {t("quickTestAccounts")}
-            </span>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <button
-                type="button"
-                onClick={() => handleQuickLogin("customer@ognivo.local")}
-                disabled={loading}
-                className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 text-gray-700 dark:text-gray-300 transition text-center"
-              >
-                <div className="font-semibold text-gray-900 dark:text-white text-[11px]">{t("demoCustomer")}</div>
-                <div className="text-[10px] text-gray-500 dark:text-gray-400">Quota: 3 VMs</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickLogin("admin@ognivo.local")}
-                disabled={loading}
-                className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 text-gray-700 dark:text-gray-300 transition text-center"
-              >
-                <div className="font-semibold text-gray-900 dark:text-white text-[11px]">{t("rootAdmin")}</div>
-                <div className="text-[10px] text-gray-500 dark:text-gray-400">Quota: 20 VMs</div>
-              </button>
-            </div>
-          </div>
           </>
           )}
         </div>
