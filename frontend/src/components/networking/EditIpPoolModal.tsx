@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { X, Network, Server, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
 import { api, IpPool, HostDiscoveredNetwork } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
+import { useModalEscape } from "@/lib/hooks/useModalEscape";
 
 interface EditIpPoolModalProps {
   pool: IpPool;
@@ -18,6 +19,7 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
   const [description, setDescription] = useState(pool.description || "");
   const [networkMode, setNetworkMode] = useState<string>(pool.network_mode || "routed");
   const [parentInterface, setParentInterface] = useState<string>(pool.parent_interface || "eth0");
+  const [isCustomInterface, setIsCustomInterface] = useState(false);
   const [discoveredNetworks, setDiscoveredNetworks] = useState<HostDiscoveredNetwork[]>([]);
   const [discoveringHost, setDiscoveringHost] = useState(false);
   const [dnsServers, setDnsServers] = useState(
@@ -37,6 +39,26 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useModalEscape(onClose, !loading);
+
+  useEffect(() => {
+    setName(pool.name);
+    setDescription(pool.description || "");
+    setNetworkMode(pool.network_mode || "routed");
+    setParentInterface(pool.parent_interface || "eth0");
+    setIsCustomInterface(false);
+    setDnsServers(pool.dns_servers && pool.dns_servers.length > 0 ? pool.dns_servers.join(", ") : "1.1.1.1, 8.8.8.8");
+    setExcludedIps(pool.excluded_ips && pool.excluded_ips.length > 0 ? pool.excluded_ips.join(", ") : "");
+    setCooldownSeconds(pool.cooldown_seconds ?? 300);
+    setActive(pool.active ?? true);
+    setIsPublic(pool.is_public ?? true);
+    setGateway(pool.gateway || "");
+    setFirstUsable(pool.first_usable || "");
+    setLastUsable(pool.last_usable || "");
+    setError(null);
+    setLoading(false);
+  }, [pool]);
 
   useEffect(() => {
     const hostId = pool.host_id ?? pool.host?.id;
@@ -194,31 +216,63 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
                 <span>Host Parent Interface</span>
                 {discoveringHost && <Loader2 className="w-3 h-3 animate-spin text-teal-500" />}
               </label>
-              <input
-                type="text"
+              <select
                 disabled={hasAllocations}
-                value={parentInterface}
-                onChange={(e) => setParentInterface(e.target.value)}
-                placeholder="eno1 / incusbr0 / eth0"
+                required
+                value={isCustomInterface ? "__custom__" : parentInterface}
+                onChange={(e) => {
+                  if (e.target.value === "__custom__") {
+                    setIsCustomInterface(true);
+                  } else {
+                    setIsCustomInterface(false);
+                    setParentInterface(e.target.value);
+                  }
+                }}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono disabled:opacity-60"
-              />
-              {!hasAllocations && discoveredNetworks.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mt-1.5">
-                  {discoveredNetworks.map((net) => (
-                    <button
-                      key={net.name}
-                      type="button"
-                      onClick={() => setParentInterface(net.name)}
-                      className={`px-2 py-0.5 rounded-lg text-[11px] font-mono border transition ${
-                        parentInterface === net.name
-                          ? "bg-teal-500/15 border-teal-500/40 text-teal-700 dark:text-teal-300 font-semibold"
-                          : "bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-teal-500/30"
-                      }`}
-                    >
-                      {net.name} ({net.type})
-                    </button>
-                  ))}
+              >
+                {discoveringHost && discoveredNetworks.length === 0 && (
+                  <option value="" disabled>Detecting host interfaces...</option>
+                )}
+                {discoveredNetworks.length === 0 && !discoveringHost && (
+                  <>
+                    <option value="eth0">eth0</option>
+                    <option value="eno1">eno1</option>
+                    <option value="incusbr0">incusbr0</option>
+                    <option value="lxdbr0">lxdbr0</option>
+                  </>
+                )}
+                {discoveredNetworks.map((net) => (
+                  <option key={net.name} value={net.name}>
+                    {net.name} ({net.type}{net.addresses && net.addresses.length > 0 ? `: ${net.addresses.join(", ")}` : ""})
+                  </option>
+                ))}
+                {parentInterface &&
+                  !isCustomInterface &&
+                  !discoveredNetworks.some((n) => n.name === parentInterface) && (
+                    <option value={parentInterface}>
+                      {parentInterface} (Current)
+                    </option>
+                  )}
+                {!hasAllocations && <option value="__custom__">Custom interface...</option>}
+              </select>
+
+              {!hasAllocations && isCustomInterface && (
+                <div className="mt-2">
+                  <input
+                    type="text"
+                    required
+                    value={parentInterface}
+                    onChange={(e) => setParentInterface(e.target.value)}
+                    placeholder="e.g. eth0, eno1, incusbr0"
+                    className="w-full px-3.5 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono"
+                    autoFocus
+                  />
                 </div>
+              )}
+              {hasAllocations ? (
+                <span className="text-[11px] text-amber-500 mt-1 block">Parent interface cannot be modified while IPs are allocated</span>
+              ) : (
+                <span className="text-[11px] text-gray-400 mt-1 block">Host NIC or bridge on target node</span>
               )}
             </div>
           </div>

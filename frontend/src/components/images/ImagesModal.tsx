@@ -20,6 +20,7 @@ import { CreateImageModal } from "./CreateImageModal";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { PaginationBar } from "@/components/ui/PaginationBar";
 import { useToast } from "@/lib/toast/ToastContext";
+import { useModalEscape } from "@/lib/hooks/useModalEscape";
 
 interface ImagesModalProps {
   onClose: () => void;
@@ -43,6 +44,8 @@ export function ImagesModal({ onClose, hosts }: ImagesModalProps) {
   const [togglingId, setTogglingId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ImageItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  useModalEscape(onClose, !deleting && togglingId === null);
 
   useEffect(() => {
     const timer = setTimeout(() => {

@@ -7,6 +7,7 @@ import { extractPaginationMeta } from "@/lib/api/client";
 import { PaginationBar } from "@/components/ui/PaginationBar";
 import { useI18n } from "@/lib/i18n/I18nContext";
 import { useToast } from "@/lib/toast/ToastContext";
+import { useModalEscape } from "@/lib/hooks/useModalEscape";
 
 interface QuotaGroupsModalProps {
   quotaGroups: QuotaGroup[];
@@ -35,6 +36,8 @@ export function QuotaGroupsModal({
   const [loading, setLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useModalEscape(onClose, !loading && deletingId === null);
 
   const fetchGroups = useCallback(async () => {
     try {

@@ -213,18 +213,18 @@ export function VmTable({
 
   return (
     <div className="bg-white dark:bg-gray-900/60 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden backdrop-blur-sm shadow-sm dark:shadow-none transition-colors">
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto relative">
         <table className="w-full text-left text-sm text-gray-600 dark:text-gray-300">
           <thead className="bg-gray-50 dark:bg-gray-950/60 text-xs uppercase text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-800 font-semibold tracking-wider">
             <tr>
-              <th scope="col" className="px-6 py-4">{t("colInstance")}</th>
-              <th scope="col" className="px-6 py-4">{t("colType")}</th>
-              {isAdmin && <th scope="col" className="px-6 py-4">{t("colOwner")}</th>}
-              <th scope="col" className="px-6 py-4">{t("colStatus")}</th>
-              <th scope="col" className="px-6 py-4">{t("colIp")}</th>
-              <th scope="col" className="px-6 py-4">{t("colSpecs")}</th>
-              <th scope="col" className="px-6 py-4">{t("colOs")}</th>
-              <th scope="col" className="px-6 py-4 text-right">{t("colActions")}</th>
+              <th scope="col" className="px-4 sm:px-6 py-3.5">{t("colInstance")}</th>
+              <th scope="col" className="px-4 sm:px-6 py-3.5">{t("colType")}</th>
+              {isAdmin && <th scope="col" className="px-4 sm:px-6 py-3.5">{t("colOwner")}</th>}
+              <th scope="col" className="px-4 sm:px-6 py-3.5">{t("colStatus")}</th>
+              <th scope="col" className="px-4 sm:px-6 py-3.5">{t("colIp")}</th>
+              <th scope="col" className="px-4 sm:px-6 py-3.5">{t("colSpecs")}</th>
+              <th scope="col" className="px-4 sm:px-6 py-3.5">{t("colOs")}</th>
+              <th scope="col" className="sticky right-0 z-20 px-4 sm:px-6 py-3.5 text-right bg-gray-50 dark:bg-gray-950 border-l border-gray-200 dark:border-gray-800 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)]">{t("colActions")}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-gray-800/60">
@@ -235,8 +235,8 @@ export function VmTable({
               const isSuspended = vm.status.toLowerCase() === "suspended";
 
               return (
-                <tr key={vm.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition">
-                  <td className="px-6 py-4">
+                <tr key={vm.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition group">
+                  <td className="px-4 sm:px-6 py-3.5">
                     {onOpenDetails ? (
                       <button
                         onClick={() => onOpenDetails(vm, "overview")}
@@ -264,7 +264,7 @@ export function VmTable({
                   </td>
 
                   {/* VPS Type Column */}
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-4 sm:px-6 py-3.5 whitespace-nowrap">
                     {vm.instance_type === "container" ? (
                       <span className="inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-semibold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
                         <Box className="w-3.5 h-3.5 mr-1.5" />
@@ -279,7 +279,7 @@ export function VmTable({
                   </td>
 
                   {isAdmin && (
-                    <td className="px-6 py-4">
+                    <td className="px-4 sm:px-6 py-3.5">
                       {vm.user ? (
                         <div>
                           <div className="font-semibold text-gray-900 dark:text-white text-xs">
@@ -295,7 +295,7 @@ export function VmTable({
                     </td>
                   )}
 
-                  <td className="px-6 py-4" title={vm.failure_reason || undefined}>
+                  <td className="px-4 sm:px-6 py-3.5" title={vm.failure_reason || undefined}>
                     {getStatusBadge(vm.status)}
                     {vm.status.toLowerCase() === "failed" && vm.failure_reason && (
                       <div className="mt-1 max-w-[220px] truncate text-[11px] text-red-500 dark:text-red-400 font-mono">
@@ -304,11 +304,11 @@ export function VmTable({
                     )}
                   </td>
 
-                  <td className="px-6 py-4 font-mono text-xs">
+                  <td className="px-4 sm:px-6 py-3.5 font-mono text-xs whitespace-nowrap">
                     {renderIpNetworkStatus(vm)}
                   </td>
 
-                  <td className="px-6 py-4">
+                  <td className="px-4 sm:px-6 py-3.5 whitespace-nowrap">
                     <div className="flex items-center space-x-4 text-xs text-gray-600 dark:text-gray-300">
                       <div className="flex items-center space-x-1" title="CPU Cores">
                         <Cpu className="w-3.5 h-3.5 text-emerald-500" />
@@ -325,13 +325,13 @@ export function VmTable({
                     </div>
                   </td>
 
-                  <td className="px-6 py-4 text-xs font-mono text-gray-700 dark:text-gray-300">
+                  <td className="px-4 sm:px-6 py-3.5 text-xs font-mono text-gray-700 dark:text-gray-300 whitespace-nowrap">
                     <span className="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700/50">
                       {vm.os_image.replace("images:", "")}
                     </span>
                   </td>
 
-                  <td className="px-6 py-4 text-right">
+                  <td className="sticky right-0 z-10 px-4 sm:px-6 py-3.5 text-right bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800 border-l border-gray-200/80 dark:border-gray-800/80 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)] transition-colors">
                     <div className="flex items-center justify-end space-x-1.5">
                       {/* Snapshots Button */}
                       {onOpenDetails && (

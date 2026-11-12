@@ -25,6 +25,7 @@ import { api, HostNode, PanelCertificateInfo } from "@/lib/api";
 import { extractPaginationMeta } from "@/lib/api/client";
 import { PaginationBar } from "@/components/ui/PaginationBar";
 import { useI18n } from "@/lib/i18n/I18nContext";
+import { useModalEscape } from "@/lib/hooks/useModalEscape";
 
 interface NodesModalProps {
   hosts: HostNode[];
@@ -58,6 +59,8 @@ export function NodesModal({
   const [retrustTokens, setRetrustTokens] = useState<Record<number, string>>({});
   const [retrustLoadingId, setRetrustLoadingId] = useState<number | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+
+  useModalEscape(onClose, !tableLoading && !rotateLoading && !revokeLoading && !retrustLoadingId);
 
   const fetchHostsPage = useCallback(async () => {
     try {

@@ -16,6 +16,8 @@ import { registerVmBuiltins } from "./registerVmBuiltins";
 // Ensure built-in tabs (Overview, Snapshots) are registered
 registerVmBuiltins();
 
+import { useModalEscape } from "@/lib/hooks/useModalEscape";
+
 interface VmDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -57,16 +59,7 @@ export function VmDetailsModal({
   }, [isOpen, initialTab]);
 
   // Handle escape key
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isOpen) return;
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
+  useModalEscape(onClose, isOpen);
 
   if (!isOpen || !vm) return null;
 

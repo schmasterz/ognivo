@@ -176,17 +176,19 @@ export function DashboardModals({
   return (
     <>
       {/* Creation VM Modal */}
-      <CreateVmModal
-        isOpen={createModalOpen}
-        onClose={() => setCreateModalOpen(false)}
-        quotaData={quotaData}
-        systemSettings={systemSettings}
-        existingVms={vms.map((v) => ({ name: v.name, host_id: v.host_id }))}
-        onSuccess={() => {
-          toast.success("Instance provisioning started!");
-          loadData();
-        }}
-      />
+      {createModalOpen && (
+        <CreateVmModal
+          isOpen={createModalOpen}
+          onClose={() => setCreateModalOpen(false)}
+          quotaData={quotaData}
+          systemSettings={systemSettings}
+          existingVms={vms.map((v) => ({ name: v.name, host_id: v.host_id }))}
+          onSuccess={() => {
+            toast.success("Instance provisioning started!");
+            loadData();
+          }}
+        />
+      )}
 
       {/* Console Modal */}
       <ConsoleModal vm={consoleVm} onClose={() => setConsoleVm(null)} />

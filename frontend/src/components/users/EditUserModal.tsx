@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { X, UserCheck, Shield, User, Mail, Lock, Loader2, CheckCircle2, Layers, Sparkles, Eye, EyeOff } from "lucide-react";
 import { api, AdminUserItem, QuotaGroup } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
+import { useModalEscape } from "@/lib/hooks/useModalEscape";
 import {
   QuotaLimitsFormSection,
   QuotaLimitsFormValue,
@@ -62,6 +63,26 @@ export function EditUserModal({ user, quotaGroups = [], onClose, onSuccess }: Ed
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useModalEscape(onClose, !loading);
+
+  useEffect(() => {
+    setName(user.name);
+    setEmail(user.email);
+    setPassword("");
+    setShowPassword(false);
+    const newRole = user.roles.some((r) => r.name === "admin") ? "admin" : "customer";
+    setRole(newRole);
+    setStatus(
+      user.status === "active" || user.status === "suspended" || user.status === "pending" || user.status === "inactive"
+        ? user.status
+        : "inactive"
+    );
+    setSelectedGroupId(user.quota_group_id || "custom");
+    setQuotaLimits(quotaRecordToFormValue(user.quota, USER_QUOTA_DEFAULTS));
+    setError(null);
+    setLoading(false);
+  }, [user]);
 
   const handleGroupSelect = (val: string) => {
     if (val === "custom") {

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   X,
   Server,
@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { api, HostNode, TestConnectionResponse } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
+import { useModalEscape } from "@/lib/hooks/useModalEscape";
 
 interface EditHostModalProps {
   host: HostNode;
@@ -46,6 +47,23 @@ export function EditHostModal({ host, onClose, onSuccess }: EditHostModalProps) 
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useModalEscape(onClose, !loading && !verifyLoading);
+
+  useEffect(() => {
+    setName(host.name);
+    setRegion(host.region || "");
+    setEndpointUrl(host.endpoint_url ?? "");
+    setDriver(host.driver === "fake" ? "fake" : host.driver === "lxd" ? "lxd" : "incus");
+    setIsActive(host.is_active);
+    setTotalCpuCores(host.total_cpu_cores || 64);
+    setTotalRamGb(Math.round((host.total_ram_mb || 262144) / 1024));
+    setTotalStorageGb(host.total_storage_gb || 4000);
+    setError(null);
+    setVerifyError(null);
+    setVerifyResult(null);
+    setLoading(false);
+  }, [host]);
 
   const isValidUrl = (urlStr: string): boolean => {
     try {

@@ -346,16 +346,20 @@ export function IpTable({
         </div>
       ) : (
         <div className="bg-white dark:bg-gray-900/60 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden backdrop-blur-sm shadow-sm dark:shadow-none transition-colors">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto relative">
             <table className="w-full text-left text-sm text-gray-600 dark:text-gray-300">
               <thead className="bg-gray-50 dark:bg-gray-950/60 text-xs uppercase text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-800 font-semibold tracking-wider">
                 <tr>
-                  <th scope="col" className="px-6 py-4">IP & MAC Address</th>
-                  {isAdmin && <th scope="col" className="px-6 py-4">{t("colOwner")}</th>}
-                  <th scope="col" className="px-6 py-4">Status</th>
-                  {isAdmin && <th scope="col" className="px-6 py-4">Pool Subnet</th>}
-                  <th scope="col" className="px-6 py-4">{t("colAttachedVm")}</th>
-                  {isAdmin && <th scope="col" className="px-6 py-4 text-right">{t("colActions")}</th>}
+                  <th scope="col" className="px-4 sm:px-6 py-3.5">IP & MAC Address</th>
+                  {isAdmin && <th scope="col" className="px-4 sm:px-6 py-3.5">{t("colOwner")}</th>}
+                  <th scope="col" className="px-4 sm:px-6 py-3.5">Status</th>
+                  {isAdmin && <th scope="col" className="px-4 sm:px-6 py-3.5">Pool Subnet</th>}
+                  <th scope="col" className="px-4 sm:px-6 py-3.5">{t("colAttachedVm")}</th>
+                  {isAdmin && (
+                    <th scope="col" className="sticky right-0 z-20 px-4 sm:px-6 py-3.5 text-right bg-gray-50 dark:bg-gray-950 border-l border-gray-200 dark:border-gray-800 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)]">
+                      {t("colActions")}
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-800/60">
@@ -364,9 +368,9 @@ export function IpTable({
                   const isCopied = copiedIp === ip.address;
 
                   return (
-                    <tr key={ip.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition">
+                    <tr key={ip.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition group">
                       {/* IP & MAC Address */}
-                      <td className="px-6 py-4">
+                      <td className="px-4 sm:px-6 py-3.5">
                         <div className="flex items-center space-x-2">
                           <span className="font-mono font-semibold text-gray-900 dark:text-white">
                             {ip.address || ip.ip_string}
@@ -393,7 +397,7 @@ export function IpTable({
 
                       {/* Owner Column (Admin only) */}
                       {isAdmin && (
-                        <td className="px-6 py-4 text-xs">
+                        <td className="px-4 sm:px-6 py-3.5 text-xs whitespace-nowrap">
                           {ip.user ? (
                             <div>
                               <div className="font-semibold text-gray-900 dark:text-white">{ip.user.name}</div>
@@ -406,13 +410,13 @@ export function IpTable({
                       )}
 
                       {/* Status */}
-                      <td className="px-6 py-4">
+                      <td className="px-4 sm:px-6 py-3.5 whitespace-nowrap">
                         <div>{getStatusBadge(ip)}</div>
                       </td>
 
                       {/* Subnet Pool (Admin only) */}
                       {isAdmin && (
-                        <td className="px-6 py-4">
+                        <td className="px-4 sm:px-6 py-3.5 whitespace-nowrap">
                           <div className="text-xs font-mono text-gray-800 dark:text-gray-200">
                             {ip.pool?.cidr || ip.pool?.subnet || "-"}
                           </div>
@@ -428,7 +432,7 @@ export function IpTable({
                       )}
 
                       {/* Attached Workload */}
-                      <td className="px-6 py-4">
+                      <td className="px-4 sm:px-6 py-3.5 whitespace-nowrap">
                         {hasVm && ip.virtual_machine ? (
                           <div className="flex items-center space-x-2">
                             <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
@@ -452,7 +456,7 @@ export function IpTable({
 
                       {/* Emergency Release Action (Admin only) */}
                       {isAdmin && (
-                        <td className="px-6 py-4 text-right">
+                        <td className="sticky right-0 z-10 px-4 sm:px-6 py-3.5 text-right bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800 border-l border-gray-200/80 dark:border-gray-800/80 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)] transition-colors">
                           <button
                             onClick={() => onRequestRelease?.(ip)}
                             title={ip.status === "allocated" ? "Force Release Allocation" : "Dismiss Cooled IP"}

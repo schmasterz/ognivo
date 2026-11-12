@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { X, Server, Layers } from "lucide-react";
 import { api, HostNode, ImageItem } from "@/lib/api";
+import { useModalEscape } from "@/lib/hooks/useModalEscape";
 
 interface CreateImageModalProps {
   image?: ImageItem | null;
@@ -30,6 +31,21 @@ export function CreateImageModal({
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useModalEscape(onClose, !loading);
+
+  useEffect(() => {
+    setName(image?.name ?? "");
+    setSource(image?.source ?? "https://images.linuxcontainers.org");
+    setProtocol(image?.protocol ?? "simplestreams");
+    setOsType(image?.os_type ?? "linux");
+    setEnabled(image ? image.enabled : true);
+    setSelectedHostIds(
+      image?.host_ids ?? image?.hosts?.map((h) => h.id) ?? hosts.map((h) => h.id)
+    );
+    setError(null);
+    setLoading(false);
+  }, [image, hosts]);
 
   const toggleHost = (hostId: number) => {
     setSelectedHostIds((prev) =>

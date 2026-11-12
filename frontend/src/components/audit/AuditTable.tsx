@@ -90,7 +90,7 @@ export function AuditTable({
 
   return (
     <div className="bg-white dark:bg-[#0e131f] border border-gray-200 dark:border-gray-800 rounded-2xl shadow-sm overflow-hidden flex flex-col justify-between">
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto relative">
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800 text-xs">
           <thead>
             <tr className="bg-gray-50/75 dark:bg-gray-900/40 text-gray-500 dark:text-gray-400">

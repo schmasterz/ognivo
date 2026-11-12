@@ -5,6 +5,7 @@ import { X, Camera, AlertCircle, Loader2, Info } from "lucide-react";
 import { VirtualMachine, VmSnapshot, api, ApiError } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
 import { useToast } from "@/lib/toast/ToastContext";
+import { useModalEscape } from "@/lib/hooks/useModalEscape";
 
 interface CreateSnapshotModalProps {
   isOpen: boolean;
@@ -37,6 +38,8 @@ export function CreateSnapshotModal({
   const [loading, setLoading] = useState(false);
 
   // Reset form when modal opens
+  useModalEscape(onClose, isOpen && !loading);
+
   useEffect(() => {
     if (isOpen) {
       setName("");

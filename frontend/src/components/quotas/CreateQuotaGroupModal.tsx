@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { X, Layers, CheckCircle2, Loader2, Sparkles } from "lucide-react";
 import { api, QuotaGroup } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
+import { useModalEscape } from "@/lib/hooks/useModalEscape";
 import {
   QuotaLimitsFormSection,
   QuotaLimitsFormValue,
@@ -38,6 +39,8 @@ export function CreateQuotaGroupModal({ onClose, onSuccess }: CreateQuotaGroupMo
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useModalEscape(onClose, !loading);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

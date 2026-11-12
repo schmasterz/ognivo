@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { api, SystemSettings } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
+import { useModalEscape } from "@/lib/hooks/useModalEscape";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -65,6 +66,8 @@ export function SettingsModal({
   // Form submission state
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useModalEscape(onClose, isOpen && !saving && !testingEmail);
 
   const prevIsOpenRef = useRef(false);
 

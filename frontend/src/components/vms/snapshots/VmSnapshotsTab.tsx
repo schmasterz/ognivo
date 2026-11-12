@@ -344,7 +344,7 @@ export function VmSnapshotsTab({ vm, user, isAdmin }: VmSnapshotsTabProps) {
 
       {/* Snapshots Table */}
       <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden bg-white dark:bg-zinc-900">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto relative">
           <table className="w-full text-left text-xs text-zinc-600 dark:text-zinc-300">
             <thead className="bg-zinc-50 dark:bg-zinc-800/60 border-b border-zinc-200 dark:border-zinc-800 text-[11px] uppercase font-semibold text-zinc-500 dark:text-zinc-400 tracking-wider">
               <tr>
@@ -353,7 +353,7 @@ export function VmSnapshotsTab({ vm, user, isAdmin }: VmSnapshotsTabProps) {
                 <th className="px-4 py-3">{t("colSnapshotSize")}</th>
                 <th className="px-4 py-3">{t("colSnapshotSource")}</th>
                 <th className="px-4 py-3">{t("colSnapshotCreated")}</th>
-                <th className="px-4 py-3 text-right">{t("colSnapshotActions")}</th>
+                <th className="sticky right-0 z-20 px-4 py-3 text-right bg-zinc-50 dark:bg-zinc-800 border-l border-zinc-200 dark:border-zinc-800 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)]">{t("colSnapshotActions")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
@@ -389,10 +389,10 @@ export function VmSnapshotsTab({ vm, user, isAdmin }: VmSnapshotsTabProps) {
                   return (
                     <tr
                       key={snapshot.id || snapshot.name}
-                      className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition"
+                      className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition group"
                     >
                       {/* Name & Stateful badge */}
-                      <td className="px-4 py-3.5 font-medium text-zinc-900 dark:text-zinc-100">
+                      <td className="px-4 py-3.5 font-medium text-zinc-900 dark:text-zinc-100 whitespace-nowrap">
                         <div className="flex items-center space-x-2">
                           <Camera className="w-4 h-4 text-blue-500 shrink-0" />
                           <span className="font-mono">{snapshot.name}</span>
@@ -409,12 +409,12 @@ export function VmSnapshotsTab({ vm, user, isAdmin }: VmSnapshotsTabProps) {
                       </td>
 
                       {/* Status */}
-                      <td className="px-4 py-3.5">
+                      <td className="px-4 py-3.5 whitespace-nowrap">
                         {getStatusBadge(snapshot.status, snapshot.error)}
                       </td>
 
                       {/* Size */}
-                      <td className="px-4 py-3.5 font-mono text-zinc-500 dark:text-zinc-400">
+                      <td className="px-4 py-3.5 font-mono text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
                         <div className="flex items-center space-x-1.5">
                           <HardDrive className="w-3.5 h-3.5 text-zinc-400" />
                           <span>{formatBytes(snapshot.size_bytes)}</span>
@@ -422,7 +422,7 @@ export function VmSnapshotsTab({ vm, user, isAdmin }: VmSnapshotsTabProps) {
                       </td>
 
                       {/* Source */}
-                      <td className="px-4 py-3.5">
+                      <td className="px-4 py-3.5 whitespace-nowrap">
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700/50">
                           {snapshot.source === "scheduled"
                             ? t("snapshotSourceScheduled")
@@ -431,7 +431,7 @@ export function VmSnapshotsTab({ vm, user, isAdmin }: VmSnapshotsTabProps) {
                       </td>
 
                       {/* Created At */}
-                      <td className="px-4 py-3.5 text-zinc-500 dark:text-zinc-400">
+                      <td className="px-4 py-3.5 text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
                         <div className="flex items-center space-x-1.5 text-xs">
                           <Clock className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
                           <span>
@@ -443,7 +443,7 @@ export function VmSnapshotsTab({ vm, user, isAdmin }: VmSnapshotsTabProps) {
                       </td>
 
                       {/* Actions */}
-                      <td className="px-4 py-3.5 text-right">
+                      <td className="sticky right-0 z-10 px-4 py-3.5 text-right bg-white dark:bg-zinc-900 group-hover:bg-zinc-50 dark:group-hover:bg-zinc-800 border-l border-zinc-200/80 dark:border-zinc-800/80 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)] transition-colors">
                         <div className="flex items-center justify-end space-x-1.5">
                           {/* Restore Action */}
                           <button

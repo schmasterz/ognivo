@@ -484,18 +484,18 @@ export function SnapshotsTab({
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto relative">
             <table className="w-full text-left text-xs">
               <thead className="bg-gray-50 dark:bg-gray-800/50 text-[11px] uppercase tracking-wider text-gray-400 border-b border-gray-200 dark:border-gray-800">
                 <tr>
-                  <th className="px-6 py-3.5 font-semibold">{t("colSnapshotName")}</th>
-                  <th className="px-6 py-3.5 font-semibold">{t("colInstance")}</th>
-                  {isAdmin && <th className="px-6 py-3.5 font-semibold">{t("colOwner")}</th>}
-                  <th className="px-6 py-3.5 font-semibold">{t("colSnapshotSource")}</th>
-                  <th className="px-6 py-3.5 font-semibold">{t("colSnapshotSize")}</th>
-                  <th className="px-6 py-3.5 font-semibold">{t("colSnapshotStatus")}</th>
-                  <th className="px-6 py-3.5 font-semibold">{t("colSnapshotCreated")}</th>
-                  <th className="px-6 py-3.5 font-semibold text-right">{t("colSnapshotActions")}</th>
+                  <th className="px-4 sm:px-6 py-3.5 font-semibold">{t("colSnapshotName")}</th>
+                  <th className="px-4 sm:px-6 py-3.5 font-semibold">{t("colInstance")}</th>
+                  {isAdmin && <th className="px-4 sm:px-6 py-3.5 font-semibold">{t("colOwner")}</th>}
+                  <th className="px-4 sm:px-6 py-3.5 font-semibold">{t("colSnapshotSource")}</th>
+                  <th className="px-4 sm:px-6 py-3.5 font-semibold">{t("colSnapshotSize")}</th>
+                  <th className="px-4 sm:px-6 py-3.5 font-semibold">{t("colSnapshotStatus")}</th>
+                  <th className="px-4 sm:px-6 py-3.5 font-semibold">{t("colSnapshotCreated")}</th>
+                  <th className="sticky right-0 z-20 px-4 sm:px-6 py-3.5 font-semibold text-right bg-gray-50 dark:bg-gray-800 border-l border-gray-200 dark:border-gray-800 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)]">{t("colSnapshotActions")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -512,10 +512,10 @@ export function SnapshotsTab({
                   return (
                     <tr
                       key={snap.id}
-                      className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors"
+                      className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors group"
                     >
                       {/* Name & Flags */}
-                      <td className="px-6 py-4 font-mono font-medium text-gray-900 dark:text-white">
+                      <td className="px-4 sm:px-6 py-3.5 font-mono font-medium text-gray-900 dark:text-white whitespace-nowrap">
                         <div className="flex items-center space-x-2">
                           <Camera className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
                           <span>{snap.name}</span>
@@ -531,7 +531,7 @@ export function SnapshotsTab({
                       </td>
 
                       {/* Target Instance */}
-                      <td className="px-6 py-4">
+                      <td className="px-4 sm:px-6 py-3.5 whitespace-nowrap">
                         {targetVm ? (
                           <button
                             type="button"
@@ -557,7 +557,7 @@ export function SnapshotsTab({
 
                       {/* Tenant User (Admin only) */}
                       {isAdmin && (
-                        <td className="px-6 py-4 text-gray-600 dark:text-gray-300">
+                        <td className="px-4 sm:px-6 py-3.5 text-gray-600 dark:text-gray-300 whitespace-nowrap">
                           {snap.user ? (
                             <div className="flex items-center space-x-1.5">
                               <UserIcon className="w-3 h-3 text-gray-400" />
@@ -570,27 +570,27 @@ export function SnapshotsTab({
                       )}
 
                       {/* Source */}
-                      <td className="px-6 py-4 text-gray-500 dark:text-gray-400 capitalize">
+                      <td className="px-4 sm:px-6 py-3.5 text-gray-500 dark:text-gray-400 capitalize whitespace-nowrap">
                         {snap.source === "scheduled"
                           ? t("snapshotSourceScheduled")
                           : t("snapshotSourceManual")}
                       </td>
 
                       {/* Size */}
-                      <td className="px-6 py-4 font-mono text-gray-600 dark:text-gray-300">
+                      <td className="px-4 sm:px-6 py-3.5 font-mono text-gray-600 dark:text-gray-300 whitespace-nowrap">
                         {formatBytes(snap.size_bytes)}
                       </td>
 
                       {/* Status Badge */}
-                      <td className="px-6 py-4">{getStatusBadge(snap.status, snap.error)}</td>
+                      <td className="px-4 sm:px-6 py-3.5 whitespace-nowrap">{getStatusBadge(snap.status, snap.error)}</td>
 
                       {/* Created At */}
-                      <td className="px-6 py-4 text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                      <td className="px-4 sm:px-6 py-3.5 text-gray-500 dark:text-gray-400 whitespace-nowrap">
                         {snap.created_at ? new Date(snap.created_at).toLocaleString() : "—"}
                       </td>
 
                       {/* Actions */}
-                      <td className="px-6 py-4 text-right">
+                      <td className="sticky right-0 z-10 px-4 sm:px-6 py-3.5 text-right bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800 border-l border-gray-200/80 dark:border-gray-800/80 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)] transition-colors">
                         <div className="flex items-center justify-end space-x-1.5">
                           {/* Restore Button */}
                           <button

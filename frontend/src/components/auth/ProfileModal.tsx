@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { X, User as UserIcon, Lock, Mail, Loader2, CheckCircle2, Eye, EyeOff } from "lucide-react";
 import { api, User } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
+import { useModalEscape } from "@/lib/hooks/useModalEscape";
 
 interface ProfileModalProps {
   user: User;
@@ -24,6 +25,18 @@ export function ProfileModal({ user, onClose, onSuccess }: ProfileModalProps) {
   const [showPasswordConfirmation, setShowPasswordConfirmation] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useModalEscape(onClose, !loading);
+
+  useEffect(() => {
+    setName(user.name);
+    setEmail(user.email);
+    setCurrentPassword("");
+    setPassword("");
+    setPasswordConfirmation("");
+    setError(null);
+    setLoading(false);
+  }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { X, ShieldCheck, CheckCircle2, XCircle, RefreshCw, Loader2 } from "lucide-react";
 import { api, IpPool } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
+import { useModalEscape } from "@/lib/hooks/useModalEscape";
 
 interface PreflightModalProps {
   pool: IpPool;
@@ -22,6 +23,8 @@ export function PreflightModal({ pool, onClose }: PreflightModalProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ ok: boolean; checks: PreflightCheck[] } | null>(null);
+
+  useModalEscape(onClose, !loading);
 
   const runPreflight = useCallback(async () => {
     try {

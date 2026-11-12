@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React from "react";
 import { AlertCircle, AlertTriangle, Info, Trash2, X, Loader2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/I18nContext";
+import { useModalEscape } from "@/lib/hooks/useModalEscape";
 
 export type ConfirmVariant = "danger" | "warning" | "info" | "primary";
 
@@ -31,16 +32,7 @@ export function ConfirmModal({
 }: ConfirmModalProps) {
   const { t } = useI18n();
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isOpen || isLoading) return;
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, isLoading, onClose]);
+  useModalEscape(onClose, isOpen && !isLoading);
 
   if (!isOpen) return null;
 

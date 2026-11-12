@@ -201,6 +201,8 @@ export function SearchableUserSelect({
         }
       }
     } else if (e.key === "Escape") {
+      e.stopPropagation();
+      e.preventDefault();
       setIsOpen(false);
       setSearchQuery("");
     }

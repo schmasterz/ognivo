@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { X, UserPlus, Shield, User, Mail, Lock, Loader2, CheckCircle2, Layers, Sparkles, Eye, EyeOff } from "lucide-react";
 import { api, AdminUserItem, QuotaGroup } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
+import { useModalEscape } from "@/lib/hooks/useModalEscape";
 import {
   QuotaLimitsFormSection,
   QuotaLimitsFormValue,
@@ -56,6 +57,8 @@ export function CreateUserModal({ quotaGroups = [], onClose, onSuccess }: Create
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useModalEscape(onClose, !loading);
 
   const handleGroupSelect = (val: string) => {
     if (val === "custom") {

@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { X, Sliders, Loader2, CheckCircle2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
+import { useModalEscape } from "@/lib/hooks/useModalEscape";
 import {
   QuotaLimitsFormSection,
   QuotaLimitsFormValue,
@@ -31,6 +32,8 @@ export function DefaultQuotaModal({ onClose, onSuccess }: DefaultQuotaModalProps
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useModalEscape(onClose, !saving);
   const [quotaLimits, setQuotaLimits] = useState<QuotaLimitsFormValue>(() =>
     quotaRecordToFormValue(null, DEFAULT_QUOTA_DEFAULTS)
   );

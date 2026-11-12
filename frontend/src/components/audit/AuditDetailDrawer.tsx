@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { AuditEntry, AdminAuditEntry } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
+import { useModalEscape } from "@/lib/hooks/useModalEscape";
 
 interface AuditDetailDrawerProps {
   entry: AuditEntry | AdminAuditEntry | null;
@@ -38,6 +39,8 @@ export function AuditDetailDrawer({
 }: AuditDetailDrawerProps) {
   const { t } = useI18n();
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  useModalEscape(onClose, isOpen);
 
   if (!isOpen || !entry) {
     return null;

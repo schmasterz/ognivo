@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { X, Layers, CheckCircle2, Loader2, Sparkles, User, Info } from "lucide-react";
 import { api, AdminUserItem, QuotaGroup } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
+import { useModalEscape } from "@/lib/hooks/useModalEscape";
 
 interface AssignQuotaGroupModalProps {
   user: AdminUserItem;
@@ -25,6 +26,16 @@ export function AssignQuotaGroupModal({
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useModalEscape(onClose, !loading);
+
+  useEffect(() => {
+    setSelectedGroupId(
+      user.quota_group_id || (quotaGroups.find((g) => g.is_default)?.id ?? (quotaGroups[0]?.id || 0))
+    );
+    setError(null);
+    setLoading(false);
+  }, [user, quotaGroups]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

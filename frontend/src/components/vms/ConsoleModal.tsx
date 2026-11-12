@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { VirtualMachine, api } from "@/lib/api";
 import { XtermViewer } from "./XtermViewer";
+import { useModalEscape } from "@/lib/hooks/useModalEscape";
 
 interface ConsoleModalProps {
   vm: VirtualMachine | null;
@@ -89,8 +90,22 @@ export function ConsoleModal({ vm, onClose }: ConsoleModalProps) {
     }
   };
 
+  useModalEscape(onClose, !!vm);
+
   useEffect(() => {
-    if (!vm) return;
+    if (!vm) {
+      setWsUrl(null);
+      setSessionError(null);
+      setBootLog("");
+      setIsForbidden(false);
+      setCopied(false);
+      return;
+    }
+    setWsUrl(null);
+    setSessionError(null);
+    setBootLog("");
+    setIsForbidden(false);
+    setCopied(false);
     fetchSession(vm.id);
     fetchBootLog(vm.id);
   }, [vm]);

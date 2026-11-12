@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { api, HostNode, TestConnectionResponse } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
+import { useModalEscape } from "@/lib/hooks/useModalEscape";
 
 interface CreateHostModalProps {
   onClose: () => void;
@@ -50,6 +51,8 @@ export function CreateHostModal({ onClose, onSuccess }: CreateHostModalProps) {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useModalEscape(onClose, !loading && !verifyLoading);
 
   // Validation
   const isNameValid = name.trim().length >= 2 && /^[a-z0-9-]+$/.test(name.trim());
@@ -366,8 +369,8 @@ export function CreateHostModal({ onClose, onSuccess }: CreateHostModalProps) {
                 Generate a single-use token on your {driver === "lxd" ? "LXD" : "Incus"} server via:
                 <code className="ml-1 px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 font-mono text-[10px]">
                   {driver === "lxd"
-                    ? `lxc config trust add --name ${name.trim() || "panel"}`
-                    : `incus config trust add-token ${name.trim() || "panel"}`}
+                    ? "lxd config trust add panel"
+                    : "incus config trust add panel"}
                 </code>
               </p>
               <div className="relative">

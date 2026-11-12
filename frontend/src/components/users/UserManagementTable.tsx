@@ -92,18 +92,18 @@ export function UserManagementTable({
 
       {/* Users table */}
       <div className="bg-white dark:bg-gray-900/60 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden backdrop-blur-sm shadow-sm dark:shadow-none transition-colors">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto relative">
           <table className="w-full text-left text-sm text-gray-600 dark:text-gray-300">
             <thead className="bg-gray-50 dark:bg-gray-950/60 text-xs uppercase text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-800 font-semibold tracking-wider">
               <tr>
-                <th scope="col" className="px-6 py-4">{t("fullName")}</th>
-                <th scope="col" className="px-6 py-4">{t("colStatus")}</th>
-                <th scope="col" className="px-6 py-4">{t("colRoles")}</th>
-                <th scope="col" className="px-6 py-4">{t("quotaGroup")}</th>
-                <th scope="col" className="px-6 py-4">{t("colWorkloadsCount")}</th>
-                <th scope="col" className="px-6 py-4">{t("colIpsCount")}</th>
-                <th scope="col" className="px-6 py-4">{t("colQuotas")}</th>
-                <th scope="col" className="px-6 py-4 text-right">{t("colActions")}</th>
+                <th scope="col" className="px-4 sm:px-5 lg:px-6 py-3.5">{t("fullName")}</th>
+                <th scope="col" className="px-4 sm:px-5 lg:px-6 py-3.5">{t("colStatus")}</th>
+                <th scope="col" className="px-4 sm:px-5 lg:px-6 py-3.5">{t("colRoles")}</th>
+                <th scope="col" className="px-4 sm:px-5 lg:px-6 py-3.5">{t("quotaGroup")}</th>
+                <th scope="col" className="px-4 sm:px-5 lg:px-6 py-3.5">{t("colWorkloadsCount")}</th>
+                <th scope="col" className="px-4 sm:px-5 lg:px-6 py-3.5">{t("colIpsCount")}</th>
+                <th scope="col" className="px-4 sm:px-5 lg:px-6 py-3.5">{t("colQuotas")}</th>
+                <th scope="col" className="sticky right-0 z-20 px-4 sm:px-5 lg:px-6 py-3.5 text-right bg-gray-50 dark:bg-gray-950 border-l border-gray-200 dark:border-gray-800 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)]">{t("colActions")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-800/60">
@@ -122,8 +122,8 @@ export function UserManagementTable({
                 const userStatus = u.status || "active";
 
                 return (
-                  <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition">
-                    <td className="px-6 py-4">
+                  <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition group">
+                    <td className="px-4 sm:px-5 lg:px-6 py-3.5">
                       <div className="font-semibold text-gray-900 dark:text-white flex items-center space-x-2">
                         <span>{u.name}</span>
                         {isCurrent && (
@@ -144,7 +144,7 @@ export function UserManagementTable({
                       )}
                     </td>
 
-                    <td className="px-6 py-4">
+                    <td className="px-4 sm:px-5 lg:px-6 py-3.5 whitespace-nowrap">
                       {userStatus === "pending" ? (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
                           <Clock className="w-3 h-3 mr-1" />
@@ -178,7 +178,7 @@ export function UserManagementTable({
                       )}
                     </td>
 
-                    <td className="px-6 py-4">
+                    <td className="px-4 sm:px-5 lg:px-6 py-3.5 whitespace-nowrap">
                       {isAdminUser ? (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
                           <Shield className="w-3 h-3 mr-1" />
@@ -193,7 +193,7 @@ export function UserManagementTable({
                     </td>
 
                     {/* Quota Group Column */}
-                    <td className="px-6 py-4">
+                    <td className="px-4 sm:px-5 lg:px-6 py-3.5 whitespace-nowrap">
                       <button
                         onClick={() => onAssignQuotaGroup(u)}
                         title={t("assignQuotaGroup")}
@@ -207,19 +207,19 @@ export function UserManagementTable({
                       </button>
                     </td>
 
-                    <td className="px-6 py-4 font-mono text-xs">
+                    <td className="px-4 sm:px-5 lg:px-6 py-3.5 font-mono text-xs whitespace-nowrap">
                       <span className="px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 font-semibold text-gray-900 dark:text-white">
                         {u.virtual_machines_count ?? 0}
                       </span>
                     </td>
 
-                    <td className="px-6 py-4 font-mono text-xs">
+                    <td className="px-4 sm:px-5 lg:px-6 py-3.5 font-mono text-xs whitespace-nowrap">
                       <span className="px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 font-semibold text-gray-900 dark:text-white">
                         {u.ip_allocations_count ?? 0}
                       </span>
                     </td>
 
-                    <td className="px-6 py-4 text-xs">
+                    <td className="px-4 sm:px-5 lg:px-6 py-3.5 text-xs whitespace-nowrap">
                       <div className="flex items-center space-x-2 text-gray-600 dark:text-gray-300">
                         <span title="Max VMs" className="font-semibold text-blue-600 dark:text-blue-400">
                           {formatQuotaLimit(quota?.max_vms)} VMs
@@ -247,7 +247,7 @@ export function UserManagementTable({
                       </div>
                     </td>
 
-                    <td className="px-6 py-4 text-right">
+                    <td className="sticky right-0 z-10 px-4 sm:px-5 lg:px-6 py-3.5 text-right bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800 border-l border-gray-200/80 dark:border-gray-800/80 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)] transition-colors">
                       <div className="flex items-center justify-end space-x-2">
                         {onToggleUserStatus && (
                           userStatus === "suspended" ? (

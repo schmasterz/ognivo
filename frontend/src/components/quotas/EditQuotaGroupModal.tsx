@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { X, Layers, CheckCircle2, Loader2, Sparkles, AlertCircle } from "lucide-react";
 import { api, QuotaGroup } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
+import { useModalEscape } from "@/lib/hooks/useModalEscape";
 import {
   QuotaLimitsFormSection,
   QuotaLimitsFormValue,
@@ -39,6 +40,17 @@ export function EditQuotaGroupModal({ quotaGroup, onClose, onSuccess }: EditQuot
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useModalEscape(onClose, !loading);
+
+  useEffect(() => {
+    setName(quotaGroup.name);
+    setDescription(quotaGroup.description || "");
+    setIsDefault(quotaGroup.is_default);
+    setQuotaLimits(quotaRecordToFormValue(quotaGroup, GROUP_QUOTA_DEFAULTS));
+    setError(null);
+    setLoading(false);
+  }, [quotaGroup]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

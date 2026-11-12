@@ -5,6 +5,7 @@ import { X, Server, Cpu, Layers, HardDrive, AlertCircle, Loader2, Globe } from "
 import { QuotaResponse, HostNode, ImageItem, api } from "@/lib/api";
 import { extractPaginationMeta } from "@/lib/api/client";
 import { useI18n } from "@/lib/i18n/I18nContext";
+import { useModalEscape } from "@/lib/hooks/useModalEscape";
 
 interface CreateVmModalProps {
   isOpen: boolean;
@@ -60,12 +61,22 @@ export function CreateVmModal({
     )
   );
 
+  useModalEscape(onClose, isOpen && !loading);
+
   useEffect(() => {
     if (isOpen) {
+      setName("");
+      setError(null);
+      setLoading(false);
+      setCpuCores(1);
+      setRamGb(2);
+      setDiskGb(20);
       if (allowVm && !allowContainers) {
         setInstanceType("virtual-machine");
       } else if (!allowVm && allowContainers) {
         setInstanceType("container");
+      } else {
+        setInstanceType("virtual-machine");
       }
     }
   }, [isOpen, allowVm, allowContainers]);
