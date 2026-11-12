@@ -1,36 +1,26 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Ognivo Frontend
 
-## Getting Started
+Next.js 16 (App Router, React 19, TypeScript, Tailwind CSS v4) web dashboard for the **Ognivo** cloud control plane.
 
-First, run the development server:
+## Documentation
+
+- **Frontend Architecture & Coding Guidelines:** See [`AGENTS.md`](AGENTS.md) for route group structure (`(auth)` and `(dashboard)`), state hooks, caching rules, and strict React 19 / TypeScript conventions.
+- **Platform Documentation:** See the root [`README.md`](../README.md) and [`docs/`](../docs/README.md) for full-stack setup and operations.
+
+## Verification & Local Checks
+
+When running inside the workspace or the `ognivo-frontend-dev` container:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# 1. Regenerate Next.js route types & run TypeScript compiler check
+npx next typegen && npx tsc --noEmit -p . --incremental false
+
+# 2. Run ESLint (strict zero-error policy)
+npx eslint src
+
+# 3. Run unit tests via native Node.js test runner
+node --test src/lib/hooks/__tests__/useConfirmDialog.test.ts src/lib/hooks/__tests__/useCachedFetch.test.ts src/components/audit/__tests__/audit.test.ts
+
+# 4. Run production build check
+npm run build
 ```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

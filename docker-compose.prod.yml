@@ -258,7 +258,7 @@ services:
         fi
       "
     volumes:
-      - certs:/etc/nginx/certs
+      - ./docker/certs:/etc/nginx/certs
     networks:
       - app-network
 
@@ -272,7 +272,7 @@ services:
       - "443:443"
     volumes:
       - ./docker/nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
-      - certs:/etc/nginx/certs:ro
+      - ./docker/certs:/etc/nginx/certs:ro
     depends_on:
       cert-init:
         condition: service_completed_successfully
@@ -324,4 +324,3 @@ networks:
 
 volumes:
   db_data:
-  certs:

@@ -1,0 +1,158 @@
+# System Architecture Overview
+
+**Ognivo** is a multi-tenant cloud control plane for orchestrating **LXC containers** and **KVM virtual machines** on **Incus** and **LXD** hypervisors.
+
+---
+
+## 1. High-Level Architecture
+
+The platform is built as a decoupled, containerized stack:
+- **Backend API:** **Laravel 13** (PHP 8.5-FPM) using immutable `readonly` DTOs, constructor-injected domain services, Eloquent Policies, Spatie Model States (`VmState`), and a pluggable hypervisor driver layer (`HypervisorDriverInterface`).
+- **Frontend Web App:** **Next.js 16** (App Router, React 19, TypeScript, Tailwind CSS v4) organized with Route Groups (`(auth)` and `(dashboard)`), scoped domain contexts, bilingual i18n (`en` / `bg`), Dark/Light/OS themes, and real-time Echo WebSocket synchronization.
+- **Console Proxy:** A standalone **Node.js 22** microservice (`console-proxy`) that redeems single-use 60-second Redis tickets (`GETDEL`) and pipes `xterm.js` WebSocket frames over mTLS to Incus/LXD.
+- **Data & Messaging:** **MySQL 8.4 LTS** (transactional state + privilege-separated audit tables), **Redis 7 Alpine** (queues, distributed locks, cache, console tickets), and **Laravel Reverb** (real-time WebSocket broadcasting).
+
+```mermaid
+flowchart TB
+    Browser["Browser Client<br/>(Next.js 16 / React 19 / Echo / xterm.js)"]
+
+    subgraph Docker["Docker Bridge Network (app-network)"]
+        Nginx["Nginx Reverse Proxy<br/>(:80 HTTP / :443 HTTPS)"]
+        Frontend["Next.js 16 Server<br/>(:3000)"]
+        Backend["Laravel 13 PHP-FPM<br/>(:9000)"]
+        Reverb["Laravel Reverb WS<br/>(:8080)"]
+        ConsoleProxy["console-proxy (Node 22)<br/>(:8085)"]
+        Queue["queue-worker<br/>(php artisan queue:work)"]
+        Scheduler["scheduler<br/>(php artisan schedule:work)"]
+        IncusEvents["incus-events<br/>(php artisan incus:listen)"]
+        MySQL[("MySQL 8.4 LTS<br/>(:3306 internal)")]
+        Redis[("Redis 7 Alpine<br/>(:6379 internal)")]
+    end
+
+    Incus["Incus / LXD Hypervisor Nodes<br/>(mTLS REST & WSS :8443)"]
+
+    Browser --> Nginx
+    Nginx -->|"/"| Frontend
+    Nginx -->|"/api, /sanctum, /docs"| Backend
+    Nginx -->|"/app/{key}"| Reverb
+    Nginx -->|"/console?ticket=..."| ConsoleProxy
+
+    Backend --> MySQL
+    Backend --> Redis
+    Backend --> Reverb
+    Queue --> MySQL
+    Queue --> Redis
+    Scheduler --> MySQL
+    Scheduler --> Redis
+    IncusEvents --> MySQL
+    IncusEvents --> Redis
+
+    ConsoleProxy -->|"GETDEL ticket"| Redis
+    Backend -->|"mTLS (:8443)"| Incus
+    Queue -->|"mTLS (:8443)"| Incus
+    IncusEvents -->|"mTLS Events (:8443)"| Incus
+    ConsoleProxy -->|"mTLS WSS (:8443)"| Incus
+```
+
+---
+
+## 2. Technology Stack
+
+| Layer | Technology | Version | Purpose |
+| :--- | :--- | :--- | :--- |
+| **Backend Runtime** | PHP | `8.5` (FPM Alpine) | Server API runtime |
+| **Backend Framework** | Laravel Framework | `13.x` | REST API, Queue Jobs, Scheduling, Broadcasting |
+| **WebSocket Server** | Laravel Reverb | `1.12.x` | Real-time private channel event broadcasting (`:8080`) |
+| **Console Bridge** | Node.js + `ws` + `ioredis` | `22` (Alpine) | Zero-knowledge WebSocket-to-Incus mTLS console proxy (`:8085`) |
+| **Authentication & RBAC** | Laravel Sanctum & Spatie Permission | `4.x` / `8.x` | Bearer API tokens, role-based access (`admin`, `customer`), impersonation |
+| **State Machine & Routing** | Spatie Model States & Route Attributes | `2.x` / `1.x` | Strict VM state transitions (`VmState`) and PHP 8 route attributes |
+| **API Specification** | Dedoc Scramble | `0.13.x` | Automated OpenAPI v3 specification (`/docs/api`) |
+| **Frontend Framework** | Next.js & React | `16.x` / `19.x` | App Router UI, route groups, Turbopack |
+| **Styling & Terminal** | Tailwind CSS v4 & `@xterm/xterm` | `4.x` / `5.x` | Responsive UI styling and browser terminal emulator |
+| **Database & Broker** | Oracle MySQL & Redis | `8.4 LTS` / `7 Alpine` | ACID storage, row locks, distributed locks, and async queues |
+| **Static Analysis & Tests** | Pest PHP, PHPStan (L10), Psalm (L1) | `5.x` / `2.x` / `5.x` | Automated verification and strict static type checking |
+
+---
+
+## 3. Backend Domain Architecture
+
+### 3.1 Core Eloquent Models (`backend/app/Models/`)
+
+1. **`User`** — Tenant and administrator accounts (`HasApiTokens`, `HasRoles`). Generates isolated per-tenant Incus projects (`proj-{uuid}`) via `ensureProjectName()`.
+2. **`UserQuota` & `QuotaGroup`** — Tiered resource plans and per-user limits for VMs, vCPU cores, RAM, disk, public IPs, and snapshots (`-1` denotes unlimited `∞`). Editing a `QuotaGroup` automatically synchronizes all assigned users.
+3. **`Host`** — Hypervisor cluster nodes (`incus`, `lxd`, or `fake` driver), capacity boundaries, pinned TLS certificate fingerprint, and `needs_retrust` status.
+4. **`VirtualMachine`** — Customer workloads (KVM VMs and LXC containers) managed via `VmState` (`Provisioning`, `Running`, `Stopped`, `Suspended`, `Deleting`, `Deleted`, `Failed`). Dispatches `VirtualMachineStatusUpdated` on state/IP mutations.
+5. **`VmSnapshot`** — Point-in-time snapshots (`creating`, `ready`, `restoring`, `deleting`, `failed`) with `stateful` flag and `source` discriminator (`manual`, `scheduled`).
+6. **`IpPool` & `IpAllocation`** — Ranged IPv4/IPv6 subnet pools (`routed` or `manual` mode) and individual IP allocations (`allocated`, `cooling`, `is_floating`, `ptr_record`).
+7. **`Image`** — Curated OS image catalog synchronized with hypervisor image servers.
+8. **`PanelCertificate`** — Self-signed `secp384r1` mTLS client certificate and encrypted private key (`active`, `retiring`).
+9. **`AuditLog` & `AuditSeal`** — Tamper-evident audit events and periodic SHA-256 + HMAC cryptographic seals.
+10. **`DriftReport`** — Records of state discrepancies detected between the control-plane database and live Incus/LXD hypervisors.
+11. **`SystemSetting`** — Global key-value configuration (public registration toggle, allowed instance types, SMTP settings).
+
+### 3.2 Service & Driver Layer (`backend/app/Services/`)
+
+- **`VmProvisioningService`** — Performs race-free quota and IP allocation inside database transactions with `lockForUpdate()` and Redis distributed locks, then dispatches `ProvisionVmJob` after commit.
+- **`HypervisorManager` & Drivers (`IncusDriver`, `LxdDriver`, `FakeHypervisorDriver`)** — Implements `HypervisorDriverInterface` over mTLS REST (`/1.0/instances`, `/1.0/projects`, `/1.0/certificates`, `/1.0/events`).
+- **`IncusTrustService` & `PanelCertificateService`** — Handles single-use trust token onboarding, TLS peer certificate fingerprint verification, and mTLS key rotation.
+- **`ConsoleTicketService`** — Issues 60-second single-use Redis console tickets without exposing hypervisor credentials to the client.
+- **`VmSnapshotService` & `LocalSnapshotTarget`** — Coordinates snapshot operations through `BackupTargetInterface` with per-VM mutex locks.
+- **`AuditLogger` & `AuditSealService`** — Writes transactional and out-of-band fail-closed audit events and signs periodic HMAC hash chains.
+
+---
+
+## 4. Frontend Architecture (`frontend/src/`)
+
+Routes are organized using **Next.js App Router Route Groups** (see [`frontend/AGENTS.md`](../../frontend/AGENTS.md)):
+
+```text
+src/app/
+├── layout.tsx                        # Root providers: Theme -> I18n -> Toast -> Auth -> GlobalFilters
+├── (auth)/                           # Unauthenticated routes (/reset-password, /verify-email)
+└── (dashboard)/                      # Authenticated routes sharing DashboardProvider & DashboardShell
+    ├── layout.tsx                    # Persistent Sidebar, Navbar, QuotaSection, FilterToolbar, Modals
+    ├── page.tsx                      # -> / (Instances overview)
+    ├── instances/page.tsx            # -> /instances (VmsTab)
+    ├── snapshots/page.tsx            # -> /snapshots (Global SnapshotsTab)
+    ├── networking/page.tsx           # -> /networking (NetworkingTab & IPAM)
+    ├── users/page.tsx                # -> /users (UsersTab, admin-only)
+    ├── audit/page.tsx                # -> /audit (AuditLogTab, admin-only)
+    └── activity/page.tsx             # -> /activity (Tenant activity log)
+```
+
+- **State & Caching:** Domain hooks (`useVms`, `useNetworking`, `useUsers`) use `useCachedFetch` with session-isolated cache keys (`user?.id`), `AbortController` request cancellation, and automatic cache clearing on login/logout/impersonation.
+- **Real-Time Synchronization:** `useDashboardRealtime` subscribes to `private-users.{userId}` and `private-admin.workloads` over Laravel Echo, updating VM and snapshot badges in place without page reloads.
+
+---
+
+## 5. Core Lifecycle Flows
+
+### 5.1 Instance Provisioning Flow
+
+```mermaid
+sequenceDiagram
+    participant UI as Next.js Dashboard
+    participant API as VirtualMachineController
+    participant Svc as VmProvisioningService
+    participant DB as MySQL 8.4
+    participant Queue as Redis Queue Worker
+    participant Incus as Incus Hypervisor
+    participant WS as Laravel Reverb
+
+    UI->>API: POST /api/vms
+    API->>Svc: provision(CreateVmDTO)
+    Svc->>DB: Transaction + lockForUpdate (UserQuota & IpAllocation)
+    Svc->>DB: Insert VirtualMachine (status = Provisioning)
+    Svc->>Queue: Dispatch ProvisionVmJob (afterCommit)
+    API-->>UI: 202 Accepted (Provisioning badge)
+    Queue->>Incus: mTLS POST /1.0/instances & startInstance
+    Queue->>DB: Transition status -> Running
+    DB->>WS: Broadcast VirtualMachineStatusUpdated
+    WS-->>UI: Live update status -> Running
+```
+
+### 5.2 WebSocket Broadcasting Channels (`backend/routes/channels.php`)
+
+- **Endpoint:** `/api/broadcasting/auth` (authenticated via Sanctum Bearer token).
+- **`private-users.{id}`:** Receives `VirtualMachineStatusUpdated` and `SnapshotStatusUpdated` events for workloads owned by user `{id}`.
+- **`private-admin.workloads`:** Receives cluster-wide workload and snapshot updates for users with the `admin` role.

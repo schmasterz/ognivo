@@ -1,7 +1,10 @@
 .PHONY: help secrets build-dev build-prod build-all up-dev up-prod down-dev down-prod logs-dev logs-prod ps migrate migrate-dev seed seed-dev reset-dev
 
-COMPOSE_DEV := docker compose -f docker-compose.dev.yml --env-file .env.development
-COMPOSE_PROD := docker compose -f docker-compose.prod.yml --env-file .env.production
+COMPOSE_DEV_FILES := -f docker-compose.dev.yml $(if $(wildcard docker-compose.dev.override.yml),-f docker-compose.dev.override.yml)
+COMPOSE_PROD_FILES := -f docker-compose.prod.yml $(if $(wildcard docker-compose.prod.override.yml),-f docker-compose.prod.override.yml)
+
+COMPOSE_DEV := docker compose $(COMPOSE_DEV_FILES) --env-file .env.development
+COMPOSE_PROD := docker compose $(COMPOSE_PROD_FILES) --env-file .env.production
 
 help:
 	@echo "Available commands:"

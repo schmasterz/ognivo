@@ -8,7 +8,6 @@ backend/.env
 /.cursor/
 /.idea/
 /.docs/
-/docs/
 
 # Environments
 .env.development

@@ -1,6 +1,12 @@
 #!/bin/sh
 set -e
 
+# In development, automatically install Composer dependencies if vendor/ is missing on the host bind mount
+if [ "${APP_ENV}" != "production" ] && [ ! -f "/var/www/html/vendor/autoload.php" ]; then
+    echo "[Entrypoint] vendor/autoload.php not found. Running composer install..."
+    composer install --no-interaction --prefer-dist
+fi
+
 # In production, verify configuration safety before starting or migrating
 if [ "${APP_ENV}" = "production" ]; then
     echo "[Entrypoint] Validating production configuration safety..."
