@@ -55,11 +55,16 @@ final class ProvisioningCompensator
             ));
         }
 
-        // (c) Set network_status 'unassigned' and status Failed
+        // (c) Set network_status 'unassigned', persist failure_reason in metadata, and transition status to Failed
         try {
             $vm->refresh();
             $vm->network_status = 'unassigned';
             $vm->ipv4_address = null;
+            $existingMeta = is_array($vm->metadata) ? $vm->metadata : [];
+            $vm->metadata = array_merge($existingMeta, [
+                'failure_reason' => $reason,
+                'failed_at' => now()->toIso8601String(),
+            ]);
             if (! $vm->status->equals(Failed::class)) {
                 $vm->status->transitionTo(Failed::class);
             }

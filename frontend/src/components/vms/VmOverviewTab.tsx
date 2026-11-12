@@ -11,6 +11,7 @@ import {
   Clock,
   Shield,
   User as UserIcon,
+  AlertCircle,
 } from "lucide-react";
 import { VirtualMachine, User } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
@@ -27,7 +28,7 @@ export function VmOverviewTab({ vm, isAdmin }: VmOverviewTabProps) {
 
   const primaryIp = vm.network?.primary?.address ?? vm.ipv4_address ?? "—";
   const macAddress = vm.network?.primary?.mac_address ?? vm.mac_address ?? "—";
-  const netStatus = vm.network?.primary?.status ?? vm.network_status ?? "unverified";
+  const netStatus = vm.network_status ?? vm.network?.primary?.status ?? "unverified";
   const gateway = vm.network?.settings?.gateway ?? "—";
   const dnsServers = vm.network?.settings?.dns?.length
     ? vm.network.settings.dns.join(", ")
@@ -69,6 +70,20 @@ export function VmOverviewTab({ vm, isAdmin }: VmOverviewTabProps) {
 
   return (
     <div className="space-y-6">
+      {vm.status.toLowerCase() === "failed" && vm.failure_reason && (
+        <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/25 flex items-start space-x-3 text-xs text-red-700 dark:text-red-300">
+          <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <div className="font-semibold text-red-800 dark:text-red-200">
+              Provisioning Failure Reason
+            </div>
+            <div className="font-mono text-[11px] break-all leading-relaxed">
+              {vm.failure_reason}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Specifications Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
         {/* CPU */}

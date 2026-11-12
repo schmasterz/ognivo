@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { X, Network, Server, Loader2, CheckCircle2 } from "lucide-react";
-import { api, IpPool, HostNode } from "@/lib/api";
+import { api, IpPool, HostNode, HostDiscoveredNetwork } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
 
 interface CreateIpPoolModalProps {
@@ -59,7 +59,7 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
   const [firstUsable, setFirstUsable] = useState("");
   const [lastUsable, setLastUsable] = useState("");
   const [parentInterface, setParentInterface] = useState("eth0");
-  const [networkMode, setNetworkMode] = useState<"routed" | "manual">("routed");
+  const [networkMode, setNetworkMode] = useState<"routed" | "bridged" | "macvlan" | "manual">("routed");
   const [gateway, setGateway] = useState("");
   const [dnsServers, setDnsServers] = useState("1.1.1.1, 8.8.8.8");
   const [excludedIps, setExcludedIps] = useState("");
@@ -68,6 +68,8 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
   const [isPublic, setIsPublic] = useState(true);
   const [hosts, setHosts] = useState<HostNode[]>([]);
   const [selectedHostId, setSelectedHostId] = useState<number | null>(null);
+  const [discoveredNetworks, setDiscoveredNetworks] = useState<HostDiscoveredNetwork[]>([]);
+  const [discoveringHost, setDiscoveringHost] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,6 +82,47 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
       }
     }).catch(console.error);
   }, [selectedHostId]);
+
+  useEffect(() => {
+    if (!selectedHostId) {
+      setDiscoveredNetworks([]);
+      return;
+    }
+    let cancelled = false;
+    setDiscoveringHost(true);
+    api.adminGetHostResources(selectedHostId)
+      .then((res) => {
+        if (cancelled) return;
+        const nets = res.networks || [];
+        setDiscoveredNetworks(nets);
+        if (nets.length > 0) {
+          const preferred = nets.find((n) => n.recommended_modes.includes(networkMode)) || nets[0];
+          if (preferred && (parentInterface === "eth0" || !nets.some((n) => n.name === parentInterface))) {
+            setParentInterface(preferred.name);
+          }
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setDiscoveredNetworks([]);
+      })
+      .finally(() => {
+        if (!cancelled) setDiscoveringHost(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedHostId]);
+
+  const handleModeChange = (mode: "routed" | "bridged" | "macvlan" | "manual") => {
+    setNetworkMode(mode);
+    if (discoveredNetworks.length > 0 && mode !== "manual") {
+      const preferred = discoveredNetworks.find((n) => n.recommended_modes.includes(mode));
+      if (preferred) {
+        setParentInterface(preferred.name);
+      }
+    }
+  };
 
   const handleCidrChange = (val: string) => {
     setCidr(val);
@@ -234,32 +277,60 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
               </label>
               <select
                 value={networkMode}
-                onChange={(e) => setNetworkMode(e.target.value as "routed" | "manual")}
+                onChange={(e) => handleModeChange(e.target.value as "routed" | "bridged" | "macvlan" | "manual")}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50"
               >
-                <option value="routed">{t("modeRouted")}</option>
+                <option value="routed">{t("modeRouted")} (L3 /32 Link-Local)</option>
+                <option value="bridged">Bridged (L2 Bridge / NAT Bridge)</option>
+                <option value="macvlan">Macvlan (L2 Direct Physical NIC)</option>
                 <option value="manual">{t("modeManual")}</option>
               </select>
               <span className="text-[11px] text-gray-400 mt-1 block">
-                {networkMode === "manual" ? t("manualWarning") : "Routed L3 via host NIC (Netplan v2 link-local)"}
+                {networkMode === "manual"
+                  ? t("manualWarning")
+                  : networkMode === "bridged"
+                    ? "Attaches eth0 to host bridge (e.g. incusbr0 / br0) with Netplan static IP"
+                    : networkMode === "macvlan"
+                      ? "Attaches eth0 via macvlan to physical NIC (e.g. eno1) with Netplan static IP"
+                      : "Routed L3 via host NIC (Netplan v2 link-local 169.254.0.1)"}
               </span>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                Host Parent Interface
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5 flex items-center justify-between">
+                <span>Host Parent Interface</span>
+                {discoveringHost && <Loader2 className="w-3 h-3 animate-spin text-teal-500" />}
               </label>
               <input
                 type="text"
                 required
                 value={parentInterface}
                 onChange={(e) => setParentInterface(e.target.value)}
-                placeholder="eth0"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+                placeholder="eno1 / incusbr0 / eth0"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono"
               />
-              <span className="text-[11px] text-gray-400 mt-1 block">Host NIC for routed L3 traffic (default: eth0)</span>
+              {discoveredNetworks.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  {discoveredNetworks.map((net) => (
+                    <button
+                      key={net.name}
+                      type="button"
+                      onClick={() => setParentInterface(net.name)}
+                      className={`px-2 py-0.5 rounded-lg text-[11px] font-mono border transition ${
+                        parentInterface === net.name
+                          ? "bg-teal-500/15 border-teal-500/40 text-teal-700 dark:text-teal-300 font-semibold"
+                          : "bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-teal-500/30"
+                      }`}
+                    >
+                      {net.name} ({net.type}{net.addresses.length > 0 ? `: ${net.addresses[0]}` : ""})
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <span className="text-[11px] text-gray-400 mt-1 block">Host NIC or bridge on target node</span>
+              )}
             </div>
 
             <div>

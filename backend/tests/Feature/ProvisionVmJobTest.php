@@ -180,6 +180,9 @@ final class ProvisionVmJobTest extends TestCase
         $vm->refresh();
         $this->assertTrue($vm->status->equals(Failed::class));
         $this->assertSame('unassigned', $vm->network_status);
+        $this->assertIsArray($vm->metadata);
+        $this->assertArrayHasKey('failure_reason', $vm->metadata);
+        $this->assertStringContainsString('Hypervisor rejected instance creation', (string) $vm->metadata['failure_reason']);
 
         $allocation->refresh();
         $this->assertSame('cooling', $allocation->status);

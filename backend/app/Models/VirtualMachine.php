@@ -184,7 +184,7 @@ final class VirtualMachine extends Model
     protected static function booted(): void
     {
         self::saving(function (self $vm): void {
-            $runtimeKeys = ['status', 'ipv4_address', 'network_status'];
+            $runtimeKeys = ['status', 'ipv4_address', 'network_status', 'metadata'];
             $structuralKeys = ['name', 'host_id', 'cpu_cores', 'ram_mb', 'disk_gb', 'ipv6_address', 'os_image', 'incus_project', 'instance_type'];
 
             if (! $vm->exists || $vm->isDirty($structuralKeys)) {

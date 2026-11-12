@@ -99,7 +99,7 @@ final class TenantProvisioningArchitecturalComplianceTest extends TestCase
                 && isset($data['config'])
                 && $data['config']['restricted'] === 'true'
                 && $data['config']['restricted.containers.privilege'] === 'unprivileged'
-                && $data['config']['restricted.devices.nic'] === 'managed'
+                && $data['config']['restricted.devices.nic'] === 'allow'
                 && $data['config']['restricted.devices.disk'] === 'managed'
                 && $data['config']['features.images'] === 'true'
                 && $data['config']['features.profiles'] === 'true'
@@ -125,7 +125,7 @@ final class TenantProvisioningArchitecturalComplianceTest extends TestCase
 
         $this->assertSame('true', $config['restricted']);
         $this->assertSame('unprivileged', $config['restricted.containers.privilege']);
-        $this->assertSame('managed', $config['restricted.devices.nic']);
+        $this->assertSame('allow', $config['restricted.devices.nic']);
         $this->assertSame('managed', $config['restricted.devices.disk']);
         $this->assertArrayNotHasKey('limits.instances', $config);
         $this->assertArrayNotHasKey('limits.cpu', $config);
@@ -225,13 +225,13 @@ final class TenantProvisioningArchitecturalComplianceTest extends TestCase
         $this->assertSame('workload-alpha', $payload['name']);
         $this->assertSame('virtual-machine', $payload['type']);
 
-        // Check source
+        // Check source (normalized from 'images:ubuntu/24.04' to 'ubuntu/24.04/cloud' when cloud-init is present)
         $this->assertSame([
             'type' => 'image',
             'mode' => 'pull',
             'server' => 'https://images.linuxcontainers.org',
             'protocol' => 'simplestreams',
-            'alias' => 'images:ubuntu/24.04',
+            'alias' => 'ubuntu/24.04/cloud',
         ], $payload['source']);
 
         // Check config

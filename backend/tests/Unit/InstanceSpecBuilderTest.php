@@ -255,4 +255,97 @@ final class InstanceSpecBuilderTest extends TestCase
 
         $this->builder->build($vm);
     }
+
+    public function test_build_virtual_machine_spec_with_bridged_and_macvlan_modes(): void
+    {
+        $bridgedPool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Bridged LAN Pool',
+            'cidr' => '10.241.79.0/24',
+            'first_usable' => '10.241.79.10',
+            'last_usable' => '10.241.79.200',
+            'gateway' => '10.241.79.1',
+            'network_mode' => 'bridged',
+            'parent_interface' => 'incusbr0',
+            'dns_servers' => ['1.1.1.1'],
+        ]);
+
+        $vmBridged = VirtualMachine::create([
+            'user_id' => $this->user->id,
+            'host_id' => $this->host->id,
+            'name' => 'vm-bridged-01',
+            'incus_project' => 'default',
+            'instance_type' => 'virtual-machine',
+            'status' => 'provisioning',
+            'cpu_cores' => 2,
+            'ram_mb' => 2048,
+            'disk_gb' => 20,
+            'os_image' => 'ubuntu/24.04',
+            'ipv4_address' => '10.241.79.50',
+        ]);
+
+        $allocBridged = IpAllocation::create([
+            'pool_id' => $bridgedPool->id,
+            'address' => inet_pton('10.241.79.50'),
+            'ip_string' => '10.241.79.50',
+            'virtual_machine_id' => $vmBridged->id,
+            'user_id' => $this->user->id,
+            'mac_address' => '02:54:0a:f1:4f:32',
+            'status' => 'allocated',
+            'allocated_at' => now(),
+        ]);
+
+        $bridgedSpec = $this->builder->build($vmBridged, $allocBridged);
+        $this->assertSame('bridged', $bridgedSpec['devices']['eth0']['nictype']);
+        $this->assertSame('incusbr0', $bridgedSpec['devices']['eth0']['parent']);
+        $this->assertSame('02:54:0a:f1:4f:32', $bridgedSpec['devices']['eth0']['hwaddr']);
+        $this->assertArrayNotHasKey('ipv4.address', $bridgedSpec['devices']['eth0']);
+        $this->assertStringContainsString('- 10.241.79.50/24', $bridgedSpec['config']['cloud-init.network-config']);
+        $this->assertStringContainsString('via: 10.241.79.1', $bridgedSpec['config']['cloud-init.network-config']);
+        $this->assertSame('ubuntu/24.04/cloud', $bridgedSpec['source']['alias']);
+
+        // Macvlan pool with parent_interface 'eth0' auto-resolved to 'eno1' when host has ['eno1', 'incusbr0']
+        $macvlanPool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Macvlan LAN Pool',
+            'cidr' => '192.168.100.0/24',
+            'first_usable' => '192.168.100.10',
+            'last_usable' => '192.168.100.200',
+            'gateway' => '192.168.100.1',
+            'network_mode' => 'macvlan',
+            'parent_interface' => 'eth0',
+        ]);
+
+        $vmMacvlan = VirtualMachine::create([
+            'user_id' => $this->user->id,
+            'host_id' => $this->host->id,
+            'name' => 'vm-macvlan-01',
+            'incus_project' => 'default',
+            'instance_type' => 'virtual-machine',
+            'status' => 'provisioning',
+            'cpu_cores' => 2,
+            'ram_mb' => 2048,
+            'disk_gb' => 20,
+            'os_image' => 'images:ubuntu/24.04',
+            'ipv4_address' => '192.168.100.20',
+        ]);
+
+        $allocMacvlan = IpAllocation::create([
+            'pool_id' => $macvlanPool->id,
+            'address' => inet_pton('192.168.100.20'),
+            'ip_string' => '192.168.100.20',
+            'virtual_machine_id' => $vmMacvlan->id,
+            'user_id' => $this->user->id,
+            'mac_address' => '02:54:c0:a8:64:14',
+            'status' => 'allocated',
+            'allocated_at' => now(),
+        ]);
+
+        $macvlanSpec = $this->builder->build($vmMacvlan, $allocMacvlan, 'default', null, null, null, ['docker0', 'eno1', 'incusbr0']);
+        $this->assertSame('macvlan', $macvlanSpec['devices']['eth0']['nictype']);
+        $this->assertSame('eno1', $macvlanSpec['devices']['eth0']['parent']);
+        $this->assertSame('ubuntu/24.04/cloud', $macvlanSpec['source']['alias']);
+        $this->assertStringContainsString('- 192.168.100.20/24', $macvlanSpec['config']['cloud-init.network-config']);
+        $this->assertStringContainsString('via: 192.168.100.1', $macvlanSpec['config']['cloud-init.network-config']);
+    }
 }

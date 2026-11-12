@@ -70,6 +70,8 @@ class TenantProjectProvisioner
 
     /**
      * Build full project configuration including strict tenant isolation and quota limits.
+     * Note: restricted.devices.nic is set to 'allow' so the platform can attach routed,
+     * macvlan, and bridged NICs with host parent interfaces to tenant workloads.
      *
      * @return array<string, string>
      */
@@ -78,7 +80,7 @@ class TenantProjectProvisioner
         return array_merge([
             'restricted' => 'true',
             'restricted.containers.privilege' => 'unprivileged',
-            'restricted.devices.nic' => 'managed',
+            'restricted.devices.nic' => 'allow',
             'restricted.devices.disk' => 'managed',
             'features.images' => 'true',
             'features.profiles' => 'true',
@@ -98,7 +100,7 @@ class TenantProjectProvisioner
         $projectConfig = $this->buildProjectConfig($quota);
 
         /** @var Response $res */
-        $res = $client->get(sprintf('/1.0/projects/%s', $project));
+        $res = (clone $client)->get(sprintf('/1.0/projects/%s', $project));
 
         if (! $res->successful()) {
             // Project does not exist, create it
@@ -108,13 +110,13 @@ class TenantProjectProvisioner
                 'config' => $projectConfig,
             ];
 
-            $createRes = $client->post('/1.0/projects', $payload);
+            $createRes = (clone $client)->post('/1.0/projects', $payload);
 
             if (! $createRes->successful()) {
                 // Fallback for hypervisors that do not support per-project profiles
                 $fallbackConfig = $projectConfig;
                 $fallbackConfig['features.profiles'] = 'false';
-                $client->post('/1.0/projects', [
+                (clone $client)->post('/1.0/projects', [
                     'name' => $project,
                     'description' => sprintf('Tenant isolation project %s', $project),
                     'config' => $fallbackConfig,
@@ -122,7 +124,7 @@ class TenantProjectProvisioner
             }
         } else {
             // Project exists, update config to ensure hardening and up-to-date quota limits
-            $client->put(sprintf('/1.0/projects/%s', $project), [
+            (clone $client)->put(sprintf('/1.0/projects/%s', $project), [
                 'description' => sprintf('Tenant isolation project %s', $project),
                 'config' => $projectConfig,
             ]);
@@ -139,7 +141,7 @@ class TenantProjectProvisioner
     {
         try {
             /** @var Response $profileRes */
-            $profileRes = $client
+            $profileRes = (clone $client)
                 ->withQueryParameters(['project' => $project])
                 ->get('/1.0/profiles/default');
 
@@ -180,7 +182,7 @@ class TenantProjectProvisioner
                 $storagePool = $this->discoverStoragePool($client);
                 $network = $this->discoverNetwork($client);
 
-                $client
+                (clone $client)
                     ->withQueryParameters(['project' => $project])
                     ->put('/1.0/profiles/default', [
                         'devices' => [
@@ -214,7 +216,7 @@ class TenantProjectProvisioner
         $config = $this->buildProjectConfig($quota);
 
         /** @var Response $response */
-        $response = $client->put(sprintf('/1.0/projects/%s', $project), [
+        $response = (clone $client)->put(sprintf('/1.0/projects/%s', $project), [
             'description' => sprintf('Tenant isolation project %s', $project),
             'config' => $config,
         ]);
@@ -267,15 +269,20 @@ class TenantProjectProvisioner
     {
         try {
             /** @var Response $poolsRes */
-            $poolsRes = $client->get('/1.0/storage-pools');
+            $poolsRes = (clone $client)->get('/1.0/storage-pools');
             if ($poolsRes->successful()) {
                 $poolsData = $poolsRes->json();
                 /** @var list<mixed> $poolList */
                 $poolList = is_array($poolsData) && isset($poolsData['metadata']) && is_array($poolsData['metadata'])
                     ? $poolsData['metadata']
                     : [];
-                if (! empty($poolList) && is_string($poolList[0])) {
-                    return basename($poolList[0]);
+                if (! empty($poolList)) {
+                    if (is_string($poolList[0])) {
+                        return basename($poolList[0]);
+                    }
+                    if (is_array($poolList[0]) && isset($poolList[0]['name']) && is_string($poolList[0]['name'])) {
+                        return $poolList[0]['name'];
+                    }
                 }
             }
         } catch (\Throwable) {
@@ -286,32 +293,224 @@ class TenantProjectProvisioner
     }
 
     /**
-     * Discover an available network on the target hypervisor host.
+     * List all non-loopback network interface names on the target hypervisor host.
+     *
+     * @return list<string>
      */
-    public function discoverNetwork(PendingRequest $client): string
+    public function listNetworkNames(PendingRequest $client): array
     {
+        $names = [];
+
         try {
             /** @var Response $netsRes */
-            $netsRes = $client->get('/1.0/networks');
+            $netsRes = (clone $client)->get('/1.0/networks');
             if ($netsRes->successful()) {
                 $netsData = $netsRes->json();
                 /** @var list<mixed> $netList */
                 $netList = is_array($netsData) && isset($netsData['metadata']) && is_array($netsData['metadata'])
                     ? $netsData['metadata']
                     : [];
-                foreach ($netList as $netUrl) {
-                    if (is_string($netUrl)) {
-                        $name = basename($netUrl);
-                        if ($name !== 'lo' && $name !== '') {
-                            return $name;
-                        }
+                foreach ($netList as $netItem) {
+                    $name = '';
+                    if (is_string($netItem)) {
+                        $name = basename($netItem);
+                    } elseif (is_array($netItem) && isset($netItem['name']) && is_string($netItem['name'])) {
+                        $name = $netItem['name'];
+                    }
+                    if ($name !== '' && $name !== 'lo') {
+                        $names[] = $name;
                     }
                 }
             }
         } catch (\Throwable) {
-            // Default fallback
+            // Ignore discovery error
         }
 
-        return 'incusbr0';
+        return array_values(array_unique($names));
+    }
+
+    /**
+     * Discover an available network on the target hypervisor host for default profile repair.
+     * Prefers managed bridges (incusbr0/lxdbr0) over physical/docker interfaces.
+     */
+    public function discoverNetwork(PendingRequest $client): string
+    {
+        $names = $this->listNetworkNames($client);
+        if (empty($names)) {
+            return 'incusbr0';
+        }
+
+        foreach ($names as $name) {
+            if (str_starts_with($name, 'incusbr') || str_starts_with($name, 'lxdbr')) {
+                return $name;
+            }
+        }
+
+        foreach ($names as $name) {
+            if (! str_starts_with($name, 'docker') && ! str_starts_with($name, 'tailscale') && ! str_starts_with($name, 'veth')) {
+                return $name;
+            }
+        }
+
+        return $names[0];
+    }
+
+    /**
+     * Discover detailed network interfaces and storage pools on a compute node.
+     *
+     * @return array{
+     *   reachable: bool,
+     *   networks: list<array{name: string, type: string, managed: bool, addresses: list<string>, recommended_modes: list<string>}>,
+     *   storage_pools: list<array{name: string, driver: string, status: string}>
+     * }
+     */
+    public function discoverHostResources(Host $host): array
+    {
+        if ($host->driver === 'fake') {
+            return [
+                'reachable' => true,
+                'networks' => [
+                    [
+                        'name' => 'eth0',
+                        'type' => 'physical',
+                        'managed' => false,
+                        'addresses' => [],
+                        'recommended_modes' => ['routed', 'macvlan'],
+                    ],
+                    [
+                        'name' => 'incusbr0',
+                        'type' => 'bridge',
+                        'managed' => true,
+                        'addresses' => ['10.0.0.1/24'],
+                        'recommended_modes' => ['bridged', 'routed'],
+                    ],
+                ],
+                'storage_pools' => [
+                    [
+                        'name' => 'default',
+                        'driver' => 'dir',
+                        'status' => 'Created',
+                    ],
+                ],
+            ];
+        }
+
+        $reachable = false;
+        $networks = [];
+        $storagePools = [];
+
+        try {
+            $client = $this->clientForHost($host);
+
+            /** @var Response $netsRes */
+            $netsRes = (clone $client)->withQueryParameters(['recursion' => 1])->get('/1.0/networks');
+            if ($netsRes->successful()) {
+                $reachable = true;
+                $meta = $netsRes->json('metadata');
+                if (is_array($meta)) {
+                    foreach ($meta as $item) {
+                        if (is_string($item)) {
+                            $name = basename($item);
+                            if ($name === 'lo' || str_starts_with($name, 'veth')) {
+                                continue;
+                            }
+                            $isBridge = str_starts_with($name, 'incusbr') || str_starts_with($name, 'lxdbr') || str_starts_with($name, 'br');
+                            $networks[] = [
+                                'name' => $name,
+                                'type' => $isBridge ? 'bridge' : 'physical',
+                                'managed' => str_starts_with($name, 'incusbr') || str_starts_with($name, 'lxdbr'),
+                                'addresses' => [],
+                                'recommended_modes' => $isBridge ? ['bridged', 'routed'] : ['routed', 'macvlan'],
+                            ];
+                        } elseif (is_array($item)) {
+                            $name = isset($item['name']) && is_string($item['name']) ? $item['name'] : '';
+                            $type = isset($item['type']) && is_string($item['type']) ? $item['type'] : 'unknown';
+                            $managed = isset($item['managed']) && (bool) $item['managed'];
+
+                            if ($name === '' || $name === 'lo' || $type === 'loopback' || str_starts_with($name, 'veth')) {
+                                continue;
+                            }
+
+                            $addresses = [];
+                            $config = isset($item['config']) && is_array($item['config']) ? $item['config'] : [];
+                            if (isset($config['ipv4.address']) && is_string($config['ipv4.address']) && $config['ipv4.address'] !== 'none') {
+                                $addresses[] = $config['ipv4.address'];
+                            }
+
+                            $recommendedModes = match ($type) {
+                                'bridge' => ['bridged', 'routed'],
+                                'physical', 'bond', 'vlan' => ['routed', 'macvlan'],
+                                default => ['routed'],
+                            };
+
+                            $networks[] = [
+                                'name' => $name,
+                                'type' => $type,
+                                'managed' => $managed,
+                                'addresses' => $addresses,
+                                'recommended_modes' => $recommendedModes,
+                            ];
+                        }
+                    }
+                }
+            }
+
+            /** @var Response $poolsRes */
+            $poolsRes = (clone $client)->withQueryParameters(['recursion' => 1])->get('/1.0/storage-pools');
+            if ($poolsRes->successful()) {
+                $reachable = true;
+                $poolMeta = $poolsRes->json('metadata');
+                if (is_array($poolMeta)) {
+                    foreach ($poolMeta as $item) {
+                        if (is_string($item)) {
+                            $storagePools[] = [
+                                'name' => basename($item),
+                                'driver' => 'unknown',
+                                'status' => 'Created',
+                            ];
+                        } elseif (is_array($item) && isset($item['name']) && is_string($item['name'])) {
+                            $storagePools[] = [
+                                'name' => $item['name'],
+                                'driver' => isset($item['driver']) && is_string($item['driver']) ? $item['driver'] : 'unknown',
+                                'status' => isset($item['status']) && is_string($item['status']) ? $item['status'] : 'Created',
+                            ];
+                        }
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning(sprintf('Host resource discovery warning for host #%d (%s): %s', $host->id, $host->name, $e->getMessage()));
+        }
+
+        // Sort physical, bond, vlan, and managed bridges ahead of auxiliary interfaces (docker0, tailscale0)
+        usort($networks, static function (array $a, array $b): int {
+            /**
+             * @param  array<string, mixed>  $net
+             */
+            $score = static function (array $net): int {
+                $netName = isset($net['name']) && is_string($net['name']) ? $net['name'] : '';
+                $netType = isset($net['type']) && is_string($net['type']) ? $net['type'] : '';
+
+                if (str_starts_with($netName, 'docker') || str_starts_with($netName, 'tailscale')) {
+                    return 30;
+                }
+                if (in_array($netType, ['physical', 'bond', 'vlan'], true)) {
+                    return 10;
+                }
+                if ($netType === 'bridge') {
+                    return 20;
+                }
+
+                return 25;
+            };
+
+            return $score($a) <=> $score($b);
+        });
+
+        return [
+            'reachable' => $reachable,
+            'networks' => $networks,
+            'storage_pools' => $storagePools,
+        ];
     }
 }

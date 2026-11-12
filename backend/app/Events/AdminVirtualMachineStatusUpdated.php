@@ -38,9 +38,14 @@ final class AdminVirtualMachineStatusUpdated implements ShouldBroadcast
         $this->isDelta = $isDelta;
 
         if ($isDelta) {
+            $failureReason = is_array($virtualMachine->metadata) && isset($virtualMachine->metadata['failure_reason']) && is_string($virtualMachine->metadata['failure_reason'])
+                ? $virtualMachine->metadata['failure_reason']
+                : null;
+
             $this->vm = [
                 'id' => (int) $virtualMachine->id,
                 'status' => (string) $virtualMachine->status,
+                'failure_reason' => $failureReason,
                 'network_status' => $virtualMachine->network_status,
                 'ipv4' => $virtualMachine->ipv4_address,
                 'ipv4_address' => $virtualMachine->ipv4_address,

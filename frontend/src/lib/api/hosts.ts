@@ -1,5 +1,5 @@
 import { request } from "./client";
-import { HostNode, PaginatedResponse, PanelCertificateInfo, TestConnectionResponse } from "./types";
+import { HostNode, HostResourcesResponse, PaginatedResponse, PanelCertificateInfo, TestConnectionResponse } from "./types";
 
 /**
  * Host Nodes and Multi-Region Hypervisor Clusters API Methods.
@@ -82,6 +82,10 @@ export const hostsApi = {
     return request<TestConnectionResponse>(`/admin/hosts/${hostId}/verify-connection`, {
       method: "POST",
     });
+  },
+
+  async adminGetHostResources(hostId: number): Promise<HostResourcesResponse> {
+    return request<HostResourcesResponse>(`/admin/hosts/${hostId}/resources`);
   },
 
   async adminRetrustHost(hostId: number, token: string): Promise<{ message: string; host: HostNode }> {

@@ -41,7 +41,7 @@ final class UpdateIpPoolRequest extends FormRequest
             'last_usable' => ['nullable', 'ip'],
             'cidr' => ['nullable', 'string', 'max:64'],
             'host_id' => ['nullable', 'integer', 'exists:hosts,id'],
-            'network_mode' => ['nullable', 'string', Rule::in(['routed', 'manual'])],
+            'network_mode' => ['nullable', 'string', Rule::in(['routed', 'bridged', 'macvlan', 'manual'])],
             'parent_interface' => ['nullable', 'string', 'max:32'],
         ];
     }

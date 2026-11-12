@@ -9,6 +9,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\CreateImageRequest;
 use App\Http\Requests\Admin\UpdateImageRequest;
 use App\Http\Resources\ImageResource;
+use App\Models\Host;
 use App\Models\Image;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -76,6 +77,8 @@ final class AdminImageController extends Controller
 
         if (isset($data['host_ids']) && is_array($data['host_ids'])) {
             $image->hosts()->sync($data['host_ids']);
+        } else {
+            $image->hosts()->sync(Host::pluck('id')->all());
         }
 
         $image->load('hosts');

@@ -27,6 +27,11 @@ use Throwable;
  */
 abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
 {
+    /**
+     * Most recent error message reported by the hypervisor REST API or async operation.
+     */
+    protected ?string $lastError = null;
+
     public function __construct(
         protected readonly ?Host $host = null,
         protected readonly ?PanelCertificateService $certService = null,
@@ -34,6 +39,14 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
         protected readonly ?TenantProjectProvisioner $projectProvisioner = null,
         protected readonly ?InstanceSpecBuilder $instanceSpecBuilder = null,
     ) {}
+
+    /**
+     * Get the most recent error message reported by the hypervisor.
+     */
+    public function getLastError(): ?string
+    {
+        return $this->lastError;
+    }
 
     /**
      * Get the specific hypervisor driver identifier ('incus' or 'lxd').
@@ -61,7 +74,16 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
      */
     protected function handleOperationResponse(Response $response, ?string $project = null): bool
     {
+        $this->lastError = null;
+
         if (! $response->successful()) {
+            $err = $response->json('error') ?? $response->json('metadata.err');
+            $errStr = is_string($err) && $err !== ''
+                ? $err
+                : sprintf('HTTP %d: %s', $response->status(), substr(trim($response->body()), 0, 300));
+            $this->lastError = $errStr;
+            Log::error(sprintf('Hypervisor synchronous request failed (HTTP %d, project %s): %s', $response->status(), $project ?? 'default', $errStr));
+
             return false;
         }
 
@@ -83,6 +105,12 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
                 /** @var Response $waitResponse */
                 $waitResponse = $this->client()->get($waitUrl, $waitQuery);
                 if (! $waitResponse->successful()) {
+                    $waitErr = $waitResponse->json('error') ?? $waitResponse->json('metadata.err');
+                    $this->lastError = is_string($waitErr) && $waitErr !== ''
+                        ? $waitErr
+                        : sprintf('HTTP %d while waiting for operation', $waitResponse->status());
+                    Log::error(sprintf('Hypervisor operation wait failed: %s', $this->lastError));
+
                     return false;
                 }
 
@@ -96,7 +124,9 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
 
                 if ($status !== 'Success') {
                     $err = $metadata['err'] ?? ($waitData['error'] ?? 'Operation failed');
-                    Log::error(sprintf('Hypervisor operation failed: %s', is_string($err) ? $err : json_encode($err)));
+                    $errStr = is_string($err) && $err !== '' ? $err : (json_encode($err) ?: 'Operation failed');
+                    $this->lastError = $errStr;
+                    Log::error(sprintf('Hypervisor operation failed: %s', $errStr));
 
                     return false;
                 }
@@ -107,6 +137,7 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
                     ? $e
                     : new FingerprintMismatchException($e->getActualFingerprint(), $e->getExpectedFingerprint(), $e->getMessage());
             } catch (Throwable $e) {
+                $this->lastError = $e->getMessage();
                 Log::error(sprintf('Exception while waiting for hypervisor operation: %s', $e->getMessage()));
 
                 return false;
@@ -150,17 +181,50 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
         $client = $this->client();
 
         $storagePool = $provisioner->discoverStoragePool($client);
-        $network = $provisioner->discoverNetwork($client);
+        $availableNetworks = $provisioner->listNetworkNames($client);
+        $network = $availableNetworks[0] ?? 'incusbr0';
 
         $builder = $this->instanceSpecBuilder ?? app(InstanceSpecBuilder::class);
-        $payload = $builder->build($vm, $storagePool, $network);
+        $payload = $builder->build($vm, null, $storagePool, $network, null, null, $availableNetworks);
 
         /** @var Response $response */
-        $response = $client
+        $response = (clone $client)
             ->withQueryParameters(['project' => $vm->incus_project])
             ->post('/1.0/instances', $payload);
 
-        return $this->handleOperationResponse($response, $vm->incus_project);
+        $created = $this->handleOperationResponse($response, $vm->incus_project);
+
+        // If creation failed because a /cloud image variant does not exist on the remote server,
+        // automatically fall back to the base alias (without /cloud) and retry once.
+        if (
+            ! $created
+            && $this->lastError !== null
+            && isset($payload['source'])
+            && is_array($payload['source'])
+            && isset($payload['source']['alias'])
+            && is_string($payload['source']['alias'])
+            && str_ends_with($payload['source']['alias'], '/cloud')
+            && (str_contains(strtolower($this->lastError), 'image') || str_contains(strtolower($this->lastError), 'not found'))
+        ) {
+            $fallbackAlias = substr($payload['source']['alias'], 0, -6);
+            Log::info(sprintf(
+                'Retrying instance creation for VM #%d (%s) with fallback image alias "%s" after "%s" failed.',
+                $vm->id,
+                $vm->name,
+                $fallbackAlias,
+                $payload['source']['alias']
+            ));
+            $payload['source']['alias'] = $fallbackAlias;
+
+            /** @var Response $retryResponse */
+            $retryResponse = (clone $client)
+                ->withQueryParameters(['project' => $vm->incus_project])
+                ->post('/1.0/instances', $payload);
+
+            return $this->handleOperationResponse($retryResponse, $vm->incus_project);
+        }
+
+        return $created;
     }
 
     #[Override]

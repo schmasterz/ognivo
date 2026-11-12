@@ -104,7 +104,11 @@ final class ProvisionVmJob implements ShouldQueue
                 try {
                     $created = $driver->createInstance($this->vm);
                     if (! $created) {
-                        ProvisioningCompensator::compensate($this->vm, 'Hypervisor rejected instance creation.');
+                        $driverError = method_exists($driver, 'getLastError') ? $driver->getLastError() : null;
+                        $reason = is_string($driverError) && $driverError !== ''
+                            ? sprintf('Hypervisor rejected instance creation: %s', $driverError)
+                            : 'Hypervisor rejected instance creation.';
+                        ProvisioningCompensator::compensate($this->vm, $reason);
 
                         return;
                     }
@@ -125,7 +129,11 @@ final class ProvisionVmJob implements ShouldQueue
                 try {
                     $started = $driver->startInstance($this->vm);
                     if (! $started) {
-                        ProvisioningCompensator::compensate($this->vm, 'Hypervisor rejected instance startup.');
+                        $driverError = method_exists($driver, 'getLastError') ? $driver->getLastError() : null;
+                        $reason = is_string($driverError) && $driverError !== ''
+                            ? sprintf('Hypervisor rejected instance startup: %s', $driverError)
+                            : 'Hypervisor rejected instance startup.';
+                        ProvisioningCompensator::compensate($this->vm, $reason);
 
                         return;
                     }

@@ -94,10 +94,27 @@ export function useVms({
             updatedVm.ipv4 ??
             next[index].ipv4_address;
 
+          const networkStatusVal =
+            updatedVm.network_status ??
+            next[index].network_status;
+
+          const updatedNetwork = next[index].network
+            ? {
+                ...next[index].network,
+                primary: {
+                  ...next[index].network!.primary,
+                  address: ipv4Val,
+                  status: networkStatusVal as any,
+                },
+              }
+            : next[index].network;
+
           next[index] = {
             ...next[index],
             ...updatedVm,
             ipv4_address: ipv4Val,
+            network_status: networkStatusVal,
+            network: updatedNetwork,
           };
           return next;
         } else if (!updatedVm.is_delta && page === 1 && updatedVm.status?.toLowerCase() !== "deleted") {

@@ -110,10 +110,12 @@ export function VmTable({
         );
       case "failed":
         return (
-          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20">
-            <AlertCircle className="w-3 h-3 mr-1.5" />
-            Failed
-          </span>
+          <div className="flex flex-col items-start">
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20">
+              <AlertCircle className="w-3 h-3 mr-1.5" />
+              Failed
+            </span>
+          </div>
         );
       default:
         return (
@@ -130,7 +132,7 @@ export function VmTable({
       return <span className="text-gray-400 italic text-xs">{t("unassignedIp")}</span>;
     }
 
-    const status = vm.network?.primary?.status ?? vm.network_status ?? "assigned";
+    const status = vm.network_status ?? vm.network?.primary?.status ?? "assigned";
 
     if (status === "observed") {
       return (
@@ -293,7 +295,14 @@ export function VmTable({
                     </td>
                   )}
 
-                  <td className="px-6 py-4">{getStatusBadge(vm.status)}</td>
+                  <td className="px-6 py-4" title={vm.failure_reason || undefined}>
+                    {getStatusBadge(vm.status)}
+                    {vm.status.toLowerCase() === "failed" && vm.failure_reason && (
+                      <div className="mt-1 max-w-[220px] truncate text-[11px] text-red-500 dark:text-red-400 font-mono">
+                        {vm.failure_reason}
+                      </div>
+                    )}
+                  </td>
 
                   <td className="px-6 py-4 font-mono text-xs">
                     {renderIpNetworkStatus(vm)}

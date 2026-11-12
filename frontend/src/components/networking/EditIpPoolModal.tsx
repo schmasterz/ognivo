@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { X, Network, Server, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
-import { api, IpPool } from "@/lib/api";
+import { api, IpPool, HostDiscoveredNetwork } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
 
 interface EditIpPoolModalProps {
@@ -16,6 +16,10 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
 
   const [name, setName] = useState(pool.name);
   const [description, setDescription] = useState(pool.description || "");
+  const [networkMode, setNetworkMode] = useState<string>(pool.network_mode || "routed");
+  const [parentInterface, setParentInterface] = useState<string>(pool.parent_interface || "eth0");
+  const [discoveredNetworks, setDiscoveredNetworks] = useState<HostDiscoveredNetwork[]>([]);
+  const [discoveringHost, setDiscoveringHost] = useState(false);
   const [dnsServers, setDnsServers] = useState(
     pool.dns_servers && pool.dns_servers.length > 0 ? pool.dns_servers.join(", ") : "1.1.1.1, 8.8.8.8"
   );
@@ -33,6 +37,28 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const hostId = pool.host_id ?? pool.host?.id;
+    if (!hostId) return;
+    let cancelled = false;
+    setDiscoveringHost(true);
+    api.adminGetHostResources(hostId)
+      .then((res) => {
+        if (!cancelled) {
+          setDiscoveredNetworks(res.networks || []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setDiscoveredNetworks([]);
+      })
+      .finally(() => {
+        if (!cancelled) setDiscoveringHost(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pool.host_id, pool.host?.id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,6 +88,12 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
         gateway: gateway.trim() || null,
         first_usable: firstUsable.trim() || undefined,
         last_usable: lastUsable.trim() || undefined,
+        ...(hasAllocations
+          ? {}
+          : {
+              network_mode: networkMode,
+              parent_interface: parentInterface.trim() || "eth0",
+            }),
       });
 
       onSuccess(res.pool);
@@ -131,11 +163,63 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5 flex items-center space-x-1.5">
                 <Server className="w-3.5 h-3.5 text-teal-500" />
-                <span>Host Node & Mode</span>
+                <span>Host Node</span>
               </label>
               <div className="w-full px-3.5 py-2.5 rounded-xl bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm text-gray-500 dark:text-gray-400">
-                {pool.host?.name || "Global"} ({pool.network_mode || "routed"})
+                {pool.host?.name || "Global"}
               </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                {t("networkMode")}
+              </label>
+              <select
+                value={networkMode}
+                disabled={hasAllocations}
+                onChange={(e) => setNetworkMode(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 disabled:opacity-60"
+              >
+                <option value="routed">{t("modeRouted")} (L3 /32 Link-Local)</option>
+                <option value="bridged">Bridged (L2 Bridge / NAT Bridge)</option>
+                <option value="macvlan">Macvlan (L2 Direct Physical NIC)</option>
+                <option value="manual">{t("modeManual")}</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5 flex items-center justify-between">
+                <span>Host Parent Interface</span>
+                {discoveringHost && <Loader2 className="w-3 h-3 animate-spin text-teal-500" />}
+              </label>
+              <input
+                type="text"
+                disabled={hasAllocations}
+                value={parentInterface}
+                onChange={(e) => setParentInterface(e.target.value)}
+                placeholder="eno1 / incusbr0 / eth0"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono disabled:opacity-60"
+              />
+              {!hasAllocations && discoveredNetworks.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  {discoveredNetworks.map((net) => (
+                    <button
+                      key={net.name}
+                      type="button"
+                      onClick={() => setParentInterface(net.name)}
+                      className={`px-2 py-0.5 rounded-lg text-[11px] font-mono border transition ${
+                        parentInterface === net.name
+                          ? "bg-teal-500/15 border-teal-500/40 text-teal-700 dark:text-teal-300 font-semibold"
+                          : "bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-teal-500/30"
+                      }`}
+                    >
+                      {net.name} ({net.type})
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

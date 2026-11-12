@@ -13,6 +13,7 @@ use App\Http\Resources\TenantHostResource;
 use App\Models\Host;
 use App\Models\User;
 use App\Services\HostNodeService;
+use App\Services\Hypervisor\TenantProjectProvisioner;
 use App\Services\IncusConnectionChecker;
 use App\Services\IncusTrustService;
 use App\Services\PanelCertificateService;
@@ -306,5 +307,14 @@ final class HostNodeController extends Controller
         $result = $this->connectionChecker->check($host);
 
         return response()->json($result->toArray());
+    }
+
+    /**
+     * Discover real network interfaces and storage pools on a compute node.
+     */
+    #[Get('admin/hosts/{host}/resources', name: 'admin.hosts.resources', middleware: ['auth:sanctum', 'active', 'admin'])]
+    public function discoverResources(Host $host, TenantProjectProvisioner $provisioner): JsonResponse
+    {
+        return response()->json($provisioner->discoverHostResources($host));
     }
 }

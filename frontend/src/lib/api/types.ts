@@ -45,6 +45,26 @@ export interface TenantHost {
   is_active: boolean;
 }
 
+export interface HostDiscoveredNetwork {
+  name: string;
+  type: string;
+  managed: boolean;
+  addresses: string[];
+  recommended_modes: string[];
+}
+
+export interface HostDiscoveredStoragePool {
+  name: string;
+  driver: string;
+  status: string;
+}
+
+export interface HostResourcesResponse {
+  reachable: boolean;
+  networks: HostDiscoveredNetwork[];
+  storage_pools: HostDiscoveredStoragePool[];
+}
+
 export interface HostNode extends TenantHost {
   endpoint_url?: string;
   server_fingerprint?: string | null;
@@ -158,6 +178,7 @@ export interface VirtualMachine {
   incus_project: string;
   instance_type: "virtual-machine" | "container";
   status: string;
+  failure_reason?: string | null;
   cpu_cores: number;
   ram_mb: number;
   disk_gb: number;

@@ -47,6 +47,9 @@ final class VirtualMachineResource extends JsonResource
 
         $address = $allocation !== null ? $allocation->ip_string : $vm->ipv4_address;
         $macAddress = $allocation?->mac_address;
+        $failureReason = is_array($vm->metadata) && isset($vm->metadata['failure_reason']) && is_string($vm->metadata['failure_reason'])
+            ? $vm->metadata['failure_reason']
+            : null;
 
         return [
             'id' => $vm->id,
@@ -56,6 +59,7 @@ final class VirtualMachineResource extends JsonResource
             'incus_project' => $vm->incus_project,
             'instance_type' => $vm->instance_type,
             'status' => (string) $vm->status,
+            'failure_reason' => $failureReason,
             'cpu_cores' => $vm->cpu_cores,
             'ram_mb' => $vm->ram_mb,
             'disk_gb' => $vm->disk_gb,
