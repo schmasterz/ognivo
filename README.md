@@ -9,8 +9,6 @@
 [![Docker Compose](https://img.shields.io/badge/Docker-Compose_v2-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](LICENSE)
 
-> *Formerly known as `lxd-manager`.*
-
 **Ognivo** is a multi-tenant virtualization control plane for orchestrating **KVM virtual machines** and **LXC system containers** across distributed **Incus** and **LXD** clusters. Built as a clean, security-first open-source alternative to SolusVM, Virtualizor, and Proxmox VE, it combines a strongly typed Laravel 13 backend, a reactive Next.js 16 dashboard, real-time Reverb WebSockets, and a dedicated mTLS WebSocket console proxy.
 
 ---
