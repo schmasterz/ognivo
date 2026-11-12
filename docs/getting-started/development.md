@@ -29,7 +29,7 @@ All components run inside an isolated Docker bridge network (`app-network-dev`).
 make up-dev
 ```
 
-1. **Secrets & Image Build:** If `.env.development` is missing, `make` runs `scripts/gen-secrets.sh` automatically. If the `ognivo-*:dev` Docker images have not been built yet, Docker Compose builds them automatically on first run (use `make build-dev` later if you change a `Dockerfile` or `package.json`).
+1. **Secrets & Image Build:** If `.env.development` is missing, `make` runs `scripts/gen-secrets.sh` automatically (which also creates the `backend/.env -> ../.env.development` symlink for host CLI/IDE tooling). If the `ognivo-*:dev` Docker images have not been built yet, Docker Compose builds them automatically on first run (use `make build-dev` later if you change a `Dockerfile` or `package.json`). Whenever you modify variables or rotate keys in `.env.development`, re-run `make up-dev` so Docker Compose recreates the containers with the updated environment.
 2. **Database & Redis Health:** `db` (MySQL 8.4) and `redis` start first, initialize database users via [`docker/mysql-init/01-create-users.sh`](../../docker/mysql-init/01-create-users.sh), and must pass their healthchecks (`healthy`).
 3. **Backend Bootstrap (`ognivo-backend-dev`):** Boots via [`backend/docker-entrypoint.sh`](../../backend/docker-entrypoint.sh):
    - Automatically runs `composer install` if `backend/vendor/autoload.php` is missing on the host bind mount (e.g., on a fresh `git clone`).

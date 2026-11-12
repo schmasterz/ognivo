@@ -31,7 +31,7 @@ make secrets
 ```
 
 ### What `make secrets` does:
-Runs [`scripts/gen-secrets.sh`](../../scripts/gen-secrets.sh), which creates `.env.development` and `.env.production` (if missing) and populates them with cryptographically random secrets:
+Runs [`scripts/gen-secrets.sh`](../../scripts/gen-secrets.sh), which creates `.env.development` and `.env.production` (if missing), creates a convenience symlink `backend/.env -> ../.env.development` for host CLI/IDE tooling, and populates cryptographically random secrets:
 - **Application & Reverb keys:** `APP_KEY` (AES-256-CBC), `REVERB_APP_KEY`, `REVERB_APP_SECRET`, `NEXT_PUBLIC_REVERB_APP_KEY`
 - **MySQL credentials:** `DB_PASSWORD`, `DB_ROOT_PASSWORD`, `DB_MIGRATION_PASSWORD`
 - **Audit subsystem keys:** `AUDIT_DB_PASSWORD`, `AUDIT_MAINT_DB_PASSWORD`, `AUDIT_HMAC_KEY` (64-hex-char SHA-256 HMAC key), `AUDIT_PSEUDONYM_SALT`
@@ -39,6 +39,7 @@ Runs [`scripts/gen-secrets.sh`](../../scripts/gen-secrets.sh), which creates `.e
 > [!NOTE]
 > - **Idempotent by design:** Running `make secrets` multiple times will **never** overwrite existing valid secrets.
 > - **Auto-triggered:** Running `make up-dev`, `make up-prod`, `make build-dev`, or `make build-prod` automatically runs `make secrets` if the corresponding `.env.*` file does not exist yet.
+> - **Applying `.env` changes / key rotations:** Whenever you manually edit `.env.development` or `.env.production` or rotate keys, run `make up-dev` or `make up-prod` so Docker Compose recreates the containers with the updated environment variables.
 
 ---
 

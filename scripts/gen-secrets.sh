@@ -134,4 +134,11 @@ generate_env() {
 cd "${ROOT_DIR}"
 generate_env ".env.production" ".env.production.example" "true"
 generate_env ".env.development" ".env.development.example" "false"
+
+# Create local convenience symlink backend/.env -> ../.env.development for host CLI and IDE tooling
+if [ ! -L "backend/.env" ]; then
+    ln -sf ../.env.development backend/.env
+    echo "[secrets] Linked backend/.env -> ../.env.development for host tooling."
+fi
+
 echo "[secrets] Done."

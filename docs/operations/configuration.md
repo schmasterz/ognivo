@@ -32,6 +32,12 @@ Complete reference for environment variables, network exposure, WebSocket routin
 
 Initialize `.env.development` and `.env.production` via `make secrets`.
 
+> [!IMPORTANT]
+> **Container Recreate Required After `.env` Changes:**
+> Docker Compose injects variables from `.env.development` and `.env.production` (`env_file:`) into container processes only when containers are created. Editing `.env.development` or `.env.production` on the host — or rotating keys (`APP_KEY`, `AUDIT_HMAC_KEY`, `REVERB_*`) — does **not** update running containers automatically. Always run `make up-dev` (development) or `make up-prod` (production) after modifying environment variables so Docker Compose recreates the affected containers with the new values, and run `make build-prod` if changing compile-time `NEXT_PUBLIC_*` variables in production.
+>
+> **Host CLI Symlink (`backend/.env`):** `make secrets` automatically creates a git-ignored symlink `backend/.env -> ../.env.development` so host-side `php artisan` commands and IDE plugins read the centralized root `.env.development` file without duplicating configuration.
+
 ### Core Application
 | Variable | Default (Prod) | Description |
 | :--- | :--- | :--- |
@@ -102,9 +108,9 @@ When `APP_ENV=production`, `backend/docker-entrypoint.sh` runs `php artisan app:
 
 ## 6. `APP_KEY` Rotation Procedure
 
-`APP_KEY` encrypts `panel_certificates.private_key` and `hosts.token`. To rotate `APP_KEY` safely without losing access to existing hypervisor nodes:
+`APP_KEY` encrypts `panel_certificates.private_key` and `hosts.token`. Because Docker Compose injects `.env.production` (or `.env.development`) variables at container creation time, rotating `APP_KEY` requires recreating the containers (`make up-prod` / `make up-dev`) before and after re-encrypting database secrets:
 
-1. **Move the current key to `APP_PREVIOUS_KEYS`** in `.env.production`:
+1. **Move the current key to `APP_PREVIOUS_KEYS`** in `.env.production` (or `.env.development`):
    ```ini
    APP_PREVIOUS_KEYS="base64:PreviousKeyHere..."
    ```
@@ -115,9 +121,13 @@ When `APP_ENV=production`, `backend/docker-entrypoint.sh` runs `php artisan app:
    ```ini
    APP_KEY="base64:NewGeneratedKeyHere..."
    ```
-3. **Re-encrypt all database secrets with the new key:**
+3. **Apply the updated environment variables to the running containers:**
+   ```bash
+   make up-prod   # or: make up-dev
+   ```
+4. **Re-encrypt all database secrets with the new key:**
    ```bash
    docker exec -it ognivo-backend php artisan app:reencrypt-secrets
    ```
-4. **Verify hypervisor connectivity** in the Admin UI (**Verify connection** on hosts).
-5. **Clear `APP_PREVIOUS_KEYS=""`** in `.env.production` and run `make up-prod`.
+5. **Verify hypervisor connectivity** in the Admin UI (**Verify connection** on hosts).
+6. **Clear `APP_PREVIOUS_KEYS=""`** in `.env.production` and run `make up-prod` again so the old key is removed from the container environment.

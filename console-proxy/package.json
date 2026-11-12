@@ -1,6 +1,6 @@
 {
   "name": "ognivo-console-proxy",
-  "version": "1.0.0",
+  "version": "1.0.0-alpha.1",
   "description": "Authenticated WebSocket proxy for Incus and LXD guest consoles",
   "main": "server.js",
   "scripts": {

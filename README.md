@@ -171,6 +171,7 @@ All documentation is organized by domain inside the [`docs/`](docs/README.md) di
 
 ---
 
-## 📄 License
+## 📄 License & Changelog
 
-Distributed under the [MIT License](LICENSE).
+- Distributed under the [MIT License](LICENSE).
+- Release history and version roadmap are tracked in [`CHANGELOG.md`](CHANGELOG.md).
