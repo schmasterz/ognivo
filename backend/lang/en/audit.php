@@ -41,6 +41,7 @@ $actions = [
     'host.updated' => 'Compute host updated',
     'host.deleted' => 'Compute host removed',
     'host.retrusted' => 'Compute host trust re-established',
+    'host.resources.synced' => 'Compute host resources synchronized',
 
     'cert.generated' => 'Client certificate generated',
     'cert.rotated' => 'Client certificate rotated',

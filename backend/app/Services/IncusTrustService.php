@@ -12,10 +12,12 @@ use App\DTO\Incus\IncusConnectionResult;
 use App\Models\Host;
 use App\Services\Hypervisor\GatewayMode;
 use App\Services\Hypervisor\HypervisorGateway;
+use App\Services\Hypervisor\HypervisorManager;
 use App\Services\Hypervisor\TlsPeerCertificateFetcher;
 use App\Services\Hypervisor\TlsPeerCertificateFetcherInterface;
 use Carbon\Carbon;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 use RuntimeException;
 use Throwable;
@@ -30,6 +32,7 @@ final class IncusTrustService
         protected readonly IncusConnectionChecker $connectionChecker,
         protected readonly TlsPeerCertificateFetcherInterface $tlsPeerFetcher = new TlsPeerCertificateFetcher,
         protected readonly ?HypervisorGateway $gateway = null,
+        protected readonly ?HypervisorManager $hypervisorManager = null,
         protected ?AuditLogger $auditLogger = null,
     ) {
         $this->auditLogger ??= app(AuditLogger::class);
@@ -67,13 +70,18 @@ final class IncusTrustService
             'status' => IncusConnectionResult::STATE_OK,
             'needs_retrust' => false,
             'is_active' => true,
-            'total_cpu_cores' => 32,
-            'total_ram_mb' => 65536,
-            'total_storage_gb' => 2000,
+            'total_cpu_cores' => 0,
+            'total_ram_mb' => 0,
+            'total_storage_gb' => 0,
+            'capacity_source' => 'unknown',
+            'capacity_synced_at' => null,
         ], $extraAttributes));
 
         // Run connection check to confirm
         $this->connectionChecker->check($host);
+
+        // Discover compute & storage capacity from the hypervisor
+        $this->discoverAndSetHostCapacity($host);
 
         $parsedEndpointHost = parse_url((string) $host->endpoint_url, PHP_URL_HOST);
 
@@ -332,12 +340,17 @@ final class IncusTrustService
             'status' => IncusConnectionResult::STATE_OK,
             'needs_retrust' => false,
             'is_active' => true,
-            'total_cpu_cores' => 32,
-            'total_ram_mb' => 65536,
-            'total_storage_gb' => 2000,
+            'total_cpu_cores' => 0,
+            'total_ram_mb' => 0,
+            'total_storage_gb' => 0,
+            'capacity_source' => 'unknown',
+            'capacity_synced_at' => null,
         ], $extraAttributes));
 
         $this->connectionChecker->check($host);
+
+        // Discover compute & storage capacity from the hypervisor
+        $this->discoverAndSetHostCapacity($host);
 
         $parsedCertHost = parse_url((string) $host->endpoint_url, PHP_URL_HOST);
 
@@ -440,5 +453,34 @@ final class IncusTrustService
             'secret' => $json['secret'],
             'expires_at' => $json['expires_at'],
         ];
+    }
+
+    /**
+     * Discover compute cores, memory and storage pool capacity from hypervisor and update host.
+     */
+    public function discoverAndSetHostCapacity(Host $host): void
+    {
+        try {
+            $manager = $this->hypervisorManager ?? app(HypervisorManager::class);
+            $driver = $manager->driverForHost($host);
+            $resources = $driver->getHostResources($host);
+
+            $host->update([
+                'total_cpu_cores' => $resources->cpuCores,
+                'total_ram_mb' => $resources->ramMb,
+                'total_storage_gb' => $resources->storageGb,
+                'capacity_source' => 'discovered',
+                'capacity_synced_at' => now(),
+            ]);
+        } catch (Throwable $e) {
+            Log::warning(sprintf('Resource discovery failed for host [%s] (%s): %s', $host->name, $host->endpoint_url, $e->getMessage()));
+            $host->update([
+                'total_cpu_cores' => 0,
+                'total_ram_mb' => 0,
+                'total_storage_gb' => 0,
+                'capacity_source' => 'unknown',
+                'capacity_synced_at' => null,
+            ]);
+        }
     }
 }

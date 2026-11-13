@@ -12,6 +12,7 @@ use App\DTO\Host\CreateHostDTO;
 use App\DTO\Host\UpdateHostDTO;
 use App\Models\Host;
 use App\Services\Hypervisor\HypervisorGateway;
+use App\Services\Hypervisor\HypervisorManager;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Validation\ValidationException;
@@ -102,6 +103,7 @@ final class HostNodeService
             'total_cpu_cores' => $dto->totalCpuCores,
             'total_ram_mb' => $dto->totalRamMb,
             'total_storage_gb' => $dto->totalStorageGb,
+            'capacity_source' => 'manual',
             'settings' => $dto->settings,
         ]);
 
@@ -144,7 +146,7 @@ final class HostNodeService
             'region' => $dto->region,
             'endpoint_url' => $dto->endpointUrl,
             'driver' => $targetDriver,
-            'is_active' => $dto->isActive ?? $host->is_active,
+            'is_active' => $dto->isActive ?? (bool) ($host->is_active ?? true),
             'total_cpu_cores' => $dto->totalCpuCores ?? $host->total_cpu_cores,
             'total_ram_mb' => $dto->totalRamMb ?? $host->total_ram_mb,
             'total_storage_gb' => $dto->totalStorageGb ?? $host->total_storage_gb,
@@ -168,6 +170,14 @@ final class HostNodeService
 
         if ($dto->serverFingerprint !== null) {
             $attributes['server_fingerprint'] = $dto->serverFingerprint;
+        }
+
+        $totalsEdited = ($dto->totalCpuCores !== null && $dto->totalCpuCores !== $host->total_cpu_cores)
+            || ($dto->totalRamMb !== null && $dto->totalRamMb !== $host->total_ram_mb)
+            || ($dto->totalStorageGb !== null && $dto->totalStorageGb !== $host->total_storage_gb);
+
+        if ($totalsEdited) {
+            $attributes['capacity_source'] = 'manual';
         }
 
         $host->update($attributes);
@@ -202,5 +212,48 @@ final class HostNodeService
         ));
 
         $host->delete();
+    }
+
+    /**
+     * Synchronize live compute and storage resources from the hypervisor.
+     * Never overwrites manual capacity unless $force is true.
+     */
+    public function syncHostResources(Host $host, bool $force = false): Host
+    {
+        if (! $force && $host->capacity_source === 'manual') {
+            return $host;
+        }
+
+        $manager = app(HypervisorManager::class);
+        $driver = $manager->driverForHost($host);
+        $resources = $driver->getHostResources($host);
+
+        $host->update([
+            'total_cpu_cores' => $resources->cpuCores,
+            'total_ram_mb' => $resources->ramMb,
+            'total_storage_gb' => $resources->storageGb,
+            'capacity_source' => 'discovered',
+            'capacity_synced_at' => now(),
+        ]);
+
+        $parsedEndpointHost = parse_url((string) $host->endpoint_url, PHP_URL_HOST);
+
+        $this->logger()->record(new AuditEntry(
+            action: AuditAction::HostResourcesSynced,
+            outcome: AuditOutcome::Success,
+            subject: $host,
+            tenantUserId: null,
+            visibility: 'admin',
+            context: [
+                'name' => $host->name,
+                'endpoint_host' => is_string($parsedEndpointHost) && $parsedEndpointHost !== '' ? $parsedEndpointHost : (string) $host->endpoint_url,
+                'total_cpu_cores' => $resources->cpuCores,
+                'total_ram_mb' => $resources->ramMb,
+                'total_storage_gb' => $resources->storageGb,
+                'capacity_source' => 'discovered',
+            ],
+        ));
+
+        return $host->fresh(['ipPools', 'virtualMachines']) ?? $host;
     }
 }

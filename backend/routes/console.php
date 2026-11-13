@@ -22,6 +22,7 @@ Schedule::call(fn (IpManagementService $service) => $service->pruneExpiredCoolin
 Schedule::command('audit:seal')->everyMinute()->withoutOverlapping();
 Schedule::command('audit:verify')->hourly();
 Schedule::command('audit:prune')->daily();
+Schedule::command('hosts:sync-resources')->hourly()->withoutOverlapping();
 
 if (app()->environment('testing')) {
     Artisan::command('tests:allocate-ip {pool} {vm}', function (IpManagementService $service): int {
@@ -39,4 +40,39 @@ if (app()->environment('testing')) {
 
         return 0;
     })->purpose('Allocate an IP for a VM from an IP pool in testing');
+
+    Artisan::command('tests:provision-vm {user} {host} {cpu} {ram} {disk}', function (\App\Services\VmProvisioningService $service): int {
+        /** @var Command $this */
+        $userId = (int) $this->argument('user');
+        $hostId = (int) $this->argument('host');
+        $cpu = (int) $this->argument('cpu');
+        $ram = (int) $this->argument('ram');
+        $disk = (int) $this->argument('disk');
+
+        /** @var \App\Models\User $user */
+        $user = \App\Models\User::findOrFail($userId);
+
+        try {
+            $vm = $service->provision($user, [
+                'name' => 'concurrent-vm-'.uniqid(),
+                'cpu_cores' => $cpu,
+                'ram_mb' => $ram,
+                'disk_gb' => $disk,
+                'os_image' => 'ubuntu:24.04',
+                'host_id' => $hostId,
+            ]);
+
+            $this->line('SUCCESS:'.$vm->id);
+
+            return 0;
+        } catch (\Throwable $e) {
+            $msg = 'ERROR: '.$e->getMessage();
+            if ($this->getOutput() instanceof \Symfony\Component\Console\Output\ConsoleOutputInterface) {
+                $this->getOutput()->getErrorOutput()->writeln($msg);
+            }
+            $this->error($msg);
+
+            return 1;
+        }
+    })->purpose('Provision a VM for integration concurrency testing');
 }

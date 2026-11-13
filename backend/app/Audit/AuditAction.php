@@ -49,6 +49,7 @@ enum AuditAction: string
     case HostUpdated = 'host.updated';
     case HostDeleted = 'host.deleted';
     case HostRetrusted = 'host.retrusted';
+    case HostResourcesSynced = 'host.resources.synced';
 
     // Certificate
     case CertGenerated = 'cert.generated';

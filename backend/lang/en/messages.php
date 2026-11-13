@@ -55,6 +55,9 @@ return [
         'no_active_host' => 'No active hypervisor host is available for provisioning.',
         'not_active_or_available' => 'The selected host node is not active or available.',
         'fake_driver_disabled' => 'The fake hypervisor driver is not allowed outside local or testing environments.',
+        'insufficient_capacity' => 'The selected compute node does not have sufficient capacity for this request.',
+        'no_capacity' => 'No compute node has sufficient capacity to fulfill this request.',
+        'capacity_unknown' => 'The compute node capacity is unknown or unverified; synchronization required.',
     ],
     'ip' => [
         'reassigned' => 'IP address reassigned successfully.',

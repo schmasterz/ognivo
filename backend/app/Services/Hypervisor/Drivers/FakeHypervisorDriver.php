@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Hypervisor\Drivers;
 
+use App\DTO\Host\HostResourcesDTO;
+use App\Models\Host;
 use App\Models\VirtualMachine;
 use App\Services\Hypervisor\Contracts\HypervisorDriverInterface;
 use Illuminate\Support\Facades\Cache;
@@ -23,6 +25,8 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
      * @var array<string, callable>
      */
     public array $actionCallbacks = [];
+
+    public ?HostResourcesDTO $hostResources = null;
 
     public function setActionCallback(string $action, callable $callback): self
     {
@@ -705,5 +709,31 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
             'control_path' => sprintf('/1.0/operations/%s/websocket?secret=fake-sec-ctrl-%d', $opId, $vm->id),
             'type' => $type,
         ];
+    }
+
+    #[Override]
+    public function getHostResources(Host $host): HostResourcesDTO
+    {
+        if (isset($this->actionCallbacks['getHostResources'])) {
+            /** @var HostResourcesDTO $res */
+            $res = ($this->actionCallbacks['getHostResources'])($host);
+
+            return $res;
+        }
+
+        if ($this->shouldFail('getHostResources')) {
+            throw new \RuntimeException(sprintf('Fake driver forced failure getting host resources for %s', $host->name));
+        }
+
+        if ($this->hostResources !== null) {
+            return $this->hostResources;
+        }
+
+        return new HostResourcesDTO(
+            cpuCores: $host->total_cpu_cores > 0 ? $host->total_cpu_cores : 32,
+            ramMb: $host->total_ram_mb > 0 ? $host->total_ram_mb : 65536,
+            storageGb: $host->total_storage_gb > 0 ? $host->total_storage_gb : 2000,
+            storagePool: 'default',
+        );
     }
 }

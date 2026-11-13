@@ -33,6 +33,7 @@ final class VmProvisioningService
         private readonly IpManagementService $ipService,
         private readonly HostSelector $hostSelector,
         private readonly ?AuditLogger $auditLogger = null,
+        private readonly HostCapacityGuard $capacityGuard = new HostCapacityGuard,
     ) {}
 
     private function logger(): AuditLogger
@@ -187,8 +188,13 @@ final class VmProvisioningService
                         ]);
 
                         if ($chosenHost === null) {
+                            $hasAnyActiveHost = Host::where('is_active', true)->where('status', 'ok')->exists();
+                            $errorMsg = $hasAnyActiveHost
+                                ? __('messages.host.no_capacity')
+                                : __('messages.host.no_active_host');
+
                             throw ValidationException::withMessages([
-                                'host_id' => [__('messages.host.no_active_host')],
+                                'host_id' => [$errorMsg],
                             ]);
                         }
                         $hostId = $chosenHost->id;
@@ -203,8 +209,22 @@ final class VmProvisioningService
                         $this->hostSelector->validateHost($chosenHost, [
                             'os_image' => $data['os_image'],
                             'instance_type' => $instanceType,
+                            'cpu_cores' => $data['cpu_cores'],
+                            'ram_mb' => $data['ram_mb'],
+                            'disk_gb' => $data['disk_gb'],
                         ]);
                     }
+
+                    // LOCK ORDER:
+                    // 1. user quota lock (distributed cache lock: user_quota_lock:{id})
+                    // 2. user quota row (UserQuota lockForUpdate)
+                    // 3. host row (Host lockForUpdate)
+                    // No other code path in the system acquires these locks in reverse order.
+                    /** @var Host $lockedHost */
+                    $lockedHost = Host::where('id', $hostId)->lockForUpdate()->firstOrFail();
+
+                    // Authoritative capacity check under host row lock
+                    $this->capacityGuard->check($lockedHost, $data['cpu_cores'], $data['ram_mb'], $data['disk_gb']);
 
                     // Iterate the host's active pools ordered by id and take the first one that has a free address
                     $activePools = IpPool::where('host_id', $hostId)

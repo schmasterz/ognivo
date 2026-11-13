@@ -20,6 +20,7 @@ class HostSelector
 {
     public function __construct(
         private readonly IpManagementService $ipService,
+        private readonly HostCapacityGuard $capacityGuard = new HostCapacityGuard,
     ) {}
 
     /**
@@ -39,7 +40,11 @@ class HostSelector
         $query = Host::query()
             ->where('is_active', true)
             ->where('status', 'ok')
-            ->whereNotIn('status', ['fingerprint_mismatch', 'not_trusted', 'unreachable']);
+            ->whereNotIn('status', ['fingerprint_mismatch', 'not_trusted', 'unreachable'])
+            ->where('capacity_source', '!=', 'unknown')
+            ->where('total_cpu_cores', '>', 0)
+            ->where('total_ram_mb', '>', 0)
+            ->where('total_storage_gb', '>', 0);
 
         $isLocalOrTesting = app()->environment('local', 'testing')
             || in_array(config('app.env'), ['local', 'testing'], true);
@@ -71,20 +76,20 @@ class HostSelector
             return null;
         }
 
-        // Filter candidates that have at least one active pool with free addresses
+        $reqCpu = isset($filters['cpu_cores']) && is_numeric($filters['cpu_cores']) ? (int) $filters['cpu_cores'] : 1;
+        $reqRam = isset($filters['ram_mb']) && is_numeric($filters['ram_mb']) ? (int) $filters['ram_mb'] : 1024;
+        $reqDisk = isset($filters['disk_gb']) && is_numeric($filters['disk_gb']) ? (int) $filters['disk_gb'] : 10;
+
+        // Filter candidates that have at least one active pool with free addresses AND sufficient capacity
         $eligibleHosts = [];
         foreach ($candidateHosts as $host) {
-            if ($this->hostHasFreeIpPool($host)) {
+            if ($this->hostHasFreeIpPool($host) && $this->capacityGuard->canFit($host, $reqCpu, $reqRam, $reqDisk)) {
                 $eligibleHosts[] = $host;
             }
         }
 
         if (empty($eligibleHosts)) {
             return null;
-        }
-
-        if (count($eligibleHosts) === 1) {
-            return $eligibleHosts[0];
         }
 
         return $this->pickLeastLoadedHost($eligibleHosts);
@@ -142,6 +147,18 @@ class HostSelector
                     'os_image' => ['The selected image is not available on the chosen compute node.'],
                 ]);
             }
+        }
+
+        $cpu = isset($filters['cpu_cores']) && is_numeric($filters['cpu_cores']) ? (int) $filters['cpu_cores'] : 0;
+        $ram = isset($filters['ram_mb']) && is_numeric($filters['ram_mb']) ? (int) $filters['ram_mb'] : 0;
+        $disk = isset($filters['disk_gb']) && is_numeric($filters['disk_gb']) ? (int) $filters['disk_gb'] : 0;
+
+        if ($cpu > 0 || $ram > 0 || $disk > 0) {
+            $this->capacityGuard->check($host, $cpu, $ram, $disk, lock: false);
+        } elseif (! $this->capacityGuard->hasKnownCapacity($host)) {
+            throw ValidationException::withMessages([
+                'host_id' => [__('messages.host.capacity_unknown')],
+            ]);
         }
     }
 

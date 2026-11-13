@@ -58,9 +58,10 @@ export function NodesModal({
   const [verifyingHostId, setVerifyingHostId] = useState<number | null>(null);
   const [retrustTokens, setRetrustTokens] = useState<Record<number, string>>({});
   const [retrustLoadingId, setRetrustLoadingId] = useState<number | null>(null);
+  const [syncingHostId, setSyncingHostId] = useState<number | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
-  useModalEscape(onClose, !tableLoading && !rotateLoading && !revokeLoading && !retrustLoadingId);
+  useModalEscape(onClose, !tableLoading && !rotateLoading && !revokeLoading && !retrustLoadingId && !syncingHostId);
 
   const fetchHostsPage = useCallback(async () => {
     try {
@@ -239,6 +240,49 @@ export function NodesModal({
       default:
         return null;
     }
+  };
+
+  const handleSyncHostResources = async (hostId: number) => {
+    try {
+      setSyncingHostId(hostId);
+      setActionMessage(null);
+      const res = await api.adminSyncHostResources(hostId);
+      setHosts((prev) =>
+        prev.map((h) => (h.id === hostId ? { ...h, ...res.host } : h))
+      );
+      setActionMessage(t("hostCapacitySyncSuccess") || "Compute node capacity synchronized successfully.");
+      if (onRefreshHosts) onRefreshHosts();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : t("hostCapacitySyncFailed");
+      setActionMessage(msg || "Failed to synchronize compute node capacity.");
+    } finally {
+      setSyncingHostId(null);
+    }
+  };
+
+  const renderCapacitySourceBadge = (source?: string) => {
+    const s = source || "unknown";
+    if (s === "discovered") {
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+          <CheckCircle2 className="w-2.5 h-2.5 mr-1" />
+          {t("capacitySourceDetected") || "Detected"}
+        </span>
+      );
+    }
+    if (s === "manual") {
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+          {t("capacitySourceManual") || "Manual"}
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+        <AlertTriangle className="w-2.5 h-2.5 mr-1" />
+        {t("capacitySourceUnknown") || "Unknown — sync needed"}
+      </span>
+    );
   };
 
   return (
@@ -526,23 +570,61 @@ export function NodesModal({
                 )}
 
                 {/* Specs & Capacity */}
-                <div className="grid grid-cols-3 gap-2 mb-3 text-center">
-                  <div className="p-2 rounded-xl bg-white dark:bg-gray-900/80 border border-gray-200/80 dark:border-gray-800">
-                    <div className="text-[10px] text-gray-400 font-medium">vCPU</div>
-                    <div className="text-xs font-bold text-gray-800 dark:text-gray-200 mt-0.5">
-                      {host.total_cpu_cores} cores
+                <div className="mb-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
+                      <span className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        {t("nodeCapacity") || "Capacity"}
+                      </span>
+                      {renderCapacitySourceBadge(host.capacity_source || host.capacity?.source)}
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => handleSyncHostResources(host.id)}
+                      disabled={syncingHostId === host.id}
+                      className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-[10px] font-medium transition disabled:opacity-50"
+                      title={t("syncFromHypervisor") || "Sync from hypervisor"}
+                    >
+                      {syncingHostId === host.id ? (
+                        <Loader2 className="w-3 h-3 animate-spin text-indigo-600 dark:text-indigo-400" />
+                      ) : (
+                        <RefreshCw className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+                      )}
+                      <span>
+                        {syncingHostId === host.id
+                          ? t("syncingFromHypervisor") || "Syncing..."
+                          : t("syncFromHypervisor") || "Sync from hypervisor"}
+                      </span>
+                    </button>
                   </div>
-                  <div className="p-2 rounded-xl bg-white dark:bg-gray-900/80 border border-gray-200/80 dark:border-gray-800">
-                    <div className="text-[10px] text-gray-400 font-medium">RAM</div>
-                    <div className="text-xs font-bold text-gray-800 dark:text-gray-200 mt-0.5">
-                      {Math.round(host.total_ram_mb / 1024)} GB
+
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="p-2 rounded-xl bg-white dark:bg-gray-900/80 border border-gray-200/80 dark:border-gray-800">
+                      <div className="text-[10px] text-gray-400 font-medium">vCPU</div>
+                      <div className="text-xs font-bold text-gray-800 dark:text-gray-200 mt-0.5">
+                        {host.capacity?.cpu?.committed ?? 0} / {host.total_cpu_cores}
+                      </div>
+                      <div className="text-[9px] text-gray-400 mt-0.5">
+                        {t("capacityCommitted") || "committed"} / {t("capacityTotal") || "total"}
+                      </div>
                     </div>
-                  </div>
-                  <div className="p-2 rounded-xl bg-white dark:bg-gray-900/80 border border-gray-200/80 dark:border-gray-800">
-                    <div className="text-[10px] text-gray-400 font-medium">Storage</div>
-                    <div className="text-xs font-bold text-gray-800 dark:text-gray-200 mt-0.5">
-                      {host.total_storage_gb} GB
+                    <div className="p-2 rounded-xl bg-white dark:bg-gray-900/80 border border-gray-200/80 dark:border-gray-800">
+                      <div className="text-[10px] text-gray-400 font-medium">RAM</div>
+                      <div className="text-xs font-bold text-gray-800 dark:text-gray-200 mt-0.5">
+                        {Math.round((host.capacity?.ram?.committed ?? 0) / 1024)} / {Math.round(host.total_ram_mb / 1024)} GB
+                      </div>
+                      <div className="text-[9px] text-gray-400 mt-0.5">
+                        {t("capacityCommitted") || "committed"} / {t("capacityTotal") || "total"}
+                      </div>
+                    </div>
+                    <div className="p-2 rounded-xl bg-white dark:bg-gray-900/80 border border-gray-200/80 dark:border-gray-800">
+                      <div className="text-[10px] text-gray-400 font-medium">Storage</div>
+                      <div className="text-xs font-bold text-gray-800 dark:text-gray-200 mt-0.5">
+                        {host.capacity?.disk?.committed ?? 0} / {host.total_storage_gb} GB
+                      </div>
+                      <div className="text-[9px] text-gray-400 mt-0.5">
+                        {t("capacityCommitted") || "committed"} / {t("capacityTotal") || "total"}
+                      </div>
                     </div>
                   </div>
                 </div>

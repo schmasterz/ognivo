@@ -260,6 +260,16 @@ export const dictionaries = {
     nodeUpdatedNotice: "Compute node updated successfully.",
     nodeDeletedNotice: "Compute node deleted successfully.",
     colNode: "Compute Node / Region",
+    syncFromHypervisor: "Sync from hypervisor",
+    syncingFromHypervisor: "Syncing...",
+    capacitySourceDetected: "Detected",
+    capacitySourceManual: "Manual",
+    capacitySourceUnknown: "Unknown — sync needed",
+    capacityCommitted: "committed",
+    capacityTotal: "total",
+    capacityFree: "free",
+    hostCapacitySyncSuccess: "Compute node capacity synchronized successfully.",
+    hostCapacitySyncFailed: "Failed to synchronize compute node capacity.",
 
     // Connection Testing & Verification
     testConnection: "Verify connection",
@@ -887,6 +897,16 @@ export const dictionaries = {
     nodeUpdatedNotice: "Compute нодът бе обновен успешно.",
     nodeDeletedNotice: "Compute нодът бе изтрит успешно.",
     colNode: "Compute Нод / Регион",
+    syncFromHypervisor: "Синхронизирай от hypervisor",
+    syncingFromHypervisor: "Синхронизиране...",
+    capacitySourceDetected: "Открит",
+    capacitySourceManual: "Ръчен",
+    capacitySourceUnknown: "Неизвестен — нужна е синхронизация",
+    capacityCommitted: "зает",
+    capacityTotal: "общо",
+    capacityFree: "свободен",
+    hostCapacitySyncSuccess: "Капацитетът на възела е синхронизиран успешно.",
+    hostCapacitySyncFailed: "Грешка при синхронизация на капацитета на възела.",
 
     // Connection Testing & Verification
     testConnection: "Потвърди връзката",

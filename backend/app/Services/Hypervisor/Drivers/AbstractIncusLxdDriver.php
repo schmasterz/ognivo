@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Hypervisor\Drivers;
 
+use App\DTO\Host\HostResourcesDTO;
 use App\Exceptions\FingerprintMismatchException as BaseFingerprintMismatchException;
 use App\Models\Host;
 use App\Models\User;
@@ -62,11 +63,69 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
             throw new RuntimeException(sprintf('No host assigned to %s driver.', $this->getDriverName()));
         }
 
+        return $this->clientForHost($this->host);
+    }
+
+    /**
+     * Build an authenticated HTTP client for a specific hypervisor host.
+     */
+    protected function clientForHost(Host $host): PendingRequest
+    {
         $service = $this->certService ?? app(PanelCertificateService::class);
         $clientCert = $service->getActiveCertificate() ?? $service->getRetiringCertificate();
         $gateway = $this->gateway ?? app(HypervisorGateway::class);
 
-        return $gateway->client($this->host, $clientCert);
+        return $gateway->client($host, $clientCert);
+    }
+
+    #[Override]
+    public function getHostResources(Host $host): HostResourcesDTO
+    {
+        $client = $this->clientForHost($host);
+
+        /** @var Response $res */
+        $res = (clone $client)->get('/1.0/resources');
+        if (! $res->successful()) {
+            throw new RuntimeException(sprintf('Failed to retrieve host resources from %s: %s', $host->endpoint_url, $res->body()));
+        }
+
+        /** @var array<string, mixed> $resData */
+        $resData = $res->json('metadata') ?? [];
+        $cpuTotal = isset($resData['cpu']) && is_array($resData['cpu']) && isset($resData['cpu']['total'])
+            ? (int) $resData['cpu']['total']
+            : 0;
+        $memBytes = isset($resData['memory']) && is_array($resData['memory']) && isset($resData['memory']['total'])
+            ? (int) $resData['memory']['total']
+            : 0;
+        $ramMb = intdiv($memBytes, 1024 * 1024);
+
+        $configuredPool = (string) config('provisioning.storage_pool', '');
+        if ($configuredPool !== '') {
+            $poolName = $configuredPool;
+        } else {
+            $provisioner = $this->projectProvisioner ?? app(TenantProjectProvisioner::class);
+            $poolName = $provisioner->discoverStoragePool($client);
+        }
+
+        /** @var Response $poolRes */
+        $poolRes = (clone $client)->get(sprintf('/1.0/storage-pools/%s/resources', urlencode($poolName)));
+        if (! $poolRes->successful()) {
+            throw new RuntimeException(sprintf('Failed to retrieve storage pool resources for pool [%s] from %s: %s', $poolName, $host->endpoint_url, $poolRes->body()));
+        }
+
+        /** @var array<string, mixed> $poolData */
+        $poolData = $poolRes->json('metadata') ?? [];
+        $spaceBytes = isset($poolData['space']) && is_array($poolData['space']) && isset($poolData['space']['total'])
+            ? (int) $poolData['space']['total']
+            : 0;
+        $storageGb = intdiv($spaceBytes, 1024 * 1024 * 1024);
+
+        return new HostResourcesDTO(
+            cpuCores: $cpuTotal,
+            ramMb: $ramMb,
+            storageGb: $storageGb,
+            storagePool: $poolName,
+        );
     }
 
     /**

@@ -32,6 +32,8 @@ use Override;
  * @property int $total_cpu_cores
  * @property int $total_ram_mb
  * @property int $total_storage_gb
+ * @property string $capacity_source
+ * @property Carbon|null $capacity_synced_at
  * @property array<string, mixed>|null $settings
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -57,6 +59,8 @@ final class Host extends Model
         'total_cpu_cores',
         'total_ram_mb',
         'total_storage_gb',
+        'capacity_source',
+        'capacity_synced_at',
         'settings',
         'server_fingerprint',
         'server_public_key_pin',
@@ -85,6 +89,8 @@ final class Host extends Model
         'total_cpu_cores',
         'total_ram_mb',
         'total_storage_gb',
+        'capacity_source',
+        'capacity_synced_at',
         'settings',
     ];
 
@@ -114,6 +120,8 @@ final class Host extends Model
             'total_cpu_cores' => 'integer',
             'total_ram_mb' => 'integer',
             'total_storage_gb' => 'integer',
+            'capacity_source' => 'string',
+            'capacity_synced_at' => 'datetime',
             'settings' => 'array',
             'token' => 'encrypted',
         ];
@@ -125,6 +133,35 @@ final class Host extends Model
     #[Override]
     protected static function booted(): void
     {
+        self::creating(function (Host $host): void {
+            if ($host->capacity_source === null || $host->capacity_source === '') {
+                if (empty($host->total_cpu_cores) && empty($host->total_ram_mb) && empty($host->total_storage_gb)) {
+                    if ($host->driver === 'fake' || app()->environment('local', 'testing')) {
+                        $host->total_cpu_cores = 64;
+                        $host->total_ram_mb = 131072;
+                        $host->total_storage_gb = 4000;
+                        $host->capacity_source = 'discovered';
+                        $host->capacity_synced_at = now();
+
+                        return;
+                    }
+                }
+
+                $isPlaceholder = $host->total_cpu_cores === 32
+                    && $host->total_ram_mb === 65536
+                    && $host->total_storage_gb === 2000;
+
+                if ($isPlaceholder) {
+                    $host->capacity_source = 'unknown';
+                } elseif ($host->total_cpu_cores > 0 || $host->total_ram_mb > 0 || $host->total_storage_gb > 0) {
+                    $host->capacity_source = 'discovered';
+                    $host->capacity_synced_at ??= now();
+                } else {
+                    $host->capacity_source = 'unknown';
+                }
+            }
+        });
+
         self::created(function (Host $host): void {
             try {
                 $imageIds = Image::pluck('id');

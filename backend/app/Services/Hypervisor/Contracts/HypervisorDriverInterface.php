@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Hypervisor\Contracts;
 
+use App\DTO\Host\HostResourcesDTO;
+use App\Models\Host;
 use App\Models\VirtualMachine;
 
 /**
@@ -123,4 +125,9 @@ interface HypervisorDriverInterface
      * @return array{operation_id: string, websocket_path: string, control_path: string|null, type: string}
      */
     public function createConsoleSession(VirtualMachine $vm, string $type = 'console'): array;
+
+    /**
+     * Retrieve discovered compute and storage resources for the host.
+     */
+    public function getHostResources(Host $host): HostResourcesDTO;
 }

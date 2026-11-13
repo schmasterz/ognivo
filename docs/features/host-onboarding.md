@@ -100,3 +100,13 @@ The **Verify connection** action (`POST /api/admin/hosts/verify-connection` or `
 | `fingerprint_mismatch` | Remote server certificate changed or does not match the pinned fingerprint (potential MITM or host reinstallation). |
 | `not_trusted` | Server was reached and fingerprint matched, but the panel certificate is not in the server's trust store (`auth: "untrusted"`). |
 | `error` | Unexpected transport or protocol error (returns a sanitized error summary). |
+
+---
+
+## 4. Capacity Discovery & Cluster Endpoints
+
+Upon successful onboarding, the panel queries `GET /1.0/resources` and `GET /1.0/storage-pools/{pool}/resources` to automatically discover compute threads, memory, and storage pool capacity.
+
+> [!NOTE]
+> For an Incus or LXD **cluster endpoint**, the resource discovery values describe the specific cluster member that answered the REST API request. Full cluster-wide aggregate resource tracking is handled separately; individual cluster members should be onboarded or synced accordingly.
+

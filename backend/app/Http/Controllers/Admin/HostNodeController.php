@@ -317,4 +317,24 @@ final class HostNodeController extends Controller
     {
         return response()->json($provisioner->discoverHostResources($host));
     }
+
+    /**
+     * Synchronize live compute and storage capacity from the hypervisor.
+     */
+    #[Post('admin/hosts/{host}/sync-resources', name: 'admin.hosts.sync_resources', middleware: ['auth:sanctum', 'active', 'admin'])]
+    public function syncResources(Host $host): JsonResponse
+    {
+        try {
+            $syncedHost = $this->hostNodeService->syncHostResources($host, force: true);
+
+            return response()->json([
+                'message' => 'Compute node capacity synchronized successfully from hypervisor.',
+                'host' => new HostNodeResource($syncedHost),
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Failed to synchronize compute node capacity: '.$e->getMessage(),
+            ], 502);
+        }
+    }
 }

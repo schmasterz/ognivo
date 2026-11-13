@@ -65,6 +65,20 @@ export interface HostResourcesResponse {
   storage_pools: HostDiscoveredStoragePool[];
 }
 
+export interface HostResourceCapacityMetrics {
+  total: number;
+  committed: number;
+  free: number;
+}
+
+export interface HostCapacityDetails {
+  source: "discovered" | "manual" | "unknown" | string;
+  synced_at?: string | null;
+  cpu: HostResourceCapacityMetrics;
+  ram: HostResourceCapacityMetrics;
+  disk: HostResourceCapacityMetrics;
+}
+
 export interface HostNode extends TenantHost {
   endpoint_url?: string;
   server_fingerprint?: string | null;
@@ -76,6 +90,9 @@ export interface HostNode extends TenantHost {
   total_cpu_cores: number;
   total_ram_mb: number;
   total_storage_gb: number;
+  capacity_source?: "discovered" | "manual" | "unknown" | string;
+  capacity_synced_at?: string | null;
+  capacity?: HostCapacityDetails;
   virtual_machines_count?: number;
   ip_pools_count?: number;
   created_at?: string;

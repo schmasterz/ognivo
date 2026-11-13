@@ -88,6 +88,12 @@ export const hostsApi = {
     return request<HostResourcesResponse>(`/admin/hosts/${hostId}/resources`);
   },
 
+  async adminSyncHostResources(hostId: number): Promise<{ message: string; host: HostNode }> {
+    return request<{ message: string; host: HostNode }>(`/admin/hosts/${hostId}/sync-resources`, {
+      method: "POST",
+    });
+  },
+
   async adminRetrustHost(hostId: number, token: string): Promise<{ message: string; host: HostNode }> {
     return request<{ message: string; host: HostNode }>(`/admin/hosts/${hostId}/retrust`, {
       method: "POST",
