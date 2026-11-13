@@ -250,7 +250,7 @@ class InstanceSpecBuilder
      */
     public function generateNetplanConfig(string $macAddress, string $ipAddress, ?array $dnsServers = null): string
     {
-        $dnsList = ! empty($dnsServers) ? $dnsServers : ['1.1.1.1', '8.8.8.8'];
+        $dnsList = $dnsServers !== null && $dnsServers !== [] ? $dnsServers : ['1.1.1.1', '8.8.8.8'];
         $dnsLines = implode("\n", array_map(fn (string $dns): string => sprintf('          - %s', trim($dns)), $dnsList));
 
         return <<<YAML
@@ -285,7 +285,7 @@ YAML;
         ?string $gateway = null,
         ?array $dnsServers = null,
     ): string {
-        $dnsList = ! empty($dnsServers) ? $dnsServers : ['1.1.1.1', '8.8.8.8'];
+        $dnsList = $dnsServers !== null && $dnsServers !== [] ? $dnsServers : ['1.1.1.1', '8.8.8.8'];
         $dnsLines = implode("\n", array_map(fn (string $dns): string => sprintf('          - %s', trim($dns)), $dnsList));
 
         $routesBlock = '';

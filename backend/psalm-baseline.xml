@@ -294,9 +294,6 @@
       <code><![CDATA[array]]></code>
       <code><![CDATA[isset($data['metadata']) && is_array($data['metadata']) ? $data['metadata'] : []]]></code>
     </MixedReturnTypeCoercion>
-    <PossiblyFalseArgument>
-      <code><![CDATA[is_string($err) ? $err : json_encode($err)]]></code>
-    </PossiblyFalseArgument>
     <PossiblyInvalidArgument>
       <code><![CDATA[$response]]></code>
     </PossiblyInvalidArgument>
@@ -357,15 +354,8 @@
     <ClassMustBeFinal>
       <code><![CDATA[InstanceSpecBuilder]]></code>
     </ClassMustBeFinal>
-    <DocblockTypeContradiction>
-      <code><![CDATA[$allocation->pool]]></code>
-    </DocblockTypeContradiction>
-    <RedundantConditionGivenDocblockType>
-      <code><![CDATA[$allocation->pool?->dns_servers]]></code>
-    </RedundantConditionGivenDocblockType>
     <RiskyTruthyFalsyComparison>
       <code><![CDATA[$macAddress]]></code>
-      <code><![CDATA[empty($dnsServers)]]></code>
     </RiskyTruthyFalsyComparison>
   </file>
   <file src="app/Services/Hypervisor/TenantProjectProvisioner.php">

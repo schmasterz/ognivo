@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Notifications;
 
 use App\Models\User;
+use App\Services\SystemOverviewService;
 use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -26,8 +27,8 @@ final class QueuedVerifyEmailNotification extends VerifyEmail implements ShouldQ
     #[Override]
     public function toMail($notifiable): MailMessage
     {
-        /** @var \App\Services\SystemOverviewService $overviewService */
-        $overviewService = app(\App\Services\SystemOverviewService::class);
+        /** @var SystemOverviewService $overviewService */
+        $overviewService = app(SystemOverviewService::class);
         $overviewService->applyMailConfig();
 
         $verificationUrl = $this->verificationUrl($notifiable);

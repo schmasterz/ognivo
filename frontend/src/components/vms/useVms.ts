@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useMemo, useEffect } from "react";
-import { api, VirtualMachine } from "@/lib/api";
+import { api, VirtualMachine, VmNetworkPrimary } from "@/lib/api";
 import { useCachedFetch } from "@/lib/hooks/useCachedFetch";
 
 export interface UseVmsParams {
@@ -104,7 +104,7 @@ export function useVms({
                 primary: {
                   ...next[index].network!.primary,
                   address: ipv4Val,
-                  status: networkStatusVal as any,
+                  status: (networkStatusVal as VmNetworkPrimary["status"]) ?? null,
                 },
               }
             : next[index].network;

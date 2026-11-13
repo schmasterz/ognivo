@@ -124,7 +124,8 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
 
                 if ($status !== 'Success') {
                     $err = $metadata['err'] ?? ($waitData['error'] ?? 'Operation failed');
-                    $errStr = is_string($err) && $err !== '' ? $err : (json_encode($err) ?: 'Operation failed');
+                    $encoded = is_scalar($err) || is_array($err) ? json_encode($err) : false;
+                    $errStr = is_string($err) && $err !== '' ? $err : ($encoded !== false ? $encoded : 'Operation failed');
                     $this->lastError = $errStr;
                     Log::error(sprintf('Hypervisor operation failed: %s', $errStr));
 
