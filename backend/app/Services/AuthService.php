@@ -226,6 +226,14 @@ final class AuthService
     }
 
     /**
+     * Issue a standard authentication API access token for the specified user with default abilities and expiry.
+     */
+    public function issueAuthToken(User $user, string $name = 'auth-token'): string
+    {
+        return $user->createToken($name)->plainTextToken;
+    }
+
+    /**
      * Authenticate an existing user and generate an API access token.
      *
      * @return array{user: User, token: string}
@@ -287,7 +295,7 @@ final class AuthService
             ]);
         }
 
-        $token = $user->createToken('auth-token')->plainTextToken;
+        $token = $this->issueAuthToken($user);
 
         $this->logger()->record(new AuditEntry(
             action: AuditAction::AuthLoginSuccess,

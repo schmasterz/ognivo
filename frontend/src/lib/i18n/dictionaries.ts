@@ -637,6 +637,7 @@ export const dictionaries = {
     impersonationStarted: "Impersonation session started",
     impersonationEnded: "Impersonation session ended. Admin restored.",
     supportSession: "support session",
+    sessionExpired: "Session expired. Please sign in again.",
   },
   bg: {
     // Brand & Header
@@ -1274,6 +1275,7 @@ export const dictionaries = {
     impersonationStarted: "Сесията за поддръжка стартира",
     impersonationEnded: "Сесията за поддръжка приключи. Администраторът е възстановен.",
     supportSession: "сесия за поддръжка",
+    sessionExpired: "Сесията изтече. Моля, влезте отново.",
   },
 } as const;
 

@@ -9,7 +9,9 @@ use App\Audit\AuditContext;
 use App\Audit\AuditEntry;
 use App\Audit\AuditLogger;
 use App\Audit\AuditOutcome;
+use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Services\AuthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -27,6 +29,7 @@ final class ImpersonationController extends Controller
     public function __construct(
         private readonly AuditLogger $auditLogger,
         private readonly AuditContext $auditContext,
+        private readonly AuthService $authService,
     ) {}
 
     /**
@@ -59,8 +62,13 @@ final class ImpersonationController extends Controller
             }
         }
 
-        if ($token === null || ! $token->can('impersonated')) {
+        if ($token === null || ! in_array('impersonated', $token->abilities ?? [], true)) {
             abort(403, 'Not currently in an impersonation session.');
+        }
+
+        $impersonator = $impersonatorId !== null ? User::find($impersonatorId) : null;
+        if ($impersonator === null || $impersonator->status !== 'active' || ! $impersonator->hasRole('admin')) {
+            abort(403, 'Impersonator is no longer an active administrator.');
         }
 
         $this->auditLogger->record(new AuditEntry(
@@ -73,25 +81,21 @@ final class ImpersonationController extends Controller
             context: [
                 'impersonator_id' => $impersonatorId,
                 'target_user_id' => $user->id,
+                'admin_session_issued' => true,
             ],
             pii: [
                 'user_email' => $user->email,
             ],
         ));
 
-        $adminToken = null;
-        if ($impersonatorId !== null) {
-            $impersonator = User::find($impersonatorId);
-            if ($impersonator !== null && $impersonator->status === 'active') {
-                $adminToken = $impersonator->createToken('admin_restored_session')->plainTextToken;
-            }
-        }
+        $adminToken = $this->authService->issueAuthToken($impersonator);
 
         $token->delete();
 
         return response()->json([
+            'token' => $adminToken,
+            'user' => new UserResource($impersonator),
             'message' => 'Impersonation session ended successfully.',
-            'admin_token' => $adminToken,
         ]);
     }
 }

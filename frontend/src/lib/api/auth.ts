@@ -52,8 +52,8 @@ export const authApi = {
     return request<{ user: User; roles: string[] }>("/me");
   },
 
-  async stopImpersonation(): Promise<{ message: string; admin_token?: string | null }> {
-    return request<{ message: string; admin_token?: string | null }>("/impersonation/stop", {
+  async stopImpersonation(): Promise<{ user: User; token: string; message?: string }> {
+    return request<{ user: User; token: string; message?: string }>("/impersonation/stop", {
       method: "POST",
     });
   },

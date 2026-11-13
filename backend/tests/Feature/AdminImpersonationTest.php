@@ -14,6 +14,7 @@ use App\Services\VmLifecycleService;
 use App\States\Vm\Stopped;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Laravel\Sanctum\PersonalAccessToken;
 use Spatie\Permission\Models\Role;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
@@ -273,11 +274,22 @@ final class AdminImpersonationTest extends TestCase
         $this->withTokenHeader($token)->getJson('/api/me')->assertOk();
 
         // Call stop
-        $this->withTokenHeader($token)
+        $stopRes = $this->withTokenHeader($token)
             ->postJson('/api/impersonation/stop')
             ->assertOk();
 
-        // Audit row impersonation.ended is recorded
+        // Stop returns token and user matching login endpoint shape
+        $adminToken = $stopRes->json('token');
+        $this->assertNotEmpty($adminToken);
+        $this->assertSame($this->admin->id, $stopRes->json('user.id'));
+
+        // Issued token does not carry impersonated ability and works for admin operations
+        $pat = PersonalAccessToken::findToken($adminToken);
+        $this->assertNotNull($pat);
+        $this->assertNotContains('impersonated', $pat->abilities ?? [], 'Issued admin token must not carry impersonated ability');
+        $this->withTokenHeader($adminToken)->getJson('/api/admin/users')->assertOk();
+
+        // Audit row impersonation.ended is recorded with admin_session_issued context
         /** @var AuditLog $endLog */
         $endLog = AuditLog::where('action', AuditAction::ImpersonationEnded->value)->latest('id')->first();
         $this->assertNotNull($endLog);
@@ -286,9 +298,79 @@ final class AdminImpersonationTest extends TestCase
         $this->assertSame($this->admin->id, $endLog->impersonator_id);
         $this->assertSame($this->activeTenant->id, $endLog->tenant_user_id);
         $this->assertSame('tenant', $endLog->visibility);
+        $this->assertTrue($endLog->context['admin_session_issued'] ?? false, 'Audit context must note admin session issued');
 
         // Token cannot be used after stop
         $this->withTokenHeader($token)->getJson('/api/me')->assertStatus(401);
+    }
+
+    public function test_impersonation_stop_refuses_when_impersonator_demoted(): void
+    {
+        $impersonateRes = $this->actingAs($this->admin)
+            ->postJson("/api/admin/users/{$this->activeTenant->id}/impersonate")
+            ->assertOk();
+
+        $token = $impersonateRes->json('token');
+
+        // Demote admin to customer
+        $this->admin->removeRole('admin');
+
+        $stopRes = $this->withTokenHeader($token)
+            ->postJson('/api/impersonation/stop')
+            ->assertStatus(403);
+
+        $this->assertNull($stopRes->json('token'));
+    }
+
+    public function test_impersonation_stop_refuses_when_impersonator_suspended(): void
+    {
+        $impersonateRes = $this->actingAs($this->admin)
+            ->postJson("/api/admin/users/{$this->activeTenant->id}/impersonate")
+            ->assertOk();
+
+        $token = $impersonateRes->json('token');
+
+        // Suspend admin
+        $this->admin->update(['status' => 'suspended']);
+
+        $stopRes = $this->withTokenHeader($token)
+            ->postJson('/api/impersonation/stop')
+            ->assertStatus(403);
+
+        $this->assertNull($stopRes->json('token'));
+    }
+
+    public function test_impersonation_stop_refuses_when_impersonator_deleted(): void
+    {
+        $impersonateRes = $this->actingAs($this->admin)
+            ->postJson("/api/admin/users/{$this->activeTenant->id}/impersonate")
+            ->assertOk();
+
+        $token = $impersonateRes->json('token');
+
+        // Delete admin
+        $this->admin->delete();
+
+        $stopRes = $this->withTokenHeader($token)
+            ->postJson('/api/impersonation/stop')
+            ->assertStatus(403);
+
+        $this->assertNull($stopRes->json('token'));
+    }
+
+    public function test_non_impersonation_token_cannot_call_stop(): void
+    {
+        // Normal tenant login token
+        $tenantToken = $this->activeTenant->createToken('tenant-normal')->plainTextToken;
+        $this->withTokenHeader($tenantToken)
+            ->postJson('/api/impersonation/stop')
+            ->assertStatus(403);
+
+        // Normal admin login token
+        $adminToken = $this->admin->createToken('admin-normal')->plainTextToken;
+        $this->withTokenHeader($adminToken)
+            ->postJson('/api/impersonation/stop')
+            ->assertStatus(403);
     }
 
     public function test_token_expires_after_30_minutes(): void

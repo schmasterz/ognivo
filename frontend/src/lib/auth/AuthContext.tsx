@@ -6,12 +6,16 @@ import { clearAllCachedFetchEntries } from "@/lib/hooks/useCachedFetch";
 import { disconnectEcho } from "@/lib/echo";
 import { useI18n } from "@/lib/i18n/I18nContext";
 import { useToast } from "@/lib/toast/ToastContext";
+import {
+  ImpersonatedUserInfo,
+  cleanupLegacyStorage,
+  startImpersonationStorage,
+  stopImpersonationStorage,
+  clearAllAuthStorage,
+  getImpersonatedUserMetadata,
+} from "./impersonationStorage";
 
-export interface ImpersonatedUserInfo {
-  id: number;
-  name: string;
-  email: string;
-}
+export type { ImpersonatedUserInfo };
 
 export interface AuthContextValue {
   user: User | null;
@@ -115,58 +119,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     async function checkAuth() {
       try {
+        cleanupLegacyStorage();
         const { user: currentUser, roles: currentRoles } = await api.getMe();
         if (!isMounted) return;
         setUser(currentUser);
         setRoles(currentRoles);
-        if (typeof window !== "undefined") {
-          localStorage.removeItem("admin_token_backup");
-          const stored =
-            sessionStorage.getItem("impersonated_user") ||
-            localStorage.getItem("impersonated_user");
-          if (stored) {
-            try {
-              const parsed = JSON.parse(stored) as ImpersonatedUserInfo;
-              setImpersonatedUserState(parsed);
-              setImpersonatingState(true);
-            } catch {
-              sessionStorage.removeItem("impersonated_user");
-              localStorage.removeItem("impersonated_user");
-            }
-          } else if (sessionStorage.getItem("admin_token_backup")) {
-            setImpersonatingState(true);
-          }
+        const stored = getImpersonatedUserMetadata();
+        if (stored) {
+          setImpersonatedUserState(stored);
+          setImpersonatingState(true);
         }
       } catch {
         if (!isMounted) return;
-        if (typeof window !== "undefined") {
-          const backup =
-            sessionStorage.getItem("admin_token_backup") ||
-            localStorage.getItem("admin_token_backup");
-          if (backup) {
-            localStorage.setItem("auth_token", backup);
-            sessionStorage.removeItem("admin_token_backup");
-            sessionStorage.removeItem("impersonated_user");
-            localStorage.removeItem("admin_token_backup");
-            localStorage.removeItem("impersonated_user");
-            setImpersonatedUserState(null);
-            setImpersonatingState(false);
-            try {
-              const { user: restoredUser, roles: restoredRoles } = await api.getMe();
-              if (!isMounted) return;
-              setUser(restoredUser);
-              setRoles(restoredRoles);
-              return;
-            } catch {
-              // Both tokens failed
-            }
-          }
-          localStorage.removeItem("auth_token");
-          sessionStorage.removeItem("admin_token_backup");
-          sessionStorage.removeItem("impersonated_user");
-          localStorage.removeItem("admin_token_backup");
-          localStorage.removeItem("impersonated_user");
-        }
+        clearAllAuthStorage();
         setUser(null);
         setRoles([]);
         setImpersonatedUserState(null);
@@ -187,24 +152,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const startImpersonation = useCallback(
     async (targetUser: AdminUserItem) => {
-      const currentAdminToken =
-        typeof window !== "undefined" ? localStorage.getItem("auth_token") || "" : "";
       const res = await api.adminImpersonateUser(targetUser.id);
 
-      if (typeof window !== "undefined") {
-        sessionStorage.setItem("admin_token_backup", currentAdminToken);
-        sessionStorage.setItem(
-          "impersonated_user",
-          JSON.stringify({
-            id: targetUser.id,
-            name: targetUser.name,
-            email: targetUser.email,
-          })
-        );
-        localStorage.removeItem("admin_token_backup");
-        localStorage.removeItem("impersonated_user");
-        localStorage.setItem("auth_token", res.token);
-      }
+      startImpersonationStorage(res.token, {
+        id: targetUser.id,
+        name: targetUser.name,
+        email: targetUser.email,
+      });
 
       disconnectEcho();
 
@@ -227,44 +181,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const stopImpersonation = useCallback(async (): Promise<boolean> => {
     setIsStoppingImpersonation(true);
-    let stopRes: { message: string; admin_token?: string | null } | null = null;
     try {
-      stopRes = await api.stopImpersonation().catch((err) => {
-        console.warn("Failed to notify server of impersonation stop:", err);
-        return null;
-      });
-    } finally {
-      if (typeof window !== "undefined") {
-        const restoredToken =
-          stopRes?.admin_token ||
-          sessionStorage.getItem("admin_token_backup") ||
-          localStorage.getItem("admin_token_backup");
-        if (restoredToken) {
-          localStorage.setItem("auth_token", restoredToken);
-        } else {
-          localStorage.removeItem("auth_token");
-        }
-        sessionStorage.removeItem("admin_token_backup");
-        sessionStorage.removeItem("impersonated_user");
-        localStorage.removeItem("admin_token_backup");
-        localStorage.removeItem("impersonated_user");
+      const stopRes = await api.stopImpersonation();
+      if (!stopRes?.token) {
+        throw new Error("No admin token returned from server");
       }
+
+      stopImpersonationStorage(stopRes.token);
       disconnectEcho();
       clearAllCachedFetchEntries();
       setImpersonatedUser(null);
       setIsStoppingImpersonation(false);
-      toast.info(t("impersonationEnded"));
-    }
+      toast.info(stopRes.message || t("impersonationEnded"));
 
-    try {
+      // Refresh session to reflect restored admin
       const { user: restoredUser, roles: restoredRoles } = await api.getMe();
       clearAllCachedFetchEntries();
       setUser(restoredUser);
       setRoles(restoredRoles);
       return true;
-    } catch {
+    } catch (err) {
+      console.warn("Failed to stop impersonation:", err);
+      clearAllAuthStorage();
+      disconnectEcho();
+      clearAllCachedFetchEntries();
+      setImpersonatedUser(null);
       setUser(null);
       setRoles([]);
+      setIsStoppingImpersonation(false);
+      toast.error(t("sessionExpired"));
+      if (typeof window !== "undefined") {
+        window.history.pushState(null, "", "/");
+      }
       return false;
     }
   }, [setImpersonatedUser, toast, t]);
@@ -291,12 +239,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await api.logout();
     } finally {
       clearAllCachedFetchEntries();
-      if (typeof window !== "undefined") {
-        sessionStorage.removeItem("admin_token_backup");
-        sessionStorage.removeItem("impersonated_user");
-        localStorage.removeItem("admin_token_backup");
-        localStorage.removeItem("impersonated_user");
-      }
+      clearAllAuthStorage();
       setImpersonatedUserState(null);
       setImpersonatingState(false);
       setUser(null);

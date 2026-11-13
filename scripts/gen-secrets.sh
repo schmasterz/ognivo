@@ -34,7 +34,7 @@ set_or_append_var() {
 
     if [ "${current_val}" != "__UNDEFINED__" ]; then
         local needs_update=0
-        if [ -z "${current_val}" ]; then
+        if [ -z "${current_val}" ] || [ "${current_val}" = "null" ]; then
             needs_update=1
         elif [ "${is_secret}" -eq 1 ] && [ "${current_val}" = "CHANGE_ME" ]; then
             needs_update=1
@@ -82,11 +82,13 @@ generate_env() {
     local app_key="base64:$(openssl rand -base64 32)"
     local db_password="$(openssl rand -hex 16)"
     local db_root_password="$(openssl rand -hex 16)"
+    local redis_password="$(openssl rand -hex 16)"
     local reverb_app_secret="$(openssl rand -hex 16)"
 
     set_or_append_var "${target}" "APP_KEY" "${app_key}" 1
     set_or_append_var "${target}" "DB_PASSWORD" "${db_password}" 1
     set_or_append_var "${target}" "DB_ROOT_PASSWORD" "${db_root_password}" 1
+    set_or_append_var "${target}" "REDIS_PASSWORD" "${redis_password}" 1
 
     local reverb_app_key
     reverb_app_key="$(get_var_value "${target}" "REVERB_APP_KEY")"
