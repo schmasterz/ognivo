@@ -135,6 +135,14 @@ final class ConsoleTicketServiceTest extends TestCase
         $this->assertNull($secondResult);
     }
 
+    public function test_redeem_ticket_rejects_invalid_ticket_format(): void
+    {
+        $this->assertNull($this->service->redeemTicket('*'));
+        $this->assertNull($this->service->redeemTicket('?'));
+        $this->assertNull($this->service->redeemTicket('short'));
+        $this->assertNull($this->service->redeemTicket('invalid*glob?ticket-123456'));
+    }
+
     public function test_issue_ticket_fails_if_vm_is_not_running(): void
     {
         $this->vm->status->transitionTo(Stopped::class);

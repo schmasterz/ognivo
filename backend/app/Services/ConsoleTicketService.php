@@ -146,7 +146,7 @@ final class ConsoleTicketService
      */
     public function redeemTicket(string $ticket): ?array
     {
-        if (trim($ticket) === '') {
+        if (trim($ticket) === '' || ! preg_match('/^[A-Za-z0-9_-]{16,128}$/', $ticket)) {
             return null;
         }
 

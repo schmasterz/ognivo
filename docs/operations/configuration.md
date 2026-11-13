@@ -58,6 +58,7 @@ Initialize `.env.development` and `.env.production` via `make secrets`.
 | `DB_PASSWORD` | *(Random generated)* | Application DB password |
 | `DB_ROOT_PASSWORD` | *(Random generated)* | Root DB password |
 | `REDIS_HOST` / `REDIS_PORT` | `redis` / `6379` | Redis service hostname and port |
+| `REDIS_PREFIX` | `ognivo-database-` | Key prefix for Redis database namespace separation |
 | `QUEUE_CONNECTION` | `redis` | Asynchronous queue driver |
 | `CACHE_STORE` | `redis` | Cache store driver |
 | `SESSION_DRIVER` | `database` | Session storage driver |

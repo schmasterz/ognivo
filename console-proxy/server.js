@@ -10,8 +10,11 @@ const PORT = parseInt(process.env.PORT || '8085', 10);
 const REDIS_HOST = process.env.REDIS_HOST || '127.0.0.1';
 const REDIS_PORT = parseInt(process.env.REDIS_PORT || '6379', 10);
 const REDIS_PASSWORD = process.env.REDIS_PASSWORD || undefined;
+const REDIS_PREFIX = process.env.REDIS_PREFIX || null;
 const CLIENT_CERT_PATH = process.env.CLIENT_CERT_PATH || null;
 const CLIENT_KEY_PATH = process.env.CLIENT_KEY_PATH || null;
+
+const TICKET_REGEX = /^[A-Za-z0-9_-]{16,128}$/;
 
 const redis = new Redis({
   host: REDIS_HOST,
@@ -40,28 +43,22 @@ const server = http.createServer((req, res) => {
 const wss = new WebSocketServer({ noServer: true });
 
 async function redeemTicket(ticket) {
-  const candidates = [
-    `console:ticket:${ticket}`,
-    process.env.REDIS_PREFIX ? `${process.env.REDIS_PREFIX}console:ticket:${ticket}` : null,
-  ].filter(Boolean);
-
-  for (const k of candidates) {
-    try {
-      const res = await redis.call('GETDEL', k);
-      if (res) return res;
-    } catch {
-      const res = await redis.eval(
-        "local v = redis.call('get', KEYS[1]); if v then redis.call('del', KEYS[1]); end; return v",
-        1,
-        k
-      );
-      if (res) return res;
-    }
+  if (!ticket || !TICKET_REGEX.test(ticket)) {
+    return null;
   }
 
-  // Fallback to match key if Laravel used application prefix
-  const matchingKeys = await redis.keys(`*console:ticket:${ticket}`);
-  for (const k of matchingKeys) {
+  // Deterministic candidate keys; never perform full-keyspace glob scans
+  const candidates = [
+    REDIS_PREFIX ? `${REDIS_PREFIX}console:ticket:${ticket}` : null,
+    `ognivo-database-console:ticket:${ticket}`,
+    `ognivo-dev-database-console:ticket:${ticket}`,
+    `laravel-database-console:ticket:${ticket}`,
+    `console:ticket:${ticket}`,
+  ].filter(Boolean);
+
+  const uniqueCandidates = [...new Set(candidates)];
+
+  for (const k of uniqueCandidates) {
     try {
       const res = await redis.call('GETDEL', k);
       if (res) return res;
@@ -89,6 +86,12 @@ server.on('upgrade', async (req, socket, head) => {
   const ticket = url.searchParams.get('ticket');
   if (!ticket || ticket.trim() === '') {
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  if (!TICKET_REGEX.test(ticket)) {
+    socket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
     socket.destroy();
     return;
   }
@@ -222,4 +225,4 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`[console-proxy] Listening on port ${PORT}`);
 });
 
-module.exports = { server, redis };
+module.exports = { server, redis, redeemTicket, TICKET_REGEX };
