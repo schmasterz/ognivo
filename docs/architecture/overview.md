@@ -83,7 +83,7 @@ flowchart TB
 3. **`Host`** — Hypervisor cluster nodes (`incus`, `lxd`, or `fake` driver), capacity boundaries, pinned TLS certificate fingerprint, and `needs_retrust` status.
 4. **`VirtualMachine`** — Customer workloads (KVM VMs and LXC containers) managed via `VmState` (`Provisioning`, `Running`, `Stopped`, `Suspended`, `Deleting`, `Deleted`, `Failed`). Dispatches `VirtualMachineStatusUpdated` on state/IP mutations.
 5. **`VmSnapshot`** — Point-in-time snapshots (`creating`, `ready`, `restoring`, `deleting`, `failed`) with `stateful` flag and `source` discriminator (`manual`, `scheduled`).
-6. **`IpPool` & `IpAllocation`** — Ranged IPv4/IPv6 subnet pools (`routed` or `manual` mode) and individual IP allocations (`allocated`, `cooling`, `is_floating`, `ptr_record`).
+6. **`IpPool` & `IpAllocation`** — Ranged IPv4/IPv6 subnet pools (`routed` or `manual` mode) and individual IP allocations (`allocated`, `cooling`).
 7. **`Image`** — Curated OS image catalog synchronized with hypervisor image servers.
 8. **`PanelCertificate`** — Self-signed `secp384r1` mTLS client certificate and encrypted private key (`active`, `retiring`).
 9. **`AuditLog` & `AuditSeal`** — Tamper-evident audit events and periodic SHA-256 + HMAC cryptographic seals.

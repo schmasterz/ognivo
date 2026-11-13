@@ -57,14 +57,11 @@ return [
         'fake_driver_disabled' => 'The fake hypervisor driver is not allowed outside local or testing environments.',
     ],
     'ip' => [
-        'ptr_updated' => 'Reverse DNS (PTR) record updated successfully.',
         'reassigned' => 'IP address reassigned successfully.',
         'detached' => 'IP address detached successfully.',
-        'floating_allocated' => 'Floating IP allocated successfully.',
         'released' => 'IP address released back to the pool.',
         'not_found_or_unauthorized' => 'IP address not found or unauthorized.',
         'pool_exhausted' => 'No free IP addresses available in the pool.',
-        'invalid_fqdn' => 'The PTR record must be a valid fully qualified domain name (FQDN).',
         'ipv6_not_supported_v1' => 'IPv6 is not supported in v1.0.',
     ],
     'admin' => [

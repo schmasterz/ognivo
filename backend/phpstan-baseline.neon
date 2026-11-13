@@ -3,13 +3,13 @@ parameters:
 		-
 			message: '#^Called ''env'' outside of the config directory which returns null when the config is cached, use ''config''\.$#'
 			identifier: larastan.noEnvCallsOutsideOfConfig
-			count: 11
+			count: 12
 			path: app/Console/Commands/CheckProductionConfigCommand.php
 
 		-
 			message: '#^Cannot cast mixed to string\.$#'
 			identifier: cast.string
-			count: 5
+			count: 6
 			path: app/Console/Commands/CheckProductionConfigCommand.php
 
 		-

@@ -68,11 +68,11 @@ describe("Audit Frontend Unit & Integration Tests", () => {
 
     it("parses audit filters from URL query string correctly", () => {
       window.location.search =
-        "?category=ip&action=ip.floating.allocated&outcome=failed&from=2026-10-01&to=2026-10-31&actor_id=7&tenant_user_id=12&ip=2001%3Adb8%3A%3A1&request_id=req-xyz-789";
+        "?category=ip&action=ip.allocated&outcome=failed&from=2026-10-01&to=2026-10-31&actor_id=7&tenant_user_id=12&ip=2001%3Adb8%3A%3A1&request_id=req-xyz-789";
 
       const parsed = parseFiltersFromUrl();
       assert.equal(parsed.category, "ip");
-      assert.equal(parsed.action, "ip.floating.allocated");
+      assert.equal(parsed.action, "ip.allocated");
       assert.equal(parsed.outcome, "failed");
       assert.equal(parsed.from, "2026-10-01");
       assert.equal(parsed.to, "2026-10-31");

@@ -60,7 +60,7 @@ final class AuditIpCoverageTest extends TestCase
         app(AuditContext::class)->setRequestId('req-ip-test-4321');
     }
 
-    public function test_ip_allocated_released_reassigned_and_ptr_updated(): void
+    public function test_ip_allocated_released_and_reassigned(): void
     {
         $vm1 = VirtualMachine::create([
             'user_id' => $this->tenant->id,
@@ -92,7 +92,7 @@ final class AuditIpCoverageTest extends TestCase
         $allocation = $this->ipService->allocateIp($this->pool, $vm1, $this->tenant);
 
         $allocRow = $this->assertAuditRow(
-            action: 'ip.floating.allocated',
+            action: 'ip.allocated',
             outcome: 'success',
             tenantUserId: $this->tenant->id,
             visibility: 'tenant',
@@ -118,26 +118,11 @@ final class AuditIpCoverageTest extends TestCase
         $this->assertSame($vm1->id, $reassignCtx['old_virtual_machine_id']);
         $this->assertSame($vm2->id, $reassignCtx['new_virtual_machine_id']);
 
-        // 3. PTR Updated
-        $this->ipService->updatePtr($allocation, 'node1.example.com', 'oldnode.example.com');
-
-        $ptrRow = $this->assertAuditRow(
-            action: 'ip.ptr.updated',
-            outcome: 'success',
-            tenantUserId: $this->tenant->id,
-            visibility: 'tenant',
-            requestId: 'req-ip-test-4321',
-        );
-        $ptrCtx = json_decode((string) $ptrRow->context, true);
-        $this->assertSame($allocation->ip_string, $ptrCtx['ip']);
-        $this->assertSame('oldnode.example.com', $ptrCtx['old_ptr']);
-        $this->assertSame('node1.example.com', $ptrCtx['new_ptr']);
-
-        // 4. IP Released
+        // 3. IP Released
         $this->ipService->forceReleaseAllocation($allocation);
 
         $releaseRow = $this->assertAuditRow(
-            action: 'ip.floating.released',
+            action: 'ip.released',
             outcome: 'success',
             tenantUserId: $this->tenant->id,
             visibility: 'tenant',

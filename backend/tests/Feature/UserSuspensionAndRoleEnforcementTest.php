@@ -7,7 +7,6 @@ use App\Models\Host;
 use App\Models\User;
 use App\Models\UserQuota;
 use App\Models\VirtualMachine;
-use App\Services\IpManagementService;
 use App\Services\UserService;
 use App\Services\VmProvisioningService;
 use Illuminate\Validation\ValidationException;
@@ -248,7 +247,7 @@ test('admin cannot change their own role', function (): void {
     ]);
 });
 
-test('VmProvisioningService and IpManagementService refuse non-active users', function (): void {
+test('VmProvisioningService refuses non-active users', function (): void {
     $this->customer->update(['status' => 'suspended']);
 
     // VmProvisioningService::provision throws ValidationException
@@ -260,10 +259,5 @@ test('VmProvisioningService and IpManagementService refuse non-active users', fu
             'ram_mb' => 1024,
             'disk_gb' => 10,
         ]);
-    })->toThrow(ValidationException::class);
-
-    // IpManagementService::allocateFloatingIp throws ValidationException
-    expect(function (): void {
-        app(IpManagementService::class)->allocateFloatingIp($this->customer);
     })->toThrow(ValidationException::class);
 });

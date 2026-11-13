@@ -14,7 +14,7 @@ final class AuditActionTest extends TestCase
         $this->assertSame('auth', AuditAction::AuthLoginSuccess->category());
         $this->assertSame('user', AuditAction::UserCreated->category());
         $this->assertSame('vm', AuditAction::VmCreateRequested->category());
-        $this->assertSame('ip', AuditAction::IpFloatingAllocated->category());
+        $this->assertSame('ip', AuditAction::IpAllocated->category());
         $this->assertSame('ip_pool', AuditAction::IpPoolCreated->category());
         $this->assertSame('host', AuditAction::HostCreated->category());
         $this->assertSame('cert', AuditAction::CertGenerated->category());

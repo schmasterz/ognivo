@@ -142,7 +142,7 @@ final class IpManagementService
             $vm->save();
 
             $this->logger()->record(new AuditEntry(
-                action: AuditAction::IpFloatingAllocated,
+                action: AuditAction::IpAllocated,
                 outcome: AuditOutcome::Success,
                 subject: $allocation,
                 tenantUserId: $user->id,
@@ -170,7 +170,7 @@ final class IpManagementService
 
             foreach ($allocations as $alloc) {
                 $this->logger()->record(new AuditEntry(
-                    action: AuditAction::IpFloatingReleased,
+                    action: AuditAction::IpReleased,
                     outcome: AuditOutcome::Success,
                     subject: $alloc,
                     tenantUserId: $alloc->user_id,
@@ -210,7 +210,7 @@ final class IpManagementService
             }
 
             $this->logger()->record(new AuditEntry(
-                action: AuditAction::IpFloatingReleased,
+                action: AuditAction::IpReleased,
                 outcome: AuditOutcome::Success,
                 subject: $allocation,
                 tenantUserId: $allocation->user_id,
@@ -531,7 +531,7 @@ final class IpManagementService
             }
 
             $this->logger()->record(new AuditEntry(
-                action: AuditAction::IpFloatingReleased,
+                action: AuditAction::IpReleased,
                 outcome: AuditOutcome::Success,
                 subject: $allocation,
                 tenantUserId: $allocation->user_id,
@@ -574,35 +574,6 @@ final class IpManagementService
                     'ip' => $allocation->ip_string,
                     'old_virtual_machine_id' => $oldVmId,
                     'new_virtual_machine_id' => $newVmId,
-                ],
-            ));
-
-            return $allocation;
-        });
-    }
-
-    /**
-     * Update PTR reverse DNS record for an IP allocation.
-     */
-    public function updatePtr(IpAllocation $allocation, ?string $ptr, ?string $oldPtr = null): IpAllocation
-    {
-        return DB::transaction(function () use ($allocation, $ptr, $oldPtr): IpAllocation {
-            $effectiveOld = $oldPtr ?? $allocation->getAttribute('ptr');
-            if (in_array('ptr', $allocation->getFillable(), true) || array_key_exists('ptr', $allocation->getAttributes())) {
-                $allocation->setAttribute('ptr', $ptr);
-                $allocation->save();
-            }
-
-            $this->logger()->record(new AuditEntry(
-                action: AuditAction::IpPtrUpdated,
-                outcome: AuditOutcome::Success,
-                subject: $allocation,
-                tenantUserId: $allocation->user_id,
-                visibility: 'tenant',
-                context: [
-                    'ip' => $allocation->ip_string,
-                    'old_ptr' => $effectiveOld,
-                    'new_ptr' => $ptr,
                 ],
             ));
 
@@ -1009,19 +980,5 @@ final class IpManagementService
             $ipPool->allocations()->delete();
             $ipPool->delete();
         });
-    }
-
-    /**
-     * Legacy floating IP allocation stub enforcing active user status.
-     *
-     * @throws ValidationException
-     */
-    public function allocateFloatingIp(User $user): void
-    {
-        if ($user->status !== 'active') {
-            throw ValidationException::withMessages(['user' => ['User account is not active.']]);
-        }
-
-        throw new \RuntimeException('Floating IP allocations are retired.');
     }
 }

@@ -22,7 +22,7 @@
 - **📸 Asynchronous Point-in-Time Snapshots**
   Stateful and stateless snapshots for VMs and containers with distributed Redis locks, real-time WebSocket progress transitions, per-tier quota limits, and a pluggable `BackupTargetInterface`.
 - **🌐 Ranged IPAM & Multi-Mode Networking**
-  IPv4/IPv6 subnet pools with **Routed** (Layer 3 point-to-point + Cloud-Init Netplan) and **Manual** modes, floating IP allocation/reassignment, Reverse DNS (PTR) management, and hypervisor preflight checks.
+  IPv4/IPv6 subnet pools with **Routed** (Layer 3 point-to-point + Cloud-Init Netplan) and **Manual** modes, dedicated IP lifecycle with cooldown quarantine periods, and hypervisor preflight checks.
 - **📊 Multi-Tenant Quota Groups & Atomic Resource Locking**
   Reusable plans/tiers (Standard, Developer, Enterprise Unlimited `∞`) with instant multi-tenant synchronization and race-free provisioning via database row locks and Redis mutexes.
 - **🛡️ Tamper-Evident Audit Subsystem**

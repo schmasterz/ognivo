@@ -51,11 +51,9 @@ In `manual` mode, guest networking is managed externally by the infrastructure o
 
 ---
 
-## 3. Floating IPs, Cooldowns & Reverse DNS (PTR)
+## 3. Allocation Cooldown Period
 
-- **Floating IP Allocation:** Tenants can claim standalone floating IPs (`POST /api/ips/floating`) within their quota limits and dynamically attach, detach, or reassign them across instances (`POST /api/ips/{id}/reassign`).
-- **IP Cooling Period:** Released IP allocations can enter a `cooling` state (`released_at`) before returning to general circulation.
-- **Reverse DNS (PTR):** Tenants can configure custom FQDN PTR records (`PUT /api/ips/{id}/ptr`) on their allocated public IP addresses.
+- **IP Cooling Period:** Released IP allocations enter a `cooling` state (`released_at`) for a pool-configured duration (`cooldown_seconds`) before returning to general circulation. During this quarantine window, the address cannot be immediately reassigned, preventing network disruption and traffic leakage from previous instances.
 
 ---
 

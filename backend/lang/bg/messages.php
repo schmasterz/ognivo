@@ -57,14 +57,11 @@ return [
         'fake_driver_disabled' => 'Фалшивият (fake) драйвер за хипервайзор не е разрешен извън local или testing среда.',
     ],
     'ip' => [
-        'ptr_updated' => 'Reverse DNS (PTR) записът бе обновен успешно.',
         'reassigned' => 'IP адресът бе пренасочен успешно.',
         'detached' => 'IP адресът бе откачен успешно.',
-        'floating_allocated' => 'Резервиран е нов Floating IP адрес успешно.',
         'released' => 'IP адресът бе освободен успешно обратно в пула.',
         'not_found_or_unauthorized' => 'IP адресът не е намерен или нямате права за него.',
         'pool_exhausted' => 'Няма свободни IP адреси в избрания пул.',
-        'invalid_fqdn' => 'PTR записът трябва да бъде валиден FQDN домейн.',
         'ipv6_not_supported_v1' => 'IPv6 не се поддържа във версия 1.0.',
     ],
     'admin' => [

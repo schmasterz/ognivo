@@ -29,10 +29,9 @@ $actions = [
     'vm.snapshot.restored' => 'Snapshot restored',
     'vm.snapshot.deleted' => 'Snapshot deleted',
 
-    'ip.floating.allocated' => 'Public IP allocated',
-    'ip.floating.released' => 'Public IP released',
+    'ip.allocated' => 'Public IP allocated',
+    'ip.released' => 'Public IP released',
     'ip.reassigned' => 'IP address reassigned',
-    'ip.ptr.updated' => 'Reverse DNS (PTR) record updated',
     'ip_pool.created' => 'IP pool created',
     'ip_pool.updated' => 'IP pool updated',
     'ip_pool.deleted' => 'IP pool deleted',

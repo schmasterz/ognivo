@@ -36,10 +36,9 @@ enum AuditAction: string
     case VmSnapshotDeleted = 'vm.snapshot.deleted';
 
     // IP & IP Pool
-    case IpFloatingAllocated = 'ip.floating.allocated';
-    case IpFloatingReleased = 'ip.floating.released';
+    case IpAllocated = 'ip.allocated';
+    case IpReleased = 'ip.released';
     case IpReassigned = 'ip.reassigned';
-    case IpPtrUpdated = 'ip.ptr.updated';
     case IpPoolCreated = 'ip_pool.created';
     case IpPoolUpdated = 'ip_pool.updated';
     case IpPoolDeleted = 'ip_pool.deleted';

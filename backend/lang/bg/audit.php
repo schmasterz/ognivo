@@ -29,10 +29,9 @@ $actions = [
     'vm.snapshot.restored' => 'Възстановено моментно копие (snapshot)',
     'vm.snapshot.deleted' => 'Изтрито моментно копие (snapshot)',
 
-    'ip.floating.allocated' => 'Заделен публичен IP адрес',
-    'ip.floating.released' => 'Освободен публичен IP адрес',
+    'ip.allocated' => 'Заделен публичен IP адрес',
+    'ip.released' => 'Освободен публичен IP адрес',
     'ip.reassigned' => 'Пренасочен IP адрес',
-    'ip.ptr.updated' => 'Обновен PTR (Reverse DNS) запис',
     'ip_pool.created' => 'Създаден IP пул',
     'ip_pool.updated' => 'Редактиран IP пул',
     'ip_pool.deleted' => 'Изтрит IP пул',

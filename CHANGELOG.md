@@ -38,7 +38,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### 🌐 Ranged IPAM & Multi-Mode Networking
 - **IPv4 & IPv6 Subnet Pools:** Support for both **Routed** (Layer 3 `/32` & `/128` point-to-point with Cloud-Init Netplan) and **Manual** networking modes.
-- **IP Lifecycle & Preflight Verification:** Floating IP reassignment, allocation cooldown windows, Reverse DNS (PTR) records, and automated hypervisor network preflight checks.
+- **IP Lifecycle & Preflight Verification:** Dedicated IP allocation lifecycle, allocation cooldown quarantine windows, and automated hypervisor network preflight checks.
 
 #### 📊 Multi-Tenant Quotas, Identity & Access Control
 - **Reusable Quota Groups:** Tiered resource plans (vCPU, RAM, disk, instances, public IPs, snapshots, including unlimited `∞` tiers) with instant propagation to all assigned tenants and hypervisor projects.

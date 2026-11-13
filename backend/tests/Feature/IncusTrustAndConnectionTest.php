@@ -18,6 +18,17 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Spatie\Permission\Models\Role;
 
+function generateTestCertificate(string $commonName = '127.0.0.1'): array
+{
+    $privkey = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+    $csr = openssl_csr_new(['commonName' => $commonName], $privkey);
+    $cert = openssl_csr_sign($csr, null, $privkey, 365);
+    openssl_x509_export($cert, $certPem);
+    $fingerprint = strtolower((string) openssl_x509_fingerprint($certPem, 'sha256'));
+
+    return ['pem' => $certPem, 'fingerprint' => $fingerprint];
+}
+
 beforeEach(function () {
     Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
     Role::firstOrCreate(['name' => 'customer', 'guard_name' => 'web']);
@@ -284,8 +295,9 @@ describe('Incus Trust Token Flow & Onboarding', function () {
     });
 
     test('successful flow sends only the public certificate never the private key and stores pinned certificate', function () {
-        $matchingFp = '9b935f9dd63e144a9918731ad2b31f9076f8490a61250f1454685ff8e69d2d88';
-        $fakeServerPem = "-----BEGIN CERTIFICATE-----\nSERVER_PEM_DATA\n-----END CERTIFICATE-----";
+        $testCert = generateTestCertificate('192.168.1.10');
+        $matchingFp = $testCert['fingerprint'];
+        $fakeServerPem = $testCert['pem'];
 
         $payload = [
             'client_name' => 'panel-client',
@@ -613,14 +625,17 @@ describe('Certificate Rotation, Retrust Flow & Workability', function () {
         expect($initialCert->status)->toBe(PanelCertificate::STATUS_ACTIVE)
             ->and($initialCert->active_marker)->toBe(1);
 
-        $fakeServerPem = "-----BEGIN CERTIFICATE-----\nSERVER_PEM_DATA\n-----END CERTIFICATE-----";
-        $matchingFp1 = '1111111111111111111111111111111111111111111111111111111111111111';
-        $matchingFp2 = '2222222222222222222222222222222222222222222222222222222222222222';
+        $testCert1 = generateTestCertificate('192.168.1.11');
+        $testCert2 = generateTestCertificate('192.168.1.12');
+        $fakeServerPem1 = $testCert1['pem'];
+        $fakeServerPem2 = $testCert2['pem'];
+        $matchingFp1 = $testCert1['fingerprint'];
+        $matchingFp2 = $testCert2['fingerprint'];
 
         $host1 = Host::create([
             'name' => 'cluster-node-01',
             'endpoint_url' => 'https://192.168.1.11:8443',
-            'server_certificate' => $fakeServerPem,
+            'server_certificate' => $fakeServerPem1,
             'server_fingerprint' => $matchingFp1,
             'driver' => 'incus',
             'needs_retrust' => false,
@@ -629,7 +644,7 @@ describe('Certificate Rotation, Retrust Flow & Workability', function () {
         $host2 = Host::create([
             'name' => 'cluster-node-02',
             'endpoint_url' => 'https://192.168.1.12:8443',
-            'server_certificate' => $fakeServerPem,
+            'server_certificate' => $fakeServerPem2,
             'server_fingerprint' => $matchingFp2,
             'driver' => 'incus',
             'needs_retrust' => false,
@@ -671,18 +686,12 @@ describe('Certificate Rotation, Retrust Flow & Workability', function () {
 
         $peerFetcher = Mockery::mock(TlsPeerCertificateFetcherInterface::class);
         $peerFetcher->shouldReceive('fetchPeerCertificate')
-            ->andReturnUsing(function ($address) use ($fakeServerPem, $matchingFp1, $matchingFp2) {
+            ->andReturnUsing(function ($address) use ($testCert1, $testCert2) {
                 if (str_contains($address, '192.168.1.11')) {
-                    return [
-                        'pem' => $fakeServerPem,
-                        'fingerprint' => $matchingFp1,
-                    ];
+                    return $testCert1;
                 }
 
-                return [
-                    'pem' => $fakeServerPem,
-                    'fingerprint' => $matchingFp2,
-                ];
+                return $testCert2;
             });
 
         $this->instance(TlsPeerCertificateFetcherInterface::class, $peerFetcher);
@@ -801,8 +810,9 @@ describe('Certificate Rotation, Retrust Flow & Workability', function () {
     });
 
     test('LXD driver preserved on token onboarding', function () {
-        $matchingFp = '3333333333333333333333333333333333333333333333333333333333333333';
-        $fakeServerPem = "-----BEGIN CERTIFICATE-----\nLXD_SERVER_PEM\n-----END CERTIFICATE-----";
+        $testCert = generateTestCertificate('192.168.1.30');
+        $matchingFp = $testCert['fingerprint'];
+        $fakeServerPem = $testCert['pem'];
 
         $payload = [
             'client_name' => 'panel-client',
