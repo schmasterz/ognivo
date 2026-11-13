@@ -8,6 +8,7 @@ backend/.env
 /.cursor/
 /.idea/
 /.docs/
+/.vscode/
 
 # Environments
 .env.development

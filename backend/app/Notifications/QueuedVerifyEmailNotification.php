@@ -26,6 +26,10 @@ final class QueuedVerifyEmailNotification extends VerifyEmail implements ShouldQ
     #[Override]
     public function toMail($notifiable): MailMessage
     {
+        /** @var \App\Services\SystemOverviewService $overviewService */
+        $overviewService = app(\App\Services\SystemOverviewService::class);
+        $overviewService->applyMailConfig();
+
         $verificationUrl = $this->verificationUrl($notifiable);
 
         $name = ($notifiable instanceof User) ? $notifiable->name : 'User';

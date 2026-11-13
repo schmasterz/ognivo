@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Models\VirtualMachine;
 use App\Models\VmSnapshot;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Mail;
 
 /**
@@ -247,6 +248,12 @@ final class SystemOverviewService
         );
 
         $this->applyMailConfig($merged);
+
+        try {
+            Artisan::call('queue:restart');
+        } catch (\Throwable) {
+            // Silently ignore if cache store or artisan is unavailable
+        }
     }
 
     /**
@@ -324,8 +331,8 @@ final class SystemOverviewService
         $fromName = ! empty($smtp['from_name'])
             ? $smtp['from_name']
             : (is_string($defaultName) ? $defaultName : Cast::string(config('app.name', 'Ognivo'), 'Ognivo'));
-
-        Mail::to($recipientEmail)
+        Mail::mailer('smtp')
+            ->to($recipientEmail)
             ->send(new SmtpTestMail($smtp['host'], $smtp['port'], $fromAddress, $fromName));
     }
 }
