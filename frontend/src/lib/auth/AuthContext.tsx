@@ -119,26 +119,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!isMounted) return;
         setUser(currentUser);
         setRoles(currentRoles);
-        if (typeof window !== "undefined" && localStorage.getItem("admin_token_backup")) {
-          const stored = localStorage.getItem("impersonated_user");
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("admin_token_backup");
+          const stored =
+            sessionStorage.getItem("impersonated_user") ||
+            localStorage.getItem("impersonated_user");
           if (stored) {
             try {
               const parsed = JSON.parse(stored) as ImpersonatedUserInfo;
               setImpersonatedUserState(parsed);
               setImpersonatingState(true);
             } catch {
+              sessionStorage.removeItem("impersonated_user");
               localStorage.removeItem("impersonated_user");
             }
-          } else {
+          } else if (sessionStorage.getItem("admin_token_backup")) {
             setImpersonatingState(true);
           }
         }
       } catch {
         if (!isMounted) return;
         if (typeof window !== "undefined") {
-          const backup = localStorage.getItem("admin_token_backup");
+          const backup =
+            sessionStorage.getItem("admin_token_backup") ||
+            localStorage.getItem("admin_token_backup");
           if (backup) {
             localStorage.setItem("auth_token", backup);
+            sessionStorage.removeItem("admin_token_backup");
+            sessionStorage.removeItem("impersonated_user");
             localStorage.removeItem("admin_token_backup");
             localStorage.removeItem("impersonated_user");
             setImpersonatedUserState(null);
@@ -154,6 +162,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           }
           localStorage.removeItem("auth_token");
+          sessionStorage.removeItem("admin_token_backup");
+          sessionStorage.removeItem("impersonated_user");
           localStorage.removeItem("admin_token_backup");
           localStorage.removeItem("impersonated_user");
         }
@@ -182,8 +192,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await api.adminImpersonateUser(targetUser.id);
 
       if (typeof window !== "undefined") {
-        localStorage.setItem("admin_token_backup", currentAdminToken);
-        localStorage.setItem(
+        sessionStorage.setItem("admin_token_backup", currentAdminToken);
+        sessionStorage.setItem(
           "impersonated_user",
           JSON.stringify({
             id: targetUser.id,
@@ -191,6 +201,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             email: targetUser.email,
           })
         );
+        localStorage.removeItem("admin_token_backup");
+        localStorage.removeItem("impersonated_user");
         localStorage.setItem("auth_token", res.token);
       }
 
@@ -215,18 +227,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const stopImpersonation = useCallback(async (): Promise<boolean> => {
     setIsStoppingImpersonation(true);
+    let stopRes: { message: string; admin_token?: string | null } | null = null;
     try {
-      await api.stopImpersonation().catch((err) => {
+      stopRes = await api.stopImpersonation().catch((err) => {
         console.warn("Failed to notify server of impersonation stop:", err);
+        return null;
       });
     } finally {
       if (typeof window !== "undefined") {
-        const backupToken = localStorage.getItem("admin_token_backup");
-        if (backupToken) {
-          localStorage.setItem("auth_token", backupToken);
+        const restoredToken =
+          stopRes?.admin_token ||
+          sessionStorage.getItem("admin_token_backup") ||
+          localStorage.getItem("admin_token_backup");
+        if (restoredToken) {
+          localStorage.setItem("auth_token", restoredToken);
         } else {
           localStorage.removeItem("auth_token");
         }
+        sessionStorage.removeItem("admin_token_backup");
+        sessionStorage.removeItem("impersonated_user");
         localStorage.removeItem("admin_token_backup");
         localStorage.removeItem("impersonated_user");
       }
@@ -273,6 +292,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       clearAllCachedFetchEntries();
       if (typeof window !== "undefined") {
+        sessionStorage.removeItem("admin_token_backup");
+        sessionStorage.removeItem("impersonated_user");
         localStorage.removeItem("admin_token_backup");
         localStorage.removeItem("impersonated_user");
       }

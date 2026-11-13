@@ -31,6 +31,7 @@ final class CheckProductionConfigTest extends TestCase
             'database.connections.mysql.root_password' => 'super_secure_random_root_pass_5678',
             'reverb.apps.apps.0.secret' => 'super_secure_reverb_secret_9999',
             'reverb.apps.apps.0.allowed_origins' => ['https://panel.example.com'],
+            'database.redis.default.password' => 'super_secure_redis_password_9876',
         ]);
 
         $this->setEnv('APP_KEY', $validKey);
@@ -40,6 +41,7 @@ final class CheckProductionConfigTest extends TestCase
         $this->setEnv('DB_ROOT_PASSWORD', 'super_secure_random_root_pass_5678');
         $this->setEnv('REVERB_APP_SECRET', 'super_secure_reverb_secret_9999');
         $this->setEnv('REVERB_ALLOWED_ORIGINS', 'https://panel.example.com');
+        $this->setEnv('REDIS_PASSWORD', 'super_secure_redis_password_9876');
     }
 
     public function test_valid_configuration_passes(): void
@@ -180,6 +182,39 @@ final class CheckProductionConfigTest extends TestCase
 
         $this->artisan('app:check-production-config')
             ->expectsOutputToContain('RUN_SEEDERS is enabled')
+            ->assertExitCode(1);
+    }
+
+    public function test_rejects_empty_redis_password(): void
+    {
+        $this->setValidProductionConfig();
+        config(['database.redis.default.password' => '']);
+        $this->setEnv('REDIS_PASSWORD', '');
+
+        $this->artisan('app:check-production-config')
+            ->expectsOutputToContain('REDIS_PASSWORD is empty')
+            ->assertExitCode(1);
+    }
+
+    public function test_rejects_secret_password_for_redis(): void
+    {
+        $this->setValidProductionConfig();
+        config(['database.redis.default.password' => 'secret_password']);
+        $this->setEnv('REDIS_PASSWORD', 'secret_password');
+
+        $this->artisan('app:check-production-config')
+            ->expectsOutputToContain("REDIS_PASSWORD is set to an unsafe default ('secret_password')")
+            ->assertExitCode(1);
+    }
+
+    public function test_rejects_change_me_for_redis(): void
+    {
+        $this->setValidProductionConfig();
+        config(['database.redis.default.password' => 'CHANGE_ME']);
+        $this->setEnv('REDIS_PASSWORD', 'CHANGE_ME');
+
+        $this->artisan('app:check-production-config')
+            ->expectsOutputToContain("REDIS_PASSWORD is set to an unsafe default ('CHANGE_ME')")
             ->assertExitCode(1);
     }
 }

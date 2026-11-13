@@ -51,7 +51,7 @@ flowchart TB
     Backend -->|"mTLS (:8443)"| Incus
     Queue -->|"mTLS (:8443)"| Incus
     IncusEvents -->|"mTLS Events (:8443)"| Incus
-    ConsoleProxy -->|"mTLS WSS (:8443)"| Incus
+    ConsoleProxy -->|"WSS Secret + SPKI Pin (:8443)"| Incus
 ```
 
 ---
@@ -63,7 +63,7 @@ flowchart TB
 | **Backend Runtime** | PHP | `8.5` (FPM Alpine) | Server API runtime |
 | **Backend Framework** | Laravel Framework | `13.x` | REST API, Queue Jobs, Scheduling, Broadcasting |
 | **WebSocket Server** | Laravel Reverb | `1.12.x` | Real-time private channel event broadcasting (`:8080`) |
-| **Console Bridge** | Node.js + `ws` + `ioredis` | `22` (Alpine) | Zero-knowledge WebSocket-to-Incus mTLS console proxy (`:8085`) |
+| **Console Bridge** | Node.js + `ws` + `ioredis` | `22` (Alpine) | Zero-knowledge WebSocket-to-Incus SPKI-pinned console proxy (`:8085`) |
 | **Authentication & RBAC** | Laravel Sanctum & Spatie Permission | `4.x` / `8.x` | Bearer API tokens, role-based access (`admin`, `customer`), impersonation |
 | **State Machine & Routing** | Spatie Model States & Route Attributes | `2.x` / `1.x` | Strict VM state transitions (`VmState`) and PHP 8 route attributes |
 | **API Specification** | Dedoc Scramble | `0.13.x` | Automated OpenAPI v3 specification (`/docs/api`) |

@@ -86,6 +86,14 @@ final class CheckProductionConfigCommand extends Command
             $violations[] = 'RUN_SEEDERS is enabled. Database seeders must not run automatically in production.';
         }
 
+        // 8. REDIS_PASSWORD check: must not be empty or unsafe default
+        $redisPassword = (string) (config('database.redis.default.password') ?? env('REDIS_PASSWORD', ''));
+        if ($redisPassword === '' || $redisPassword === 'null') {
+            $violations[] = 'REDIS_PASSWORD is empty. A strong Redis password is required in production.';
+        } elseif ($redisPassword === 'secret_password' || $redisPassword === 'CHANGE_ME') {
+            $violations[] = "REDIS_PASSWORD is set to an unsafe default ('{$redisPassword}').";
+        }
+
         if (! empty($violations)) {
             $this->error('================================================================');
             $this->error(' PRODUCTION CONFIGURATION CHECK FAILED: UNSAFE DEFAULTS DETECTED');

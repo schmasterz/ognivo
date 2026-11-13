@@ -92,7 +92,7 @@ All core services define native Docker healthchecks:
 - **Webserver (`nginx`):** HTTPS probe to `https://127.0.0.1/up`
 - **Frontend (`nextjs`):** HTTP probe to `http://127.0.0.1:3000/`
 - **Reverb:** HTTP probe to `http://127.0.0.1:8080/`
-- **MySQL & Redis:** Native CLI pings (`mysqladmin ping`, `redis-cli ping`)
+- **MySQL & Redis:** Native CLI pings with credentials (`mysqladmin ping`, `redis-cli -a "$REDIS_PASSWORD" ping`)
 
 ---
 
@@ -102,8 +102,9 @@ When `APP_ENV=production`, `backend/docker-entrypoint.sh` runs `php artisan app:
 1. Empty `APP_KEY`, `CHANGE_ME`, or a known compromised example key.
 2. `DB_PASSWORD` or `DB_ROOT_PASSWORD` set to `secret_password` or `CHANGE_ME`.
 3. `REVERB_APP_SECRET` set to `reverb_secret_key` or `CHANGE_ME`.
-4. `REVERB_ALLOWED_ORIGINS` containing wildcard `*`.
-5. `APP_DEBUG=true` or `RUN_SEEDERS=true`.
+4. `REDIS_PASSWORD` empty, unset, `null`, `secret_password`, or `CHANGE_ME`.
+5. `REVERB_ALLOWED_ORIGINS` containing wildcard `*`.
+6. `APP_DEBUG=true` or `RUN_SEEDERS=true`.
 
 ---
 

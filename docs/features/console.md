@@ -24,8 +24,8 @@ sequenceDiagram
     Browser->>Nginx: WSS /console?ticket=...
     Nginx->>Proxy: Upgrade WS (:8085)
     Proxy->>Redis: Atomic GETDEL console:ticket:{ticket}
-    Redis-->>Proxy: Target host URL + mTLS certs + FD secrets
-    Proxy->>Incus: Outbound mTLS WSS /1.0/operations/{id}/websocket
+    Redis-->>Proxy: Target host URL + SPKI pin + FD secrets
+    Proxy->>Incus: Outbound WSS (Secret Auth + SPKI Pinning) /1.0/operations/{id}/websocket
     Proxy<<->>Browser: Duplex terminal stream
 ```
 
@@ -33,7 +33,7 @@ sequenceDiagram
 1. The authenticated workload owner requests `POST /api/vms/{id}/console`.
 2. The Laravel backend verifies ownership via `VirtualMachinePolicy::viewConsole` and invokes `createConsoleSession` on the hypervisor driver.
 3. Incus starts a console websocket operation and returns internal file descriptor (`fd`) secrets.
-4. `ConsoleTicketService` stores the hypervisor endpoint, mTLS credentials, and operation secrets in Redis with an exact **60-second TTL** (`console:ticket:{ticket}`).
+4. `ConsoleTicketService` stores the hypervisor endpoint, SPKI public key pin, and operation secrets in Redis with an exact **60-second TTL** (`console:ticket:{ticket}`).
 5. The API returns **only** the opaque ticket and relative WebSocket path:
    ```json
    {
@@ -46,7 +46,7 @@ sequenceDiagram
    ```
    > **Security Invariant:** Hypervisor host IP addresses, mTLS client keys, and Incus operation secrets are **never** exposed to the browser.
 6. The browser connects to `wss://<host>/console?ticket=c8a4e3...`.
-7. `console-proxy` executes an atomic `GETDEL` in Redis. If valid, it opens an outbound mTLS WebSocket to the hypervisor and bridges the streams; if expired or already used, it closes the socket immediately.
+7. `console-proxy` executes an atomic `GETDEL` in Redis. If valid, it opens an outbound WSS connection to the hypervisor, validates the peer SubjectPublicKeyInfo (SPKI) against the pinned hash, and bridges the streams; if expired, pin mismatch, or already used, it closes the socket immediately.
 
 ---
 

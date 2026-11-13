@@ -299,6 +299,14 @@ final class HypervisorGatewayAndSecurityHardeningTest extends TestCase
         $this->assertEquals($onboardingPin, $host->server_public_key_pin);
     }
 
+    public function test_compute_pin_fails_closed_on_invalid_or_corrupted_pem(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Failed to extract SubjectPublicKeyInfo (SPKI) from provided X.509 certificate.');
+
+        HypervisorGateway::computePinFromCertificate("-----BEGIN CERTIFICATE-----\nINVALID_CORRUPTED_BASE64_DATA\n-----END CERTIFICATE-----");
+    }
+
     public function test_no_code_path_calls_old_fetch_then_request_sequence(): void
     {
         $pin = 'sha256//'.base64_encode(str_repeat('m', 32));

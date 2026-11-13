@@ -37,13 +37,13 @@ services:
     image: redis:7.4.12-alpine
     container_name: ognivo-redis
     restart: always
-    command: redis-server --appendonly yes
+    command: sh -c "redis-server --appendonly yes --requirepass $${REDIS_PASSWORD}"
     env_file:
       - .env.production
     networks:
       - app-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -95,6 +95,7 @@ services:
       dockerfile: Dockerfile.prod
     image: ognivo-backend:prod
     container_name: ognivo-queue
+    user: "www-data:www-data"
     restart: always
     command: php artisan queue:work --verbose --tries=3 --timeout=600 --max-time=3600
     env_file:
@@ -133,6 +134,7 @@ services:
       dockerfile: Dockerfile.prod
     image: ognivo-backend:prod
     container_name: ognivo-scheduler
+    user: "www-data:www-data"
     restart: always
     command: php artisan schedule:work
     env_file:
@@ -171,6 +173,7 @@ services:
       dockerfile: Dockerfile.prod
     image: ognivo-backend:prod
     container_name: ognivo-incus-events
+    user: "www-data:www-data"
     restart: always
     command: php artisan incus:listen
     env_file:
@@ -195,6 +198,7 @@ services:
       dockerfile: Dockerfile.prod
     image: ognivo-backend:prod
     container_name: ognivo-reverb
+    user: "www-data:www-data"
     restart: always
     command: php artisan reverb:start --host=0.0.0.0 --port=8080
     env_file:

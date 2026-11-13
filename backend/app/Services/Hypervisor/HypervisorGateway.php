@@ -58,9 +58,7 @@ class HypervisorGateway
             }
         }
 
-        // Fallback for test stubs / mock PEM data where OpenSSL cannot parse as real X.509:
-        // Compute SHA-256 over raw PEM data
-        return 'sha256//'.base64_encode(hash('sha256', $trimmed, true));
+        throw new InvalidArgumentException('Failed to extract SubjectPublicKeyInfo (SPKI) from provided X.509 certificate.');
     }
 
     /**

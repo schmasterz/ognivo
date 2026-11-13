@@ -79,10 +79,19 @@ final class ImpersonationController extends Controller
             ],
         ));
 
+        $adminToken = null;
+        if ($impersonatorId !== null) {
+            $impersonator = User::find($impersonatorId);
+            if ($impersonator !== null && $impersonator->status === 'active') {
+                $adminToken = $impersonator->createToken('admin_restored_session')->plainTextToken;
+            }
+        }
+
         $token->delete();
 
         return response()->json([
             'message' => 'Impersonation session ended successfully.',
+            'admin_token' => $adminToken,
         ]);
     }
 }

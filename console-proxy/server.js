@@ -1,6 +1,8 @@
 'use strict';
 
 const http = require('http');
+const https = require('https');
+const crypto = require('crypto');
 const { URL } = require('url');
 const { WebSocket, WebSocketServer } = require('ws');
 const Redis = require('ioredis');
@@ -165,6 +167,39 @@ function handleFakeSession(clientWs, payload) {
   });
 }
 
+class PinnedHttpsAgent extends https.Agent {
+  constructor(expectedPin, options = {}) {
+    super(options);
+    this.expectedPin = expectedPin;
+  }
+
+  createConnection(options, callback) {
+    const socket = super.createConnection(options, callback);
+    socket.on('secureConnect', () => {
+      if (!this.expectedPin) return; // Fake driver / dev mode without pin
+      const peerCert = socket.getPeerCertificate(true);
+      if (!peerCert || !peerCert.raw) {
+        socket.destroy(new Error('Missing peer certificate during TLS handshake'));
+        return;
+      }
+
+      try {
+        const x509 = new crypto.X509Certificate(peerCert.raw);
+        const spkiDer = x509.publicKey.export({ type: 'spki', format: 'der' });
+        const computedPin = 'sha256//' + crypto.createHash('sha256').update(spkiDer).digest('base64');
+
+        if (computedPin !== this.expectedPin) {
+          console.error(`[console-proxy] PIN MISMATCH! Expected ${this.expectedPin}, got ${computedPin}`);
+          socket.destroy(new Error(`Server public key pin mismatch: expected ${this.expectedPin}, got ${computedPin}`));
+        }
+      } catch (err) {
+        socket.destroy(new Error(`Failed to parse certificate public key: ${err.message}`));
+      }
+    });
+    return socket;
+  }
+}
+
 function handleIncusSession(clientWs, payload) {
   const hostEndpoint = payload.host_endpoint || '';
   const wsPath = payload.websocket_path || '';
@@ -174,7 +209,7 @@ function handleIncusSession(clientWs, payload) {
   const targetUrl = `${targetProtocol}//${parsedHost.host}${wsPath}`;
 
   const options = {
-    rejectUnauthorized: false, // TLS validation handled via public key pin if operational
+    rejectUnauthorized: false,
   };
 
   if (CLIENT_CERT_PATH && fs.existsSync(CLIENT_CERT_PATH)) {
@@ -182,6 +217,14 @@ function handleIncusSession(clientWs, payload) {
   }
   if (CLIENT_KEY_PATH && fs.existsSync(CLIENT_KEY_PATH)) {
     options.key = fs.readFileSync(CLIENT_KEY_PATH);
+  }
+
+  if (targetProtocol === 'wss:') {
+    options.agent = new PinnedHttpsAgent(payload.server_public_key_pin, {
+      rejectUnauthorized: false,
+      cert: options.cert,
+      key: options.key,
+    });
   }
 
   const incusWs = new WebSocket(targetUrl, options);
@@ -225,4 +268,4 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`[console-proxy] Listening on port ${PORT}`);
 });
 
-module.exports = { server, redis, redeemTicket, TICKET_REGEX };
+module.exports = { server, redis, redeemTicket, TICKET_REGEX, PinnedHttpsAgent, handleIncusSession };

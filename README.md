@@ -9,7 +9,7 @@
 [![Docker Compose](https://img.shields.io/badge/Docker-Compose_v2-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](LICENSE)
 
-**Ognivo** is a multi-tenant virtualization control plane for orchestrating **KVM virtual machines** and **LXC system containers** across distributed **Incus** and **LXD** clusters. Built as a clean, security-first open-source alternative to SolusVM, Virtualizor, and Proxmox VE, it combines a strongly typed Laravel 13 backend, a reactive Next.js 16 dashboard, real-time Reverb WebSockets, and a dedicated mTLS WebSocket console proxy.
+**Ognivo** is a multi-tenant virtualization control plane for orchestrating **KVM virtual machines** and **LXC system containers** across distributed **Incus** and **LXD** clusters. Built as a clean, security-first open-source alternative to SolusVM, Virtualizor, and Proxmox VE, it combines a strongly typed Laravel 13 backend, a reactive Next.js 16 dashboard, real-time Reverb WebSockets, and a dedicated SPKI-pinned WebSocket console proxy.
 
 ---
 
@@ -66,7 +66,7 @@ flowchart TB
     ConsoleProxy -->|"Atomic GETDEL Ticket"| Redis
     Backend -->|"mTLS REST (:8443)"| Incus
     Workers -->|"mTLS REST / Events (:8443)"| Incus
-    ConsoleProxy -->|"mTLS WSS Frame Pipe (:8443)"| Incus
+    ConsoleProxy -->|"WSS (Secret + SPKI Pinning :8443)"| Incus
 ```
 
 ---
@@ -163,7 +163,7 @@ All documentation is organized by domain inside the [`docs/`](docs/README.md) di
 | :--- | :--- |
 | **Backend API** | PHP `8.5` (FPM Alpine), Laravel `13`, Laravel Sanctum `4`, Spatie Permission & Model States, Dedoc Scramble (OpenAPI v3) |
 | **Frontend UI** | Next.js `16` (App Router, Turbopack), React `19`, TypeScript (Strict), Tailwind CSS `v4`, Lucide Icons, `xterm.js` |
-| **Real-Time & Proxy** | Laravel Reverb `1.12` (WebSockets), Laravel Echo, Node.js `22` (`console-proxy` WebSocket mTLS bridge) |
+| **Real-Time & Proxy** | Laravel Reverb `1.12` (WebSockets), Laravel Echo, Node.js `22` (`console-proxy` WebSocket SPKI-pinned bridge) |
 | **Data & Messaging** | Oracle MySQL `8.4 LTS`, Redis `7 Alpine` (`predis`), Nginx `1.27` (Reverse Proxy & TLS Termination) |
 | **Quality & Analysis** | Pest PHP `5` / PHPUnit `13`, Larastan / PHPStan (Level 10), Vimeo Psalm (Level 1), ESLint `9`, Node Native Test Runner |
 
