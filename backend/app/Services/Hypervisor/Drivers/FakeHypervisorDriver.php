@@ -118,6 +118,12 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
             Cache::put("fake_driver:deleted:{$vm->name}", true, 3600);
             Cache::forget("fake_driver:state:{$vm->name}");
             Cache::forget("fake_driver:status:{$vm->name}");
+            Cache::forget("fake_driver:snapshots:{$key}");
+            Cache::forget("fake_driver:snapshots:{$vm->name}");
+            Cache::forget("fake_driver:restored_snapshot:{$key}");
+            Cache::forget("fake_driver:restored_snapshot:{$vm->name}");
+            Cache::forget("fake_driver:marker:{$key}");
+            Cache::forget("fake_driver:marker:{$vm->name}");
         } catch (\Throwable) {
         }
 
@@ -241,7 +247,7 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
     public function getInstanceState(VirtualMachine $vm): array
     {
         $key = $this->instanceKey($vm);
-        $restored = $this->restoredSnapshots[$key] ?? $this->restoredSnapshots[$vm->name] ?? null;
+        $restored = $this->getRestoredSnapshot($vm);
 
         if (isset($this->instanceStates[$vm->name])) {
             $state = $this->instanceStates[$vm->name];
@@ -340,7 +346,7 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
     #[Override]
     public function deleteProject(string $project): bool
     {
-        if ($this->shouldFail['deleteProject'] ?? false) {
+        if ($this->shouldFail('deleteProject')) {
             return false;
         }
 
@@ -365,10 +371,43 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
         return $this;
     }
 
+    /**
+     * @return list<array{name: string, created_at: string, stateful: bool, size: int|null}>
+     */
+    private function getSnapshotsList(VirtualMachine $vm): array
+    {
+        $key = $this->instanceKey($vm);
+
+        if (isset($this->snapshots[$key])) {
+            return $this->snapshots[$key];
+        }
+
+        if (isset($this->snapshots[$vm->name])) {
+            return $this->snapshots[$vm->name];
+        }
+
+        try {
+            $cached = Cache::get("fake_driver:snapshots:{$key}");
+            if (is_array($cached)) {
+                /** @var list<array{name: string, created_at: string, stateful: bool, size: int|null}> $cached */
+                return $cached;
+            }
+
+            $cachedLegacy = Cache::get("fake_driver:snapshots:{$vm->name}");
+            if (is_array($cachedLegacy)) {
+                /** @var list<array{name: string, created_at: string, stateful: bool, size: int|null}> $cachedLegacy */
+                return $cachedLegacy;
+            }
+        } catch (\Throwable) {
+        }
+
+        return [];
+    }
+
     #[Override]
     public function createSnapshot(VirtualMachine $vm, string $name, bool $stateful = false): bool
     {
-        if ($this->shouldFail['createSnapshot'] ?? false) {
+        if ($this->shouldFail('createSnapshot')) {
             return false;
         }
 
@@ -377,25 +416,37 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
         }
 
         $key = $this->instanceKey($vm);
+        $list = $this->getSnapshotsList($vm);
 
-        foreach ($this->snapshots[$key] ?? $this->snapshots[$vm->name] ?? [] as $existing) {
+        foreach ($list as $existing) {
             if ($existing['name'] === $name) {
                 return false;
             }
         }
 
-        $this->snapshots[$key][] = [
+        $snapshotItem = [
             'name' => $name,
             'created_at' => now()->toIso8601String(),
             'stateful' => $stateful,
             'size' => null,
         ];
 
-        $this->snapshotStates[$key][$name] = [
+        $list[] = $snapshotItem;
+        $this->snapshots[$key] = $list;
+
+        $stateBucket = [
             'status' => $this->statuses[$key] ?? $this->statuses[$vm->name] ?? null,
             'state' => $this->instanceStates[$key] ?? $this->instanceStates[$vm->name] ?? null,
             'marker' => $this->stateMarkers[$key] ?? $this->stateMarkers[$vm->name] ?? null,
         ];
+
+        $this->snapshotStates[$key][$name] = $stateBucket;
+
+        try {
+            Cache::put("fake_driver:snapshots:{$key}", $list, 3600);
+            Cache::put("fake_driver:snapshot_states:{$key}:{$name}", $stateBucket, 3600);
+        } catch (\Throwable) {
+        }
 
         return true;
     }
@@ -406,12 +457,11 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
     #[Override]
     public function listSnapshots(VirtualMachine $vm): array
     {
-        if ($this->shouldFail['listSnapshots'] ?? false) {
+        if ($this->shouldFail('listSnapshots')) {
             return [];
         }
 
-        $key = $this->instanceKey($vm);
-        $items = $this->snapshots[$key] ?? $this->snapshots[$vm->name] ?? [];
+        $items = $this->getSnapshotsList($vm);
         $normalized = [];
 
         foreach ($items as $item) {
@@ -429,15 +479,15 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
     #[Override]
     public function restoreSnapshot(VirtualMachine $vm, string $name): bool
     {
-        if ($this->shouldFail['restoreSnapshot'] ?? false) {
+        if ($this->shouldFail('restoreSnapshot')) {
             return false;
         }
 
         $key = $this->instanceKey($vm);
-        $listKey = isset($this->snapshots[$key]) ? $key : $vm->name;
+        $list = $this->getSnapshotsList($vm);
 
         $found = false;
-        foreach ($this->snapshots[$listKey] ?? [] as $snapshot) {
+        foreach ($list as $snapshot) {
             if ($snapshot['name'] === $name) {
                 $found = true;
                 break;
@@ -449,30 +499,80 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
         }
 
         $this->restoredSnapshots[$key] = $name;
+        $this->restoredSnapshots[$vm->name] = $name;
+
+        try {
+            Cache::put("fake_driver:restored_snapshot:{$key}", $name, 3600);
+            Cache::put("fake_driver:restored_snapshot:{$vm->name}", $name, 3600);
+        } catch (\Throwable) {
+        }
 
         $stateBucket = $this->snapshotStates[$key][$name] ?? $this->snapshotStates[$vm->name][$name] ?? null;
+
+        if ($stateBucket === null) {
+            try {
+                $cachedBucket = Cache::get("fake_driver:snapshot_states:{$key}:{$name}")
+                    ?? Cache::get("fake_driver:snapshot_states:{$vm->name}:{$name}");
+                if (is_array($cachedBucket)) {
+                    /** @var array{status: string|null, state: array<string, mixed>|null, marker: string|null} $cachedBucket */
+                    $stateBucket = $cachedBucket;
+                }
+            } catch (\Throwable) {
+            }
+        }
 
         if ($stateBucket !== null) {
             if ($stateBucket['status'] !== null) {
                 $this->statuses[$vm->name] = $stateBucket['status'];
+                try {
+                    Cache::put("fake_driver:status:{$vm->name}", $stateBucket['status'], 3600);
+                } catch (\Throwable) {
+                }
             } else {
                 unset($this->statuses[$vm->name]);
+                try {
+                    Cache::forget("fake_driver:status:{$vm->name}");
+                } catch (\Throwable) {
+                }
             }
 
             if ($stateBucket['state'] !== null) {
                 $this->instanceStates[$vm->name] = $stateBucket['state'];
+                try {
+                    Cache::put("fake_driver:state:{$vm->name}", $stateBucket['state'], 3600);
+                } catch (\Throwable) {
+                }
             } else {
                 unset($this->instanceStates[$vm->name]);
+                try {
+                    Cache::forget("fake_driver:state:{$vm->name}");
+                } catch (\Throwable) {
+                }
             }
 
             if ($stateBucket['marker'] !== null) {
                 $this->stateMarkers[$key] = $stateBucket['marker'];
                 $this->stateMarkers[$vm->name] = $stateBucket['marker'];
+                try {
+                    Cache::put("fake_driver:marker:{$key}", $stateBucket['marker'], 3600);
+                    Cache::put("fake_driver:marker:{$vm->name}", $stateBucket['marker'], 3600);
+                } catch (\Throwable) {
+                }
             } else {
                 unset($this->stateMarkers[$key], $this->stateMarkers[$vm->name]);
+                try {
+                    Cache::forget("fake_driver:marker:{$key}");
+                    Cache::forget("fake_driver:marker:{$vm->name}");
+                } catch (\Throwable) {
+                }
             }
         } else {
             unset($this->stateMarkers[$key], $this->stateMarkers[$vm->name]);
+            try {
+                Cache::forget("fake_driver:marker:{$key}");
+                Cache::forget("fake_driver:marker:{$vm->name}");
+            } catch (\Throwable) {
+            }
         }
 
         return true;
@@ -481,17 +581,16 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
     #[Override]
     public function deleteSnapshot(VirtualMachine $vm, string $name): bool
     {
-        if ($this->shouldFail['deleteSnapshot'] ?? false) {
+        if ($this->shouldFail('deleteSnapshot')) {
             return false;
         }
 
         $key = $this->instanceKey($vm);
-        $listKey = isset($this->snapshots[$key]) ? $key : $vm->name;
-        $existing = $this->snapshots[$listKey] ?? [];
+        $list = $this->getSnapshotsList($vm);
         $filtered = [];
         $deleted = false;
 
-        foreach ($existing as $snapshot) {
+        foreach ($list as $snapshot) {
             if ($snapshot['name'] === $name) {
                 $deleted = true;
 
@@ -504,8 +603,17 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
             return false;
         }
 
-        $this->snapshots[$listKey] = $filtered;
+        $this->snapshots[$key] = $filtered;
+        unset($this->snapshots[$vm->name]);
         unset($this->snapshotStates[$key][$name], $this->snapshotStates[$vm->name][$name]);
+
+        try {
+            Cache::put("fake_driver:snapshots:{$key}", $filtered, 3600);
+            Cache::forget("fake_driver:snapshots:{$vm->name}");
+            Cache::forget("fake_driver:snapshot_states:{$key}:{$name}");
+            Cache::forget("fake_driver:snapshot_states:{$vm->name}:{$name}");
+        } catch (\Throwable) {
+        }
 
         return true;
     }
@@ -514,7 +622,24 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
     {
         $key = $this->instanceKey($vm);
 
-        return $this->restoredSnapshots[$key] ?? $this->restoredSnapshots[$vm->name] ?? null;
+        if (isset($this->restoredSnapshots[$key])) {
+            return $this->restoredSnapshots[$key];
+        }
+
+        if (isset($this->restoredSnapshots[$vm->name])) {
+            return $this->restoredSnapshots[$vm->name];
+        }
+
+        try {
+            $cached = Cache::get("fake_driver:restored_snapshot:{$key}")
+                ?? Cache::get("fake_driver:restored_snapshot:{$vm->name}");
+            if (is_string($cached)) {
+                return $cached;
+            }
+        } catch (\Throwable) {
+        }
+
+        return null;
     }
 
     public function setStateMarker(VirtualMachine $vm, ?string $marker): self
@@ -523,6 +648,17 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
         $this->stateMarkers[$key] = $marker;
         $this->stateMarkers[$vm->name] = $marker;
 
+        try {
+            if ($marker !== null) {
+                Cache::put("fake_driver:marker:{$key}", $marker, 3600);
+                Cache::put("fake_driver:marker:{$vm->name}", $marker, 3600);
+            } else {
+                Cache::forget("fake_driver:marker:{$key}");
+                Cache::forget("fake_driver:marker:{$vm->name}");
+            }
+        } catch (\Throwable) {
+        }
+
         return $this;
     }
 
@@ -530,7 +666,24 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
     {
         $key = $this->instanceKey($vm);
 
-        return $this->stateMarkers[$key] ?? $this->stateMarkers[$vm->name] ?? null;
+        if (array_key_exists($key, $this->stateMarkers)) {
+            return $this->stateMarkers[$key];
+        }
+
+        if (array_key_exists($vm->name, $this->stateMarkers)) {
+            return $this->stateMarkers[$vm->name];
+        }
+
+        try {
+            $cached = Cache::get("fake_driver:marker:{$key}")
+                ?? Cache::get("fake_driver:marker:{$vm->name}");
+            if (is_string($cached)) {
+                return $cached;
+            }
+        } catch (\Throwable) {
+        }
+
+        return null;
     }
 
     #[Override]
@@ -540,7 +693,7 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
             throw new \InvalidArgumentException('Containers do not support graphical VGA console.');
         }
 
-        if ($this->shouldFail['createConsoleSession'] ?? false) {
+        if ($this->shouldFail('createConsoleSession')) {
             throw new \RuntimeException(sprintf('Fake driver forced failure creating console session for VM %s', $vm->name));
         }
 
