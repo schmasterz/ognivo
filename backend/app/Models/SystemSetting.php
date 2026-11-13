@@ -198,7 +198,7 @@ final class SystemSetting extends Model
     public static function getSmtpSettings(): array
     {
         $default = [
-            'enabled' => false,
+            'enabled' => true,
             'host' => null,
             'port' => 587,
             'encryption' => 'tls',
@@ -213,7 +213,7 @@ final class SystemSetting extends Model
 
         if (is_array($setting)) {
             return [
-                'enabled' => (bool) ($setting['enabled'] ?? false),
+                'enabled' => (bool) ($setting['enabled'] ?? true),
                 'host' => isset($setting['host']) && is_string($setting['host']) ? $setting['host'] : null,
                 'port' => isset($setting['port']) && is_numeric($setting['port']) ? (int) $setting['port'] : 587,
                 'encryption' => isset($setting['encryption']) && is_string($setting['encryption']) ? $setting['encryption'] : 'tls',

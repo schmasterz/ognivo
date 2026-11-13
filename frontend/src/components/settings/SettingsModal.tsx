@@ -45,7 +45,7 @@ export function SettingsModal({
   const [frontendUrl, setFrontendUrl] = useState(settings.frontend_url ?? "");
 
   // SMTP Settings state
-  const [smtpEnabled, setSmtpEnabled] = useState(settings.smtp?.enabled ?? false);
+  const [smtpEnabled, setSmtpEnabled] = useState(settings.smtp?.enabled ?? true);
   const [smtpHost, setSmtpHost] = useState(settings.smtp?.host ?? "");
   const [smtpPort, setSmtpPort] = useState<number | string>(settings.smtp?.port ?? 587);
   const [smtpEncryption, setSmtpEncryption] = useState<"tls" | "ssl" | "none">(
@@ -79,7 +79,7 @@ export function SettingsModal({
       setRegistrationEnabled(settings.registration_enabled);
       setFrontendUrl(settings.frontend_url ?? "");
 
-      setSmtpEnabled(settings.smtp?.enabled ?? false);
+      setSmtpEnabled(settings.smtp?.enabled ?? true);
       setSmtpHost(settings.smtp?.host ?? "");
       setSmtpPort(settings.smtp?.port ?? 587);
       setSmtpEncryption(settings.smtp?.encryption ?? "tls");
