@@ -13,7 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### 🎯 Vision for `1.0.0`
 
-**Ognivo 1.0.0** establishes a modern, security-first open-source multi-tenant cloud control plane for **Incus** and **LXD** hypervisors, built with **Laravel 13 (PHP 8.5)**, **Next.js 16 (React 19)**, **Laravel Reverb**, and an isolated **Node.js 22 mTLS Console Proxy**.
+**Ognivo 1.0.0** establishes a modern, security-first open-source multi-tenant cloud control plane for **Incus** and **LXD** hypervisors, built with **Laravel 13 (PHP 8.5)**, **Next.js 16 (React 19)**, **Laravel Reverb**, and an isolated **Node.js 26 LTS mTLS Console Proxy**.
 
 ### ✨ Added in `1.0.0-alpha.1`
 
@@ -31,7 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Live Event Streaming & Drift Detection:** Real-time hypervisor event daemon (`php artisan incus:listen`) combined with scheduled state reconciliation (`php artisan vm:reconcile`) and an administrative Drift Resolution UI.
 
 #### 🖥️ Zero-Knowledge Interactive Web Console
-- **Isolated `console-proxy` Microservice:** Standalone Node.js 22 service streaming live `xterm.js` terminal sessions and console logs over mTLS WebSockets using atomic single-use 60-second Redis tickets (`GETDEL`).
+- **Isolated `console-proxy` Microservice:** Standalone Node.js 26 LTS service streaming live `xterm.js` terminal sessions and console logs over mTLS WebSockets using atomic single-use 60-second Redis tickets (`GETDEL`).
 - **Strict Tenant Console Privacy:** Cryptographic and policy-level guardrails (`VirtualMachinePolicy::viewConsole`) prevent administrators—even during active user impersonation—from accessing customer guest consoles.
 
 #### 📸 Point-in-Time Snapshots
@@ -44,7 +44,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### 📊 Multi-Tenant Quotas, Identity & Access Control
 - **Reusable Quota Groups:** Tiered resource plans (vCPU, RAM, disk, instances, public IPs, snapshots, including unlimited `∞` tiers) with instant propagation to all assigned tenants and hypervisor projects.
-- **Hardened Authentication & Secret Rotation:** Per-user Base62 salt + HMAC password pre-hashing, expiring Sanctum Bearer tokens, personal API credentials, email verification, password reset, `APP_KEY` secret re-encryption (`php artisan secrets:reencrypt`), and audited admin impersonation.
+- **Hardened Authentication & Secret Rotation:** Per-user Base62 salt + HMAC password pre-hashing, expiring Sanctum Bearer tokens, personal API credentials, email verification, password reset, `APP_KEY` secret re-encryption (`php artisan app:reencrypt-secrets`), and audited admin impersonation.
 - **Automated Tenant Lifecycle Jobs:** Background suspension (`SuspendUserWorkloadsJob`) and cleanup (`DeleteUserWorkloadsJob`) of tenant workloads upon account status changes.
 
 #### 🛡️ Tamper-Evident Audit Subsystem

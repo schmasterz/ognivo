@@ -10,10 +10,13 @@ use App\Models\User;
 use App\Models\VirtualMachine;
 use App\Services\ConsoleTicketService;
 use App\Services\Hypervisor\HypervisorManager;
+use App\Services\PanelCertificateService;
 use App\States\Vm\Running;
 use App\States\Vm\Stopped;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Redis;
+use Mockery\LegacyMockInterface;
+use Mockery\MockInterface;
 use Spatie\Permission\Models\Role;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
@@ -82,7 +85,8 @@ final class ConsoleTicketServiceTest extends TestCase
 
     public function test_issue_ticket_stores_payload_in_redis_and_returns_safe_dto(): void
     {
-        Redis::spy();
+        /** @var MockInterface&LegacyMockInterface $redisMock */
+        $redisMock = Redis::spy();
 
         $dto = $this->service->issueTicket($this->vm, $this->owner, 'console');
 
@@ -92,7 +96,7 @@ final class ConsoleTicketServiceTest extends TestCase
         $this->assertNotEmpty($dto->expiresAt);
         $this->assertSame('console', $dto->type);
 
-        Redis::shouldHaveReceived('setex')->with(
+        $redisMock->shouldHaveReceived('setex')->with(
             'console:ticket:'.$dto->ticket,
             60,
             \Mockery::on(function (string $json): bool {
@@ -102,7 +106,41 @@ final class ConsoleTicketServiceTest extends TestCase
                 return $data['user_id'] === $this->owner->id
                     && $data['virtual_machine_id'] === $this->vm->id
                     && $data['console_type'] === 'console'
-                    && str_contains($data['websocket_path'], 'fake-op-console-');
+                    && is_string($data['websocket_path'])
+                    && str_contains($data['websocket_path'], 'fake-op-console-')
+                    && $data['client_certificate'] === null
+                    && $data['client_private_key'] === null;
+            })
+        );
+    }
+
+    public function test_issue_ticket_stores_mtls_credentials_when_panel_certificate_exists(): void
+    {
+        $certService = app(PanelCertificateService::class);
+        $panelCert = $certService->generate();
+
+        /** @var MockInterface&LegacyMockInterface $redisMock */
+        $redisMock = Redis::spy();
+
+        $dto = $this->service->issueTicket($this->vm, $this->owner, 'console');
+
+        $this->assertSame($this->vm->id, $dto->virtualMachineId);
+        $this->assertSame(64, strlen($dto->ticket));
+
+        $redisMock->shouldHaveReceived('setex')->with(
+            'console:ticket:'.$dto->ticket,
+            60,
+            \Mockery::on(function (string $json) use ($panelCert): bool {
+                /** @var array<string, mixed> $data */
+                $data = json_decode($json, true);
+
+                return $data['user_id'] === $this->owner->id
+                    && $data['virtual_machine_id'] === $this->vm->id
+                    && $data['console_type'] === 'console'
+                    && is_string($data['websocket_path'])
+                    && str_contains($data['websocket_path'], 'fake-op-console-')
+                    && $data['client_certificate'] === $panelCert->certificate
+                    && $data['client_private_key'] === $panelCert->private_key;
             })
         );
     }

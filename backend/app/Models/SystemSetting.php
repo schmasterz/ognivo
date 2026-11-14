@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Audit\Auditable;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Crypt;
 use Override;
 
 /**
@@ -212,13 +214,23 @@ final class SystemSetting extends Model
         $setting = self::getSetting('smtp_settings', $default);
 
         if (is_array($setting)) {
+            $rawPassword = isset($setting['password']) && is_string($setting['password']) ? $setting['password'] : null;
+            $password = null;
+            if ($rawPassword !== null && $rawPassword !== '') {
+                try {
+                    $password = Crypt::decryptString($rawPassword);
+                } catch (DecryptException) {
+                    $password = $rawPassword;
+                }
+            }
+
             return [
                 'enabled' => (bool) ($setting['enabled'] ?? true),
                 'host' => isset($setting['host']) && is_string($setting['host']) ? $setting['host'] : null,
                 'port' => isset($setting['port']) && is_numeric($setting['port']) ? (int) $setting['port'] : 587,
                 'encryption' => isset($setting['encryption']) && is_string($setting['encryption']) ? $setting['encryption'] : 'tls',
                 'username' => isset($setting['username']) && is_string($setting['username']) ? $setting['username'] : null,
-                'password' => isset($setting['password']) && is_string($setting['password']) ? $setting['password'] : null,
+                'password' => $password,
                 'from_address' => isset($setting['from_address']) && is_string($setting['from_address']) ? $setting['from_address'] : null,
                 'from_name' => isset($setting['from_name']) && is_string($setting['from_name']) ? $setting['from_name'] : null,
             ];

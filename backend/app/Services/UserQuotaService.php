@@ -44,8 +44,9 @@ final class UserQuotaService
         }
 
         $activeSnapshots = $this->countActiveSnapshots($user, $vm);
+        $effectiveLimit = $this->effectiveSnapshotLimit($user, (int) $maxSnapshots, $vm);
 
-        return $activeSnapshots < $maxSnapshots;
+        return $activeSnapshots < $effectiveLimit;
     }
 
     /**
@@ -63,8 +64,9 @@ final class UserQuotaService
         }
 
         $activeSnapshots = $this->countActiveSnapshots($user, $vm);
+        $effectiveLimit = $this->effectiveSnapshotLimit($user, (int) $maxSnapshots, $vm);
 
-        return max(0, (int) $maxSnapshots - $activeSnapshots);
+        return max(0, $effectiveLimit - $activeSnapshots);
     }
 
     /**
@@ -96,6 +98,22 @@ final class UserQuotaService
         }
 
         return $query->count();
+    }
+
+    /**
+     * Compute the effective snapshot limit for a single VM or across a user's active VMs.
+     */
+    private function effectiveSnapshotLimit(User $user, int $maxSnapshots, ?VirtualMachine $vm = null, ?int $activeVmCount = null): int
+    {
+        if ($vm !== null) {
+            return $maxSnapshots;
+        }
+
+        $vmCount = $activeVmCount ?? VirtualMachine::where('user_id', $user->id)
+            ->whereNotIn('status', ['failed', 'deleted'])
+            ->count();
+
+        return max(1, $vmCount) * $maxSnapshots;
     }
 
     /**
@@ -234,9 +252,12 @@ final class UserQuotaService
         $maxRam = (int) $quota->max_ram_mb;
         $maxStorage = (int) $quota->max_storage_gb;
         $maxSnapshots = $quota->max_snapshots;
+        $effectiveMaxSnapshots = isset($filters['vm_id'])
+            ? (int) $maxSnapshots
+            : $this->effectiveSnapshotLimit($targetUser, (int) $maxSnapshots, null, $vmsUsed);
         $snapshotsAvailable = $this->isUnlimitedSnapshots($maxSnapshots)
             ? -1
-            : max(0, (int) $maxSnapshots - $snapshotsUsed);
+            : max(0, $effectiveMaxSnapshots - $snapshotsUsed);
 
         return [
             'user' => [

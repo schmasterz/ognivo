@@ -440,7 +440,7 @@ final class AuditTamperRetentionPrivacyTest extends TestCase
         $this->assertSame(0, $exitVerify, 'Verify must still pass after prune.');
     }
 
-    public function test_verify_passes_after_pseudonymisation(): void
+    public function test_user_pseudonymise_replaces_labels_zeros_ip_user_agent_and_preserves_seals(): void
     {
         $user = User::factory()->create([
             'name' => 'Alice Tenant',
@@ -491,6 +491,24 @@ final class AuditTamperRetentionPrivacyTest extends TestCase
             ],
         ]);
 
+        // Row 3: user is actor with null context
+        $row3 = AuditLog::create([
+            'occurred_at' => $past->copy()->addSeconds(3),
+            'action' => 'impersonation.ended',
+            'actor_type' => 'user',
+            'actor_id' => $user->id,
+            'actor_label' => $user->name,
+            'tenant_user_id' => $user->id,
+            'outcome' => 'success',
+            'subject_type' => 'user',
+            'subject_id' => (string) $user->id,
+            'subject_label' => $user->name,
+            'ip' => '192.168.10.5',
+            'user_agent' => 'TenantBrowser/1.0',
+            'visibility' => 'tenant',
+            'context' => null,
+        ]);
+
         // Seal the rows
         Artisan::call('audit:seal');
         $this->assertDatabaseCount('audit_seals', 1);
@@ -522,6 +540,14 @@ final class AuditTamperRetentionPrivacyTest extends TestCase
         $ctx2 = $row2->context;
         $this->assertSame(['pseudonymised' => true], $ctx2['pii']);
 
+        // Inspect row 3
+        $row3->refresh();
+        $this->assertSame($expectedPseudonym, $row3->actor_label);
+        $this->assertSame($expectedPseudonym, $row3->subject_label);
+        $this->assertNull($row3->ip);
+        $this->assertNull($row3->user_agent);
+        $this->assertSame(['pseudonymised' => true], $row3->refresh()->context['pii'] ?? null);
+
         // Verify passes after pseudonymisation
         $exitVerifyAfter = Artisan::call('audit:verify');
         $this->assertSame(0, $exitVerifyAfter, 'Verify must pass after user pseudonymisation.');
@@ -531,6 +557,11 @@ final class AuditTamperRetentionPrivacyTest extends TestCase
             'action' => AuditAction::UserPseudonymised->value,
             'outcome' => 'success',
         ]);
+    }
+
+    public function test_verify_passes_after_pseudonymisation(): void
+    {
+        $this->test_user_pseudonymise_replaces_labels_zeros_ip_user_agent_and_preserves_seals();
     }
 
     public function test_attempted_email_is_removed_after_configured_days(): void

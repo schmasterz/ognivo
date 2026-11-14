@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace App\Services\Hypervisor\Transports;
 
 use App\Exceptions\FingerprintMismatchException;
+use App\Exceptions\MissingPinException;
 use App\Models\Host;
 use App\Services\Hypervisor\Contracts\IncusEventTransportInterface;
-use App\Services\Hypervisor\Exceptions\MissingPinException;
 use App\Services\Hypervisor\HypervisorGateway;
 use App\Services\Hypervisor\TlsPeerCertificateFetcherInterface;
 use App\Services\PanelCertificateService;

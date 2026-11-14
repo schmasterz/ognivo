@@ -86,9 +86,19 @@
       <code><![CDATA[public function broadcastOn(): array]]></code>
     </MissingOverrideAttribute>
   </file>
+  <file src="app/Exceptions/FingerprintMismatchException.php">
+    <ClassMustBeFinal>
+      <code><![CDATA[FingerprintMismatchException]]></code>
+    </ClassMustBeFinal>
+  </file>
   <file src="app/Exceptions/IpPoolExhaustedException.php">
     <ClassMustBeFinal>
       <code><![CDATA[IpPoolExhaustedException]]></code>
+    </ClassMustBeFinal>
+  </file>
+  <file src="app/Exceptions/MissingPinException.php">
+    <ClassMustBeFinal>
+      <code><![CDATA[MissingPinException]]></code>
     </ClassMustBeFinal>
   </file>
   <file src="app/Http/Controllers/Admin/AdminDriftController.php">
@@ -299,16 +309,6 @@
     <RedundantConditionGivenDocblockType>
       <code><![CDATA[is_array($item)]]></code>
     </RedundantConditionGivenDocblockType>
-  </file>
-  <file src="app/Services/Hypervisor/Exceptions/FingerprintMismatchException.php">
-    <ClassMustBeFinal>
-      <code><![CDATA[FingerprintMismatchException]]></code>
-    </ClassMustBeFinal>
-  </file>
-  <file src="app/Services/Hypervisor/Exceptions/MissingPinException.php">
-    <ClassMustBeFinal>
-      <code><![CDATA[MissingPinException]]></code>
-    </ClassMustBeFinal>
   </file>
   <file src="app/Services/Hypervisor/HypervisorGateway.php">
     <ClassMustBeFinal>

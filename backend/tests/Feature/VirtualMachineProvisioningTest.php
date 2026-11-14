@@ -10,6 +10,7 @@ use App\Models\IpPool;
 use App\Models\User;
 use App\Models\UserQuota;
 use App\Models\VirtualMachine;
+use App\States\Vm\Deleted;
 use App\States\Vm\Failed;
 use App\States\Vm\Running;
 use App\States\Vm\Suspended;
@@ -427,5 +428,61 @@ final class VirtualMachineProvisioningTest extends TestCase
                 'force' => false,
             ])
             ->assertStatus(403);
+    }
+
+    public function test_user_can_reuse_vm_name_on_same_host_after_previous_vm_is_deleted(): void
+    {
+        Queue::fake();
+
+        VirtualMachine::create([
+            'user_id' => $this->user->id,
+            'host_id' => $this->host->id,
+            'name' => 'reusable-vm',
+            'incus_project' => 'proj-test',
+            'status' => Deleted::class,
+            'cpu_cores' => 1,
+            'ram_mb' => 1024,
+            'disk_gb' => 10,
+            'os_image' => 'images:ubuntu/24.04',
+        ]);
+
+        $response = $this->actingAs($this->user)
+            ->postJson('/api/vms', [
+                'name' => 'reusable-vm',
+                'host_id' => $this->host->id,
+                'cpu_cores' => 1,
+                'ram_mb' => 1024,
+                'disk_gb' => 10,
+                'os_image' => 'images:ubuntu/24.04',
+            ]);
+
+        $response->assertStatus(202);
+    }
+
+    public function test_auto_selected_host_rejects_duplicate_active_vm_name_with_422(): void
+    {
+        VirtualMachine::create([
+            'user_id' => $this->user->id,
+            'host_id' => $this->host->id,
+            'name' => 'auto-host-dup',
+            'incus_project' => 'proj-test',
+            'status' => Running::class,
+            'cpu_cores' => 1,
+            'ram_mb' => 1024,
+            'disk_gb' => 10,
+            'os_image' => 'images:ubuntu/24.04',
+        ]);
+
+        $response = $this->actingAs($this->user)
+            ->postJson('/api/vms', [
+                'name' => 'auto-host-dup',
+                'cpu_cores' => 1,
+                'ram_mb' => 1024,
+                'disk_gb' => 10,
+                'os_image' => 'images:ubuntu/24.04',
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['name']);
     }
 }

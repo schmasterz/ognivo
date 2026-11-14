@@ -43,7 +43,7 @@ flowchart TB
         Frontend["⚛️ Next.js 16 App Server<br/>(:3000)"]
         Backend["🐘 Laravel 13 API (PHP 8.5-FPM)<br/>(:9000)"]
         Reverb["📡 Laravel Reverb WS<br/>(:8080)"]
-        ConsoleProxy["🖥️ Console Proxy (Node 22)<br/>(:8085)"]
+        ConsoleProxy["🖥️ Console Proxy (Node 26)<br/>(:8085)"]
         Workers["⚙️ Background Daemons<br/>(queue-worker · scheduler · incus-events)"]
         MySQL[("🗄️ MySQL 8.4 LTS<br/>(App & Audit Grants)")]
         Redis[("⚡ Redis 7 Alpine<br/>(Queues · Locks · Console Tickets)")]
@@ -185,7 +185,7 @@ All documentation is organized by domain inside the [`docs/`](docs/README.md) di
 | :--- | :--- |
 | **Backend API** | PHP `8.5` (FPM Alpine), Laravel `13`, Laravel Sanctum `4`, Spatie Permission & Model States, Dedoc Scramble (OpenAPI v3) |
 | **Frontend UI** | Next.js `16` (App Router, Turbopack), React `19`, TypeScript (Strict), Tailwind CSS `v4`, Lucide Icons, `xterm.js` |
-| **Real-Time & Proxy** | Laravel Reverb `1.12` (WebSockets), Laravel Echo, Node.js `22` (`console-proxy` WebSocket SPKI-pinned bridge) |
+| **Real-Time & Proxy** | Laravel Reverb `1.12` (WebSockets), Laravel Echo, Node.js `26 LTS` (`console-proxy` WebSocket SPKI-pinned bridge) |
 | **Data & Messaging** | Oracle MySQL `8.4 LTS`, Redis `7 Alpine` (`predis`), Nginx `1.27` (Reverse Proxy & TLS Termination) |
 | **Quality & Analysis** | Pest PHP `5` / PHPUnit `13`, Larastan / PHPStan (Level 10), Vimeo Psalm (Level 1), ESLint `9`, Node Native Test Runner |
 

@@ -6,9 +6,11 @@ namespace App\Console\Commands;
 
 use App\Models\Host;
 use App\Models\PanelCertificate;
+use App\Models\SystemSetting;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Crypt;
 use ReflectionClass;
 
 final class ReencryptSecretsCommand extends Command
@@ -88,6 +90,24 @@ final class ReencryptSecretsCommand extends Command
             }
 
             $this->info(" -> Re-encrypted {$classCount} record(s) for [{$class}].");
+        }
+
+        $smtpSetting = SystemSetting::where('key', 'smtp_settings')->first();
+        if ($smtpSetting !== null && is_array($smtpSetting->value)) {
+            if (isset($smtpSetting->value['password']) && is_string($smtpSetting->value['password']) && $smtpSetting->value['password'] !== '') {
+                try {
+                    $plainPassword = Crypt::decryptString($smtpSetting->value['password']);
+                    $value = $smtpSetting->value;
+                    $value['password'] = Crypt::encryptString($plainPassword);
+                    $smtpSetting->newQuery()->whereKey($smtpSetting->getKey())->update([
+                        'value' => json_encode($value, JSON_THROW_ON_ERROR),
+                    ]);
+                    $totalRecords++;
+                } catch (DecryptException $e) {
+                    $this->error("Failed to decrypt SMTP password in SystemSetting: {$e->getMessage()}");
+                    $totalErrors++;
+                }
+            }
         }
 
         if ($totalErrors > 0) {

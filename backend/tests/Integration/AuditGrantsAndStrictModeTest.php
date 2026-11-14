@@ -8,8 +8,10 @@ use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
 
+#[Group('integration')]
 final class AuditGrantsAndStrictModeTest extends TestCase
 {
     private function guardAgainstMissingAuditGrants(): void
@@ -90,18 +92,36 @@ final class AuditGrantsAndStrictModeTest extends TestCase
         $this->guardAgainstMissingAuditGrants();
 
         $originalStrict = config('audit.strict_grants');
+        $createdTempMainUser = false;
+        $mainUser = (string) (config('database.connections.mysql.username') === 'root'
+            ? env('DB_APP_USERNAME', 'ognivo_user')
+            : config('database.connections.mysql.username', 'ognivo_user'));
+
+        $migrationDb = DB::connection('migration');
+        $dbName = $migrationDb->getDatabaseName();
+
         try {
+            $userExists = $migrationDb->select('SELECT 1 FROM mysql.user WHERE User = ? LIMIT 1', [$mainUser]) !== [];
+
+            if (! $userExists) {
+                $mainPassword = 'ci_app_user_pw';
+                $migrationDb->statement("CREATE USER IF NOT EXISTS '{$mainUser}'@'%' IDENTIFIED BY '{$mainPassword}'");
+                $migrationDb->statement("GRANT ALL PRIVILEGES ON `{$dbName}`.* TO '{$mainUser}'@'%'");
+                $createdTempMainUser = true;
+            } else {
+                $configuredPassword = (string) config('database.connections.mysql.password', '');
+                $mainPassword = $configuredPassword !== ''
+                    ? $configuredPassword
+                    : (string) env('DB_APP_PASSWORD', 'ed2742367bcb674aac56a2cbebb55a35');
+            }
+
             config(['audit.strict_grants' => true]);
             $this->artisan('audit:grants', ['--force' => true])->assertSuccessful();
-
-            $mainUser = (string) (config('database.connections.mysql.username') === 'root'
-                ? env('DB_APP_USERNAME', 'ognivo_user')
-                : config('database.connections.mysql.username', 'ognivo_user'));
 
             config([
                 'database.connections.strict_main' => array_merge(config('database.connections.mysql'), [
                     'username' => $mainUser,
-                    'password' => env('DB_PASSWORD', 'ed2742367bcb674aac56a2cbebb55a35'),
+                    'password' => $mainPassword,
                 ]),
             ]);
             DB::purge('strict_main');
@@ -110,7 +130,7 @@ final class AuditGrantsAndStrictModeTest extends TestCase
 
             // Insert a test row via migration user
             $now = Carbon::now()->format('Y-m-d H:i:s.u');
-            DB::connection('migration')->table('audit_logs')->insert([
+            $migrationDb->table('audit_logs')->insert([
                 'occurred_at' => $now,
                 'request_id' => 'strict-test-uuid',
                 'actor_type' => 'system',
@@ -146,18 +166,23 @@ final class AuditGrantsAndStrictModeTest extends TestCase
             // Restore original state
             config(['audit.strict_grants' => $originalStrict]);
             try {
-                DB::connection('migration')->table('audit_logs')->where('request_id', 'strict-test-uuid')->delete();
+                $migrationDb->table('audit_logs')->where('request_id', 'strict-test-uuid')->delete();
             } catch (\Throwable) {
             }
 
             if (! $originalStrict) {
-                $mainUser = (string) config('database.connections.mysql.username', 'ognivo_user');
-                $dbName = DB::connection('migration')->getDatabaseName();
                 try {
-                    DB::connection('migration')->statement("GRANT ALL PRIVILEGES ON `{$dbName}`.* TO '{$mainUser}'@'%'");
+                    $migrationDb->statement("GRANT ALL PRIVILEGES ON `{$dbName}`.* TO '{$mainUser}'@'%'");
                 } catch (\Throwable) {
                 }
                 Artisan::call('audit:grants', ['--force' => true]);
+            }
+
+            if ($createdTempMainUser) {
+                try {
+                    $migrationDb->statement("DROP USER IF EXISTS '{$mainUser}'@'%'");
+                } catch (\Throwable) {
+                }
             }
         }
     }

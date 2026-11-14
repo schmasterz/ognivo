@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Services\Hypervisor;
 
+use App\Exceptions\FingerprintMismatchException;
+use App\Exceptions\MissingPinException;
 use App\Models\Host;
 use App\Models\PanelCertificate;
 use App\Models\VirtualMachine;
-use App\Services\Hypervisor\Exceptions\FingerprintMismatchException;
-use App\Services\Hypervisor\Exceptions\MissingPinException;
 use App\Services\PanelCertificateService;
 use GuzzleHttp\Promise\PromiseInterface;
 use Illuminate\Http\Client\PendingRequest;

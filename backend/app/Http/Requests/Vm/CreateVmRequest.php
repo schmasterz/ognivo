@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Http\Requests\Vm;
 
 use App\DTO\Vm\CreateVmDTO;
-use App\Models\Host;
 use App\Models\User;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Foundation\Http\FormRequest;
@@ -30,22 +29,26 @@ final class CreateVmRequest extends FormRequest
         $user = $this->user();
 
         $hostId = $this->input('host_id');
-        if ($hostId === null) {
-            $defaultHost = Host::where('is_active', true)->first();
-            $hostId = $defaultHost?->id;
+
+        $nameRules = [
+            'required',
+            'string',
+            'min:3',
+            'max:63',
+            'regex:/^[a-z0-9][a-z0-9\-]+[a-z0-9]$/',
+        ];
+
+        if ($hostId !== null) {
+            $nameRules[] = Rule::unique('virtual_machines')->where(
+                fn (Builder $query): Builder => $query
+                    ->where('user_id', $user->id)
+                    ->where('host_id', $hostId)
+                    ->where('status', '!=', 'deleted')
+            );
         }
 
         return [
-            'name' => [
-                'required',
-                'string',
-                'min:3',
-                'max:63',
-                'regex:/^[a-z0-9][a-z0-9\-]+[a-z0-9]$/',
-                Rule::unique('virtual_machines')->where(
-                    fn (Builder $query): Builder => $query->where('user_id', $user->id)->where('host_id', $hostId)
-                ),
-            ],
+            'name' => $nameRules,
             'instance_type' => ['nullable', 'string', Rule::in(['virtual-machine', 'container'])],
             'cpu_cores' => ['required', 'integer', 'min:1', 'max:64'],
             'ram_mb' => ['required', 'integer', 'min:512', 'max:131072'],

@@ -8,6 +8,7 @@ use App\Models\DriftReport;
 use App\Models\Host;
 use App\Models\User;
 use App\Models\VirtualMachine;
+use App\Services\IpManagementService;
 use App\States\Vm\Deleted;
 use App\States\Vm\Running;
 use App\States\Vm\Stopped;
@@ -101,9 +102,10 @@ class IncusEventSyncService
                         break;
 
                     case 'instance-deleted':
-                        if ($currentStatus !== 'deleted') {
+                        if (! in_array($currentStatus, ['deleted', 'provisioning', 'creating'], true)) {
                             $vm->status->transitionTo(Deleted::class);
                             $vm->save();
+                            app(IpManagementService::class)->releaseIp($vm);
                             Log::info(sprintf('Incus event: VM [%s] transitioned to Deleted on host [%s].', $vm->name, $host->name));
                         }
                         break;

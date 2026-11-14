@@ -15,6 +15,7 @@ use App\Services\Hypervisor\HypervisorGateway;
 use App\Services\Hypervisor\HypervisorManager;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -192,28 +193,31 @@ final class HostNodeService
      */
     public function delete(Host $host): void
     {
-        if ($host->virtualMachines()->count() > 0) {
+        if ($host->virtualMachines()->whereNotIn('status', ['deleted'])->exists()) {
             abort(422, 'Cannot delete compute node with active virtual machines deployed on it.');
         }
 
-        $host->ipPools()->update(['host_id' => null]);
-
         $parsedDeleteHost = parse_url($host->endpoint_url, PHP_URL_HOST);
 
-        $this->logger()->record(new AuditEntry(
-            action: AuditAction::HostDeleted,
-            outcome: AuditOutcome::Success,
-            subject: $host,
-            tenantUserId: null,
-            visibility: 'admin',
-            context: [
-                'name' => $host->name,
-                'endpoint_host' => is_string($parsedDeleteHost) && $parsedDeleteHost !== '' ? $parsedDeleteHost : $host->endpoint_url,
-                'server_fingerprint' => $host->server_fingerprint,
-            ],
-        ));
+        DB::transaction(function () use ($host, $parsedDeleteHost): void {
+            $host->virtualMachines()->where('status', 'deleted')->update(['host_id' => null]);
+            $host->ipPools()->delete();
 
-        $host->delete();
+            $this->logger()->record(new AuditEntry(
+                action: AuditAction::HostDeleted,
+                outcome: AuditOutcome::Success,
+                subject: $host,
+                tenantUserId: null,
+                visibility: 'admin',
+                context: [
+                    'name' => $host->name,
+                    'endpoint_host' => is_string($parsedDeleteHost) && $parsedDeleteHost !== '' ? $parsedDeleteHost : $host->endpoint_url,
+                    'server_fingerprint' => $host->server_fingerprint,
+                ],
+            ));
+
+            $host->delete();
+        });
     }
 
     /**
