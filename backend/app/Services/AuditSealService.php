@@ -64,7 +64,7 @@ final class AuditSealService
         $context = $log->context;
         if (is_array($context)) {
             unset($context['pii']);
-            $context = $this->canonicalizeData($context);
+            $context = $context === [] ? null : $this->canonicalizeData($context);
         } else {
             $context = null;
         }
