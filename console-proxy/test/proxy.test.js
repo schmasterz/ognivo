@@ -95,7 +95,7 @@ test('WebSocket handshake rejected with 403 when ticket does not exist in Redis'
   });
 });
 
-function createTestTlsServer() {
+function createTestTlsServer(serverOptions = {}) {
   const os = require('os');
   const path = require('path');
   const fs = require('fs');
@@ -114,8 +114,10 @@ function createTestTlsServer() {
   const invalidPin = 'sha256//' + crypto.createHash('sha256').update('wrong-data').digest('base64');
 
   const receivedChunks = [];
-  const tlsServer = https.createServer({ key, cert });
+  const peerCertificates = [];
+  const tlsServer = https.createServer({ key, cert, ...serverOptions });
   tlsServer.on('secureConnection', (socket) => {
+    peerCertificates.push(socket.getPeerCertificate());
     socket.on('data', (chunk) => {
       receivedChunks.push(chunk);
     });
@@ -132,7 +134,7 @@ function createTestTlsServer() {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   };
 
-  return { tlsServer, testWss, key, cert, validPin, invalidPin, receivedChunks, cleanup };
+  return { tlsServer, testWss, key, cert, validPin, invalidPin, receivedChunks, peerCertificates, tmpDir, cleanup };
 }
 
 test('PinnedHttpsAgent: (a) matching SPKI pin succeeds', async () => {
@@ -266,6 +268,58 @@ test('handleIncusSession does not leak expected or actual pin hashes to client W
     assert.ok(!sentMessages[0].includes('sha256//'), 'Should not leak pin hashes');
     assert.ok(!sentMessages[0].includes('mismatch'), 'Should not leak pin mismatch details');
     assert.strictEqual(mockClientWs.closed.code, 1011);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('handleIncusSession presents client_certificate and client_private_key from payload during TLS handshake', async () => {
+  const path = require('path');
+  const fs = require('fs');
+  const EventEmitter = require('events');
+
+  const fixture = createTestTlsServer({ requestCert: true, rejectUnauthorized: false });
+  try {
+    await new Promise((resolve) => fixture.tlsServer.listen(0, '127.0.0.1', resolve));
+    const tlsPort = fixture.tlsServer.address().port;
+
+    const clientKeyPath = path.join(fixture.tmpDir, 'client-key.pem');
+    const clientCertPath = path.join(fixture.tmpDir, 'client-cert.pem');
+    execSync(`openssl req -x509 -newkey rsa:2048 -nodes -keyout "${clientKeyPath}" -out "${clientCertPath}" -days 1 -subj "/CN=panel-mtls-client" 2>/dev/null`);
+    const clientKey = fs.readFileSync(clientKeyPath, 'utf8');
+    const clientCert = fs.readFileSync(clientCertPath, 'utf8');
+
+    const mockClientWs = new EventEmitter();
+    mockClientWs.readyState = WebSocket.OPEN;
+    mockClientWs.send = () => {};
+    mockClientWs.close = () => {};
+
+    const upstreamConnected = new Promise((resolve) => {
+      fixture.testWss.once('connection', (ws) => {
+        resolve(ws);
+      });
+    });
+
+    handleIncusSession(mockClientWs, {
+      host_endpoint: `https://127.0.0.1:${tlsPort}`,
+      websocket_path: '/1.0/operations/123/websocket',
+      server_public_key_pin: fixture.validPin,
+      client_certificate: clientCert,
+      client_private_key: clientKey,
+    });
+
+    const upstreamWs = await upstreamConnected;
+    assert.ok(upstreamWs, 'Upstream WebSocket should have connected');
+
+    assert.strictEqual(fixture.peerCertificates.length, 1);
+    const peerCert = fixture.peerCertificates[0];
+    assert.ok(peerCert, 'Peer certificate should be received by upstream TLS server');
+    assert.strictEqual(peerCert.subject.CN, 'panel-mtls-client');
+
+    const expectedX509 = new crypto.X509Certificate(clientCert);
+    assert.strictEqual(peerCert.fingerprint256, expectedX509.fingerprint256);
+
+    upstreamWs.close();
   } finally {
     fixture.cleanup();
   }

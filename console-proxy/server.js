@@ -232,11 +232,21 @@ function handleIncusSession(clientWs, payload) {
     rejectUnauthorized: false,
   };
 
-  if (CLIENT_CERT_PATH && fs.existsSync(CLIENT_CERT_PATH)) {
-    options.cert = fs.readFileSync(CLIENT_CERT_PATH);
-  }
-  if (CLIENT_KEY_PATH && fs.existsSync(CLIENT_KEY_PATH)) {
-    options.key = fs.readFileSync(CLIENT_KEY_PATH);
+  if (
+    typeof payload.client_certificate === 'string' &&
+    payload.client_certificate.trim() !== '' &&
+    typeof payload.client_private_key === 'string' &&
+    payload.client_private_key.trim() !== ''
+  ) {
+    options.cert = payload.client_certificate;
+    options.key = payload.client_private_key;
+  } else {
+    if (CLIENT_CERT_PATH && fs.existsSync(CLIENT_CERT_PATH)) {
+      options.cert = fs.readFileSync(CLIENT_CERT_PATH);
+    }
+    if (CLIENT_KEY_PATH && fs.existsSync(CLIENT_KEY_PATH)) {
+      options.key = fs.readFileSync(CLIENT_KEY_PATH);
+    }
   }
 
   if (targetProtocol === 'wss:') {

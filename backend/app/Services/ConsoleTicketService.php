@@ -27,6 +27,7 @@ final class ConsoleTicketService
         protected readonly HypervisorManager $hypervisorManager,
         protected readonly ?AuditLogger $auditLogger = null,
         protected readonly ?AuditContext $auditContext = null,
+        protected readonly ?PanelCertificateService $certService = null,
     ) {}
 
     protected function logger(): AuditLogger
@@ -101,6 +102,10 @@ final class ConsoleTicketService
             throw new \RuntimeException(sprintf('VirtualMachine #%d has no assigned host.', $vm->id));
         }
 
+        $certService = $this->certService ?? app(PanelCertificateService::class);
+        $clientCert = $certService->getActiveCertificate() ?? $certService->getRetiringCertificate();
+        $usableCert = ($clientCert !== null && $clientCert->isUsable()) ? $clientCert : null;
+
         $payload = [
             'user_id' => $user !== null ? $user->id : $vm->user_id,
             'virtual_machine_id' => $vm->id,
@@ -112,6 +117,8 @@ final class ConsoleTicketService
             'server_fingerprint' => $host->server_fingerprint,
             'websocket_path' => $session['websocket_path'],
             'control_path' => $session['control_path'] ?? null,
+            'client_certificate' => $usableCert?->certificate,
+            'client_private_key' => $usableCert?->private_key,
             'created_at' => time(),
         ];
 
