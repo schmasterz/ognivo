@@ -68,6 +68,8 @@ final class AuditVmCoverageTest extends TestCase
             'total_cpu_cores' => 32,
             'total_ram_mb' => 65536,
             'total_storage_gb' => 1000,
+            'capacity_source' => 'discovered',
+            'capacity_synced_at' => now(),
         ]);
 
         $this->pool = IpPool::create([

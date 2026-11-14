@@ -53,6 +53,11 @@ final class VirtualMachineProvisioningTest extends TestCase
             'endpoint_url' => 'https://127.0.0.1:8443',
             'driver' => 'fake',
             'is_active' => true,
+            'total_cpu_cores' => 64,
+            'total_ram_mb' => 131072,
+            'total_storage_gb' => 4000,
+            'capacity_source' => 'discovered',
+            'capacity_synced_at' => now(),
         ]);
 
         $this->pool = IpPool::create([
@@ -272,6 +277,11 @@ final class VirtualMachineProvisioningTest extends TestCase
             'endpoint_url' => 'https://127.0.0.2:8443',
             'driver' => 'fake',
             'is_active' => true,
+            'total_cpu_cores' => 64,
+            'total_ram_mb' => 131072,
+            'total_storage_gb' => 4000,
+            'capacity_source' => 'discovered',
+            'capacity_synced_at' => now(),
         ]);
 
         $pool2 = IpPool::create([

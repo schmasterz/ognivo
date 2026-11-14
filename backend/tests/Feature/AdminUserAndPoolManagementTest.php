@@ -43,6 +43,11 @@ final class AdminUserAndPoolManagementTest extends TestCase
                 'endpoint_url' => 'https://127.0.0.1:8443',
                 'driver' => 'fake',
                 'is_active' => true,
+                'total_cpu_cores' => 64,
+                'total_ram_mb' => 131072,
+                'total_storage_gb' => 4000,
+                'capacity_source' => 'discovered',
+                'capacity_synced_at' => now(),
             ]
         );
 
@@ -415,6 +420,8 @@ final class AdminUserAndPoolManagementTest extends TestCase
             'total_cpu_cores' => 64,
             'total_ram_mb' => 131072,
             'total_storage_gb' => 2000,
+            'capacity_source' => 'discovered',
+            'capacity_synced_at' => now(),
         ]);
 
         $suspendedUser = User::factory()->create([

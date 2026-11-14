@@ -9,7 +9,6 @@ use App\Models\Host;
 use App\Models\User;
 use App\Services\HostNodeService;
 use App\Services\Hypervisor\Drivers\FakeHypervisorDriver;
-use App\Services\Hypervisor\HypervisorGateway;
 use App\Services\Hypervisor\HypervisorManager;
 use App\Services\IncusTrustService;
 use App\Services\PanelCertificateService;

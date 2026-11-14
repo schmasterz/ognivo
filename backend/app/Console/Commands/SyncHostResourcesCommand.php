@@ -33,10 +33,10 @@ final class SyncHostResourcesCommand extends Command
     {
         $hostArg = $this->argument('host');
 
-        if ($hostArg !== null && $hostArg !== '') {
+        if (is_string($hostArg) && $hostArg !== '') {
             $host = is_numeric($hostArg)
                 ? Host::find((int) $hostArg)
-                : Host::where('name', (string) $hostArg)->first();
+                : Host::where('name', $hostArg)->first();
 
             if ($host === null) {
                 $this->error(sprintf('Host [%s] not found.', $hostArg));

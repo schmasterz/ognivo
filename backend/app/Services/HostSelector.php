@@ -76,9 +76,9 @@ class HostSelector
             return null;
         }
 
-        $reqCpu = isset($filters['cpu_cores']) && is_numeric($filters['cpu_cores']) ? (int) $filters['cpu_cores'] : 1;
-        $reqRam = isset($filters['ram_mb']) && is_numeric($filters['ram_mb']) ? (int) $filters['ram_mb'] : 1024;
-        $reqDisk = isset($filters['disk_gb']) && is_numeric($filters['disk_gb']) ? (int) $filters['disk_gb'] : 10;
+        $reqCpu = max(1, $filters['cpu_cores'] ?? 1);
+        $reqRam = max(1, $filters['ram_mb'] ?? 1024);
+        $reqDisk = max(1, $filters['disk_gb'] ?? 10);
 
         // Filter candidates that have at least one active pool with free addresses AND sufficient capacity
         $eligibleHosts = [];
@@ -101,7 +101,10 @@ class HostSelector
      * @param array{
      *     os_image?: string|Image|null,
      *     image?: string|Image|null,
-     *     instance_type?: string|null
+     *     instance_type?: string|null,
+     *     cpu_cores?: int|null,
+     *     ram_mb?: int|null,
+     *     disk_gb?: int|null
      * } $filters
      *
      * @throws ValidationException
@@ -149,9 +152,9 @@ class HostSelector
             }
         }
 
-        $cpu = isset($filters['cpu_cores']) && is_numeric($filters['cpu_cores']) ? (int) $filters['cpu_cores'] : 0;
-        $ram = isset($filters['ram_mb']) && is_numeric($filters['ram_mb']) ? (int) $filters['ram_mb'] : 0;
-        $disk = isset($filters['disk_gb']) && is_numeric($filters['disk_gb']) ? (int) $filters['disk_gb'] : 0;
+        $cpu = max(0, $filters['cpu_cores'] ?? 0);
+        $ram = max(0, $filters['ram_mb'] ?? 0);
+        $disk = max(0, $filters['disk_gb'] ?? 0);
 
         if ($cpu > 0 || $ram > 0 || $disk > 0) {
             $this->capacityGuard->check($host, $cpu, $ram, $disk, lock: false);

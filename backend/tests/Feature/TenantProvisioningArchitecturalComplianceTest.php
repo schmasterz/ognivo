@@ -64,6 +64,11 @@ final class TenantProvisioningArchitecturalComplianceTest extends TestCase
             'driver' => 'incus',
             'server_public_key_pin' => 'sha256//'.base64_encode(str_repeat('t', 32)),
             'is_active' => true,
+            'total_cpu_cores' => 64,
+            'total_ram_mb' => 131072,
+            'total_storage_gb' => 4000,
+            'capacity_source' => 'discovered',
+            'capacity_synced_at' => now(),
         ]);
     }
 

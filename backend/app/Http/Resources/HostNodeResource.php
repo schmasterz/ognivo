@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Resources;
 
+use App\DTO\Cast;
 use App\Models\Host;
 use App\Services\HostCapacityGuard;
 use Illuminate\Http\Request;
@@ -30,12 +31,21 @@ final class HostNodeResource extends JsonResource
         $guard = app(HostCapacityGuard::class);
         $committed = ['cpu' => 0, 'ram' => 0, 'disk' => 0];
 
-        if ($host->relationLoaded('virtualMachines')) {
+        /** @var mixed $precomputed */
+        $precomputed = $host->getAttribute('precomputed_committed_usage');
+
+        if (is_array($precomputed) && isset($precomputed['cpu'], $precomputed['ram'], $precomputed['disk'])) {
+            $committed = [
+                'cpu' => Cast::int($precomputed['cpu']),
+                'ram' => Cast::int($precomputed['ram']),
+                'disk' => Cast::int($precomputed['disk']),
+            ];
+        } elseif ($host->relationLoaded('virtualMachines')) {
             $activeVms = $host->virtualMachines->whereNotIn('status', ['failed', 'deleted']);
             $committed = [
-                'cpu' => (int) $activeVms->sum('cpu_cores'),
-                'ram' => (int) $activeVms->sum('ram_mb'),
-                'disk' => (int) $activeVms->sum('disk_gb'),
+                'cpu' => Cast::int($activeVms->sum('cpu_cores')),
+                'ram' => Cast::int($activeVms->sum('ram_mb')),
+                'disk' => Cast::int($activeVms->sum('disk_gb')),
             ];
         } elseif (! $request->routeIs('admin.ip_pools.*', 'admin.ip-pools.*', 'ip_pools.*', 'ip-pools.*', 'admin.images.*', 'images.*')) {
             $committed = $guard->getCommittedUsage($host);
@@ -43,9 +53,9 @@ final class HostNodeResource extends JsonResource
 
         $max = $guard->getMaxAllocatable($host);
 
-        $freeCpu = max(0, (int) floor($max['cpu'] - $committed['cpu']));
-        $freeRam = max(0, (int) floor($max['ram'] - $committed['ram']));
-        $freeDisk = max(0, (int) floor($max['disk'] - $committed['disk']));
+        $freeCpu = max(0, (int) floor((float) $max['cpu'] - (float) $committed['cpu']));
+        $freeRam = max(0, (int) floor((float) $max['ram'] - (float) $committed['ram']));
+        $freeDisk = max(0, (int) floor((float) $max['disk'] - (float) $committed['disk']));
 
         return [
             'id' => $host->id,

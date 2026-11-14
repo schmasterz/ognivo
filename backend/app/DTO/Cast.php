@@ -29,6 +29,16 @@ final class Cast
         return is_int($value) || (is_string($value) && is_numeric($value)) ? (int) $value : null;
     }
 
+    public static function float(mixed $value, float $default = 0.0): float
+    {
+        return is_float($value) || is_int($value) || (is_string($value) && is_numeric($value)) ? (float) $value : $default;
+    }
+
+    public static function floatOrNull(mixed $value): ?float
+    {
+        return is_float($value) || is_int($value) || (is_string($value) && is_numeric($value)) ? (float) $value : null;
+    }
+
     public static function bool(mixed $value, bool $default = false): bool
     {
         if (is_bool($value)) {

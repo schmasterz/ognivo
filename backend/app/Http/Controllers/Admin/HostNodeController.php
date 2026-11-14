@@ -12,6 +12,7 @@ use App\Http\Resources\HostNodeResource;
 use App\Http\Resources\TenantHostResource;
 use App\Models\Host;
 use App\Models\User;
+use App\Services\HostCapacityGuard;
 use App\Services\HostNodeService;
 use App\Services\Hypervisor\TenantProjectProvisioner;
 use App\Services\IncusConnectionChecker;
@@ -67,6 +68,27 @@ final class HostNodeController extends Controller
         $perPage = max(1, min(100, $request->integer('per_page', 10)));
         $paginator = $this->hostNodeService->paginateAll($perPage);
 
+        /** @var list<Host> $hosts */
+        $hosts = $paginator->items();
+
+        /** @var list<int> $hostIds */
+        $hostIds = array_values(array_unique(array_filter(
+            array_map(fn (Host $host): int => Cast::int($host->id), $hosts),
+            fn (int $id): bool => $id > 0
+        )));
+
+        if ($hostIds !== []) {
+            $guard = app(HostCapacityGuard::class);
+            $usages = $guard->getCommittedUsageForHostIds($hostIds);
+
+            foreach ($hosts as $host) {
+                $host->setAttribute(
+                    'precomputed_committed_usage',
+                    $usages[$host->id] ?? ['cpu' => 0, 'ram' => 0, 'disk' => 0]
+                );
+            }
+        }
+
         return response()->json([
             'data' => HostNodeResource::collection($paginator->items()),
             'meta' => [
@@ -105,11 +127,21 @@ final class HostNodeController extends Controller
             'driver' => $driver,
             'region' => isset($validated['region']) && is_string($validated['region']) ? $validated['region'] : null,
             'is_active' => (bool) ($validated['is_active'] ?? true),
-            'total_cpu_cores' => isset($validated['total_cpu_cores']) && is_numeric($validated['total_cpu_cores']) ? (int) $validated['total_cpu_cores'] : 32,
-            'total_ram_mb' => isset($validated['total_ram_mb']) && is_numeric($validated['total_ram_mb']) ? (int) $validated['total_ram_mb'] : 65536,
-            'total_storage_gb' => isset($validated['total_storage_gb']) && is_numeric($validated['total_storage_gb']) ? (int) $validated['total_storage_gb'] : 2000,
             'settings' => isset($validated['settings']) && is_array($validated['settings']) ? $validated['settings'] : null,
         ];
+
+        if (isset($validated['total_cpu_cores']) && is_numeric($validated['total_cpu_cores'])) {
+            $extraAttributes['total_cpu_cores'] = (int) $validated['total_cpu_cores'];
+            $extraAttributes['capacity_source'] = 'manual';
+        }
+        if (isset($validated['total_ram_mb']) && is_numeric($validated['total_ram_mb'])) {
+            $extraAttributes['total_ram_mb'] = (int) $validated['total_ram_mb'];
+            $extraAttributes['capacity_source'] = 'manual';
+        }
+        if (isset($validated['total_storage_gb']) && is_numeric($validated['total_storage_gb'])) {
+            $extraAttributes['total_storage_gb'] = (int) $validated['total_storage_gb'];
+            $extraAttributes['capacity_source'] = 'manual';
+        }
 
         $isTrustToken = false;
         if ($token !== '' && $driver !== 'fake') {
