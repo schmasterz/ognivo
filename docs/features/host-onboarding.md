@@ -8,7 +8,7 @@ Ognivo manages **Incus** and **LXD** hypervisor nodes using mutual TLS (**mTLS**
 
 The panel automatically generates and manages a self-signed elliptic-curve X.509 client certificate (`secp384r1`, `sha384`, CN `incus-panel`, Extended Key Usage: `clientAuth`).
 
-- **Private Key Security:** Stored encrypted in the database (`encrypted` Eloquent cast using AES-256-CBC), hidden from model serialization, and persisted locally with `0600` permissions in `storage/app/lxd-certs`.
+- **Private Key Security:** Stored encrypted in the database (`encrypted` Eloquent cast using AES-256-CBC), hidden from model serialization, and supplied in-memory via `CURLOPT_SSLCERT_BLOB` / `CURLOPT_SSLKEY_BLOB` (with a transient `0600` tempfile fallback in `sys_get_temp_dir()` unlinked immediately after use).
 - **Zero-Downtime Rotation:** When rotating via `POST /api/admin/incus/certificate/rotate` or `php artisan incus:generate-cert --force`, the previous certificate transitions to `retiring` status and all existing hosts are flagged with `needs_retrust = true`.
 - **Revocation Safety Guard:** Retiring certificates cannot be revoked (`POST /api/admin/incus/certificate/revoke-old`) until all hosts have confirmed re-trust (`pending_retrust_hosts_count === 0`).
 - **Expiry Monitoring:** `WarnExpiringPanelCertificateJob` runs daily and logs warnings when the active certificate is within 30 days of expiration.

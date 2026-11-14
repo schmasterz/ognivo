@@ -6,7 +6,7 @@ This document describes Ognivo's defense-in-depth security controls, database pr
 
 ## 1. Platform Security Controls
 
-- **Encrypted Hypervisor Credentials:** The panel's mTLS private key (`PanelCertificate::private_key`) and host tokens (`Host::token`) are encrypted at rest in MySQL using AES-256-CBC (`encrypted` Eloquent cast) and materialized only inside `/var/www/html/storage/app/lxd-certs` with `0600` file permissions.
+- **Encrypted Hypervisor Credentials:** The panel's mTLS private key (`PanelCertificate::private_key`) and host tokens (`Host::token`) are encrypted at rest in MySQL using AES-256-CBC (`encrypted` Eloquent cast) and passed in-memory via `CURLOPT_SSLCERT_BLOB` / `CURLOPT_SSLKEY_BLOB` (with a transient `0600` tempfile fallback in `sys_get_temp_dir()` unlinked immediately after the request).
 - **Expiring Bearer Tokens & Server-Side Logout:** Sanctum API tokens expire after 24 hours (`expiration => 1440` in `config/sanctum.php`) and are immediately revoked in the database on `POST /api/logout`.
 - **Strict Tenant Console Privacy:** Guest console sessions (`POST /api/vms/{id}/console`) are restricted exclusively to the workload owner via `VirtualMachinePolicy::viewConsole`. Administrators and active admin impersonation sessions are denied access (`403 Forbidden`) and logged.
 - **Rate Limiting on Hypervisor Mutations:** Destructive and state-changing actions (`POST /api/vms/{id}/action`, snapshot mutations) are protected by `throttle:vm-actions` (10 requests/minute per customer).
