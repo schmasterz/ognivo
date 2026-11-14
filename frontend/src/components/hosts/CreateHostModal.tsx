@@ -371,7 +371,7 @@ export function CreateHostModal({ onClose, onSuccess }: CreateHostModalProps) {
                 Generate a single-use token on your {driver === "lxd" ? "LXD" : "Incus"} server via:
                 <code className="ml-1 px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 font-mono text-[10px]">
                   {driver === "lxd"
-                    ? "lxd config trust add panel"
+                    ? "lxc config trust add panel"
                     : "incus config trust add panel"}
                 </code>
               </p>
