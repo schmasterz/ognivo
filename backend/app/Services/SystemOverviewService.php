@@ -14,6 +14,7 @@ use App\Models\VirtualMachine;
 use App\Models\VmSnapshot;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Mail;
 
 /**
@@ -242,9 +243,14 @@ final class SystemOverviewService
             'from_name' => array_key_exists('from_name', $data) ? $data['from_name'] : $current['from_name'],
         ];
 
+        $stored = $merged;
+        if (is_string($stored['password']) && $stored['password'] !== '') {
+            $stored['password'] = Crypt::encryptString($stored['password']);
+        }
+
         SystemSetting::updateOrCreate(
             ['key' => 'smtp_settings'],
-            ['value' => $merged]
+            ['value' => $stored]
         );
 
         $this->applyMailConfig($merged);
