@@ -169,33 +169,53 @@ function handleFakeSession(clientWs, payload) {
 
 class PinnedHttpsAgent extends https.Agent {
   constructor(expectedPin, options = {}) {
-    super(options);
+    super({
+      ...options,
+      checkServerIdentity: (hostname, cert) => this.checkServerIdentity(hostname, cert),
+    });
     this.expectedPin = expectedPin;
   }
 
-  createConnection(options, callback) {
-    const socket = super.createConnection(options, callback);
-    socket.on('secureConnect', () => {
-      if (!this.expectedPin) return; // Fake driver / dev mode without pin
-      const peerCert = socket.getPeerCertificate(true);
-      if (!peerCert || !peerCert.raw) {
-        socket.destroy(new Error('Missing peer certificate during TLS handshake'));
-        return;
+  checkServerIdentity(hostname, cert) {
+    if (!this.expectedPin || typeof this.expectedPin !== 'string' || !this.expectedPin.trim()) {
+      return new Error('Missing expected server public key pin');
+    }
+
+    if (!cert || !cert.raw) {
+      return new Error('Missing peer certificate during TLS handshake');
+    }
+
+    try {
+      const x509 = new crypto.X509Certificate(cert.raw);
+      const spkiDer = x509.publicKey.export({ type: 'spki', format: 'der' });
+      const computedPin = 'sha256//' + crypto.createHash('sha256').update(spkiDer).digest('base64');
+
+      if (computedPin !== this.expectedPin.trim()) {
+        console.error(`[console-proxy] PIN MISMATCH! Expected ${this.expectedPin}, got ${computedPin}`);
+        return new Error(`Server public key pin mismatch: expected ${this.expectedPin}, got ${computedPin}`);
       }
+    } catch (err) {
+      return new Error(`Failed to parse certificate public key: ${err.message}`);
+    }
 
-      try {
-        const x509 = new crypto.X509Certificate(peerCert.raw);
-        const spkiDer = x509.publicKey.export({ type: 'spki', format: 'der' });
-        const computedPin = 'sha256//' + crypto.createHash('sha256').update(spkiDer).digest('base64');
+    return undefined;
+  }
 
-        if (computedPin !== this.expectedPin) {
-          console.error(`[console-proxy] PIN MISMATCH! Expected ${this.expectedPin}, got ${computedPin}`);
-          socket.destroy(new Error(`Server public key pin mismatch: expected ${this.expectedPin}, got ${computedPin}`));
-        }
-      } catch (err) {
-        socket.destroy(new Error(`Failed to parse certificate public key: ${err.message}`));
+  createConnection(options, callback) {
+    const opts = {
+      ...options,
+      checkServerIdentity: (host, cert) => this.checkServerIdentity(host, cert),
+    };
+    const socket = super.createConnection(opts, callback);
+
+    socket.prependListener('secureConnect', () => {
+      const peerCert = socket.getPeerCertificate(true);
+      const err = this.checkServerIdentity(opts.host || opts.servername, peerCert);
+      if (err) {
+        socket.destroy(err);
       }
     });
+
     return socket;
   }
 }
@@ -246,7 +266,7 @@ function handleIncusSession(clientWs, payload) {
   incusWs.on('error', (err) => {
     console.error(`[console-proxy] Incus upstream socket error: ${err.message}`);
     if (clientWs.readyState === WebSocket.OPEN) {
-      clientWs.send(`\r\n\x1b[31m[Console Error: Hypervisor upstream connection failed: ${err.message}]\x1b[0m\r\n`);
+      clientWs.send('\r\n\x1b[31m[Console Error: Hypervisor upstream connection failed]\x1b[0m\r\n');
       clientWs.close(1011, 'Hypervisor connection error');
     }
   });
