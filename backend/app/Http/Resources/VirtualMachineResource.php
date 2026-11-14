@@ -7,6 +7,7 @@ namespace App\Http\Resources;
 use App\Models\IpAllocation;
 use App\Models\User;
 use App\Models\VirtualMachine;
+use App\Services\ProvisioningCompensator;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Override;
@@ -29,7 +30,7 @@ final class VirtualMachineResource extends JsonResource
         $vm = $this->resource;
         /** @var User|null $user */
         $user = $request->user();
-        $isAdmin = $user !== null && $user->hasRole('admin');
+        $isAdmin = $user?->hasRole('admin') ?? false;
 
         /** @var IpAllocation|null $allocation */
         $allocation = $vm->relationLoaded('primaryAllocation')
@@ -47,19 +48,25 @@ final class VirtualMachineResource extends JsonResource
 
         $address = $allocation !== null ? $allocation->ip_string : $vm->ipv4_address;
         $macAddress = $allocation?->mac_address;
-        $failureReason = is_array($vm->metadata) && isset($vm->metadata['failure_reason']) && is_string($vm->metadata['failure_reason'])
-            ? $vm->metadata['failure_reason']
-            : null;
+
+        $rawFailureReason = is_array($vm->metadata) && isset($vm->metadata['raw_failure_reason']) && is_string($vm->metadata['raw_failure_reason'])
+            ? $vm->metadata['raw_failure_reason']
+            : (is_array($vm->metadata) && isset($vm->metadata['failure_reason']) && is_string($vm->metadata['failure_reason']) ? $vm->metadata['failure_reason'] : null);
+
+        $sanitizedFailureReason = is_array($vm->metadata) && isset($vm->metadata['failure_reason']) && is_string($vm->metadata['failure_reason'])
+            ? (isset($vm->metadata['raw_failure_reason']) ? $vm->metadata['failure_reason'] : ProvisioningCompensator::sanitizeFailureReason($vm->metadata['failure_reason']))
+            : ($rawFailureReason !== null ? ProvisioningCompensator::sanitizeFailureReason($rawFailureReason) : null);
 
         return [
             'id' => $vm->id,
             'user_id' => $vm->user_id,
             'host_id' => $vm->host_id,
             'name' => $vm->name,
-            'incus_project' => $vm->incus_project,
+            'incus_project' => $this->when($isAdmin, $vm->incus_project),
             'instance_type' => $vm->instance_type,
             'status' => (string) $vm->status,
-            'failure_reason' => $failureReason,
+            'failure_reason' => $isAdmin ? ($rawFailureReason ?? $sanitizedFailureReason) : $sanitizedFailureReason,
+            'raw_failure_reason' => $this->when($isAdmin, $rawFailureReason),
             'cpu_cores' => $vm->cpu_cores,
             'ram_mb' => $vm->ram_mb,
             'disk_gb' => $vm->disk_gb,
