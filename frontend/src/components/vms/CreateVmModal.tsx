@@ -65,19 +65,21 @@ export function CreateVmModal({
 
   useEffect(() => {
     if (isOpen) {
-      setName("");
-      setError(null);
-      setLoading(false);
-      setCpuCores(1);
-      setRamGb(2);
-      setDiskGb(20);
-      if (allowVm && !allowContainers) {
-        setInstanceType("virtual-machine");
-      } else if (!allowVm && allowContainers) {
-        setInstanceType("container");
-      } else {
-        setInstanceType("virtual-machine");
-      }
+      queueMicrotask(() => {
+        setName("");
+        setError(null);
+        setLoading(false);
+        setCpuCores(1);
+        setRamGb(2);
+        setDiskGb(20);
+        if (allowVm && !allowContainers) {
+          setInstanceType("virtual-machine");
+        } else if (!allowVm && allowContainers) {
+          setInstanceType("container");
+        } else {
+          setInstanceType("virtual-machine");
+        }
+      });
     }
   }, [isOpen, allowVm, allowContainers]);
 
@@ -143,20 +145,32 @@ export function CreateVmModal({
 
   useEffect(() => {
     if (isOpen) {
-      setImagesLoading(true);
+      let cancelled = false;
+      queueMicrotask(() => {
+        if (!cancelled) {
+          setImagesLoading(true);
+        }
+      });
       api
         .getImages({
           host_id: selectedHostId,
           instance_type: instanceType,
         })
         .then((res) => {
+          if (cancelled) return;
           setAvailableImages(res.data);
           if (res.data.length > 0) {
             setOsImage((prev) => (res.data.some((img) => img.name === prev) ? prev : res.data[0].name));
           }
         })
         .catch(console.error)
-        .finally(() => setImagesLoading(false));
+        .finally(() => {
+          if (!cancelled) setImagesLoading(false);
+        });
+
+      return () => {
+        cancelled = true;
+      };
     }
   }, [isOpen, selectedHostId, instanceType]);
 

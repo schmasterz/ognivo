@@ -160,9 +160,15 @@ export function useCachedFetch<T>(
   );
 
   useEffect(() => {
-    executeFetch({ force: false });
+    let ignore = false;
+    queueMicrotask(() => {
+      if (!ignore) {
+        void executeFetch({ force: false });
+      }
+    });
 
     return () => {
+      ignore = true;
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }

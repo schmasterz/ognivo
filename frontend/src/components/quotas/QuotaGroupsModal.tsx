@@ -60,7 +60,15 @@ export function QuotaGroupsModal({
   }, [page, perPage, quotaGroups]);
 
   useEffect(() => {
-    fetchGroups();
+    let ignore = false;
+    queueMicrotask(() => {
+      if (!ignore) {
+        void fetchGroups();
+      }
+    });
+    return () => {
+      ignore = true;
+    };
   }, [fetchGroups]);
 
   const formatQuotaLimit = (val: number, unit = "") => {

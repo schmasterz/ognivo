@@ -44,7 +44,15 @@ export function PreflightModal({ pool, onClose }: PreflightModalProps) {
   }, [pool.id]);
 
   useEffect(() => {
-    runPreflight();
+    let ignore = false;
+    queueMicrotask(() => {
+      if (!ignore) {
+        void runPreflight();
+      }
+    });
+    return () => {
+      ignore = true;
+    };
   }, [runPreflight]);
 
   return (

@@ -189,7 +189,15 @@ export function AuditLogTab({ isAdmin, onNavigate }: AuditLogTabProps) {
   // Reset cursor history and reload Page 1 whenever filters, perPage, or role change
   useEffect(() => {
     pageCursorsRef.current = { 1: null };
-    void fetchPage(1);
+    let ignore = false;
+    queueMicrotask(() => {
+      if (!ignore) {
+        void fetchPage(1);
+      }
+    });
+    return () => {
+      ignore = true;
+    };
   }, [fetchPage]);
 
   const handleFilterChange = (newFilters: AuditFilters) => {

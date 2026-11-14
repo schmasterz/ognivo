@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   X,
   FileText,
@@ -9,7 +9,10 @@ import {
   Pause,
 } from "lucide-react";
 import { VirtualMachine, User } from "@/lib/api";
+import { vmsApi } from "@/lib/api/vms";
 import { useI18n } from "@/lib/i18n/I18nContext";
+import { useToast } from "@/lib/toast/ToastContext";
+import { ConfirmModal, ConfirmVariant } from "@/components/ui/ConfirmModal";
 import { useVmTabs, useVmActions } from "@/lib/registry/vmRegistry";
 import { registerVmBuiltins } from "./registerVmBuiltins";
 
@@ -40,6 +43,90 @@ export function VmDetailsModal({
   onOpenConsole,
 }: VmDetailsModalProps) {
   const { t } = useI18n();
+  const { toast } = useToast();
+
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    variant?: ConfirmVariant;
+    isLoading?: boolean;
+    onConfirm: () => Promise<void> | void;
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: () => {},
+  });
+
+  const requestConfirm = useCallback(
+    (options: {
+      title: string;
+      message: string;
+      confirmText?: string;
+      cancelText?: string;
+      variant?: ConfirmVariant;
+      onConfirm: () => Promise<void> | void;
+    }) => {
+      setConfirmDialog({
+        isOpen: true,
+        title: options.title,
+        message: options.message,
+        confirmText: options.confirmText,
+        cancelText: options.cancelText,
+        variant: options.variant,
+        isLoading: false,
+        onConfirm: async () => {
+          setConfirmDialog((prev) => ({ ...prev, isLoading: true }));
+          try {
+            await options.onConfirm();
+            setConfirmDialog((prev) => ({ ...prev, isOpen: false, isLoading: false }));
+          } catch (err) {
+            setConfirmDialog((prev) => ({ ...prev, isLoading: false }));
+            throw err;
+          }
+        },
+      });
+    },
+    []
+  );
+
+  const handleActionClick = async (action: (typeof registeredActions)[0]) => {
+    if (!vm) return;
+    if (action.id === "reinstall") {
+      requestConfirm({
+        title: t("confirmReinstallTitle"),
+        message: `${t("confirmReinstall")} "${vm.name}"? ${t("confirmReinstallMessage")}`,
+        confirmText: t("confirmReinstallBtn"),
+        cancelText: t("cancel"),
+        variant: "danger",
+        onConfirm: async () => {
+          try {
+            const res = await vmsApi.action(vm.id, "reinstall");
+            toast.success(res.message || t("reinstallSuccess"));
+            if (res.virtual_machine && onVmUpdated) {
+              onVmUpdated(res.virtual_machine);
+            }
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : t("reinstallError");
+            toast.error(msg);
+            throw err;
+          }
+        },
+      });
+      return;
+    }
+
+    await action.onClick({
+      vm,
+      user,
+      isAdmin,
+      requestConfirm,
+      onVmUpdated,
+    });
+  };
 
   const tabContext = useMemo(
     () => (vm ? { vm, user, isAdmin } : undefined),
@@ -54,7 +141,9 @@ export function VmDetailsModal({
   // Sync initialTab when modal opens or initialTab prop changes
   useEffect(() => {
     if (isOpen) {
-      setActiveTabId(initialTab || "overview");
+      queueMicrotask(() => {
+        setActiveTabId(initialTab || "overview");
+      });
     }
   }, [isOpen, initialTab]);
 
@@ -113,6 +202,14 @@ export function VmDetailsModal({
     return tab.label;
   };
 
+  const getActionLabel = (action: (typeof registeredActions)[0]) => {
+    if (action.id === "reinstall") return t("reinstall");
+    if (typeof action.label === "function") {
+      return action.label({ vm, user, isAdmin });
+    }
+    return action.label;
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 dark:bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
@@ -164,18 +261,20 @@ export function VmDetailsModal({
             {/* Custom Registered Actions */}
             {registeredActions.map((action) => {
               const ActionIcon = action.icon;
-              const label =
-                typeof action.label === "function"
-                  ? action.label({ vm, user, isAdmin })
-                  : action.label;
+              const label = getActionLabel(action);
               const disabled = action.disabled ? action.disabled({ vm, user, isAdmin }) : false;
+              const isDanger = action.variant === "danger";
 
               return (
                 <button
                   key={action.id}
-                  onClick={() => action.onClick({ vm, user, isAdmin })}
-                  disabled={disabled}
-                  className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700/60 transition disabled:opacity-50"
+                  onClick={() => handleActionClick(action)}
+                  disabled={disabled || confirmDialog.isLoading}
+                  className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition disabled:opacity-50 ${
+                    isDanger
+                      ? "text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 border-red-500/20"
+                      : "text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 border-zinc-200 dark:border-zinc-700/60"
+                  }`}
                 >
                   {ActionIcon && <ActionIcon className="w-3.5 h-3.5" />}
                   <span>{label}</span>
@@ -237,6 +336,19 @@ export function VmDetailsModal({
           )}
         </div>
       </div>
+
+      {/* Confirmation Dialog */}
+      <ConfirmModal
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmText={confirmDialog.confirmText}
+        cancelText={confirmDialog.cancelText}
+        variant={confirmDialog.variant}
+        isLoading={confirmDialog.isLoading}
+        onConfirm={confirmDialog.onConfirm}
+        onClose={() => setConfirmDialog((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

@@ -28,7 +28,9 @@ export function useVms({
 
   // Reset to page 1 whenever search or filters change
   useEffect(() => {
-    setPage(1);
+    queueMicrotask(() => {
+      setPage(1);
+    });
   }, [sessionUserId, userId, hostId, status, search]);
 
   const cacheKey = useMemo(() => {
@@ -65,7 +67,9 @@ export function useVms({
   // Keep local VMs state synchronized with fetched response
   useEffect(() => {
     if (vmsRes?.data) {
-      setLocalVms(vmsRes.data);
+      queueMicrotask(() => {
+        setLocalVms(vmsRes.data);
+      });
     }
   }, [vmsRes]);
 

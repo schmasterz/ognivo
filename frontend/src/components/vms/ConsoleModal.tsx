@@ -94,20 +94,30 @@ export function ConsoleModal({ vm, onClose }: ConsoleModalProps) {
 
   useEffect(() => {
     if (!vm) {
-      setWsUrl(null);
-      setSessionError(null);
-      setBootLog("");
-      setIsForbidden(false);
-      setCopied(false);
+      queueMicrotask(() => {
+        setWsUrl(null);
+        setSessionError(null);
+        setBootLog("");
+        setIsForbidden(false);
+        setCopied(false);
+      });
       return;
     }
-    setWsUrl(null);
-    setSessionError(null);
-    setBootLog("");
-    setIsForbidden(false);
-    setCopied(false);
-    fetchSession(vm.id);
-    fetchBootLog(vm.id);
+    let ignore = false;
+    queueMicrotask(() => {
+      if (!ignore) {
+        setWsUrl(null);
+        setSessionError(null);
+        setBootLog("");
+        setIsForbidden(false);
+        setCopied(false);
+        void fetchSession(vm.id);
+        void fetchBootLog(vm.id);
+      }
+    });
+    return () => {
+      ignore = true;
+    };
   }, [vm]);
 
   useEffect(() => {

@@ -84,7 +84,15 @@ export function NodesModal({
   }, [page, perPage, initialHosts]);
 
   useEffect(() => {
-    fetchHostsPage();
+    let ignore = false;
+    queueMicrotask(() => {
+      if (!ignore) {
+        fetchHostsPage();
+      }
+    });
+    return () => {
+      ignore = true;
+    };
   }, [fetchHostsPage]);
 
   const loadCertificate = async () => {
@@ -97,7 +105,15 @@ export function NodesModal({
   };
 
   useEffect(() => {
-    loadCertificate();
+    let ignore = false;
+    queueMicrotask(() => {
+      if (!ignore) {
+        void loadCertificate();
+      }
+    });
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   const handleRotateCertificate = async () => {

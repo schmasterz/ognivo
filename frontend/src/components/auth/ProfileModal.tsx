@@ -29,13 +29,15 @@ export function ProfileModal({ user, onClose, onSuccess }: ProfileModalProps) {
   useModalEscape(onClose, !loading);
 
   useEffect(() => {
-    setName(user.name);
-    setEmail(user.email);
-    setCurrentPassword("");
-    setPassword("");
-    setPasswordConfirmation("");
-    setError(null);
-    setLoading(false);
+    queueMicrotask(() => {
+      setName(user.name);
+      setEmail(user.email);
+      setCurrentPassword("");
+      setPassword("");
+      setPasswordConfirmation("");
+      setError(null);
+      setLoading(false);
+    });
   }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {

@@ -67,21 +67,23 @@ export function EditUserModal({ user, quotaGroups = [], onClose, onSuccess }: Ed
   useModalEscape(onClose, !loading);
 
   useEffect(() => {
-    setName(user.name);
-    setEmail(user.email);
-    setPassword("");
-    setShowPassword(false);
-    const newRole = user.roles.some((r) => r.name === "admin") ? "admin" : "customer";
-    setRole(newRole);
-    setStatus(
-      user.status === "active" || user.status === "suspended" || user.status === "pending" || user.status === "inactive"
-        ? user.status
-        : "inactive"
-    );
-    setSelectedGroupId(user.quota_group_id || "custom");
-    setQuotaLimits(quotaRecordToFormValue(user.quota, USER_QUOTA_DEFAULTS));
-    setError(null);
-    setLoading(false);
+    queueMicrotask(() => {
+      setName(user.name);
+      setEmail(user.email);
+      setPassword("");
+      setShowPassword(false);
+      const newRole = user.roles.some((r) => r.name === "admin") ? "admin" : "customer";
+      setRole(newRole);
+      setStatus(
+        user.status === "active" || user.status === "suspended" || user.status === "pending" || user.status === "inactive"
+          ? user.status
+          : "inactive"
+      );
+      setSelectedGroupId(user.quota_group_id || "custom");
+      setQuotaLimits(quotaRecordToFormValue(user.quota, USER_QUOTA_DEFAULTS));
+      setError(null);
+      setLoading(false);
+    });
   }, [user]);
 
   const handleGroupSelect = (val: string) => {

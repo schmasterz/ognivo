@@ -36,8 +36,10 @@ export function useNetworking({
 
   // Reset pagination to page 1 on filter changes
   useEffect(() => {
-    setIpsPage(1);
-    setPoolsPage(1);
+    queueMicrotask(() => {
+      setIpsPage(1);
+      setPoolsPage(1);
+    });
   }, [sessionUserId, userId, hostId, status, search]);
 
   const poolsEnabled = enabled && isAdmin;

@@ -1,9 +1,25 @@
 "use client";
 
-import { Box, Camera } from "lucide-react";
-import { registerVmTab } from "@/lib/registry/vmRegistry";
+import { Box, Camera, RotateCcw } from "lucide-react";
+import { registerVmTab, registerVmAction, VmActionContext } from "@/lib/registry/vmRegistry";
+import { vmsApi } from "@/lib/api/vms";
+import { VirtualMachine } from "@/lib/api/types";
 import { VmOverviewTab } from "./VmOverviewTab";
 import { VmSnapshotsTab } from "./snapshots/VmSnapshotsTab";
+
+declare module "@/lib/registry/vmRegistry" {
+  interface VmActionContext {
+    onVmUpdated?: (vm: VirtualMachine) => void;
+    requestConfirm?: (options: {
+      title: string;
+      message: string;
+      confirmText?: string;
+      cancelText?: string;
+      variant?: "danger" | "warning" | "info" | "primary";
+      onConfirm: () => void | Promise<void>;
+    }) => void;
+  }
+}
 
 let builtinsRegistered = false;
 
@@ -31,5 +47,39 @@ export function registerVmBuiltins(): void {
     order: 20,
     icon: Camera,
     component: VmSnapshotsTab,
+  });
+
+  // 3. Reinstall Action (order 50)
+  registerVmAction({
+    id: "reinstall",
+    label: "Reinstall",
+    order: 50,
+    icon: RotateCcw,
+    variant: "danger",
+    visible: ({ vm }) => {
+      const status = vm.status.toLowerCase();
+      return ["running", "stopped", "suspended", "failed"].includes(status);
+    },
+    onClick: async (context: VmActionContext) => {
+      if (context.requestConfirm) {
+        context.requestConfirm({
+          title: "Confirm Reinstall",
+          message: `Are you sure you want to reinstall "${context.vm.name}"? This will erase all disk data on the instance while keeping its IP address.`,
+          confirmText: "Reinstall Instance",
+          variant: "danger",
+          onConfirm: async () => {
+            const res = await vmsApi.action(context.vm.id, "reinstall");
+            if (context.onVmUpdated && res.virtual_machine) {
+              context.onVmUpdated(res.virtual_machine);
+            }
+          },
+        });
+      } else {
+        const res = await vmsApi.action(context.vm.id, "reinstall");
+        if (context.onVmUpdated && res.virtual_machine) {
+          context.onVmUpdated(res.virtual_machine);
+        }
+      }
+    },
   });
 }
