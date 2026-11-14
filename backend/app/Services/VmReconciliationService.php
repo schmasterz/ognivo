@@ -98,8 +98,8 @@ class VmReconciliationService
             $hostProjects = $driver->listProjects();
         } catch (\Throwable $e) {
             Log::warning(sprintf('Host node [%s] is unreachable during reconciliation: %s', $host->name, $e->getMessage()));
-            if ($host->status !== 'offline') {
-                $host->status = 'offline';
+            if ($host->status !== 'unreachable') {
+                $host->status = 'unreachable';
                 $host->save();
             }
 
@@ -107,8 +107,8 @@ class VmReconciliationService
             return ['drifts_detected' => 0, 'drifts_resolved' => 0, 'snapshots_synced' => 0];
         }
 
-        if ($host->status === 'offline') {
-            $host->status = 'online';
+        if ($host->status === 'unreachable' || $host->status === 'offline') {
+            $host->status = 'ok';
             $host->save();
         }
 

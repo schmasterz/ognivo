@@ -7,13 +7,15 @@ namespace Tests\Feature;
 use App\Events\AdminVirtualMachineStatusUpdated;
 use App\Events\VirtualMachineStatusUpdated;
 use App\Exceptions\FingerprintMismatchException;
+use App\Exceptions\MissingPinException;
 use App\Models\DriftReport;
 use App\Models\Host;
+use App\Models\IpAllocation;
+use App\Models\IpPool;
 use App\Models\User;
 use App\Models\VirtualMachine;
 use App\Services\Hypervisor\Contracts\HypervisorDriverInterface;
 use App\Services\Hypervisor\Drivers\FakeHypervisorDriver;
-use App\Services\Hypervisor\Exceptions\MissingPinException;
 use App\Services\Hypervisor\HypervisorGateway;
 use App\Services\Hypervisor\HypervisorManager;
 use App\Services\Hypervisor\IncusEventSyncService;
@@ -22,6 +24,7 @@ use App\Services\Hypervisor\Transports\WebSocketIncusEventTransport;
 use App\Services\PanelCertificateService;
 use App\Services\VmReconciliationService;
 use App\States\Vm\Deleted;
+use App\States\Vm\Provisioning;
 use App\States\Vm\Running;
 use App\States\Vm\Stopped;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -147,6 +150,97 @@ final class IncusEventSyncAndReconcileTest extends TestCase
 
         $syncService->handleLifecycleEvent($this->host, $deleteEvent);
         $this->assertInstanceOf(Deleted::class, $vm->fresh()->status);
+    }
+
+    public function test_instance_deleted_event_releases_allocated_ip_and_ignores_provisioning_vm(): void
+    {
+        $pool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'pool-event-sync',
+            'cidr' => '10.60.0.0/24',
+            'first_usable' => '10.60.0.10',
+            'last_usable' => '10.60.0.50',
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+            'is_public' => true,
+        ]);
+
+        $vm = VirtualMachine::create([
+            'user_id' => $this->customer->id,
+            'host_id' => $this->host->id,
+            'name' => 'vm-with-ip',
+            'incus_project' => 'tenant-cust-1',
+            'instance_type' => 'virtual-machine',
+            'status' => 'running',
+            'cpu_cores' => 1,
+            'ram_mb' => 1024,
+            'disk_gb' => 10,
+            'os_image' => 'ubuntu:24.04',
+            'ipv4_address' => '10.60.0.15',
+            'network_status' => 'assigned',
+        ]);
+
+        $rawAddress = inet_pton('10.60.0.15');
+        $this->assertNotFalse($rawAddress);
+
+        $allocation = IpAllocation::create([
+            'pool_id' => $pool->id,
+            'address' => $rawAddress,
+            'ip_string' => '10.60.0.15',
+            'status' => 'allocated',
+            'user_id' => $this->customer->id,
+            'virtual_machine_id' => $vm->id,
+            'allocated_at' => now(),
+        ]);
+
+        $syncService = app(IncusEventSyncService::class);
+
+        // 1. instance-deleted event for running VM releases IP and marks VM as deleted
+        $deleteEvent = [
+            'type' => 'lifecycle',
+            'metadata' => [
+                'action' => 'instance-deleted',
+                'source' => '/1.0/instances/vm-with-ip',
+                'project' => 'tenant-cust-1',
+            ],
+        ];
+
+        $syncService->handleLifecycleEvent($this->host, $deleteEvent);
+
+        $this->assertInstanceOf(Deleted::class, $vm->fresh()->status);
+        $this->assertNull($vm->fresh()->ipv4_address);
+
+        $allocation->refresh();
+        $this->assertSame('cooling', $allocation->status);
+        $this->assertNull($allocation->virtual_machine_id);
+        $this->assertNotNull($allocation->released_at);
+
+        // 2. instance-deleted event for VM in provisioning status is ignored
+        $provisioningVm = VirtualMachine::create([
+            'user_id' => $this->customer->id,
+            'host_id' => $this->host->id,
+            'name' => 'vm-provisioning',
+            'incus_project' => 'tenant-cust-1',
+            'instance_type' => 'virtual-machine',
+            'status' => 'provisioning',
+            'cpu_cores' => 1,
+            'ram_mb' => 1024,
+            'disk_gb' => 10,
+            'os_image' => 'ubuntu:24.04',
+        ]);
+
+        $deleteProvisioningEvent = [
+            'type' => 'lifecycle',
+            'metadata' => [
+                'action' => 'instance-deleted',
+                'source' => '/1.0/instances/vm-provisioning',
+                'project' => 'tenant-cust-1',
+            ],
+        ];
+
+        $syncService->handleLifecycleEvent($this->host, $deleteProvisioningEvent);
+
+        $this->assertInstanceOf(Provisioning::class, $provisioningVm->fresh()->status);
     }
 
     public function test_artisan_incus_listen_command_processes_fake_gateway_transport_events(): void
@@ -559,8 +653,23 @@ final class IncusEventSyncAndReconcileTest extends TestCase
             'kind' => 'missing_on_host',
         ]);
 
-        // Host is safely marked offline
-        $this->assertSame('offline', $this->host->fresh()->status);
+        // Host is safely marked unreachable
+        $this->assertSame('unreachable', $this->host->fresh()->status);
+
+        // Host recovers to ok when reachable driver responds
+        $fakeDriver = new FakeHypervisorDriver;
+        $fakeDriver->projects = ['tenant-cust-1'];
+        $fakeDriver->instances = [
+            [
+                'name' => 'offline-host-vm',
+                'project' => 'tenant-cust-1',
+                'status' => 'Running',
+            ],
+        ];
+        HypervisorManager::fake($fakeDriver);
+
+        $service->reconcile($this->host);
+        $this->assertSame('ok', $this->host->fresh()->status);
     }
 
     public function test_reconcile_skips_missing_on_host_when_list_instances_fails_for_project(): void
