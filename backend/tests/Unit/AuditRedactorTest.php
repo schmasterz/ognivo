@@ -47,6 +47,31 @@ final class AuditRedactorTest extends TestCase
         $this->assertSame('safe_value', $cleaned['nested']['deep']['safe_key']);
     }
 
+    public function test_redactor_strips_cloud_init_user_data_ticket_api_key_and_cookie(): void
+    {
+        $input = [
+            'CLOUD_INIT' => '#cloud-config',
+            'nested' => [
+                'user-data' => '#cloud-config user data',
+                'Ticket' => 'secret-vnc-ticket',
+                'deep' => [
+                    'API_KEY' => 'my-secret-key',
+                    'Cookie' => 'session=xyz123',
+                    'normal_key' => 'normal_value',
+                ],
+            ],
+        ];
+
+        $cleaned = AuditRedactor::clean($input);
+
+        $this->assertArrayNotHasKey('CLOUD_INIT', $cleaned);
+        $this->assertArrayNotHasKey('user-data', $cleaned['nested']);
+        $this->assertArrayNotHasKey('Ticket', $cleaned['nested']);
+        $this->assertArrayNotHasKey('API_KEY', $cleaned['nested']['deep']);
+        $this->assertArrayNotHasKey('Cookie', $cleaned['nested']['deep']);
+        $this->assertSame('normal_value', $cleaned['nested']['deep']['normal_key']);
+    }
+
     public function test_redactor_truncates_strings_longer_than_500_chars(): void
     {
         $longString = str_repeat('a', 600);

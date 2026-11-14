@@ -24,6 +24,11 @@ final class AuditRedactor
         'smtp_password',
         'secret',
         'authorization',
+        'cloud_init',
+        'user-data',
+        'ticket',
+        'api_key',
+        'cookie',
     ];
 
     /**
