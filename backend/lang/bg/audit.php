@@ -28,6 +28,7 @@ $actions = [
     'vm.snapshot.created' => 'Създадено моментно копие (snapshot)',
     'vm.snapshot.restored' => 'Възстановено моментно копие (snapshot)',
     'vm.snapshot.deleted' => 'Изтрито моментно копие (snapshot)',
+    'vm.reinstall.requested' => 'Заявено преинсталиране на инстанция',
 
     'ip.allocated' => 'Заделен публичен IP адрес',
     'ip.released' => 'Освободен публичен IP адрес',

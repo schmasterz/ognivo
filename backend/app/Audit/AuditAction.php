@@ -34,6 +34,7 @@ enum AuditAction: string
     case VmSnapshotCreated = 'vm.snapshot.created';
     case VmSnapshotRestored = 'vm.snapshot.restored';
     case VmSnapshotDeleted = 'vm.snapshot.deleted';
+    case VmReinstallRequested = 'vm.reinstall.requested';
 
     // IP & IP Pool
     case IpAllocated = 'ip.allocated';
