@@ -2,12 +2,15 @@
 
 use App\Jobs\WarnExpiringPanelCertificateJob;
 use App\Models\IpPool;
+use App\Models\User;
 use App\Models\VirtualMachine;
 use App\Services\IpManagementService;
+use App\Services\VmProvisioningService;
 use Illuminate\Console\Command;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
+use Symfony\Component\Console\Output\ConsoleOutputInterface;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -15,6 +18,7 @@ Artisan::command('inspire', function () {
 
 Schedule::job(new WarnExpiringPanelCertificateJob)->daily();
 Schedule::command('vm:reconcile')->everyFiveMinutes();
+Schedule::command('vm:sweep-stale-provisioning')->everyFiveMinutes()->withoutOverlapping();
 Schedule::call(fn (IpManagementService $service) => $service->pruneExpiredCoolingAllocations())
     ->everyMinute()
     ->name('ipam:prune-cooling');
@@ -41,7 +45,7 @@ if (app()->environment('testing')) {
         return 0;
     })->purpose('Allocate an IP for a VM from an IP pool in testing');
 
-    Artisan::command('tests:provision-vm {user} {host} {cpu} {ram} {disk}', function (\App\Services\VmProvisioningService $service): int {
+    Artisan::command('tests:provision-vm {user} {host} {cpu} {ram} {disk}', function (VmProvisioningService $service): int {
         /** @var Command $this */
         $userId = (int) $this->argument('user');
         $hostId = (int) $this->argument('host');
@@ -49,8 +53,8 @@ if (app()->environment('testing')) {
         $ram = (int) $this->argument('ram');
         $disk = (int) $this->argument('disk');
 
-        /** @var \App\Models\User $user */
-        $user = \App\Models\User::findOrFail($userId);
+        /** @var User $user */
+        $user = User::findOrFail($userId);
 
         try {
             $vm = $service->provision($user, [
@@ -65,9 +69,9 @@ if (app()->environment('testing')) {
             $this->line('SUCCESS:'.$vm->id);
 
             return 0;
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $msg = 'ERROR: '.$e->getMessage();
-            if ($this->getOutput() instanceof \Symfony\Component\Console\Output\ConsoleOutputInterface) {
+            if ($this->getOutput() instanceof ConsoleOutputInterface) {
                 $this->getOutput()->getErrorOutput()->writeln($msg);
             }
             $this->error($msg);
