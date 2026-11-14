@@ -7,10 +7,12 @@ namespace App\Services\Hypervisor\Transports;
 use App\Exceptions\FingerprintMismatchException;
 use App\Models\Host;
 use App\Services\Hypervisor\Contracts\IncusEventTransportInterface;
+use App\Services\Hypervisor\Exceptions\MissingPinException;
 use App\Services\Hypervisor\HypervisorGateway;
 use App\Services\Hypervisor\TlsPeerCertificateFetcherInterface;
 use App\Services\PanelCertificateService;
 use Illuminate\Support\Facades\Log;
+use OpenSSLCertificate;
 use Override;
 use Ratchet\RFC6455\Messaging\CloseFrameChecker;
 use Ratchet\RFC6455\Messaging\Frame;
@@ -20,7 +22,7 @@ use Ratchet\RFC6455\Messaging\MessageInterface;
 use RuntimeException;
 
 /**
- * WebSocket transport connecting to Incus /1.0/events?type=lifecycle with mTLS.
+ * WebSocket transport connecting to Incus /1.0/events?type=lifecycle&all-projects=true with mTLS.
  */
 class WebSocketIncusEventTransport implements IncusEventTransportInterface
 {
@@ -66,7 +68,7 @@ class WebSocketIncusEventTransport implements IncusEventTransportInterface
      * @param  callable(array<string, mixed>): void  $onEvent
      * @param  (callable(): bool)|null  $shouldStop
      */
-    protected function connectAndStream(Host $host, callable $onEvent, ?callable $shouldStop = null): void
+    public function connectAndStream(Host $host, callable $onEvent, ?callable $shouldStop = null): void
     {
         $certService = $this->certService ?? app(PanelCertificateService::class);
         $clientCert = $certService->getActiveCertificate() ?? $certService->getRetiringCertificate();
@@ -128,41 +130,51 @@ class WebSocketIncusEventTransport implements IncusEventTransportInterface
 
             // Cryptographically verify peer certificate on the SAME connection
             if ($isSsl && $host->driver !== 'fake') {
-                $params = stream_context_get_params($socket);
-                $options = $params['options'];
-                $peerCert = isset($options['ssl']) && is_array($options['ssl'])
-                    ? ($options['ssl']['peer_certificate'] ?? null)
-                    : null;
+                $peerCert = $this->capturePeerCertificate($socket);
 
-                if ($peerCert instanceof \OpenSSLCertificate) {
-                    $pem = '';
-                    openssl_x509_export($peerCert, $pem);
-                    /** @var string $pem */
-                    $pin = HypervisorGateway::computePinFromCertificate($pem);
-                    $fingerprint = strtolower((string) openssl_x509_fingerprint($pem, 'sha256'));
+                if (! ($peerCert instanceof OpenSSLCertificate)) {
+                    @fclose($socket);
+                    throw new RuntimeException(sprintf('Failed to capture peer certificate for host [%s].', $host->name));
+                }
 
-                    $mismatch = false;
-                    if ($host->server_public_key_pin !== null && $host->server_public_key_pin !== '') {
-                        if ($pin !== $host->server_public_key_pin) {
-                            $mismatch = true;
-                        }
-                    } elseif ($host->server_fingerprint !== null && $host->server_fingerprint !== '') {
-                        if ($fingerprint !== strtolower($host->server_fingerprint)) {
-                            $mismatch = true;
-                        }
+                $storedPin = $host->server_public_key_pin !== null ? trim($host->server_public_key_pin) : '';
+                $storedFingerprint = $host->server_fingerprint !== null ? trim($host->server_fingerprint) : '';
+
+                if ($storedPin === '' && $storedFingerprint === '') {
+                    $host->status = 'not_trusted';
+                    $host->save();
+                    @fclose($socket);
+
+                    throw new MissingPinException(sprintf('Host [%s] requires a public key pin in operational mode.', $host->name));
+                }
+
+                $pem = '';
+                openssl_x509_export($peerCert, $pem);
+                /** @var string $pem */
+                $pin = HypervisorGateway::computePinFromCertificate($pem);
+                $fingerprint = strtolower((string) openssl_x509_fingerprint($pem, 'sha256'));
+
+                $mismatch = false;
+                if ($storedPin !== '') {
+                    if ($pin !== $storedPin) {
+                        $mismatch = true;
                     }
-
-                    if ($mismatch) {
-                        @fclose($socket);
-                        $host->status = 'fingerprint_mismatch';
-                        $host->save();
-
-                        throw new FingerprintMismatchException(
-                            actualFingerprint: '',
-                            expectedFingerprint: '',
-                            message: 'Server certificate public key does not match pinned public key.'
-                        );
+                } elseif ($storedFingerprint !== '') {
+                    if ($fingerprint !== strtolower($storedFingerprint)) {
+                        $mismatch = true;
                     }
+                }
+
+                if ($mismatch) {
+                    @fclose($socket);
+                    $host->status = 'fingerprint_mismatch';
+                    $host->save();
+
+                    throw new FingerprintMismatchException(
+                        actualFingerprint: '',
+                        expectedFingerprint: '',
+                        message: 'Server certificate public key does not match pinned public key.'
+                    );
                 }
             }
 
@@ -173,7 +185,7 @@ class WebSocketIncusEventTransport implements IncusEventTransportInterface
             $hostHeader = $port === 80 || $port === 443 ? $targetHost : sprintf('%s:%d', $targetHost, $port);
 
             $headers = [
-                'GET /1.0/events?type=lifecycle HTTP/1.1',
+                'GET /1.0/events?type=lifecycle&all-projects=true HTTP/1.1',
                 'Host: '.$hostHeader,
                 'Upgrade: websocket',
                 'Connection: Upgrade',
@@ -255,5 +267,19 @@ class WebSocketIncusEventTransport implements IncusEventTransportInterface
                 @unlink($keyFile);
             }
         }
+    }
+
+    /**
+     * Capture peer certificate from stream context options.
+     *
+     * @param  resource  $socket
+     */
+    protected function capturePeerCertificate($socket): ?OpenSSLCertificate
+    {
+        $params = stream_context_get_params($socket);
+        $ssl = $params['options']['ssl'] ?? null;
+        $peerCert = is_array($ssl) ? ($ssl['peer_certificate'] ?? null) : null;
+
+        return $peerCert instanceof OpenSSLCertificate ? $peerCert : null;
     }
 }

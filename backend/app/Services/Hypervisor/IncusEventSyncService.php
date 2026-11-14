@@ -82,52 +82,67 @@ class IncusEventSyncService
             $vm->refresh();
             $currentStatus = $vm->status->getValue();
 
-            switch ($action) {
-                case 'instance-started':
-                    if ($currentStatus !== 'running') {
-                        $vm->status->transitionTo(Running::class);
-                        $vm->save();
-                        Log::info(sprintf('Incus event: VM [%s] transitioned to Running on host [%s].', $vm->name, $host->name));
-                    }
-                    break;
+            try {
+                switch ($action) {
+                    case 'instance-started':
+                        if ($currentStatus !== 'running') {
+                            $vm->status->transitionTo(Running::class);
+                            $vm->save();
+                            Log::info(sprintf('Incus event: VM [%s] transitioned to Running on host [%s].', $vm->name, $host->name));
+                        }
+                        break;
 
-                case 'instance-stopped':
-                    if ($currentStatus !== 'stopped') {
-                        $vm->status->transitionTo(Stopped::class);
-                        $vm->save();
-                        Log::info(sprintf('Incus event: VM [%s] transitioned to Stopped on host [%s].', $vm->name, $host->name));
-                    }
-                    break;
+                    case 'instance-stopped':
+                        if ($currentStatus !== 'stopped') {
+                            $vm->status->transitionTo(Stopped::class);
+                            $vm->save();
+                            Log::info(sprintf('Incus event: VM [%s] transitioned to Stopped on host [%s].', $vm->name, $host->name));
+                        }
+                        break;
 
-                case 'instance-deleted':
-                    if ($currentStatus !== 'deleted') {
-                        $vm->status->transitionTo(Deleted::class);
-                        $vm->save();
-                        Log::info(sprintf('Incus event: VM [%s] transitioned to Deleted on host [%s].', $vm->name, $host->name));
-                    }
-                    break;
+                    case 'instance-deleted':
+                        if ($currentStatus !== 'deleted') {
+                            $vm->status->transitionTo(Deleted::class);
+                            $vm->save();
+                            Log::info(sprintf('Incus event: VM [%s] transitioned to Deleted on host [%s].', $vm->name, $host->name));
+                        }
+                        break;
 
-                case 'instance-paused':
-                case 'instance-suspended':
-                    if ($currentStatus !== 'suspended') {
-                        $vm->status->transitionTo(Suspended::class);
-                        $vm->save();
-                        Log::info(sprintf('Incus event: VM [%s] transitioned to Suspended on host [%s].', $vm->name, $host->name));
-                    }
-                    break;
+                    case 'instance-paused':
+                    case 'instance-suspended':
+                        if ($currentStatus !== 'suspended') {
+                            $vm->status->transitionTo(Suspended::class);
+                            $vm->save();
+                            Log::info(sprintf('Incus event: VM [%s] transitioned to Suspended on host [%s].', $vm->name, $host->name));
+                        }
+                        break;
 
-                case 'instance-created':
-                    // Do NOT move to Stopped if instance is currently provisioning
-                    // Let ProvisionVmJob finish its startup and network observation steps
-                    if ($currentStatus !== 'provisioning' && $currentStatus !== 'stopped') {
-                        $vm->status->transitionTo(Stopped::class);
-                        $vm->save();
-                    }
-                    break;
+                    case 'instance-created':
+                        // Do NOT move to Stopped if instance is currently provisioning
+                        // Let ProvisionVmJob finish its startup and network observation steps
+                        if ($currentStatus !== 'provisioning' && $currentStatus !== 'stopped') {
+                            $vm->status->transitionTo(Stopped::class);
+                            $vm->save();
+                        }
+                        break;
 
-                default:
-                    // Other lifecycle actions like renamed, updated, etc.
-                    break;
+                    default:
+                        // Other lifecycle actions like renamed, updated, etc.
+                        break;
+                }
+            } catch (\Throwable $e) {
+                Log::warning(sprintf(
+                    'Incus event: Invalid state transition for VM [%s] (action [%s], current status [%s]): %s',
+                    $vm->name,
+                    $action,
+                    $currentStatus,
+                    $e->getMessage()
+                ), [
+                    'exception' => $e,
+                    'vm_id' => $vm->id,
+                    'host_id' => $host->id,
+                    'action' => $action,
+                ]);
             }
 
             return $vm;
