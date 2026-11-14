@@ -20,6 +20,21 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $trustedProxies = env('TRUSTED_PROXIES');
+        /** @var array<int, string>|string $at */
+        $at = match (true) {
+            is_string($trustedProxies) && trim($trustedProxies) === '*' => '*',
+            is_string($trustedProxies) && trim($trustedProxies) !== '' => array_values(array_filter(array_map('trim', explode(',', $trustedProxies)))),
+            is_array($trustedProxies) => array_values(array_filter(array_map('strval', $trustedProxies))),
+            default => [
+                '10.0.0.0/8',
+                '172.16.0.0/12',
+                '192.168.0.0/16',
+                '127.0.0.1',
+            ],
+        };
+        $middleware->trustProxies(at: $at);
+
         $middleware->append(SetLocaleMiddleware::class);
         $middleware->api(prepend: [
             SetAuditContext::class,
