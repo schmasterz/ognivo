@@ -297,6 +297,16 @@ final class VmSnapshotModelAndQuotaTest extends TestCase
 
         // vm2 has 0 snapshots -> can still create snapshots on vm2
         $this->assertTrue($this->quotaService->canCreateSnapshot($this->customer, $vm2));
+        $this->assertSame(3, $this->quotaService->remainingSnapshots($this->customer, $vm2));
+
+        // Tenant-wide: 3 used on vm1 across 2 active VMs (limit 6) -> 3 remaining
+        $this->assertTrue($this->quotaService->canCreateSnapshot($this->customer));
+        $this->assertSame(3, $this->quotaService->remainingSnapshots($this->customer));
+
+        // Quota metrics reflect per-VM and tenant-wide snapshot availability
+        $this->assertSame(3, $this->quotaService->getMetrics($this->customer)['available']['snapshots']);
+        $this->assertSame(0, $this->quotaService->getMetrics($this->customer, ['vm_id' => $vm1->id])['available']['snapshots']);
+        $this->assertSame(3, $this->quotaService->getMetrics($this->customer, ['vm_id' => $vm2->id])['available']['snapshots']);
 
         // Infinite quota semantics: -1, 0, and null all allow unlimited snapshots
         foreach ([-1, 0, null] as $unlimitedValue) {
