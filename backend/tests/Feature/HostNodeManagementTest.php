@@ -190,6 +190,43 @@ final class HostNodeManagementTest extends TestCase
         $response->assertJsonFragment(['message' => 'Cannot delete compute node with active virtual machines deployed on it.']);
     }
 
+    public function test_admin_can_delete_host_that_has_ip_pools_and_deleted_virtual_machines(): void
+    {
+        $pool = IpPool::create([
+            'host_id' => $this->frankfurtHost->id,
+            'name' => 'Frankfurt Deletion Pool',
+            'subnet' => '10.10.0.0/29',
+            'gateway' => '10.10.0.1',
+            'ip_version' => 4,
+            'dns_servers' => ['8.8.8.8'],
+            'active' => true,
+        ]);
+
+        $vm = VirtualMachine::create([
+            'user_id' => $this->customer->id,
+            'host_id' => $this->frankfurtHost->id,
+            'name' => 'historic-vm-01',
+            'incus_project' => 'default',
+            'os_image' => 'ubuntu:24.04',
+            'cpu_cores' => 2,
+            'ram_mb' => 4096,
+            'disk_gb' => 40,
+            'status' => 'deleted',
+            'ipv4_address' => '10.200.0.10',
+        ]);
+
+        $response = $this->actingAs($this->admin)->deleteJson("/api/admin/hosts/{$this->frankfurtHost->id}");
+        $response->assertOk();
+
+        $this->assertDatabaseMissing('hosts', ['id' => $this->frankfurtHost->id]);
+        $this->assertDatabaseMissing('ip_pools', ['id' => $pool->id]);
+        $this->assertDatabaseHas('virtual_machines', [
+            'id' => $vm->id,
+            'host_id' => null,
+            'status' => 'deleted',
+        ]);
+    }
+
     public function test_ip_pools_can_be_assigned_to_specific_host_nodes(): void
     {
         $poolRes = $this->actingAs($this->admin)->postJson('/api/admin/ip-pools', [
