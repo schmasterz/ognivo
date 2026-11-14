@@ -3,6 +3,7 @@
   "version": "1.0.0-alpha.1",
   "description": "Ognivo web dashboard - multi-tenant cloud control plane for Incus and LXD hypervisors.",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

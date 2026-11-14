@@ -6,12 +6,11 @@ namespace App\Services\Hypervisor\Drivers;
 
 use App\DTO\Cast;
 use App\DTO\Host\HostResourcesDTO;
-use App\Exceptions\FingerprintMismatchException as BaseFingerprintMismatchException;
+use App\Exceptions\FingerprintMismatchException;
 use App\Models\Host;
 use App\Models\User;
 use App\Models\VirtualMachine;
 use App\Services\Hypervisor\Contracts\HypervisorDriverInterface;
-use App\Services\Hypervisor\Exceptions\FingerprintMismatchException;
 use App\Services\Hypervisor\HypervisorGateway;
 use App\Services\Hypervisor\InstanceSpecBuilder;
 use App\Services\Hypervisor\TenantProjectProvisioner;
@@ -190,10 +189,8 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
                 }
 
                 return true;
-            } catch (BaseFingerprintMismatchException $e) {
-                throw $e instanceof FingerprintMismatchException
-                    ? $e
-                    : new FingerprintMismatchException($e->getActualFingerprint(), $e->getExpectedFingerprint(), $e->getMessage());
+            } catch (FingerprintMismatchException $e) {
+                throw $e;
             } catch (Throwable $e) {
                 $this->lastError = $e->getMessage();
                 Log::error(sprintf('Exception while waiting for hypervisor operation: %s', $e->getMessage()));
@@ -221,10 +218,8 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
             $quota = $user?->quota;
 
             $provisioner->ensureProject($this->client(), $project, $quota);
-        } catch (BaseFingerprintMismatchException $e) {
-            throw $e instanceof FingerprintMismatchException
-                ? $e
-                : new FingerprintMismatchException($e->getActualFingerprint(), $e->getExpectedFingerprint(), $e->getMessage());
+        } catch (FingerprintMismatchException $e) {
+            throw $e;
         } catch (Throwable $e) {
             Log::warning(sprintf('Notice during ensureProjectExists for %s: %s', $project, $e->getMessage()));
         }

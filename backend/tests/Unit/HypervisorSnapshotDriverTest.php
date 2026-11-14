@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit;
 
+use App\Exceptions\FingerprintMismatchException;
 use App\Models\Host;
 use App\Models\PanelCertificate;
 use App\Models\User;
@@ -11,7 +12,6 @@ use App\Models\VirtualMachine;
 use App\Services\Hypervisor\Drivers\FakeHypervisorDriver;
 use App\Services\Hypervisor\Drivers\IncusDriver;
 use App\Services\Hypervisor\Drivers\LxdDriver;
-use App\Services\Hypervisor\Exceptions\FingerprintMismatchException;
 use App\Services\Hypervisor\HypervisorGateway;
 use App\Services\Hypervisor\HypervisorManager;
 use App\Services\PanelCertificateService;
@@ -405,7 +405,7 @@ final class HypervisorSnapshotDriverTest extends TestCase
         $this->assertTrue($gateway->deleteSnapshot($this->vm, 'gw-snap'));
         $this->assertFalse($gateway->deleteSnapshot($this->vm, 'gw-snap'));
 
-        // Now test real driver with fingerprint mismatch mapped to App\Services\Hypervisor\Exceptions\FingerprintMismatchException
+        // Now test real driver with fingerprint mismatch mapped to App\Exceptions\FingerprintMismatchException
         HypervisorManager::resetFake();
 
         $this->incusHost->update([
