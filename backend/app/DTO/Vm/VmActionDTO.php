@@ -11,9 +11,14 @@ use App\DTO\Cast;
  */
 final readonly class VmActionDTO
 {
+    /**
+     * @param  array<string, mixed>|null  $cloudInit
+     */
     public function __construct(
         public string $action,
         public bool $force = false,
+        public ?string $osImage = null,
+        public ?array $cloudInit = null,
     ) {}
 
     /**
@@ -24,6 +29,8 @@ final readonly class VmActionDTO
         return new self(
             action: Cast::string($data['action'] ?? ''),
             force: Cast::bool($data['force'] ?? false),
+            osImage: Cast::stringOrNull($data['os_image'] ?? null),
+            cloudInit: Cast::arrayOrNull($data['cloud_init'] ?? null),
         );
     }
 }

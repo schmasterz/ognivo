@@ -123,7 +123,10 @@ final class ForbidImpersonationActions
         }
 
         // 5. Console ticket issuing
-        if ($request->is('api/vms/*/console-ticket') || $request->is('api/vms/*/console/ticket') || $request->input('action') === 'console.ticket') {
+        if ($request->is('api/vms/*/console-ticket')
+            || $request->is('api/vms/*/console/ticket')
+            || ($request->is('api/vms/*/console') && $request->isMethod('POST'))
+            || $request->input('action') === 'console.ticket') {
             $vm = $request->route('virtualMachine');
             $this->auditLogger->recordIndependent(new AuditEntry(
                 action: AuditAction::VmActionDenied,

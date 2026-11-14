@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Audit\AuditAction;
+use App\Audit\AuditOutcome;
+use App\Models\AuditLog;
 use App\Models\Host;
 use App\Models\User;
 use App\Models\VirtualMachine;
@@ -180,5 +183,54 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
             'virtual_machine_id',
             'ticket',
         ]);
+    }
+
+    public function test_console_log_endpoint_records_audit_log_entry(): void
+    {
+        Sanctum::actingAs($this->owner);
+
+        $response = $this->getJson("/api/vms/{$this->vm->id}/console-log");
+
+        $response->assertStatus(200);
+
+        $log = AuditLog::where('action', AuditAction::VmActionRequested->value)
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($log, 'Console log view must create an audit log entry');
+        $this->assertSame(AuditOutcome::Success->value, $log->outcome);
+        $this->assertSame($this->vm->getMorphClass(), $log->subject_type);
+        $this->assertSame((string) $this->vm->id, $log->subject_id);
+        $this->assertSame($this->owner->id, $log->tenant_user_id);
+        $this->assertSame('tenant', $log->visibility);
+        $this->assertSame('console_log.viewed', $log->context['action'] ?? null);
+        $this->assertSame($this->vm->id, $log->context['virtual_machine_id'] ?? null);
+        $this->assertGreaterThan(0, $log->context['bytes_returned'] ?? 0);
+    }
+
+    public function test_console_post_is_forbidden_and_audited_while_impersonating(): void
+    {
+        $token = $this->owner->createToken(
+            name: 'impersonation:'.$this->admin->id,
+            abilities: ['impersonated', 'impersonator:'.$this->admin->id],
+        )->plainTextToken;
+
+        $response = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson("/api/vms/{$this->vm->id}/console");
+
+        $response->assertStatus(403);
+        $response->assertJson(['message' => 'Issuing console tickets is forbidden while impersonating.']);
+
+        $log = AuditLog::where('action', AuditAction::VmActionDenied->value)
+            ->where('outcome', AuditOutcome::Denied->value)
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($log, 'Denied console request must create an audit log entry');
+        $this->assertSame($this->admin->id, $log->impersonator_id);
+        $this->assertSame($this->owner->id, $log->tenant_user_id);
+        $this->assertSame('tenant', $log->visibility);
+        $this->assertSame('console.ticket', $log->context['action'] ?? null);
+        $this->assertSame('forbidden_while_impersonating', $log->context['reason'] ?? null);
     }
 }

@@ -241,6 +241,17 @@ final class AdminImpersonationTest extends TestCase
         $this->assertNotNull($consoleLog, 'Denied console ticket must be audited');
         $this->assertSame($this->admin->id, $consoleLog->impersonator_id);
 
+        $this->withTokenHeader($token)
+            ->postJson("/api/vms/{$vm->id}/console")
+            ->assertStatus(403);
+
+        $consolePostLog = AuditLog::where('action', AuditAction::VmActionDenied->value)
+            ->where('outcome', AuditOutcome::Denied->value)
+            ->latest('id')
+            ->first();
+        $this->assertNotNull($consolePostLog, 'Denied console request must be audited');
+        $this->assertSame($this->admin->id, $consolePostLog->impersonator_id);
+
         // Also test directly on VmLifecycleService
         try {
             app(VmLifecycleService::class)->issueConsoleTicket($vm, $this->activeTenant->withAccessToken($this->activeTenant->tokens()->latest()->first()));
