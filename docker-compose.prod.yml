@@ -61,6 +61,13 @@ services:
     restart: always
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+      - CHOWN
+      - DAC_OVERRIDE
     env_file:
       - .env.production
     environment:
