@@ -43,14 +43,18 @@ export function SearchableUserSelect({
   // Synchronize selectedUserRecord when selectedUserId changes or users prop changes
   useEffect(() => {
     if (!selectedUserId) {
-      setSelectedUserRecord(null);
+      queueMicrotask(() => {
+        setSelectedUserRecord(null);
+      });
       return;
     }
 
     if (users && users.length > 0) {
       const match = users.find((u) => String(u.id) === selectedUserId);
       if (match) {
-        setSelectedUserRecord(match);
+        queueMicrotask(() => {
+          setSelectedUserRecord(match);
+        });
         return;
       }
     }

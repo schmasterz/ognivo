@@ -42,11 +42,13 @@ export function CreateSnapshotModal({
 
   useEffect(() => {
     if (isOpen) {
-      setName("");
-      setStateful(false);
-      setNameError(null);
-      setServerError(null);
-      setLoading(false);
+      queueMicrotask(() => {
+        setName("");
+        setStateful(false);
+        setNameError(null);
+        setServerError(null);
+        setLoading(false);
+      });
     }
   }, [isOpen]);
 

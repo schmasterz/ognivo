@@ -161,7 +161,15 @@ export function SnapshotsTab({
   );
 
   useEffect(() => {
-    fetchSnapshots(true);
+    let ignore = false;
+    queueMicrotask(() => {
+      if (!ignore) {
+        void fetchSnapshots(true);
+      }
+    });
+    return () => {
+      ignore = true;
+    };
   }, [fetchSnapshots]);
 
   // Real-time WebSocket updates via Laravel Echo

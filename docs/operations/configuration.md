@@ -81,6 +81,11 @@ Initialize `.env.development` and `.env.production` via `make secrets`.
 | `RUN_MIGRATIONS` | `true` | `true` | Runs `php artisan migrate --force` on container startup |
 | `RUN_SEEDERS` | `false` | `true` | Must be `false` in production |
 
+### Hypervisor Connectivity
+| Variable | Default (Prod) | Description |
+| :--- | :--- | :--- |
+| `HYPERVISOR_ALLOW_PRIVATE_ENDPOINTS` | `false` | When `false` (default), peer certificate fetching rejects connections to private IP ranges (RFC 1918, RFC 4193) and loopback addresses as an SSRF mitigation. Set to `true` when Incus compute nodes are deployed on private RFC 1918 / LAN or loopback addresses. |
+
 *(For `AUDIT_*` and `DB_MIGRATION_*` variables, see [security-and-audit.md](../architecture/security-and-audit.md#3-audit-environment-variables)).*
 
 ---

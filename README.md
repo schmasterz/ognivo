@@ -22,7 +22,7 @@
 - **📸 Asynchronous Point-in-Time Snapshots**
   Stateful and stateless snapshots for VMs and containers with distributed Redis locks, real-time WebSocket progress transitions, per-tier quota limits, and a pluggable `BackupTargetInterface`.
 - **🌐 Ranged IPAM & Multi-Mode Networking**
-  IPv4/IPv6 subnet pools with **Routed** (Layer 3 point-to-point + Cloud-Init Netplan) and **Manual** modes, dedicated IP lifecycle with cooldown quarantine periods, and hypervisor preflight checks.
+  IPv4 subnet pools with **Routed** (Layer 3 point-to-point + Cloud-Init Netplan) and **Manual** modes, dedicated IP lifecycle with cooldown quarantine periods, and hypervisor preflight checks.
 - **📊 Multi-Tenant Quota Groups & Atomic Resource Locking**
   Reusable plans/tiers (Standard, Developer, Enterprise Unlimited `∞`) with instant multi-tenant synchronization and race-free provisioning via database row locks and Redis mutexes.
 - **🛡️ Tamper-Evident Audit Subsystem**
@@ -154,6 +154,28 @@ All documentation is organized by domain inside the [`docs/`](docs/README.md) di
 | :--- | :--- |
 | [**Automated Testing**](docs/testing/automated-testing.md) | Fast SQLite unit tests, MySQL/Redis integration suite, PHPStan Level 10, Psalm, and Node tests |
 | [**Manual QA & API Scenarios**](docs/testing/manual-qa.md) | Step-by-step UI verification workflows and ready-to-run `curl` API recipes |
+
+---
+
+## 📋 Supported Versions
+
+- **Incus (Official Support):** **Incus 6.0+ LTS** is the officially supported hypervisor platform. Container and virtual machine orchestration, snapshot lifecycle, and console streaming are tested and supported against Incus 6.0+ LTS.
+- **LXD (Experimental):** The LXD driver is **experimental / best-effort**. While core operations share API compatibility, production deployments should use Incus 6.0+ LTS.
+
+---
+
+## ⚠️ Known Limitations
+
+- **IPv4-Only IPAM (v1):** IPAM v1 supports IPv4 subnet pools and allocation only. IPv6 pools and dual-stack guest networking are not supported in 1.0 and are planned for a subsequent release.
+- **Single-Node & Non-Clustered Scope:** Version 1.0 focuses on standalone hypervisor node orchestration. Incus/LXD clustering features (live cross-cluster migration, cluster-wide storage pools), enterprise Single Sign-On (SSO / OIDC), and object storage buckets are out of scope for 1.0.
+- **Bearer Token Storage:** API authentication tokens are stored in browser `localStorage`. While this is mitigated by strict Content Security Policy (CSP) headers and input/output XSS hygiene, migration to `httpOnly` SameSite cookies is planned for a future release.
+
+---
+
+## 🔄 Upgrade Notes
+
+- **Pre-Alpha / Alpha.1 Deployments:** If upgrading from pre-alpha or early `alpha.1` builds, perform a **fresh install**. Breaking database schema and security model changes introduced prior to the stable 1.0 release cannot be upgraded in-place.
+- **MySQL User Grants:** Existing MySQL database user grants (`ognivo_user`, `audit_writer`, `audit_maintenance`) are configured during initial setup and are **not retroactively modified** on application upgrade. When updating between releases that introduce new table grants or privilege changes, re-apply privileges manually using `php artisan audit:grants --force`.
 
 ---
 

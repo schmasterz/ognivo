@@ -32,7 +32,7 @@ use Override;
  * @property int $total_cpu_cores
  * @property int $total_ram_mb
  * @property int $total_storage_gb
- * @property string $capacity_source
+ * @property string|null $capacity_source
  * @property Carbon|null $capacity_synced_at
  * @property array<string, mixed>|null $settings
  * @property Carbon|null $created_at
@@ -66,6 +66,16 @@ final class Host extends Model
         'server_public_key_pin',
         'status',
         'needs_retrust',
+    ];
+
+    /**
+     * The model's default values for attributes.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'is_active' => true,
+        'capacity_source' => 'unknown',
     ];
 
     /**
@@ -136,12 +146,12 @@ final class Host extends Model
         self::creating(function (Host $host): void {
             if ($host->capacity_source === null || $host->capacity_source === '') {
                 if (empty($host->total_cpu_cores) && empty($host->total_ram_mb) && empty($host->total_storage_gb)) {
-                    if ($host->driver === 'fake' || app()->environment('local', 'testing')) {
+                    if ($host->driver === 'fake' || (bool) app()->environment('local', 'testing')) {
                         $host->total_cpu_cores = 64;
                         $host->total_ram_mb = 131072;
                         $host->total_storage_gb = 4000;
                         $host->capacity_source = 'discovered';
-                        $host->capacity_synced_at = now();
+                        $host->capacity_synced_at = Carbon::now();
 
                         return;
                     }
@@ -155,7 +165,7 @@ final class Host extends Model
                     $host->capacity_source = 'unknown';
                 } elseif ($host->total_cpu_cores > 0 || $host->total_ram_mb > 0 || $host->total_storage_gb > 0) {
                     $host->capacity_source = 'discovered';
-                    $host->capacity_synced_at ??= now();
+                    $host->capacity_synced_at ??= Carbon::now();
                 } else {
                     $host->capacity_source = 'unknown';
                 }

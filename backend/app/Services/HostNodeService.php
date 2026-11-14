@@ -89,6 +89,8 @@ final class HostNodeService
             $pin = HypervisorGateway::computePinFromCertificate($dto->serverCertificate);
         }
 
+        $hasManualCapacity = $dto->totalCpuCores > 0 && $dto->totalRamMb > 0 && $dto->totalStorageGb > 0;
+
         /** @var Host $host */
         $host = Host::create([
             'name' => $dto->name,
@@ -100,10 +102,10 @@ final class HostNodeService
             'driver' => $dto->driver,
             'token' => $dto->token,
             'is_active' => $dto->isActive,
-            'total_cpu_cores' => $dto->totalCpuCores,
-            'total_ram_mb' => $dto->totalRamMb,
-            'total_storage_gb' => $dto->totalStorageGb,
-            'capacity_source' => 'manual',
+            'total_cpu_cores' => $hasManualCapacity ? $dto->totalCpuCores : 0,
+            'total_ram_mb' => $hasManualCapacity ? $dto->totalRamMb : 0,
+            'total_storage_gb' => $hasManualCapacity ? $dto->totalStorageGb : 0,
+            'capacity_source' => $hasManualCapacity ? 'manual' : 'unknown',
             'settings' => $dto->settings,
         ]);
 
@@ -146,7 +148,7 @@ final class HostNodeService
             'region' => $dto->region,
             'endpoint_url' => $dto->endpointUrl,
             'driver' => $targetDriver,
-            'is_active' => $dto->isActive ?? (bool) ($host->is_active ?? true),
+            'is_active' => $dto->isActive ?? $host->is_active,
             'total_cpu_cores' => $dto->totalCpuCores ?? $host->total_cpu_cores,
             'total_ram_mb' => $dto->totalRamMb ?? $host->total_ram_mb,
             'total_storage_gb' => $dto->totalStorageGb ?? $host->total_storage_gb,

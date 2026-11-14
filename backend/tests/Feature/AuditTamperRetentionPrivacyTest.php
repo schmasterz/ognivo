@@ -273,6 +273,153 @@ final class AuditTamperRetentionPrivacyTest extends TestCase
         $this->assertDatabaseHas('audit_seals', ['id' => $seal->id]);
     }
 
+    public function test_prune_versions_archive_when_run_multiple_times_in_same_month(): void
+    {
+        $oldDate = Carbon::now()->subDays(450);
+        $month = $oldDate->format('Y-m');
+
+        // Batch 1: Two expired rows in the target month
+        $batch1Row1 = AuditLog::create([
+            'occurred_at' => $oldDate->copy()->addMinutes(1),
+            'action' => 'user.created',
+            'actor_type' => 'user',
+            'actor_id' => 1,
+            'actor_label' => 'admin@example.com',
+            'outcome' => 'success',
+            'visibility' => 'admin',
+            'context' => ['batch' => 1, 'item' => 1],
+        ]);
+
+        $batch1Row2 = AuditLog::create([
+            'occurred_at' => $oldDate->copy()->addMinutes(2),
+            'action' => 'user.updated',
+            'actor_type' => 'user',
+            'actor_id' => 1,
+            'actor_label' => 'admin@example.com',
+            'outcome' => 'success',
+            'visibility' => 'admin',
+            'context' => ['batch' => 1, 'item' => 2],
+        ]);
+
+        // Seal Batch 1
+        $exitSeal1 = Artisan::call('audit:seal');
+        $this->assertSame(0, $exitSeal1);
+
+        $seal1 = AuditSeal::first();
+        $this->assertNotNull($seal1);
+        $this->assertFalse($seal1->archived);
+
+        // Run prune for Batch 1
+        $exitPrune1 = Artisan::call('audit:prune');
+        $this->assertSame(0, $exitPrune1);
+
+        $archivePath1 = storage_path("app/audit-archive/{$month}.ndjson.gz");
+        $this->assertFileExists($archivePath1);
+        $sha1 = hash_file('sha256', $archivePath1);
+
+        $seal1->refresh();
+        $this->assertTrue($seal1->archived);
+        $this->assertSame($sha1, $seal1->archive_sha256);
+        $this->assertDatabaseMissing('audit_logs', ['id' => $batch1Row1->id]);
+        $this->assertDatabaseMissing('audit_logs', ['id' => $batch1Row2->id]);
+
+        // Batch 2: Two more expired rows in the exact same month
+        $batch2Row1 = AuditLog::create([
+            'occurred_at' => $oldDate->copy()->addMinutes(10),
+            'action' => 'vm.create.requested',
+            'actor_type' => 'user',
+            'actor_id' => 2,
+            'actor_label' => 'dev@example.com',
+            'outcome' => 'success',
+            'visibility' => 'admin',
+            'context' => ['batch' => 2, 'item' => 1],
+        ]);
+
+        $batch2Row2 = AuditLog::create([
+            'occurred_at' => $oldDate->copy()->addMinutes(15),
+            'action' => 'vm.start.requested',
+            'actor_type' => 'user',
+            'actor_id' => 2,
+            'actor_label' => 'dev@example.com',
+            'outcome' => 'success',
+            'visibility' => 'admin',
+            'context' => ['batch' => 2, 'item' => 2],
+        ]);
+
+        // Seal Batch 2
+        $exitSeal2 = Artisan::call('audit:seal');
+        $this->assertSame(0, $exitSeal2);
+
+        $seal2 = AuditSeal::orderBy('id', 'desc')->first();
+        $this->assertNotNull($seal2);
+        $this->assertNotSame($seal1->id, $seal2->id);
+        $this->assertFalse($seal2->archived);
+
+        // Run prune for Batch 2
+        $exitPrune2 = Artisan::call('audit:prune');
+        $this->assertSame(0, $exitPrune2);
+
+        // Verify both archive files exist and versioned suffix was used
+        $archivePath2 = storage_path("app/audit-archive/{$month}.1.ndjson.gz");
+        $this->assertFileExists($archivePath1);
+        $this->assertFileExists($archivePath2);
+
+        // Verify first archive was NOT overwritten
+        $this->assertSame($sha1, hash_file('sha256', $archivePath1));
+
+        $sha2 = hash_file('sha256', $archivePath2);
+        $this->assertNotSame($sha1, $sha2);
+
+        $seal2->refresh();
+        $this->assertTrue($seal2->archived);
+        $this->assertSame($sha2, $seal2->archive_sha256);
+
+        $this->assertDatabaseMissing('audit_logs', ['id' => $batch2Row1->id]);
+        $this->assertDatabaseMissing('audit_logs', ['id' => $batch2Row2->id]);
+
+        // Helper to read all lines from a gzipped archive
+        $readArchiveLines = function (string $path): array {
+            $gz = gzopen($path, 'rb');
+            $this->assertNotFalse($gz);
+            $decompressed = '';
+            while (! gzeof($gz)) {
+                $chunk = gzread($gz, 4096);
+                $this->assertNotFalse($chunk);
+                $decompressed .= $chunk;
+            }
+            gzclose($gz);
+
+            return array_values(array_filter(explode("\n", trim($decompressed))));
+        };
+
+        $lines1 = $readArchiveLines($archivePath1);
+        $lines2 = $readArchiveLines($archivePath2);
+
+        $this->assertCount(2, $lines1);
+        $this->assertCount(2, $lines2);
+
+        $records = [];
+        foreach (array_merge($lines1, $lines2) as $rawLine) {
+            /** @var array<string, mixed> $record */
+            $record = json_decode($rawLine, true);
+            $records[] = $record;
+        }
+
+        $this->assertCount(4, $records);
+
+        $ids = array_column($records, 'id');
+        $this->assertContains($batch1Row1->id, $ids);
+        $this->assertContains($batch1Row2->id, $ids);
+        $this->assertContains($batch2Row1->id, $ids);
+        $this->assertContains($batch2Row2->id, $ids);
+
+        $actions = array_column($records, 'action');
+        $this->assertContains('user.created', $actions);
+        $this->assertContains('user.updated', $actions);
+        $this->assertContains('vm.create.requested', $actions);
+        $this->assertContains('vm.start.requested', $actions);
+    }
+
     public function test_verify_still_passes_after_prune(): void
     {
         $oldDate = Carbon::now()->subDays(450);

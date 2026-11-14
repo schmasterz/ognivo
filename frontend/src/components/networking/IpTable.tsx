@@ -63,7 +63,9 @@ function CoolingBadge({ ip, onExpire }: CoolingBadgeProps) {
   const [remaining, setRemaining] = useState<number>(initial);
 
   useEffect(() => {
-    setRemaining(ip.cooldown_remaining_seconds ?? 0);
+    queueMicrotask(() => {
+      setRemaining(ip.cooldown_remaining_seconds ?? 0);
+    });
   }, [ip.cooldown_remaining_seconds]);
 
   useEffect(() => {

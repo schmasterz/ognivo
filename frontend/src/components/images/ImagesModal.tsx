@@ -84,7 +84,15 @@ export function ImagesModal({ onClose, hosts }: ImagesModalProps) {
   }, [debouncedSearch, osTypeFilter, page, perPage, toast]);
 
   useEffect(() => {
-    fetchImagesList();
+    let ignore = false;
+    queueMicrotask(() => {
+      if (!ignore) {
+        void fetchImagesList();
+      }
+    });
+    return () => {
+      ignore = true;
+    };
   }, [fetchImagesList]);
 
   const handleToggleEnabled = async (image: ImageItem) => {

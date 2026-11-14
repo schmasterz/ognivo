@@ -9,6 +9,7 @@ backend/.env
 /.idea/
 /.docs/
 /.vscode/
+/specs/
 
 # Environments
 .env.development

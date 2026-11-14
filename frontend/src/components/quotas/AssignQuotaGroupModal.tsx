@@ -30,11 +30,13 @@ export function AssignQuotaGroupModal({
   useModalEscape(onClose, !loading);
 
   useEffect(() => {
-    setSelectedGroupId(
-      user.quota_group_id || (quotaGroups.find((g) => g.is_default)?.id ?? (quotaGroups[0]?.id || 0))
-    );
-    setError(null);
-    setLoading(false);
+    queueMicrotask(() => {
+      setSelectedGroupId(
+        user.quota_group_id || (quotaGroups.find((g) => g.is_default)?.id ?? (quotaGroups[0]?.id || 0))
+      );
+      setError(null);
+      setLoading(false);
+    });
   }, [user, quotaGroups]);
 
   const handleSubmit = async (e: React.FormEvent) => {

@@ -353,7 +353,9 @@ export function CreateHostModal({ onClose, onSuccess }: CreateHostModalProps) {
               >
                 <option value="incus">Incus Hypervisor</option>
                 <option value="lxd">LXD Hypervisor</option>
-                <option value="fake">Emulated Driver (Dev / Test)</option>
+                {process.env.NEXT_PUBLIC_ENABLE_FAKE_DRIVER === "true" && (
+                  <option value="fake">Emulated Driver (Dev / Test)</option>
+                )}
               </select>
             </div>
           </div>

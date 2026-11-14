@@ -72,6 +72,8 @@ final class NetworkProvisioningIntegrationTest extends TestCase
             'total_cpu_cores' => 64,
             'total_ram_mb' => 131072,
             'total_storage_gb' => 4000,
+            'capacity_source' => 'discovered',
+            'capacity_synced_at' => now(),
         ]);
 
         $this->image = Image::firstOrCreate(

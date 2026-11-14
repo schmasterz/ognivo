@@ -61,6 +61,8 @@ final class HostNodeManagementTest extends TestCase
                 'total_cpu_cores' => 64,
                 'total_ram_mb' => 262144,
                 'total_storage_gb' => 8000,
+                'capacity_source' => 'discovered',
+                'capacity_synced_at' => now(),
             ]
         );
 
@@ -74,6 +76,8 @@ final class HostNodeManagementTest extends TestCase
                 'total_cpu_cores' => 64,
                 'total_ram_mb' => 262144,
                 'total_storage_gb' => 8000,
+                'capacity_source' => 'discovered',
+                'capacity_synced_at' => now(),
             ]
         );
 
@@ -87,6 +91,8 @@ final class HostNodeManagementTest extends TestCase
                 'total_cpu_cores' => 32,
                 'total_ram_mb' => 131072,
                 'total_storage_gb' => 4000,
+                'capacity_source' => 'discovered',
+                'capacity_synced_at' => now(),
             ]
         );
 

@@ -44,12 +44,14 @@ export function EditQuotaGroupModal({ quotaGroup, onClose, onSuccess }: EditQuot
   useModalEscape(onClose, !loading);
 
   useEffect(() => {
-    setName(quotaGroup.name);
-    setDescription(quotaGroup.description || "");
-    setIsDefault(quotaGroup.is_default);
-    setQuotaLimits(quotaRecordToFormValue(quotaGroup, GROUP_QUOTA_DEFAULTS));
-    setError(null);
-    setLoading(false);
+    queueMicrotask(() => {
+      setName(quotaGroup.name);
+      setDescription(quotaGroup.description || "");
+      setIsDefault(quotaGroup.is_default);
+      setQuotaLimits(quotaRecordToFormValue(quotaGroup, GROUP_QUOTA_DEFAULTS));
+      setError(null);
+      setLoading(false);
+    });
   }, [quotaGroup]);
 
   const handleSubmit = async (e: React.FormEvent) => {

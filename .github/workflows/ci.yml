@@ -49,6 +49,9 @@ jobs:
       - name: Static analysis (PHPStan)
         run: vendor/bin/phpstan analyse --memory-limit=1G
 
+      - name: Static analysis (Psalm)
+        run: vendor/bin/psalm --no-progress
+
   backend-unit:
     name: Backend Unit & Feature Tests (SQLite)
     runs-on: ubuntu-latest
@@ -172,7 +175,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -182,5 +185,31 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Test
+        run: npm test
+
       - name: Build
         run: npm run build
+
+  console-proxy:
+    name: Console Proxy Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: console-proxy
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: console-proxy/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test

@@ -34,12 +34,16 @@ export function useUsers({
   const [registrationEnabled, setRegistrationEnabled] = useState<boolean>(initialRegistrationEnabled);
 
   useEffect(() => {
-    setRegistrationEnabled(initialRegistrationEnabled);
+    queueMicrotask(() => {
+      setRegistrationEnabled(initialRegistrationEnabled);
+    });
   }, [initialRegistrationEnabled]);
 
   // Reset page when filters change
   useEffect(() => {
-    setPage(1);
+    queueMicrotask(() => {
+      setPage(1);
+    });
   }, [sessionUserId, userId, hostId, status, search]);
 
   const cacheKey = useMemo(() => {

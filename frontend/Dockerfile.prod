@@ -16,9 +16,12 @@ COPY . .
 
 # Build arguments for Next.js compile-time inlined public variables
 ARG NEXT_PUBLIC_API_URL=/api
-ARG NEXT_PUBLIC_REVERB_APP_KEY=8atqs5wayajshmsj2sqn
+ARG NEXT_PUBLIC_REVERB_APP_KEY
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 ENV NEXT_PUBLIC_REVERB_APP_KEY=${NEXT_PUBLIC_REVERB_APP_KEY}
+
+# Fail build if required build arguments are missing
+RUN test -n "$NEXT_PUBLIC_REVERB_APP_KEY" || { echo "NEXT_PUBLIC_REVERB_APP_KEY build arg is required" >&2; exit 1; }
 
 # Compile Next.js production bundle
 RUN npm run build

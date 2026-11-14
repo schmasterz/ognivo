@@ -56,6 +56,11 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
             'endpoint_url' => 'https://10.0.1.10:8443',
             'driver' => 'fake',
             'is_active' => true,
+            'total_cpu_cores' => 64,
+            'total_ram_mb' => 131072,
+            'total_storage_gb' => 4000,
+            'capacity_source' => 'discovered',
+            'capacity_synced_at' => now(),
         ]);
 
         $this->hostB = Host::create([
@@ -63,6 +68,11 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
             'endpoint_url' => 'https://10.0.2.10:8443',
             'driver' => 'fake',
             'is_active' => true,
+            'total_cpu_cores' => 64,
+            'total_ram_mb' => 131072,
+            'total_storage_gb' => 4000,
+            'capacity_source' => 'discovered',
+            'capacity_synced_at' => now(),
         ]);
 
         IpPool::create([
@@ -221,5 +231,68 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
             'source' => 'https://bad.org',
         ]);
         $customerRes->assertStatus(403);
+    }
+
+    public function test_tenant_api_images_does_not_leak_sensitive_host_node_details(): void
+    {
+        $image = Image::create([
+            'name' => 'debian/12',
+            'source' => 'https://images.linuxcontainers.org',
+            'protocol' => 'simplestreams',
+            'os_type' => 'linux',
+            'enabled' => true,
+        ]);
+        $image->hosts()->attach([$this->hostA->id]);
+
+        // Non-admin tenant
+        $tenantRes = $this->actingAs($this->customer)->getJson('/api/images');
+        $tenantRes->assertStatus(200);
+
+        /** @var array<int, array<string, mixed>> $tenantHosts */
+        $tenantHosts = $tenantRes->json('data.0.hosts');
+        $this->assertNotEmpty($tenantHosts);
+
+        $tenantHost = $tenantHosts[0];
+        $this->assertArrayNotHasKey('endpoint_url', $tenantHost);
+        $this->assertArrayNotHasKey('server_fingerprint', $tenantHost);
+        $this->assertArrayNotHasKey('server_public_key_pin', $tenantHost);
+        $this->assertArrayNotHasKey('total_cpu_cores', $tenantHost);
+        $this->assertArrayNotHasKey('capacity', $tenantHost);
+
+        $tenantRes->assertDontSee('endpoint_url');
+        $tenantRes->assertDontSee('server_fingerprint');
+        $tenantRes->assertDontSee('server_public_key_pin');
+        $tenantRes->assertDontSee('total_cpu_cores');
+        $tenantRes->assertDontSee('capacity');
+
+        // Admin calling GET /api/images receives HostNodeResource fields
+        $adminRes = $this->actingAs($this->admin)->getJson('/api/images');
+        $adminRes->assertStatus(200);
+
+        /** @var array<int, array<string, mixed>> $adminHosts */
+        $adminHosts = $adminRes->json('data.0.hosts');
+        $this->assertNotEmpty($adminHosts);
+
+        $adminHost = $adminHosts[0];
+        $this->assertArrayHasKey('endpoint_url', $adminHost);
+        $this->assertArrayHasKey('server_fingerprint', $adminHost);
+        $this->assertArrayHasKey('server_public_key_pin', $adminHost);
+        $this->assertArrayHasKey('total_cpu_cores', $adminHost);
+        $this->assertArrayHasKey('capacity', $adminHost);
+
+        // Admin calling GET /api/admin/images receives HostNodeResource fields
+        $adminApiRes = $this->actingAs($this->admin)->getJson('/api/admin/images');
+        $adminApiRes->assertStatus(200);
+
+        /** @var array<int, array<string, mixed>> $adminApiHosts */
+        $adminApiHosts = $adminApiRes->json('data.0.hosts');
+        $this->assertNotEmpty($adminApiHosts);
+
+        $adminApiHost = $adminApiHosts[0];
+        $this->assertArrayHasKey('endpoint_url', $adminApiHost);
+        $this->assertArrayHasKey('server_fingerprint', $adminApiHost);
+        $this->assertArrayHasKey('server_public_key_pin', $adminApiHost);
+        $this->assertArrayHasKey('total_cpu_cores', $adminApiHost);
+        $this->assertArrayHasKey('capacity', $adminApiHost);
     }
 }

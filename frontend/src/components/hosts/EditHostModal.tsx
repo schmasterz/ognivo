@@ -51,18 +51,20 @@ export function EditHostModal({ host, onClose, onSuccess }: EditHostModalProps) 
   useModalEscape(onClose, !loading && !verifyLoading);
 
   useEffect(() => {
-    setName(host.name);
-    setRegion(host.region || "");
-    setEndpointUrl(host.endpoint_url ?? "");
-    setDriver(host.driver === "fake" ? "fake" : host.driver === "lxd" ? "lxd" : "incus");
-    setIsActive(host.is_active);
-    setTotalCpuCores(host.total_cpu_cores || 64);
-    setTotalRamGb(Math.round((host.total_ram_mb || 262144) / 1024));
-    setTotalStorageGb(host.total_storage_gb || 4000);
-    setError(null);
-    setVerifyError(null);
-    setVerifyResult(null);
-    setLoading(false);
+    queueMicrotask(() => {
+      setName(host.name);
+      setRegion(host.region || "");
+      setEndpointUrl(host.endpoint_url ?? "");
+      setDriver(host.driver === "fake" ? "fake" : host.driver === "lxd" ? "lxd" : "incus");
+      setIsActive(host.is_active);
+      setTotalCpuCores(host.total_cpu_cores || 64);
+      setTotalRamGb(Math.round((host.total_ram_mb || 262144) / 1024));
+      setTotalStorageGb(host.total_storage_gb || 4000);
+      setError(null);
+      setVerifyError(null);
+      setVerifyResult(null);
+      setLoading(false);
+    });
   }, [host]);
 
   const isValidUrl = (urlStr: string): boolean => {
@@ -352,7 +354,9 @@ export function EditHostModal({ host, onClose, onSuccess }: EditHostModalProps) 
             >
               <option value="incus">Incus Hypervisor</option>
               <option value="lxd">LXD Hypervisor</option>
-              <option value="fake">Emulated Driver (Dev / Test)</option>
+              {(process.env.NEXT_PUBLIC_ENABLE_FAKE_DRIVER === "true" || host.driver === "fake") && (
+                <option value="fake">Emulated Driver (Dev / Test)</option>
+              )}
             </select>
           </div>
 

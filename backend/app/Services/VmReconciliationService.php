@@ -6,6 +6,7 @@ namespace App\Services;
 
 use App\Models\DriftReport;
 use App\Models\Host;
+use App\Models\User;
 use App\Models\VirtualMachine;
 use App\Services\Hypervisor\HypervisorManager;
 use Illuminate\Support\Facades\Log;
@@ -123,6 +124,8 @@ class VmReconciliationService
         // 1. Gather all live instances from host across projects
         /** @var array<string, array{name: string, project: string, status: string}> $hostInstances */
         $hostInstances = [];
+        /** @var list<string> $failedProjects */
+        $failedProjects = [];
 
         foreach ($allProjects as $project) {
             try {
@@ -132,6 +135,7 @@ class VmReconciliationService
                     $hostInstances[$key] = $inst;
                 }
             } catch (\Throwable $e) {
+                $failedProjects[] = $project;
                 Log::error(sprintf('Failed to list instances for host [%s] project [%s]: %s', $host->name, $project, $e->getMessage()));
             }
         }
@@ -149,8 +153,25 @@ class VmReconciliationService
             $dbVmMap[$key] = $vm;
         }
 
+        /** @var list<string> $userProjects */
+        $userProjects = User::query()
+            ->whereNotNull('project_name')
+            ->where('project_name', '!=', '')
+            ->pluck('project_name')
+            ->all();
+
+        /** @var array<string, true> $managedProjectMap */
+        $managedProjectMap = array_fill_keys(array_merge(
+            array_filter($dbProjects, 'is_string'),
+            $userProjects
+        ), true);
+
         // 3. Detect "missing_in_db": instance exists on host but not in database
         foreach ($hostInstances as $key => $hostInst) {
+            if (! $this->isManagedProject($hostInst['project'], $managedProjectMap)) {
+                continue;
+            }
+
             if (! isset($dbVmMap[$key])) {
                 DriftReport::updateOrCreate([
                     'host_id' => $host->id,
@@ -168,9 +189,55 @@ class VmReconciliationService
             }
         }
 
+        // Auto-resolve open "missing_in_db" drifts if the instance is no longer on host or is now in db
+        $openMissingInDbDrifts = DriftReport::query()
+            ->where('host_id', $host->id)
+            ->where('kind', 'missing_in_db')
+            ->whereNull('resolved_at')
+            ->get();
+
+        foreach ($openMissingInDbDrifts as $drift) {
+            $driftKey = sprintf('%s/%s', $drift->incus_project, $drift->instance_name);
+            $noLongerOnHost = ! isset($hostInstances[$driftKey]) && ! in_array($drift->incus_project, $failedProjects, true);
+            $nowInDb = isset($dbVmMap[$driftKey]);
+
+            if ($noLongerOnHost || $nowInDb) {
+                $drift->update(['resolved_at' => now()]);
+                $resolved++;
+            }
+        }
+
+        // Auto-resolve open "missing_on_host" drifts if the VM is now present in $hostInstances (when project did not fail)
+        $openMissingOnHostDrifts = DriftReport::query()
+            ->where('host_id', $host->id)
+            ->where('kind', 'missing_on_host')
+            ->whereNull('resolved_at')
+            ->get();
+
+        foreach ($openMissingOnHostDrifts as $drift) {
+            if (in_array($drift->incus_project, $failedProjects, true)) {
+                continue;
+            }
+
+            $driftKey = sprintf('%s/%s', $drift->incus_project, $drift->instance_name);
+            if (isset($hostInstances[$driftKey])) {
+                $drift->update(['resolved_at' => now()]);
+                $resolved++;
+            }
+        }
+
         // 4. Detect "missing_on_host": VM exists in database but not on host
         foreach ($dbVmMap as $key => $vm) {
+            $status = $vm->status->getValue();
+            if (in_array($status, ['provisioning', 'failed'], true)) {
+                continue;
+            }
+
             if (! isset($hostInstances[$key])) {
+                if (in_array($vm->incus_project, $failedProjects, true)) {
+                    continue;
+                }
+
                 DriftReport::updateOrCreate([
                     'host_id' => $host->id,
                     'virtual_machine_id' => $vm->id,
@@ -249,6 +316,16 @@ class VmReconciliationService
 
             return false;
         }
+    }
+
+    /**
+     * Determine whether an Incus/LXD project is managed by Ognivo.
+     *
+     * @param  array<string, true>  $managedProjectMap
+     */
+    protected function isManagedProject(string $project, array $managedProjectMap): bool
+    {
+        return isset($managedProjectMap[$project]) || str_starts_with($project, 'proj-');
     }
 
     /**

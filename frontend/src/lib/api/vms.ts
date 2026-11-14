@@ -47,12 +47,50 @@ export const vmsApi = {
 
   async vmAction(
     vmId: number,
-    action: "start" | "stop" | "restart" | "suspend" | "delete",
-    force: boolean = false
+    action: "start" | "stop" | "restart" | "suspend" | "delete" | "reinstall",
+    force: boolean = false,
+    options?: {
+      os_image?: string;
+      cloud_init?: { "user-data"?: string };
+    }
   ): Promise<{ message: string; virtual_machine: VirtualMachine }> {
     return request<{ message: string; virtual_machine: VirtualMachine }>(`/vms/${vmId}/action`, {
       method: "POST",
-      body: JSON.stringify({ action, force }),
+      body: JSON.stringify({ action, force, ...options }),
+    });
+  },
+
+  async action(
+    vmId: number,
+    action: "start" | "stop" | "restart" | "suspend" | "delete" | "reinstall",
+    payload?:
+      | {
+          force?: boolean;
+          os_image?: string;
+          cloud_init?: { "user-data"?: string };
+        }
+      | boolean
+  ): Promise<{ message: string; virtual_machine: VirtualMachine }> {
+    const body =
+      typeof payload === "boolean"
+        ? { action, force: payload }
+        : { action, ...payload };
+    return request<{ message: string; virtual_machine: VirtualMachine }>(`/vms/${vmId}/action`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
+  async reinstall(
+    vmId: number,
+    payload?: {
+      os_image?: string;
+      cloud_init?: { "user-data"?: string };
+    }
+  ): Promise<{ message: string; virtual_machine: VirtualMachine }> {
+    return request<{ message: string; virtual_machine: VirtualMachine }>(`/vms/${vmId}/action`, {
+      method: "POST",
+      body: JSON.stringify({ action: "reinstall", ...payload }),
     });
   },
 

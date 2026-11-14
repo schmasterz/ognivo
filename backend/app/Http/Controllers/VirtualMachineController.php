@@ -4,12 +4,18 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Audit\AuditAction;
+use App\Audit\AuditEntry;
+use App\Audit\AuditLogger;
+use App\Audit\AuditOutcome;
+use App\DTO\Cast;
 use App\Http\Requests\Vm\CreateVmRequest;
 use App\Http\Requests\Vm\VmActionRequest;
 use App\Http\Resources\VirtualMachineResource;
 use App\Models\User;
 use App\Models\VirtualMachine;
 use App\Services\ConsoleTicketService;
+use App\Services\HostCapacityGuard;
 use App\Services\Hypervisor\HypervisorManager;
 use App\Services\VmLifecycleService;
 use App\Services\VmProvisioningService;
@@ -36,6 +42,7 @@ final class VirtualMachineController extends Controller
         private readonly HypervisorManager $hypervisorManager,
         private readonly VmLifecycleService $lifecycleService,
         private ?ConsoleTicketService $consoleTicketService = null,
+        private readonly ?AuditLogger $auditLogger = null,
     ) {
         $this->consoleTicketService = $consoleTicketService ?? app(ConsoleTicketService::class);
     }
@@ -43,6 +50,11 @@ final class VirtualMachineController extends Controller
     private function ticketService(): ConsoleTicketService
     {
         return $this->consoleTicketService ??= app(ConsoleTicketService::class);
+    }
+
+    private function logger(): AuditLogger
+    {
+        return $this->auditLogger ?? app(AuditLogger::class);
     }
 
     /**
@@ -97,6 +109,32 @@ final class VirtualMachineController extends Controller
         $perPage = max(1, min(100, $request->integer('per_page', 10)));
         $vms = $query->latest()->paginate($perPage);
 
+        if ($user->hasRole('admin')) {
+            /** @var list<int> $hostIds */
+            $hostIds = $vms->getCollection()
+                ->pluck('host_id')
+                ->filter()
+                ->unique()
+                ->map(fn (mixed $id): int => Cast::int($id))
+                ->values()
+                ->all();
+
+            if ($hostIds !== []) {
+                $guard = app(HostCapacityGuard::class);
+                $usages = $guard->getCommittedUsageForHostIds($hostIds);
+
+                foreach ($vms->getCollection() as $vm) {
+                    if ($vm->relationLoaded('host') && $vm->host !== null) {
+                        $hostId = Cast::int($vm->host->id);
+                        $vm->host->setAttribute(
+                            'precomputed_committed_usage',
+                            $usages[$hostId] ?? ['cpu' => 0, 'ram' => 0, 'disk' => 0]
+                        );
+                    }
+                }
+            }
+        }
+
         return VirtualMachineResource::collection($vms)->additional([
             'current_page' => $vms->currentPage(),
             'last_page' => $vms->lastPage(),
@@ -108,7 +146,7 @@ final class VirtualMachineController extends Controller
     /**
      * Provision a new virtual machine or container under quota constraints.
      */
-    #[Post('', name: 'vms.store')]
+    #[Post('', name: 'vms.store', middleware: ['throttle:vm-actions'])]
     public function store(CreateVmRequest $request): JsonResponse
     {
         /** @var User $user */
@@ -146,7 +184,15 @@ final class VirtualMachineController extends Controller
         /** @var User|null $user */
         $user = $request->user();
 
-        $this->lifecycleService->handleActionRequest($virtualMachine, $dto->action, $dto->force, $user);
+        $this->lifecycleService->handleActionRequest(
+            $virtualMachine,
+            $dto->action,
+            $dto->force,
+            $user,
+            $dto->osImage,
+            $dto->cloudInit,
+            $dto,
+        );
 
         return response()->json([
             'message' => __('messages.vm.action_executed', ['action' => $dto->action]),
@@ -178,6 +224,19 @@ final class VirtualMachineController extends Controller
             'virtual_machine_id' => $virtualMachine->id,
             'bytes_returned' => $bytesReturned,
         ]);
+
+        $this->logger()->record(new AuditEntry(
+            action: AuditAction::VmActionRequested,
+            outcome: AuditOutcome::Success,
+            subject: $virtualMachine,
+            tenantUserId: $virtualMachine->user_id,
+            visibility: 'tenant',
+            context: [
+                'action' => 'console_log.viewed',
+                'virtual_machine_id' => $virtualMachine->id,
+                'bytes_returned' => $bytesReturned,
+            ],
+        ));
 
         return response()->json([
             'virtual_machine_id' => $virtualMachine->id,

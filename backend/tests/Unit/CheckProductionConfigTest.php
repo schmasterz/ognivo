@@ -32,6 +32,15 @@ final class CheckProductionConfigTest extends TestCase
             'reverb.apps.apps.0.secret' => 'super_secure_reverb_secret_9999',
             'reverb.apps.apps.0.allowed_origins' => ['https://panel.example.com'],
             'database.redis.default.password' => 'super_secure_redis_password_9876',
+            'reverb.apps.apps.0.key' => 'valid_reverb_app_key_1234',
+            'database.connections.audit.password' => 'super_secure_audit_pass_1234',
+            'database.connections.audit_maintenance.password' => 'super_secure_audit_maint_pass_5678',
+            'database.connections.migration.password' => 'super_secure_migration_pass_9012',
+            'audit.hmac_keys.v1' => 'super_secure_audit_hmac_key_3456',
+            'audit.hmac_key_id' => 'v1',
+            'audit.hmac.current_key' => 'super_secure_audit_hmac_key_3456',
+            'audit.hmac.keys.v1' => 'super_secure_audit_hmac_key_3456',
+            'audit.pseudonym_salt' => 'super_secure_audit_salt_7890',
         ]);
 
         $this->setEnv('APP_KEY', $validKey);
@@ -42,6 +51,13 @@ final class CheckProductionConfigTest extends TestCase
         $this->setEnv('REVERB_APP_SECRET', 'super_secure_reverb_secret_9999');
         $this->setEnv('REVERB_ALLOWED_ORIGINS', 'https://panel.example.com');
         $this->setEnv('REDIS_PASSWORD', 'super_secure_redis_password_9876');
+        $this->setEnv('REVERB_APP_KEY', 'valid_reverb_app_key_1234');
+        $this->setEnv('AUDIT_DB_PASSWORD', 'super_secure_audit_pass_1234');
+        $this->setEnv('AUDIT_MAINT_DB_PASSWORD', 'super_secure_audit_maint_pass_5678');
+        $this->setEnv('DB_MIGRATION_PASSWORD', 'super_secure_migration_pass_9012');
+        $this->setEnv('AUDIT_HMAC_KEY', 'super_secure_audit_hmac_key_3456');
+        $this->setEnv('AUDIT_HMAC_KEY_ID', 'v1');
+        $this->setEnv('AUDIT_PSEUDONYM_SALT', 'super_secure_audit_salt_7890');
     }
 
     public function test_valid_configuration_passes(): void
@@ -215,6 +231,179 @@ final class CheckProductionConfigTest extends TestCase
 
         $this->artisan('app:check-production-config')
             ->expectsOutputToContain("REDIS_PASSWORD is set to an unsafe default ('CHANGE_ME')")
+            ->assertExitCode(1);
+    }
+
+    public function test_rejects_empty_reverb_app_key(): void
+    {
+        $this->setValidProductionConfig();
+        config(['reverb.apps.apps.0.key' => '']);
+        $this->setEnv('REVERB_APP_KEY', '');
+
+        $this->artisan('app:check-production-config')
+            ->expectsOutputToContain('REVERB_APP_KEY is empty')
+            ->assertExitCode(1);
+    }
+
+    public function test_rejects_change_me_for_reverb_app_key(): void
+    {
+        $this->setValidProductionConfig();
+        config(['reverb.apps.apps.0.key' => 'CHANGE_ME']);
+        $this->setEnv('REVERB_APP_KEY', 'CHANGE_ME');
+
+        $this->artisan('app:check-production-config')
+            ->expectsOutputToContain("REVERB_APP_KEY is set to an unsafe default ('CHANGE_ME')")
+            ->assertExitCode(1);
+    }
+
+    public function test_rejects_empty_audit_db_password(): void
+    {
+        $this->setValidProductionConfig();
+        config(['database.connections.audit.password' => '']);
+        $this->setEnv('AUDIT_DB_PASSWORD', '');
+
+        $this->artisan('app:check-production-config')
+            ->expectsOutputToContain('AUDIT_DB_PASSWORD is empty')
+            ->assertExitCode(1);
+    }
+
+    public function test_rejects_change_me_for_audit_db_password(): void
+    {
+        $this->setValidProductionConfig();
+        config(['database.connections.audit.password' => 'CHANGE_ME']);
+        $this->setEnv('AUDIT_DB_PASSWORD', 'CHANGE_ME');
+
+        $this->artisan('app:check-production-config')
+            ->expectsOutputToContain("AUDIT_DB_PASSWORD is set to an unsafe default ('CHANGE_ME')")
+            ->assertExitCode(1);
+    }
+
+    public function test_rejects_secret_password_for_audit_db_password(): void
+    {
+        $this->setValidProductionConfig();
+        config(['database.connections.audit.password' => 'secret_password']);
+        $this->setEnv('AUDIT_DB_PASSWORD', 'secret_password');
+
+        $this->artisan('app:check-production-config')
+            ->expectsOutputToContain("AUDIT_DB_PASSWORD is set to an unsafe default ('secret_password')")
+            ->assertExitCode(1);
+    }
+
+    public function test_rejects_empty_audit_maint_db_password(): void
+    {
+        $this->setValidProductionConfig();
+        config(['database.connections.audit_maintenance.password' => '']);
+        $this->setEnv('AUDIT_MAINT_DB_PASSWORD', '');
+
+        $this->artisan('app:check-production-config')
+            ->expectsOutputToContain('AUDIT_MAINT_DB_PASSWORD is empty')
+            ->assertExitCode(1);
+    }
+
+    public function test_rejects_change_me_for_audit_maint_db_password(): void
+    {
+        $this->setValidProductionConfig();
+        config(['database.connections.audit_maintenance.password' => 'CHANGE_ME']);
+        $this->setEnv('AUDIT_MAINT_DB_PASSWORD', 'CHANGE_ME');
+
+        $this->artisan('app:check-production-config')
+            ->expectsOutputToContain("AUDIT_MAINT_DB_PASSWORD is set to an unsafe default ('CHANGE_ME')")
+            ->assertExitCode(1);
+    }
+
+    public function test_rejects_secret_password_for_audit_maint_db_password(): void
+    {
+        $this->setValidProductionConfig();
+        config(['database.connections.audit_maintenance.password' => 'secret_password']);
+        $this->setEnv('AUDIT_MAINT_DB_PASSWORD', 'secret_password');
+
+        $this->artisan('app:check-production-config')
+            ->expectsOutputToContain("AUDIT_MAINT_DB_PASSWORD is set to an unsafe default ('secret_password')")
+            ->assertExitCode(1);
+    }
+
+    public function test_rejects_empty_db_migration_password(): void
+    {
+        $this->setValidProductionConfig();
+        config(['database.connections.migration.password' => '']);
+        $this->setEnv('DB_MIGRATION_PASSWORD', '');
+
+        $this->artisan('app:check-production-config')
+            ->expectsOutputToContain('DB_MIGRATION_PASSWORD is empty')
+            ->assertExitCode(1);
+    }
+
+    public function test_rejects_change_me_for_db_migration_password(): void
+    {
+        $this->setValidProductionConfig();
+        config(['database.connections.migration.password' => 'CHANGE_ME']);
+        $this->setEnv('DB_MIGRATION_PASSWORD', 'CHANGE_ME');
+
+        $this->artisan('app:check-production-config')
+            ->expectsOutputToContain("DB_MIGRATION_PASSWORD is set to an unsafe default ('CHANGE_ME')")
+            ->assertExitCode(1);
+    }
+
+    public function test_rejects_secret_password_for_db_migration_password(): void
+    {
+        $this->setValidProductionConfig();
+        config(['database.connections.migration.password' => 'secret_password']);
+        $this->setEnv('DB_MIGRATION_PASSWORD', 'secret_password');
+
+        $this->artisan('app:check-production-config')
+            ->expectsOutputToContain("DB_MIGRATION_PASSWORD is set to an unsafe default ('secret_password')")
+            ->assertExitCode(1);
+    }
+
+    public function test_rejects_empty_audit_hmac_key(): void
+    {
+        $this->setValidProductionConfig();
+        config([
+            'audit.hmac_keys.v1' => '',
+            'audit.hmac.current_key' => '',
+            'audit.hmac.keys.v1' => '',
+        ]);
+        $this->setEnv('AUDIT_HMAC_KEY', '');
+
+        $this->artisan('app:check-production-config')
+            ->expectsOutputToContain('AUDIT_HMAC_KEY is empty')
+            ->assertExitCode(1);
+    }
+
+    public function test_rejects_change_me_for_audit_hmac_key(): void
+    {
+        $this->setValidProductionConfig();
+        config([
+            'audit.hmac_keys.v1' => 'CHANGE_ME',
+            'audit.hmac.current_key' => 'CHANGE_ME',
+            'audit.hmac.keys.v1' => 'CHANGE_ME',
+        ]);
+        $this->setEnv('AUDIT_HMAC_KEY', 'CHANGE_ME');
+
+        $this->artisan('app:check-production-config')
+            ->expectsOutputToContain("AUDIT_HMAC_KEY is set to an unsafe default ('CHANGE_ME')")
+            ->assertExitCode(1);
+    }
+
+    public function test_rejects_empty_audit_pseudonym_salt(): void
+    {
+        $this->setValidProductionConfig();
+        config(['audit.pseudonym_salt' => '']);
+        $this->setEnv('AUDIT_PSEUDONYM_SALT', '');
+
+        $this->artisan('app:check-production-config')
+            ->expectsOutputToContain('AUDIT_PSEUDONYM_SALT is empty')
+            ->assertExitCode(1);
+    }
+
+    public function test_rejects_change_me_for_audit_pseudonym_salt(): void
+    {
+        $this->setValidProductionConfig();
+        config(['audit.pseudonym_salt' => 'CHANGE_ME']);
+        $this->setEnv('AUDIT_PSEUDONYM_SALT', 'CHANGE_ME');
+
+        $this->artisan('app:check-production-config')
+            ->expectsOutputToContain("AUDIT_PSEUDONYM_SALT is set to an unsafe default ('CHANGE_ME')")
             ->assertExitCode(1);
     }
 }

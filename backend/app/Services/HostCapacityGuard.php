@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\DTO\Cast;
 use App\Models\Host;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -12,7 +13,7 @@ use Illuminate\Validation\ValidationException;
  * Service enforcing hard capacity boundaries (CPU, RAM, Disk) per compute host,
  * accounting for committed VM allocations, overcommit multipliers, and host overhead reserves.
  */
-class HostCapacityGuard
+final class HostCapacityGuard
 {
     /**
      * Determine whether a host has verified, known capacity.
@@ -55,35 +56,77 @@ class HostCapacityGuard
     }
 
     /**
+     * Compute committed usage for multiple host IDs in a single query.
+     *
+     * @param  array<int>  $hostIds
+     * @return array<int, array{cpu: int, ram: int, disk: int}>
+     */
+    public function getCommittedUsageForHostIds(array $hostIds): array
+    {
+        $uniqueHostIds = array_values(array_unique(array_filter(
+            array_map(fn (mixed $id): int => Cast::int($id), $hostIds),
+            fn (int $id): bool => $id > 0
+        )));
+
+        if ($uniqueHostIds === []) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($uniqueHostIds as $hostId) {
+            $result[$hostId] = ['cpu' => 0, 'ram' => 0, 'disk' => 0];
+        }
+
+        $rows = DB::table('virtual_machines')
+            ->whereIn('host_id', $uniqueHostIds)
+            ->whereNotIn('status', ['failed', 'deleted'])
+            ->groupBy('host_id')
+            ->selectRaw('host_id, COALESCE(SUM(cpu_cores), 0) as cpu, COALESCE(SUM(ram_mb), 0) as ram, COALESCE(SUM(disk_gb), 0) as disk')
+            ->get();
+
+        foreach ($rows as $row) {
+            /** @var object{host_id: int|string, cpu: int|float|string|null, ram: int|float|string|null, disk: int|float|string|null} $row */
+            $hostId = Cast::int($row->host_id);
+            $result[$hostId] = [
+                'cpu' => Cast::int($row->cpu),
+                'ram' => Cast::int($row->ram),
+                'disk' => Cast::int($row->disk),
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
      * Get maximum allocatable capacity per resource taking overcommit and reserves into account.
      *
      * @return array{cpu: float, ram: float, disk: float}
      */
     public function getMaxAllocatable(Host $host): array
     {
-        $cpuOvercommit = (float) config('provisioning.cpu_overcommit', 1.0);
-        if ($cpuOvercommit <= 0) {
+        $cpuOvercommit = Cast::float(config('provisioning.cpu_overcommit', 1.0), 1.0);
+        if ($cpuOvercommit <= 0.0) {
             $cpuOvercommit = 1.0;
         }
 
-        $ramOvercommit = (float) config('provisioning.ram_overcommit', 1.0);
-        if ($ramOvercommit <= 0) {
+        $ramOvercommit = Cast::float(config('provisioning.ram_overcommit', 1.0), 1.0);
+        if ($ramOvercommit <= 0.0) {
             $ramOvercommit = 1.0;
         }
 
-        $diskOvercommit = (float) config('provisioning.disk_overcommit', 1.0);
-        if ($diskOvercommit <= 0) {
+        $diskOvercommit = Cast::float(config('provisioning.disk_overcommit', 1.0), 1.0);
+        if ($diskOvercommit <= 0.0) {
             $diskOvercommit = 1.0;
         }
 
-        $cpuReserve = (int) config('provisioning.host_cpu_reserve_cores', 0);
-        $ramReserve = (int) config('provisioning.host_ram_reserve_mb', 1024);
-        $diskReserve = (int) config('provisioning.host_disk_reserve_gb', 0);
+        $cpuReserve = (float) Cast::int(config('provisioning.host_cpu_reserve_cores', 0), 0);
+        $ramReserve = (float) Cast::int(config('provisioning.host_ram_reserve_mb', 1024), 1024);
+        $diskReserve = (float) Cast::int(config('provisioning.host_disk_reserve_gb', 0), 0);
 
         return [
-            'cpu' => ($host->total_cpu_cores * $cpuOvercommit) - $cpuReserve,
-            'ram' => ($host->total_ram_mb * $ramOvercommit) - $ramReserve,
-            'disk' => ($host->total_storage_gb * $diskOvercommit) - $diskReserve,
+            'cpu' => ((float) $host->total_cpu_cores * $cpuOvercommit) - $cpuReserve,
+            'ram' => ((float) $host->total_ram_mb * $ramOvercommit) - $ramReserve,
+            'disk' => ((float) $host->total_storage_gb * $diskOvercommit) - $diskReserve,
         ];
     }
 

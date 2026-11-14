@@ -7,7 +7,6 @@ namespace App\Providers;
 use App\Audit\AuditConfigValidator;
 use App\Audit\AuditContext;
 use App\Audit\AuditLogger;
-use App\Console\Commands\AllocateIpTestCommand;
 use App\Contracts\BackupTargetInterface;
 use App\DTO\Cast;
 use App\Listeners\AuditLockoutListener;
@@ -97,12 +96,6 @@ final class AppServiceProvider extends ServiceProvider
                 }
             }
         });
-
-        if ($this->app->environment('testing')) {
-            $this->commands([
-                AllocateIpTestCommand::class,
-            ]);
-        }
 
         Gate::policy(VirtualMachine::class, VirtualMachinePolicy::class);
         Gate::define('viewApiDocs', static fn (?User $user = null): bool => app()->environment('local', 'testing') || ($user !== null && $user->hasRole('admin')));

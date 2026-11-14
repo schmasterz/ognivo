@@ -35,16 +35,18 @@ export function CreateImageModal({
   useModalEscape(onClose, !loading);
 
   useEffect(() => {
-    setName(image?.name ?? "");
-    setSource(image?.source ?? "https://images.linuxcontainers.org");
-    setProtocol(image?.protocol ?? "simplestreams");
-    setOsType(image?.os_type ?? "linux");
-    setEnabled(image ? image.enabled : true);
-    setSelectedHostIds(
-      image?.host_ids ?? image?.hosts?.map((h) => h.id) ?? hosts.map((h) => h.id)
-    );
-    setError(null);
-    setLoading(false);
+    queueMicrotask(() => {
+      setName(image?.name ?? "");
+      setSource(image?.source ?? "https://images.linuxcontainers.org");
+      setProtocol(image?.protocol ?? "simplestreams");
+      setOsType(image?.os_type ?? "linux");
+      setEnabled(image ? image.enabled : true);
+      setSelectedHostIds(
+        image?.host_ids ?? image?.hosts?.map((h) => h.id) ?? hosts.map((h) => h.id)
+      );
+      setError(null);
+      setLoading(false);
+    });
   }, [image, hosts]);
 
   const toggleHost = (hostId: number) => {

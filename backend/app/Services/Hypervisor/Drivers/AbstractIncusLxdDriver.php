@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Hypervisor\Drivers;
 
+use App\DTO\Cast;
 use App\DTO\Host\HostResourcesDTO;
 use App\Exceptions\FingerprintMismatchException as BaseFingerprintMismatchException;
 use App\Models\Host;
@@ -91,15 +92,13 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
 
         /** @var array<string, mixed> $resData */
         $resData = $res->json('metadata') ?? [];
-        $cpuTotal = isset($resData['cpu']) && is_array($resData['cpu']) && isset($resData['cpu']['total'])
-            ? (int) $resData['cpu']['total']
-            : 0;
-        $memBytes = isset($resData['memory']) && is_array($resData['memory']) && isset($resData['memory']['total'])
-            ? (int) $resData['memory']['total']
-            : 0;
+        $cpuData = Cast::arrayOrNull($resData['cpu'] ?? null) ?? [];
+        $cpuTotal = Cast::int($cpuData['total'] ?? 0);
+        $memData = Cast::arrayOrNull($resData['memory'] ?? null) ?? [];
+        $memBytes = Cast::int($memData['total'] ?? 0);
         $ramMb = intdiv($memBytes, 1024 * 1024);
 
-        $configuredPool = (string) config('provisioning.storage_pool', '');
+        $configuredPool = Cast::string(config('provisioning.storage_pool', ''));
         if ($configuredPool !== '') {
             $poolName = $configuredPool;
         } else {
@@ -115,9 +114,8 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
 
         /** @var array<string, mixed> $poolData */
         $poolData = $poolRes->json('metadata') ?? [];
-        $spaceBytes = isset($poolData['space']) && is_array($poolData['space']) && isset($poolData['space']['total'])
-            ? (int) $poolData['space']['total']
-            : 0;
+        $spaceData = Cast::arrayOrNull($poolData['space'] ?? null) ?? [];
+        $spaceBytes = Cast::int($spaceData['total'] ?? 0);
         $storageGb = intdiv($spaceBytes, 1024 * 1024 * 1024);
 
         return new HostResourcesDTO(

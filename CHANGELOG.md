@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
-## [1.0.0-alpha.1] - 2026-11-12
+## [1.0.0-alpha.1] - 2026-11-14
 
 > **Pre-Release Notice (Alpha):**
 > `v1.0.0-alpha.1` is the first public alpha preview of the **Ognivo 1.0.0** control plane. All core `1.0.0` subsystems are implemented and available for evaluation, staging deployments, and community feedback. While comprehensive automated test suites and security controls are in place, database schemas, internal APIs, and configuration keys may still evolve prior to the final `1.0.0` General Availability (GA) release. **Do not use in mission-critical production without external backups.**
@@ -19,12 +19,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### 🖥️ Compute & Workload Orchestration
 - **KVM Virtual Machines & LXC Containers:** Unified provisioning and lifecycle state machine (`Provisioning`, `Running`, `Stopped`, `Suspended`, `Deleting`, `Deleted`, `Failed`).
+- **VM Reinstall:** Non-destructive operating system reinstallation (`reinstall` lifecycle action with IP preservation and confirmation UI).
 - **Atomic Provisioning & Compensation:** Race-free resource reservation using database row locks (`lockForUpdate`) and Redis mutexes, backed by automatic compensating rollbacks (`ProvisioningCompensator`) if hypervisor creation fails.
 - **Per-Tenant Hypervisor Isolation:** Automatic provisioning and quota synchronization of dedicated Incus/LXD projects (`proj-{uuid}`) per tenant.
 - **Cloud-Init & Image Catalog:** Curated OS image management with automated Cloud-Init user/password, SSH key, and Netplan network injection.
 
 #### 🔐 Cryptographic Hypervisor Management & Drift Reconciliation
-- **mTLS Onboarding & Trust Pinning:** Automated `secp384r1` X.509 client certificate generation, one-time trust token onboarding, SHA-256 peer certificate fingerprint pinning (TOFU + re-trust workflow), and zero-downtime certificate rotation.
+- **mTLS Onboarding & Trust Pinning:** Automated `secp384r1` X.509 client certificate generation, one-time trust token onboarding, SPKI public-key pinning (`CURLOPT_PINNEDPUBLICKEY` / `sha256//...` TOFU + re-trust workflow), and zero-downtime certificate rotation.
+- **Host Capacity Discovery & Enforcement:** Automated sync of hypervisor CPU, memory, and disk resources (`php artisan hosts:sync-resources`), intelligent placement (`HostSelector`), and preflight overcommit checks (`HostCapacityGuard`).
 - **Multi-Driver Architecture:** Pluggable `HypervisorDriverInterface` supporting `IncusDriver`, `LxdDriver`, and `FakeHypervisorDriver` for deterministic testing.
 - **Live Event Streaming & Drift Detection:** Real-time hypervisor event daemon (`php artisan incus:listen`) combined with scheduled state reconciliation (`php artisan vm:reconcile`) and an administrative Drift Resolution UI.
 
@@ -37,7 +39,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Pluggable Backup Architecture:** Built around `BackupTargetInterface` with local hypervisor snapshot support, per-VM and global snapshot management views, and tier quota enforcement.
 
 #### 🌐 Ranged IPAM & Multi-Mode Networking
-- **IPv4 & IPv6 Subnet Pools:** Support for both **Routed** (Layer 3 `/32` & `/128` point-to-point with Cloud-Init Netplan) and **Manual** networking modes.
+- **IPv4 Subnet Pools:** Support for both **Routed** (Layer 3 `/32` point-to-point with Cloud-Init Netplan) and **Manual** networking modes (IPv6 pools are planned for a future release).
 - **IP Lifecycle & Preflight Verification:** Dedicated IP allocation lifecycle, allocation cooldown quarantine windows, and automated hypervisor network preflight checks.
 
 #### 📊 Multi-Tenant Quotas, Identity & Access Control
@@ -51,7 +53,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### ⚡ Real-Time Dashboard & Turnkey Operations
 - **Reactive Next.js 16 Interface:** Live status updates via Laravel Reverb WebSockets, bilingual localization (**English** & **Bulgarian**), **Dark / Light / System** themes, and runtime SMTP testing.
-- **Turnkey Docker Topologies:** One-command development (`make up-dev`) and hardened HTTPS production (`make up-prod`) stacks, OpenAPI v3 documentation (`/docs/api`), and automated pre-deployment checks (`php artisan config:check-production`).
+- **Turnkey Docker Topologies:** One-command development (`make up-dev`) and hardened HTTPS production (`make up-prod`) stacks, OpenAPI v3 documentation (`/docs/api`), and automated pre-deployment checks (`php artisan app:check-production-config`).
 
 ### 🗺️ Roadmap to `1.0.0` Stable
 - **Alpha Phase (`1.0.0-alpha.x`):** Multi-node Incus/LXD cluster stress testing, edge-case bug fixes, and operator UX refinements.

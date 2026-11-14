@@ -69,8 +69,10 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     const initialPref: LocalePreference =
       saved === "en" || saved === "bg" || saved === "browser" ? saved : "browser";
 
-    setPreferenceState(initialPref);
-    resolveAndApply(initialPref);
+    queueMicrotask(() => {
+      setPreferenceState(initialPref);
+      resolveAndApply(initialPref);
+    });
 
     // 2. Listen to browser language changes (if available)
     const handleLanguageChange = () => {

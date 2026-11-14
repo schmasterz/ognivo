@@ -147,32 +147,92 @@ final class AuditPruneCommand extends Command
             $maxId = max(array_map(fn (AuditSeal $s): int => (int) $s->to_id, $seals));
 
             $archivePath = $archiveDir.'/'.$month.'.ndjson.gz';
+            if (file_exists($archivePath)) {
+                $version = 1;
+                while (file_exists($archiveDir.'/'.$month.'.'.$version.'.ndjson.gz')) {
+                    $version++;
+                }
+                $archivePath = $archiveDir.'/'.$month.'.'.$version.'.ndjson.gz';
+            }
 
-            // 1. Export range to storage/app/audit-archive/YYYY-MM.ndjson.gz
-            $gz = gzopen($archivePath, 'wb9');
+            $tmpPath = $archivePath.'.tmp';
+            if (file_exists($tmpPath)) {
+                @unlink($tmpPath);
+            }
+
+            // 1. Export range to temporary archive file
+            $gz = gzopen($tmpPath, 'wb9');
             if ($gz === false) {
-                $this->error("Failed to open archive file for writing: {$archivePath}");
+                $this->error("Failed to open archive file for writing: {$tmpPath}");
 
                 continue;
             }
 
-            /** @var Collection<int, AuditLog> $rows */
-            $rows = AuditLog::where('id', '>=', $minId)
+            $exportedCount = 0;
+            AuditLog::where('id', '>=', $minId)
                 ->where('id', '<=', $maxId)
-                ->orderBy('id', 'asc')
-                ->get();
+                ->chunkById(1000, function (Collection $rows) use ($gz, &$exportedCount): void {
+                    /** @var AuditLog $log */
+                    foreach ($rows as $log) {
+                        $resource = (new AdminAuditEntryResource($log))->resolve();
+                        $line = (string) json_encode($resource, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)."\n";
+                        gzwrite($gz, $line);
+                        $exportedCount++;
+                    }
+                });
 
-            foreach ($rows as $log) {
-                $resource = (new AdminAuditEntryResource($log))->resolve();
-                $line = (string) json_encode($resource, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)."\n";
-                gzwrite($gz, $line);
-            }
             gzclose($gz);
 
-            // 2. Compute sha256 of the exported archive
-            $archiveSha256 = hash_file('sha256', $archivePath);
+            // 2. Verify temporary archive is readable and line count matches exported count
+            $verifyGz = gzopen($tmpPath, 'rb');
+            if ($verifyGz === false) {
+                $this->error("Failed to open temporary archive for verification: {$tmpPath}");
+                if (file_exists($tmpPath)) {
+                    @unlink($tmpPath);
+                }
 
-            // 3. Mark covering seals archived=1 with archive_sha256
+                continue;
+            }
+
+            $verifiedLineCount = 0;
+            while (! gzeof($verifyGz)) {
+                $line = gzgets($verifyGz);
+                if ($line !== false && trim($line) !== '') {
+                    $verifiedLineCount++;
+                }
+            }
+            gzclose($verifyGz);
+
+            if ($verifiedLineCount !== $exportedCount) {
+                $this->error("Archive verification failed for {$month}: expected {$exportedCount} rows, verified {$verifiedLineCount} lines.");
+                if (file_exists($tmpPath)) {
+                    @unlink($tmpPath);
+                }
+
+                continue;
+            }
+
+            // 3. Compute sha256 of the verified archive and atomically rename to final path
+            $archiveSha256 = hash_file('sha256', $tmpPath);
+            if ($archiveSha256 === false) {
+                $this->error("Failed to compute sha256 for archive: {$tmpPath}");
+                if (file_exists($tmpPath)) {
+                    @unlink($tmpPath);
+                }
+
+                continue;
+            }
+
+            if (! rename($tmpPath, $archivePath)) {
+                $this->error("Failed to move temporary archive to final destination: {$archivePath}");
+                if (file_exists($tmpPath)) {
+                    @unlink($tmpPath);
+                }
+
+                continue;
+            }
+
+            // 4. Mark covering seals archived=1 with archive_sha256
             AuditSeal::on($maintConn)
                 ->whereIn('id', $sealIds)
                 ->update([
@@ -180,7 +240,7 @@ final class AuditPruneCommand extends Command
                     'archive_sha256' => $archiveSha256,
                 ]);
 
-            // 4. Delete rows in chunks of 5000 by id (audit_maintenance connection)
+            // 5. Delete rows in chunks of 5000 by id (audit_maintenance connection)
             do {
                 $chunkIds = DB::connection($maintConn)
                     ->table('audit_logs')
@@ -200,7 +260,7 @@ final class AuditPruneCommand extends Command
                     ->delete();
             } while ($chunkIds->count() === 5000);
 
-            $this->info("Archived and pruned {$rows->count()} rows for {$month} into {$archivePath} (sha256: {$archiveSha256}).");
+            $this->info("Archived and pruned {$exportedCount} rows for {$month} into {$archivePath} (sha256: {$archiveSha256}).");
         }
     }
 }

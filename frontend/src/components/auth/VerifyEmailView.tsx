@@ -30,20 +30,26 @@ export function VerifyEmailView() {
     const signature = params.get("signature");
 
     if (verifiedParam === "1") {
-      setSuccessMessage(t("verifyEmailSuccess"));
-      setVerifying(false);
+      queueMicrotask(() => {
+        setSuccessMessage(t("verifyEmailSuccess"));
+        setVerifying(false);
+      });
       return;
     }
 
     if (errorParam) {
-      setErrorMessage(t("verifyEmailError"));
-      setVerifying(false);
+      queueMicrotask(() => {
+        setErrorMessage(t("verifyEmailError"));
+        setVerifying(false);
+      });
       return;
     }
 
     if (!id || !hash || !expires || !signature) {
-      setErrorMessage(t("verifyEmailError"));
-      setVerifying(false);
+      queueMicrotask(() => {
+        setErrorMessage(t("verifyEmailError"));
+        setVerifying(false);
+      });
       return;
     }
 

@@ -72,6 +72,8 @@ final class ResourceSensibleProvisioningAndTenantIsolationTest extends TestCase
             'total_cpu_cores' => 32,
             'total_ram_mb' => 65536,
             'total_storage_gb' => 1000,
+            'capacity_source' => 'discovered',
+            'capacity_synced_at' => now(),
         ]);
         $host->images()->syncWithoutDetaching([$this->image->id]);
 
@@ -143,6 +145,8 @@ final class ResourceSensibleProvisioningAndTenantIsolationTest extends TestCase
             'total_cpu_cores' => 32,
             'total_ram_mb' => 65536,
             'total_storage_gb' => 1000,
+            'capacity_source' => 'discovered',
+            'capacity_synced_at' => now(),
         ]);
         $unhealthyHost->images()->syncWithoutDetaching([$this->image->id]);
         IpPool::create([
@@ -164,6 +168,8 @@ final class ResourceSensibleProvisioningAndTenantIsolationTest extends TestCase
             'total_cpu_cores' => 32,
             'total_ram_mb' => 65536,
             'total_storage_gb' => 1000,
+            'capacity_source' => 'discovered',
+            'capacity_synced_at' => now(),
         ]);
         $imagelessHost->images()->detach();
         IpPool::create([
@@ -185,6 +191,8 @@ final class ResourceSensibleProvisioningAndTenantIsolationTest extends TestCase
             'total_cpu_cores' => 16,
             'total_ram_mb' => 32768,
             'total_storage_gb' => 500,
+            'capacity_source' => 'discovered',
+            'capacity_synced_at' => now(),
         ]);
         $heavyHost->images()->syncWithoutDetaching([$this->image->id]);
         IpPool::create([
@@ -219,6 +227,8 @@ final class ResourceSensibleProvisioningAndTenantIsolationTest extends TestCase
             'total_cpu_cores' => 16,
             'total_ram_mb' => 32768,
             'total_storage_gb' => 500,
+            'capacity_source' => 'discovered',
+            'capacity_synced_at' => now(),
         ]);
         $lightHost->images()->syncWithoutDetaching([$this->image->id]);
         IpPool::create([
@@ -264,6 +274,8 @@ final class ResourceSensibleProvisioningAndTenantIsolationTest extends TestCase
             'total_cpu_cores' => 32,
             'total_ram_mb' => 65536,
             'total_storage_gb' => 1000,
+            'capacity_source' => 'discovered',
+            'capacity_synced_at' => now(),
         ]);
         $realDriverHost->images()->syncWithoutDetaching([$this->image->id]);
         IpPool::create([
@@ -295,6 +307,8 @@ final class ResourceSensibleProvisioningAndTenantIsolationTest extends TestCase
             'total_cpu_cores' => 16,
             'total_ram_mb' => 32768,
             'total_storage_gb' => 500,
+            'capacity_source' => 'discovered',
+            'capacity_synced_at' => now(),
         ]);
         $host->images()->syncWithoutDetaching([$this->image->id]);
 
@@ -344,6 +358,11 @@ final class ResourceSensibleProvisioningAndTenantIsolationTest extends TestCase
             'driver' => 'fake',
             'status' => 'fingerprint_mismatch',
             'is_active' => true,
+            'total_cpu_cores' => 16,
+            'total_ram_mb' => 32768,
+            'total_storage_gb' => 500,
+            'capacity_source' => 'discovered',
+            'capacity_synced_at' => now(),
         ]);
         $unhealthyHost->images()->syncWithoutDetaching([$this->image->id]);
         IpPool::create([
@@ -373,6 +392,11 @@ final class ResourceSensibleProvisioningAndTenantIsolationTest extends TestCase
             'driver' => 'fake',
             'status' => 'ok',
             'is_active' => true,
+            'total_cpu_cores' => 16,
+            'total_ram_mb' => 32768,
+            'total_storage_gb' => 500,
+            'capacity_source' => 'discovered',
+            'capacity_synced_at' => now(),
         ]);
         $imagelessHost->images()->detach();
         IpPool::create([
@@ -407,6 +431,8 @@ final class ResourceSensibleProvisioningAndTenantIsolationTest extends TestCase
             'total_cpu_cores' => 16,
             'total_ram_mb' => 32768,
             'total_storage_gb' => 500,
+            'capacity_source' => 'discovered',
+            'capacity_synced_at' => now(),
         ]);
         $host1->images()->syncWithoutDetaching([$this->image->id]);
         IpPool::create([
@@ -427,6 +453,8 @@ final class ResourceSensibleProvisioningAndTenantIsolationTest extends TestCase
             'total_cpu_cores' => 16,
             'total_ram_mb' => 32768,
             'total_storage_gb' => 500,
+            'capacity_source' => 'discovered',
+            'capacity_synced_at' => now(),
         ]);
         $host2->images()->syncWithoutDetaching([$this->image->id]);
         IpPool::create([
@@ -463,6 +491,8 @@ final class ResourceSensibleProvisioningAndTenantIsolationTest extends TestCase
             'total_cpu_cores' => 32,
             'total_ram_mb' => 65536,
             'total_storage_gb' => 1000,
+            'capacity_source' => 'discovered',
+            'capacity_synced_at' => now(),
         ]);
 
         $pool = IpPool::create([

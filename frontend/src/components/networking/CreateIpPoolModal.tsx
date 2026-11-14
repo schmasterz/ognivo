@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { X, Network, Server, Loader2, CheckCircle2 } from "lucide-react";
 import { api, IpPool, HostNode, HostDiscoveredNetwork } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
@@ -73,6 +73,13 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
   const [discoveredNetworks, setDiscoveredNetworks] = useState<HostDiscoveredNetwork[]>([]);
   const [discoveringHost, setDiscoveringHost] = useState(false);
 
+  const networkModeRef = useRef(networkMode);
+  const parentInterfaceRef = useRef(parentInterface);
+  useEffect(() => {
+    networkModeRef.current = networkMode;
+    parentInterfaceRef.current = parentInterface;
+  });
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -89,19 +96,27 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
 
   useEffect(() => {
     if (!selectedHostId) {
-      setDiscoveredNetworks([]);
+      queueMicrotask(() => {
+        setDiscoveredNetworks([]);
+      });
       return;
     }
     let cancelled = false;
-    setDiscoveringHost(true);
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setDiscoveringHost(true);
+      }
+    });
     api.adminGetHostResources(selectedHostId)
       .then((res) => {
         if (cancelled) return;
         const nets = res.networks || [];
         setDiscoveredNetworks(nets);
         if (nets.length > 0) {
-          const preferred = nets.find((n) => n.recommended_modes.includes(networkMode)) || nets[0];
-          if (preferred && (parentInterface === "eth0" || !nets.some((n) => n.name === parentInterface))) {
+          const currentMode = networkModeRef.current;
+          const currentIface = parentInterfaceRef.current;
+          const preferred = nets.find((n) => n.recommended_modes.includes(currentMode)) || nets[0];
+          if (preferred && (currentIface === "eth0" || !nets.some((n) => n.name === currentIface))) {
             setParentInterface(preferred.name);
             setIsCustomInterface(false);
           }

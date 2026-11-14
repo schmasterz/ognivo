@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\DTO\Cast;
 use Illuminate\Console\Command;
+use Illuminate\Support\Env;
 
 final class CheckProductionConfigCommand extends Command
 {
@@ -92,6 +94,60 @@ final class CheckProductionConfigCommand extends Command
             $violations[] = 'REDIS_PASSWORD is empty. A strong Redis password is required in production.';
         } elseif ($redisPassword === 'secret_password' || $redisPassword === 'CHANGE_ME') {
             $violations[] = "REDIS_PASSWORD is set to an unsafe default ('{$redisPassword}').";
+        }
+
+        // 9. REVERB_APP_KEY check: must not be empty or unsafe default
+        $reverbAppKey = Cast::string(config('reverb.apps.apps.0.key') ?? Env::get('REVERB_APP_KEY', ''));
+        if ($reverbAppKey === '' || $reverbAppKey === 'null') {
+            $violations[] = 'REVERB_APP_KEY is empty. A valid Reverb app key is required in production.';
+        } elseif ($reverbAppKey === 'CHANGE_ME' || $reverbAppKey === 'secret_password') {
+            $violations[] = "REVERB_APP_KEY is set to an unsafe default ('{$reverbAppKey}').";
+        }
+
+        // 10. AUDIT_DB_PASSWORD check: must not be empty or unsafe default
+        $auditDbPassword = Cast::string(config('database.connections.audit.password') ?? Env::get('AUDIT_DB_PASSWORD', ''));
+        if ($auditDbPassword === '' || $auditDbPassword === 'null') {
+            $violations[] = 'AUDIT_DB_PASSWORD is empty. A strong audit database password is required in production.';
+        } elseif ($auditDbPassword === 'secret_password' || $auditDbPassword === 'CHANGE_ME') {
+            $violations[] = "AUDIT_DB_PASSWORD is set to an unsafe default ('{$auditDbPassword}').";
+        }
+
+        // 11. AUDIT_MAINT_DB_PASSWORD check: must not be empty or unsafe default
+        $auditMaintDbPassword = Cast::string(config('database.connections.audit_maintenance.password') ?? Env::get('AUDIT_MAINT_DB_PASSWORD', ''));
+        if ($auditMaintDbPassword === '' || $auditMaintDbPassword === 'null') {
+            $violations[] = 'AUDIT_MAINT_DB_PASSWORD is empty. A strong audit maintenance database password is required in production.';
+        } elseif ($auditMaintDbPassword === 'secret_password' || $auditMaintDbPassword === 'CHANGE_ME') {
+            $violations[] = "AUDIT_MAINT_DB_PASSWORD is set to an unsafe default ('{$auditMaintDbPassword}').";
+        }
+
+        // 12. DB_MIGRATION_PASSWORD check: must not be empty or unsafe default
+        $dbMigrationPassword = Cast::string(config('database.connections.migration.password') ?? Env::get('DB_MIGRATION_PASSWORD', ''));
+        if ($dbMigrationPassword === '' || $dbMigrationPassword === 'null') {
+            $violations[] = 'DB_MIGRATION_PASSWORD is empty. A strong migration database password is required in production.';
+        } elseif ($dbMigrationPassword === 'secret_password' || $dbMigrationPassword === 'CHANGE_ME') {
+            $violations[] = "DB_MIGRATION_PASSWORD is set to an unsafe default ('{$dbMigrationPassword}').";
+        }
+
+        // 13. AUDIT_HMAC_KEY check: must not be empty or unsafe default
+        $auditHmacKeyId = Cast::string(config('audit.hmac_key_id') ?? config('audit.hmac.current_key_id') ?? 'v1', 'v1');
+        $auditHmacKey = Cast::string(
+            config('audit.hmac_keys.'.$auditHmacKeyId)
+            ?? config('audit.hmac.keys.'.$auditHmacKeyId)
+            ?? config('audit.hmac.current_key')
+            ?? Env::get('AUDIT_HMAC_KEY', '')
+        );
+        if ($auditHmacKey === '' || $auditHmacKey === 'null') {
+            $violations[] = 'AUDIT_HMAC_KEY is empty. A valid HMAC sealing key is required in production.';
+        } elseif ($auditHmacKey === 'CHANGE_ME' || $auditHmacKey === 'secret_password') {
+            $violations[] = "AUDIT_HMAC_KEY is set to an unsafe default ('{$auditHmacKey}').";
+        }
+
+        // 14. AUDIT_PSEUDONYM_SALT check: must not be empty or unsafe default
+        $auditPseudonymSalt = Cast::string(config('audit.pseudonym_salt') ?? Env::get('AUDIT_PSEUDONYM_SALT', ''));
+        if ($auditPseudonymSalt === '' || $auditPseudonymSalt === 'null') {
+            $violations[] = 'AUDIT_PSEUDONYM_SALT is empty. A valid pseudonymisation salt is required in production.';
+        } elseif ($auditPseudonymSalt === 'CHANGE_ME' || $auditPseudonymSalt === 'secret_password') {
+            $violations[] = "AUDIT_PSEUDONYM_SALT is set to an unsafe default ('{$auditPseudonymSalt}').";
         }
 
         if (! empty($violations)) {

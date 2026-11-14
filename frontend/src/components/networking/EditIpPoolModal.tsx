@@ -43,28 +43,34 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
   useModalEscape(onClose, !loading);
 
   useEffect(() => {
-    setName(pool.name);
-    setDescription(pool.description || "");
-    setNetworkMode(pool.network_mode || "routed");
-    setParentInterface(pool.parent_interface || "eth0");
-    setIsCustomInterface(false);
-    setDnsServers(pool.dns_servers && pool.dns_servers.length > 0 ? pool.dns_servers.join(", ") : "1.1.1.1, 8.8.8.8");
-    setExcludedIps(pool.excluded_ips && pool.excluded_ips.length > 0 ? pool.excluded_ips.join(", ") : "");
-    setCooldownSeconds(pool.cooldown_seconds ?? 300);
-    setActive(pool.active ?? true);
-    setIsPublic(pool.is_public ?? true);
-    setGateway(pool.gateway || "");
-    setFirstUsable(pool.first_usable || "");
-    setLastUsable(pool.last_usable || "");
-    setError(null);
-    setLoading(false);
+    queueMicrotask(() => {
+      setName(pool.name);
+      setDescription(pool.description || "");
+      setNetworkMode(pool.network_mode || "routed");
+      setParentInterface(pool.parent_interface || "eth0");
+      setIsCustomInterface(false);
+      setDnsServers(pool.dns_servers && pool.dns_servers.length > 0 ? pool.dns_servers.join(", ") : "1.1.1.1, 8.8.8.8");
+      setExcludedIps(pool.excluded_ips && pool.excluded_ips.length > 0 ? pool.excluded_ips.join(", ") : "");
+      setCooldownSeconds(pool.cooldown_seconds ?? 300);
+      setActive(pool.active ?? true);
+      setIsPublic(pool.is_public ?? true);
+      setGateway(pool.gateway || "");
+      setFirstUsable(pool.first_usable || "");
+      setLastUsable(pool.last_usable || "");
+      setError(null);
+      setLoading(false);
+    });
   }, [pool]);
 
   useEffect(() => {
     const hostId = pool.host_id ?? pool.host?.id;
     if (!hostId) return;
     let cancelled = false;
-    setDiscoveringHost(true);
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setDiscoveringHost(true);
+      }
+    });
     api.adminGetHostResources(hostId)
       .then((res) => {
         if (!cancelled) {

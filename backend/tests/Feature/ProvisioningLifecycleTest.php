@@ -5,17 +5,22 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Jobs\ProvisionVmJob;
+use App\Models\DriftReport;
 use App\Models\Host;
 use App\Models\Image;
 use App\Models\IpPool;
 use App\Models\User;
 use App\Models\UserQuota;
+use App\Services\Hypervisor\Contracts\HypervisorDriverInterface;
 use App\Services\Hypervisor\Drivers\FakeHypervisorDriver;
 use App\Services\Hypervisor\HypervisorManager;
 use App\Services\Hypervisor\IncusEventSyncService;
+use App\Services\ProvisioningCompensator;
 use App\Services\VmProvisioningService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Mockery;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 final class ProvisioningLifecycleTest extends TestCase
@@ -49,6 +54,8 @@ final class ProvisioningLifecycleTest extends TestCase
             'total_cpu_cores' => 32,
             'total_ram_mb' => 65536,
             'total_storage_gb' => 1000,
+            'capacity_source' => 'discovered',
+            'capacity_synced_at' => now(),
         ]);
 
         $this->user = User::factory()->create([
@@ -247,5 +254,154 @@ final class ProvisioningLifecycleTest extends TestCase
         $response->assertJsonPath('name', 'vm-boot-log');
         $this->assertStringContainsString('Linux version', (string) $response->json('output'));
         $this->assertStringContainsString('Netplan v2', (string) $response->json('output'));
+    }
+
+    public function test_compensation_retains_ip_allocation_and_creates_drift_when_delete_instance_fails(): void
+    {
+        Queue::fake([ProvisionVmJob::class]);
+
+        /** @var VmProvisioningService $service */
+        $service = app(VmProvisioningService::class);
+
+        $vm = $service->provision($this->user, [
+            'name' => 'vm-compensation-delete-fail',
+            'cpu_cores' => 1,
+            'ram_mb' => 1024,
+            'disk_gb' => 10,
+            'os_image' => 'ubuntu/24.04',
+            'host_id' => $this->host->id,
+        ]);
+
+        $ip = $vm->ipv4_address;
+        $this->assertNotNull($ip);
+        $this->assertDatabaseHas('ip_allocations', [
+            'virtual_machine_id' => $vm->id,
+            'ip_string' => $ip,
+            'status' => 'allocated',
+        ]);
+
+        // Mock hypervisor driver throwing non-404 during deleteInstance
+        $driverWithDeleteError = Mockery::mock(HypervisorDriverInterface::class);
+        $driverWithDeleteError->shouldReceive('deleteInstance')
+            ->once()
+            ->andThrow(new \RuntimeException('Hypervisor connection refused: https://192.168.1.50:8443'));
+        HypervisorManager::fake($driverWithDeleteError);
+
+        ProvisioningCompensator::compensate(
+            $vm,
+            'Hypervisor instance creation failed: SSL error at https://192.168.1.50:8443'
+        );
+
+        $vm->refresh();
+        $this->assertSame('failed', (string) $vm->status);
+
+        // IP allocation MUST NOT be released
+        $this->assertDatabaseHas('ip_allocations', [
+            'virtual_machine_id' => $vm->id,
+            'ip_string' => $ip,
+            'status' => 'allocated',
+        ]);
+
+        // DriftReport must be recorded
+        $drift = DriftReport::where('virtual_machine_id', $vm->id)->first();
+        $this->assertNotNull($drift);
+        $this->assertSame('cleanup_failed', $drift->kind);
+        $this->assertSame($this->host->id, $drift->host_id);
+    }
+
+    public function test_compensation_retains_ip_when_delete_instance_returns_false(): void
+    {
+        Queue::fake([ProvisionVmJob::class]);
+
+        /** @var VmProvisioningService $service */
+        $service = app(VmProvisioningService::class);
+
+        $vm = $service->provision($this->user, [
+            'name' => 'vm-delete-returns-false',
+            'cpu_cores' => 1,
+            'ram_mb' => 1024,
+            'disk_gb' => 10,
+            'os_image' => 'ubuntu/24.04',
+            'host_id' => $this->host->id,
+        ]);
+
+        $ip = $vm->ipv4_address;
+        $this->assertNotNull($ip);
+
+        // Configure fake driver to fail deleteInstance
+        $this->driver->shouldFail['deleteInstance'] = true;
+
+        ProvisioningCompensator::compensate($vm, 'Instance startup failed on compute node');
+
+        $this->assertDatabaseHas('ip_allocations', [
+            'virtual_machine_id' => $vm->id,
+            'ip_string' => $ip,
+            'status' => 'allocated',
+        ]);
+
+        $drift = DriftReport::where('virtual_machine_id', $vm->id)->first();
+        $this->assertNotNull($drift);
+        $this->assertSame('cleanup_failed', $drift->kind);
+    }
+
+    public function test_tenant_response_for_failed_vm_does_not_leak_raw_hypervisor_details(): void
+    {
+        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+        Role::firstOrCreate(['name' => 'customer', 'guard_name' => 'web']);
+
+        $this->user->assignRole('customer');
+
+        Queue::fake([ProvisionVmJob::class]);
+
+        /** @var VmProvisioningService $service */
+        $service = app(VmProvisioningService::class);
+
+        $vm = $service->provision($this->user, [
+            'name' => 'vm-failed-leak-test',
+            'cpu_cores' => 1,
+            'ram_mb' => 1024,
+            'disk_gb' => 10,
+            'os_image' => 'ubuntu/24.04',
+            'host_id' => $this->host->id,
+        ]);
+
+        $rawError = 'Hypervisor internal crash: connection to https://internal-node-42.cluster.lan:8443 token=secr3tKey failed with #0 /var/www/internal/Driver.php(52)';
+        ProvisioningCompensator::compensate($vm, $rawError);
+
+        $vm->refresh();
+        $this->assertSame('failed', (string) $vm->status);
+
+        // 1. Tenant request must not leak raw error or incus_project
+        $tenantRes = $this->actingAs($this->user)->getJson("/api/vms/{$vm->id}");
+        $tenantRes->assertOk();
+
+        $data = $tenantRes->json();
+        $vmData = $data['data'] ?? $data;
+
+        $this->assertArrayNotHasKey('incus_project', $vmData);
+        $this->assertArrayNotHasKey('raw_failure_reason', $vmData);
+        $this->assertSame(
+            'Instance provisioning failed. Please retry or contact support.',
+            $vmData['failure_reason']
+        );
+
+        $body = (string) $tenantRes->getContent();
+        $this->assertStringNotContainsString('internal-node-42', $body);
+        $this->assertStringNotContainsString('secr3tKey', $body);
+        $this->assertStringNotContainsString('/var/www/internal', $body);
+
+        // 2. Admin request should see the full / raw failure reason and incus_project
+        $admin = User::factory()->create(['status' => 'active']);
+        $admin->assignRole('admin');
+
+        $adminRes = $this->actingAs($admin)->getJson("/api/vms/{$vm->id}");
+        $adminRes->assertOk();
+
+        $adminData = $adminRes->json();
+        $adminVmData = $adminData['data'] ?? $adminData;
+
+        $this->assertSame($vm->incus_project, $adminVmData['incus_project']);
+        $this->assertSame($rawError, $adminVmData['failure_reason']);
+        $this->assertSame($rawError, $adminVmData['raw_failure_reason']);
     }
 }

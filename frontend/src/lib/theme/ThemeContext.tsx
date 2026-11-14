@@ -47,8 +47,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem("theme_mode", initialMode);
     }
 
-    setThemeState(initialMode);
-    applyTheme(initialMode);
+    queueMicrotask(() => {
+      setThemeState(initialMode);
+      applyTheme(initialMode);
+    });
   }, []);
 
   const setTheme = (newTheme: ThemeMode) => {

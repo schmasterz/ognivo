@@ -25,9 +25,13 @@ export function ResetPasswordView() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    setToken(params.get("token") ?? "");
-    setEmail(params.get("email") ?? "");
-    setLinkChecked(true);
+    const initialToken = params.get("token") ?? "";
+    const initialEmail = params.get("email") ?? "";
+    queueMicrotask(() => {
+      setToken(initialToken);
+      setEmail(initialEmail);
+      setLinkChecked(true);
+    });
   }, []);
 
   const linkInvalid = linkChecked && (!token || !email);

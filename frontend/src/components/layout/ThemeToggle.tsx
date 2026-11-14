@@ -1,19 +1,20 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useSyncExternalStore } from "react";
 import { Sun, Moon, Check } from "lucide-react";
 import { useTheme, ThemeMode } from "@/lib/theme/ThemeContext";
 import { useI18n } from "@/lib/i18n/I18nContext";
+
+const emptySubscribe = () => () => {};
 
 export function ThemeToggle() {
   const { theme, resolvedTheme, setTheme } = useTheme();
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setMounted(true);
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setOpen(false);
