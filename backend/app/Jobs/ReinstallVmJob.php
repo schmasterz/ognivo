@@ -18,6 +18,7 @@ use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -136,7 +137,7 @@ final class ReinstallVmJob implements ShouldQueue
                 if ($this->cloudInit !== null) {
                     if (is_array($this->cloudInit)) {
                         $this->vm->cloud_init = $this->cloudInit;
-                    } elseif (is_string($this->cloudInit)) {
+                    } else {
                         /** @var mixed $decoded */
                         $decoded = json_decode($this->cloudInit, true);
                         /** @var array<string, mixed> $cloudInitData */
@@ -227,7 +228,7 @@ final class ReinstallVmJob implements ShouldQueue
             }
 
             // Check if this VM belongs to a manual pool
-            $allocation = $this->allocationId
+            $allocation = $this->allocationId !== null
                 ? IpAllocation::with('pool')->find($this->allocationId)
                 : $this->vm->primaryAllocation()->with('pool')->first();
             $isManualPool = ($allocation?->pool?->network_mode === 'manual');
@@ -259,7 +260,7 @@ final class ReinstallVmJob implements ShouldQueue
 
             // Address not yet visible (agent still starting or cloud-init running)
             if ($this->vm->network_wait_started_at === null) {
-                $this->vm->network_wait_started_at = now();
+                $this->vm->network_wait_started_at = Carbon::now();
                 $this->vm->save();
             }
 
@@ -396,7 +397,7 @@ final class ReinstallVmJob implements ShouldQueue
      */
     public function failed(?Throwable $exception): void
     {
-        Log::error(sprintf('ReinstallVmJob failed permanently for VM #%d (%s): %s', $this->vm->id, $this->vm->name, $exception?->getMessage()), [
+        Log::error(sprintf('ReinstallVmJob failed permanently for VM #%d (%s): %s', $this->vm->id, $this->vm->name, $exception?->getMessage() ?? 'Unknown error'), [
             'exception' => $exception,
         ]);
 

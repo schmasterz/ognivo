@@ -159,7 +159,7 @@ class WebSocketIncusEventTransport implements IncusEventTransportInterface
                     if ($pin !== $storedPin) {
                         $mismatch = true;
                     }
-                } elseif ($storedFingerprint !== '') {
+                } else {
                     if ($fingerprint !== strtolower($storedFingerprint)) {
                         $mismatch = true;
                     }

@@ -88,7 +88,7 @@ final class ProvisioningCompensator
                         'host_id' => $vm->host_id,
                         'virtual_machine_id' => $vm->id,
                         'instance_name' => $vm->name,
-                        'incus_project' => $vm->incus_project ?? 'default',
+                        'incus_project' => $vm->incus_project !== '' ? $vm->incus_project : 'default',
                         'kind' => 'cleanup_failed',
                         'expected_state' => 'deleted',
                         'actual_state' => null,

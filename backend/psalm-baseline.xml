@@ -1,11 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <files psalm-version="6.20.3@23d217da099cc4a9a3bd03b644c1adf520022375">
-  <file src="app/Console/Commands/AllocateIpTestCommand.php">
-    <RiskyCast>
-      <code><![CDATA[$this->argument('pool')]]></code>
-      <code><![CDATA[$this->argument('vm')]]></code>
-    </RiskyCast>
-  </file>
   <file src="app/Console/Commands/BackfillHostPinsCommand.php">
     <MissingClosureParamType>
       <code><![CDATA[$q]]></code>
@@ -39,9 +33,6 @@
     <ClassMustBeFinal>
       <code><![CDATA[IncusListenCommand]]></code>
     </ClassMustBeFinal>
-    <InvalidArgument>
-      <code><![CDATA[$hostArg]]></code>
-    </InvalidArgument>
     <PossiblyFalseArgument>
       <code><![CDATA[json_encode($event)]]></code>
     </PossiblyFalseArgument>
@@ -254,7 +245,6 @@
       <code><![CDATA[$request->ip()]]></code>
     </PossiblyNullOperand>
     <RiskyTruthyFalsyComparison>
-      <code><![CDATA[$this->app->environment('testing')]]></code>
       <code><![CDATA[app()->environment('local', 'testing')]]></code>
     </RiskyTruthyFalsyComparison>
   </file>

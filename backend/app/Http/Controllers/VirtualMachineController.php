@@ -125,7 +125,7 @@ final class VirtualMachineController extends Controller
 
                 foreach ($vms->getCollection() as $vm) {
                     if ($vm->relationLoaded('host') && $vm->host !== null) {
-                        $hostId = $vm->host->id;
+                        $hostId = Cast::int($vm->host->id);
                         $vm->host->setAttribute(
                             'precomputed_committed_usage',
                             $usages[$hostId] ?? ['cpu' => 0, 'ram' => 0, 'disk' => 0]
