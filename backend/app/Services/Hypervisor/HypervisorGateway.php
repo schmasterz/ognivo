@@ -73,6 +73,7 @@ class HypervisorGateway
         ?PanelCertificate $certificate = null,
         int $timeout = 60,
         GatewayMode $mode = GatewayMode::Operational,
+        ?int $connectTimeout = null,
     ): PendingRequest {
         $certService = $this->certService ?? app(PanelCertificateService::class);
         $clientCert = $certificate ?? $certService->getActiveCertificate() ?? $certService->getRetiringCertificate();
@@ -137,8 +138,11 @@ class HypervisorGateway
             });
         }
 
+        $resolvedConnectTimeout = $connectTimeout ?? (is_numeric(config('hypervisor.connect_timeout')) ? (int) config('hypervisor.connect_timeout') : 10);
+
         $request = Http::baseUrl($host->endpoint_url)
             ->timeout($timeout)
+            ->connectTimeout($resolvedConnectTimeout)
             ->withOptions($options);
 
         if ($host->token !== null && $host->token !== '') {

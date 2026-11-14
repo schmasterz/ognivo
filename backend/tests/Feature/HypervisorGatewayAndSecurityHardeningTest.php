@@ -75,6 +75,49 @@ final class HypervisorGatewayAndSecurityHardeningTest extends TestCase
             $this->assertEquals($this->panelCert->certificate, $options['curl'][CURLOPT_SSLCERT_BLOB]);
             $this->assertEquals($this->panelCert->private_key, $options['curl'][CURLOPT_SSLKEY_BLOB]);
         }
+
+        // connect_timeout must default to 10 seconds
+        $this->assertSame(10, $options['connect_timeout'] ?? null);
+    }
+
+    public function test_gateway_configures_custom_connect_timeout_on_pending_request(): void
+    {
+        $pin = 'sha256//'.base64_encode(str_repeat('y', 32));
+
+        $host = Host::create([
+            'name' => 'gateway-custom-timeout-node',
+            'endpoint_url' => 'https://198.51.100.15:8443',
+            'driver' => 'incus',
+            'server_public_key_pin' => $pin,
+        ]);
+
+        $gateway = app(HypervisorGateway::class);
+        $client = $gateway->client($host, $this->panelCert, connectTimeout: 15);
+
+        /** @var array<string, mixed> $options */
+        $options = $client->getOptions();
+        $this->assertSame(15, $options['connect_timeout'] ?? null);
+    }
+
+    public function test_gateway_uses_config_for_connect_timeout_when_not_explicitly_passed(): void
+    {
+        config(['hypervisor.connect_timeout' => 25]);
+
+        $pin = 'sha256//'.base64_encode(str_repeat('z', 32));
+
+        $host = Host::create([
+            'name' => 'gateway-config-timeout-node',
+            'endpoint_url' => 'https://198.51.100.16:8443',
+            'driver' => 'incus',
+            'server_public_key_pin' => $pin,
+        ]);
+
+        $gateway = app(HypervisorGateway::class);
+        $client = $gateway->client($host, $this->panelCert);
+
+        /** @var array<string, mixed> $options */
+        $options = $client->getOptions();
+        $this->assertSame(25, $options['connect_timeout'] ?? null);
     }
 
     public function test_operational_mode_rejects_missing_pin_and_updates_host_status(): void
