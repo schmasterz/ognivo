@@ -1,14 +1,11 @@
-# Pinned PHP FPM Alpine image
-FROM php:8.5.12-fpm-alpine
+# Base runtime image with pinned PHP FPM and required extensions
+FROM php:8.5.12-fpm-alpine AS base
 
-# System dependencies and fcgi for php-fpm healthcheck ping
+# System runtime dependencies and fcgi for php-fpm healthcheck ping
 RUN apk add --no-cache \
     bash \
-    git \
     curl \
     fcgi \
-    zip \
-    unzip \
     openssl \
     libpng-dev
 
@@ -20,6 +17,15 @@ RUN php -m | grep -qi '^openssl$' && php -m | grep -qi '^mbstring$'
 
 # Configure PHP-FPM ping endpoint for container healthchecks
 RUN echo -e "[www]\nping.path = /ping\nping.response = pong\n" > /usr/local/etc/php-fpm.d/docker-ping.conf
+
+# Builder stage to install PHP dependencies with Composer
+FROM base AS builder
+
+# Build-only utilities needed by Composer
+RUN apk add --no-cache \
+    git \
+    zip \
+    unzip
 
 # Pinned Composer image for copying the composer CLI
 COPY --from=composer:2.8.2 /usr/bin/composer /usr/bin/composer
@@ -39,6 +45,14 @@ COPY . .
 RUN rm -f bootstrap/cache/*.php \
     && composer dump-autoload --optimize --no-dev
 
+# Clean runtime stage without git, zip, unzip, or composer
+FROM base AS runner
+
+WORKDIR /var/www/html
+
+# Copy compiled application source and vendor dependencies from builder
+COPY --from=builder /var/www/html /var/www/html
+
 # Ensure writable permissions for Laravel storage and cache directories
 RUN chown -R www-data:www-data storage bootstrap/cache \
     && chmod -R 775 storage bootstrap/cache
@@ -51,3 +65,4 @@ EXPOSE 9000
 
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["php-fpm"]
+
