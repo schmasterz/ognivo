@@ -223,6 +223,19 @@ final class VmProvisioningService
                     /** @var Host $lockedHost */
                     $lockedHost = Host::where('id', $hostId)->lockForUpdate()->firstOrFail();
 
+                    $duplicateActiveName = VirtualMachine::where('user_id', $user->id)
+                        ->where('host_id', $hostId)
+                        ->where('name', $data['name'])
+                        ->where('status', '!=', 'deleted')
+                        ->lockForUpdate()
+                        ->exists();
+
+                    if ($duplicateActiveName) {
+                        throw ValidationException::withMessages([
+                            'name' => [__('validation.unique', ['attribute' => 'name'])],
+                        ]);
+                    }
+
                     // Authoritative capacity check under host row lock
                     $this->capacityGuard->check($lockedHost, $data['cpu_cores'], $data['ram_mb'], $data['disk_gb']);
 
