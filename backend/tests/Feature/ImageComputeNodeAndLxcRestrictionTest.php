@@ -61,6 +61,7 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
             'total_storage_gb' => 4000,
             'capacity_source' => 'discovered',
             'capacity_synced_at' => now(),
+            'auto_attach_images' => false,
         ]);
 
         $this->hostB = Host::create([
@@ -73,6 +74,7 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
             'total_storage_gb' => 4000,
             'capacity_source' => 'discovered',
             'capacity_synced_at' => now(),
+            'auto_attach_images' => false,
         ]);
 
         IpPool::create([
@@ -283,6 +285,17 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
         // Admin calling GET /api/admin/images receives HostNodeResource fields
         $adminApiRes = $this->actingAs($this->admin)->getJson('/api/admin/images');
         $adminApiRes->assertStatus(200);
+        $adminApiRes->assertJsonStructure([
+            'data',
+            'next_cursor',
+            'per_page',
+            'counts' => [
+                'filtered' => ['catalog', 'attached'],
+                'overall' => ['catalog', 'attached'],
+            ],
+        ]);
+        $this->assertArrayNotHasKey('meta', (array) $adminApiRes->json());
+        $this->assertArrayNotHasKey('links', (array) $adminApiRes->json());
 
         /** @var array<int, array<string, mixed>> $adminApiHosts */
         $adminApiHosts = $adminApiRes->json('data.0.hosts');
@@ -294,5 +307,257 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
         $this->assertArrayHasKey('server_public_key_pin', $adminApiHost);
         $this->assertArrayHasKey('total_cpu_cores', $adminApiHost);
         $this->assertArrayHasKey('capacity', $adminApiHost);
+    }
+
+    public function test_admin_images_cursor_pagination_across_pages(): void
+    {
+        Image::query()->delete();
+
+        $imageIds = [];
+        for ($i = 1; $i <= 5; $i++) {
+            $img = Image::create([
+                'name' => "test-image-{$i}",
+                'source' => 'https://images.linuxcontainers.org',
+                'protocol' => 'simplestreams',
+                'os_type' => 'linux',
+                'enabled' => true,
+            ]);
+            $imageIds[] = $img->id;
+        }
+
+        rsort($imageIds);
+
+        // Page 1: per_page=2
+        $res1 = $this->actingAs($this->admin)->getJson('/api/admin/images?per_page=2');
+        $res1->assertStatus(200);
+        $res1->assertJsonCount(2, 'data');
+        $this->assertNotNull($res1->json('next_cursor'));
+        $page1Ids = collect($res1->json('data'))->pluck('id')->all();
+        $this->assertSame([$imageIds[0], $imageIds[1]], $page1Ids);
+
+        $cursor1 = $res1->json('next_cursor');
+
+        // Page 2: per_page=2&cursor=$cursor1
+        $res2 = $this->actingAs($this->admin)->getJson('/api/admin/images?per_page=2&cursor='.urlencode((string) $cursor1));
+        $res2->assertStatus(200);
+        $res2->assertJsonCount(2, 'data');
+        $this->assertNotNull($res2->json('next_cursor'));
+        $page2Ids = collect($res2->json('data'))->pluck('id')->all();
+        $this->assertSame([$imageIds[2], $imageIds[3]], $page2Ids);
+
+        $cursor2 = $res2->json('next_cursor');
+
+        // Page 3: per_page=2&cursor=$cursor2
+        $res3 = $this->actingAs($this->admin)->getJson('/api/admin/images?per_page=2&cursor='.urlencode((string) $cursor2));
+        $res3->assertStatus(200);
+        $res3->assertJsonCount(1, 'data');
+        $this->assertNull($res3->json('next_cursor'));
+        $page3Ids = collect($res3->json('data'))->pluck('id')->all();
+        $this->assertSame([$imageIds[4]], $page3Ids);
+
+        $allReceived = array_merge($page1Ids, $page2Ids, $page3Ids);
+        $this->assertSame($imageIds, $allReceived);
+    }
+
+    public function test_admin_images_host_id_adds_attached_flag(): void
+    {
+        Image::query()->delete();
+
+        $imgAttached = Image::create([
+            'name' => 'ubuntu/24.04',
+            'source' => 'https://images.canonical.com',
+            'protocol' => 'simplestreams',
+            'os_type' => 'linux',
+            'enabled' => true,
+        ]);
+        $imgAttached->hosts()->sync([$this->hostA->id]);
+
+        $imgDetached = Image::create([
+            'name' => 'debian/12',
+            'source' => 'https://images.debian.org',
+            'protocol' => 'simplestreams',
+            'os_type' => 'linux',
+            'enabled' => true,
+        ]);
+        $imgDetached->hosts()->sync([]);
+
+        // When host_id is provided
+        $responseWithHost = $this->actingAs($this->admin)->getJson('/api/admin/images?host_id='.$this->hostA->id);
+        $responseWithHost->assertStatus(200);
+
+        $items = collect($responseWithHost->json('data'))->keyBy('id');
+        $this->assertTrue($items[$imgAttached->id]['attached']);
+        $this->assertFalse($items[$imgDetached->id]['attached']);
+
+        // When host_id is NOT provided, 'attached' is omitted
+        $responseWithoutHost = $this->actingAs($this->admin)->getJson('/api/admin/images');
+        $responseWithoutHost->assertStatus(200);
+
+        foreach ($responseWithoutHost->json('data') as $item) {
+            $this->assertArrayNotHasKey('attached', $item);
+        }
+    }
+
+    public function test_admin_images_attachment_filters(): void
+    {
+        Image::query()->delete();
+
+        $imgAttached = Image::create([
+            'name' => 'ubuntu/24.04',
+            'source' => 'https://images.canonical.com',
+            'protocol' => 'simplestreams',
+            'os_type' => 'linux',
+            'enabled' => true,
+        ]);
+        $imgAttached->hosts()->sync([$this->hostA->id]);
+
+        $imgDetached = Image::create([
+            'name' => 'debian/12',
+            'source' => 'https://images.debian.org',
+            'protocol' => 'simplestreams',
+            'os_type' => 'linux',
+            'enabled' => true,
+        ]);
+        $imgDetached->hosts()->sync([]);
+
+        // attachment=attached
+        $resAttached = $this->actingAs($this->admin)->getJson('/api/admin/images?host_id='.$this->hostA->id.'&attachment=attached');
+        $resAttached->assertStatus(200);
+        $resAttached->assertJsonCount(1, 'data');
+        $this->assertSame($imgAttached->id, $resAttached->json('data.0.id'));
+        $this->assertTrue($resAttached->json('data.0.attached'));
+
+        // attachment=detached
+        $resDetached = $this->actingAs($this->admin)->getJson('/api/admin/images?host_id='.$this->hostA->id.'&attachment=detached');
+        $resDetached->assertStatus(200);
+        $resDetached->assertJsonCount(1, 'data');
+        $this->assertSame($imgDetached->id, $resDetached->json('data.0.id'));
+        $this->assertFalse($resDetached->json('data.0.attached'));
+
+        // attachment=all
+        $resAll = $this->actingAs($this->admin)->getJson('/api/admin/images?host_id='.$this->hostA->id.'&attachment=all');
+        $resAll->assertStatus(200);
+        $resAll->assertJsonCount(2, 'data');
+    }
+
+    public function test_admin_images_counts_filtered_and_overall(): void
+    {
+        Image::query()->delete();
+
+        // 1: Linux, enabled, attached to hostA
+        $img1 = Image::create([
+            'name' => 'ubuntu/noble',
+            'source' => 'https://images.canonical.com',
+            'protocol' => 'simplestreams',
+            'os_type' => 'linux',
+            'enabled' => true,
+        ]);
+        $img1->hosts()->sync([$this->hostA->id]);
+
+        // 2: Linux, enabled, detached from hostA
+        $img2 = Image::create([
+            'name' => 'debian/bookworm',
+            'source' => 'https://images.debian.org',
+            'protocol' => 'simplestreams',
+            'os_type' => 'linux',
+            'enabled' => true,
+        ]);
+        $img2->hosts()->sync([]);
+
+        // 3: Windows, enabled, attached to hostA
+        $img3 = Image::create([
+            'name' => 'windows/server-2022',
+            'source' => 'https://images.microsoft.com',
+            'protocol' => 'simplestreams',
+            'os_type' => 'windows',
+            'enabled' => true,
+        ]);
+        $img3->hosts()->sync([$this->hostA->id]);
+
+        // 4: Linux, disabled, detached from hostA
+        $img4 = Image::create([
+            'name' => 'arch/latest',
+            'source' => 'https://images.archlinux.org',
+            'protocol' => 'simplestreams',
+            'os_type' => 'linux',
+            'enabled' => false,
+        ]);
+        $img4->hosts()->sync([]);
+
+        // Filter: os_type=linux & enabled=1 & host_id=hostA
+        $res = $this->actingAs($this->admin)->getJson(
+            '/api/admin/images?host_id='.$this->hostA->id.'&os_type=linux&enabled=1'
+        );
+        $res->assertStatus(200);
+
+        // Overall: 4 catalog images, 2 attached to hostA (img1 + img3)
+        $res->assertJsonPath('counts.overall.catalog', 4);
+        $res->assertJsonPath('counts.overall.attached', 2);
+
+        // Filtered (os_type=linux, enabled=true):
+        // Matching catalog images = img1, img2 (2 images)
+        // Of those, attached to hostA = img1 (1 image)
+        $res->assertJsonPath('counts.filtered.catalog', 2);
+        $res->assertJsonPath('counts.filtered.attached', 1);
+
+        // When attachment=attached tab is selected, filtered counts must remain identical (ignoring attachment tab)
+        $resTab = $this->actingAs($this->admin)->getJson(
+            '/api/admin/images?host_id='.$this->hostA->id.'&os_type=linux&enabled=1&attachment=attached'
+        );
+        $resTab->assertStatus(200);
+        $resTab->assertJsonPath('counts.filtered.catalog', 2);
+        $resTab->assertJsonPath('counts.filtered.attached', 1);
+        $resTab->assertJsonCount(1, 'data'); // data only has img1
+    }
+
+    public function test_admin_images_attachment_without_host_id_returns_422(): void
+    {
+        $res1 = $this->actingAs($this->admin)->getJson('/api/admin/images?attachment=attached');
+        $res1->assertStatus(422);
+        $res1->assertJsonValidationErrors(['attachment']);
+
+        $res2 = $this->actingAs($this->admin)->getJson('/api/admin/images?attachment=detached');
+        $res2->assertStatus(422);
+        $res2->assertJsonValidationErrors(['attachment']);
+
+        $res3 = $this->actingAs($this->admin)->getJson('/api/admin/images?attachment=all');
+        $res3->assertStatus(422);
+        $res3->assertJsonValidationErrors(['attachment']);
+    }
+
+    public function test_admin_images_invalid_cursor_returns_422(): void
+    {
+        // 1. Not base64
+        $res1 = $this->actingAs($this->admin)->getJson('/api/admin/images?cursor=invalid!cursor');
+        $res1->assertStatus(422);
+        $res1->assertJsonValidationErrors(['cursor']);
+
+        // 2. Base64 but not valid JSON
+        $res2 = $this->actingAs($this->admin)->getJson('/api/admin/images?cursor='.base64_encode('not-json'));
+        $res2->assertStatus(422);
+        $res2->assertJsonValidationErrors(['cursor']);
+
+        // 3. JSON without id key
+        $res3 = $this->actingAs($this->admin)->getJson('/api/admin/images?cursor='.base64_encode((string) json_encode(['foo' => 'bar'])));
+        $res3->assertStatus(422);
+        $res3->assertJsonValidationErrors(['cursor']);
+
+        // 4. JSON with non-positive id
+        $res4 = $this->actingAs($this->admin)->getJson('/api/admin/images?cursor='.base64_encode((string) json_encode(['id' => -1])));
+        $res4->assertStatus(422);
+        $res4->assertJsonValidationErrors(['cursor']);
+    }
+
+    public function test_admin_images_forbidden_for_non_admin(): void
+    {
+        $response = $this->actingAs($this->customer)->getJson('/api/admin/images');
+        $response->assertStatus(403);
+    }
+
+    public function test_admin_images_non_existent_host_id_returns_422(): void
+    {
+        $response = $this->actingAs($this->admin)->getJson('/api/admin/images?host_id=999999');
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['host_id']);
     }
 }
