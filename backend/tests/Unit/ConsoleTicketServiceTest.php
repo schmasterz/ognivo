@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Unit;
 
+use App\Audit\AuditAction;
 use App\Audit\AuditContext;
+use App\Models\AuditLog;
 use App\Models\Host;
 use App\Models\User;
 use App\Models\VirtualMachine;
 use App\Services\ConsoleTicketService;
+use App\Services\Hypervisor\Drivers\FakeHypervisorDriver;
 use App\Services\Hypervisor\HypervisorManager;
 use App\Services\PanelCertificateService;
 use App\States\Vm\Running;
@@ -35,11 +38,15 @@ final class ConsoleTicketServiceTest extends TestCase
 
     private VirtualMachine $vm;
 
+    private VirtualMachine $container;
+
     private ConsoleTicketService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
+
+        HypervisorManager::resetFake();
 
         Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
         Role::firstOrCreate(['name' => 'customer', 'guard_name' => 'web']);
@@ -79,8 +86,42 @@ final class ConsoleTicketServiceTest extends TestCase
             'os_image' => 'images:ubuntu/24.04',
         ]);
 
+        $this->container = VirtualMachine::create([
+            'user_id' => $this->owner->id,
+            'host_id' => $this->host->id,
+            'name' => 'console-test-ct',
+            'incus_project' => 'default',
+            'instance_type' => 'container',
+            'status' => Running::class,
+            'cpu_cores' => 1,
+            'ram_mb' => 1024,
+            'disk_gb' => 10,
+            'os_image' => 'images:alpine/3.20',
+        ]);
+
         $hypervisorManager = app(HypervisorManager::class);
         $this->service = new ConsoleTicketService($hypervisorManager);
+
+        try {
+            Redis::del('console:session_index');
+            Redis::del('console:vm_sessions:'.$this->vm->id);
+            Redis::del('console:vm_sessions:'.$this->container->id);
+        } catch (\Throwable) {
+        }
+    }
+
+    protected function tearDown(): void
+    {
+        HypervisorManager::resetFake();
+
+        try {
+            Redis::del('console:session_index');
+            Redis::del('console:vm_sessions:'.$this->vm->id);
+            Redis::del('console:vm_sessions:'.$this->container->id);
+        } catch (\Throwable) {
+        }
+
+        parent::tearDown();
     }
 
     public function test_issue_ticket_stores_payload_in_redis_and_returns_safe_dto(): void
@@ -92,22 +133,29 @@ final class ConsoleTicketServiceTest extends TestCase
 
         $this->assertSame($this->vm->id, $dto->virtualMachineId);
         $this->assertSame(64, strlen($dto->ticket));
-        $this->assertSame('/console?ticket='.$dto->ticket, $dto->websocketPath);
+        $this->assertSame('/console', $dto->websocketPath);
+        $this->assertStringNotContainsString($dto->ticket, $dto->websocketPath);
         $this->assertNotEmpty($dto->expiresAt);
         $this->assertSame('console', $dto->type);
+        $this->assertSame('exec', $dto->driver);
+        $this->assertNotEmpty($dto->sessionId);
+        $this->assertNull($dto->fallbackReason);
+        $this->assertGreaterThan(0, $dto->idleTimeout);
 
         $redisMock->shouldHaveReceived('setex')->with(
             'console:ticket:'.$dto->ticket,
             60,
-            \Mockery::on(function (string $json): bool {
+            \Mockery::on(function (string $json) use ($dto): bool {
                 /** @var array<string, mixed> $data */
                 $data = json_decode($json, true);
 
                 return $data['user_id'] === $this->owner->id
                     && $data['virtual_machine_id'] === $this->vm->id
                     && $data['console_type'] === 'console'
+                    && $data['driver'] === 'exec'
+                    && $data['session_id'] === $dto->sessionId
                     && is_string($data['websocket_path'])
-                    && str_contains($data['websocket_path'], 'fake-op-console-')
+                    && str_contains($data['websocket_path'], 'fake-op-exec-')
                     && $data['client_certificate'] === null
                     && $data['client_private_key'] === null;
             })
@@ -126,23 +174,241 @@ final class ConsoleTicketServiceTest extends TestCase
 
         $this->assertSame($this->vm->id, $dto->virtualMachineId);
         $this->assertSame(64, strlen($dto->ticket));
+        $this->assertSame('/console', $dto->websocketPath);
+        $this->assertStringNotContainsString($dto->ticket, $dto->websocketPath);
+        $this->assertSame('exec', $dto->driver);
+        $this->assertNotEmpty($dto->sessionId);
 
         $redisMock->shouldHaveReceived('setex')->with(
             'console:ticket:'.$dto->ticket,
             60,
-            \Mockery::on(function (string $json) use ($panelCert): bool {
+            \Mockery::on(function (string $json) use ($panelCert, $dto): bool {
                 /** @var array<string, mixed> $data */
                 $data = json_decode($json, true);
 
                 return $data['user_id'] === $this->owner->id
                     && $data['virtual_machine_id'] === $this->vm->id
                     && $data['console_type'] === 'console'
+                    && $data['driver'] === 'exec'
+                    && $data['session_id'] === $dto->sessionId
                     && is_string($data['websocket_path'])
-                    && str_contains($data['websocket_path'], 'fake-op-console-')
+                    && str_contains($data['websocket_path'], 'fake-op-exec-')
                     && $data['client_certificate'] === $panelCert->certificate
                     && $data['client_private_key'] === $panelCert->private_key;
             })
         );
+    }
+
+    public function test_container_issues_exec_session_by_default(): void
+    {
+        $dto = $this->service->issueTicket($this->container, $this->owner);
+
+        $this->assertSame('exec', $dto->driver);
+        $this->assertNull($dto->fallbackReason);
+        $this->assertSame('/console', $dto->websocketPath);
+        $this->assertStringNotContainsString($dto->ticket, $dto->websocketPath);
+        $this->assertNotEmpty($dto->sessionId);
+    }
+
+    public function test_vm_with_running_agent_issues_exec_session(): void
+    {
+        $fakeDriver = new FakeHypervisorDriver;
+        $fakeDriver->setInstanceState($this->vm, ['agent_running' => true]);
+        HypervisorManager::fake($fakeDriver);
+
+        $dto = $this->service->issueTicket($this->vm, $this->owner);
+
+        $this->assertSame('exec', $dto->driver);
+        $this->assertNull($dto->fallbackReason);
+        $this->assertSame('/console', $dto->websocketPath);
+        $this->assertNotEmpty($dto->sessionId);
+    }
+
+    public function test_vm_without_guest_agent_falls_back_to_console_driver(): void
+    {
+        $fakeDriver = new FakeHypervisorDriver;
+        $fakeDriver->setInstanceState($this->vm, ['agent_running' => false]);
+        HypervisorManager::fake($fakeDriver);
+
+        $dto = $this->service->issueTicket($this->vm, $this->owner);
+
+        $this->assertSame('console', $dto->driver);
+        $this->assertSame('agent_unavailable', $dto->fallbackReason);
+        $this->assertSame('/console', $dto->websocketPath);
+        $this->assertNotEmpty($dto->sessionId);
+    }
+
+    public function test_concurrency_limit_on_console_driver_enforces_single_session_and_closing_releases_slot(): void
+    {
+        // Issue first serial console session
+        $dto1 = $this->service->issueTicket($this->vm, $this->owner, 'console', preferredDriver: 'console');
+        $this->assertSame('console', $dto1->driver);
+
+        // Attempting to issue a second serial console session throws 409 Conflict
+        try {
+            $this->service->issueTicket($this->vm, $this->owner, 'console', preferredDriver: 'console');
+            $this->fail('Expected HttpException(409) when serial console is already active');
+        } catch (HttpException $e) {
+            $this->assertSame(409, $e->getStatusCode());
+            $this->assertSame('A serial console session is already active for this instance.', $e->getMessage());
+        }
+
+        // Closing the active session releases the slot
+        $closed = $this->service->closeSession($this->vm, $dto1->sessionId, $this->owner);
+        $this->assertTrue($closed);
+
+        // A second serial console session can now be opened successfully
+        $dto2 = $this->service->issueTicket($this->vm, $this->owner, 'console', preferredDriver: 'console');
+        $this->assertSame('console', $dto2->driver);
+        $this->assertNotSame($dto1->sessionId, $dto2->sessionId);
+    }
+
+    public function test_concurrency_limit_on_exec_driver_enforces_max_sessions_and_closing_releases_slot(): void
+    {
+        config(['hypervisor.terminal.max_exec_sessions_per_instance' => 2]);
+
+        $dto1 = $this->service->issueTicket($this->vm, $this->owner, 'console', preferredDriver: 'exec');
+        $dto2 = $this->service->issueTicket($this->vm, $this->owner, 'console', preferredDriver: 'exec');
+
+        $this->assertSame('exec', $dto1->driver);
+        $this->assertSame('exec', $dto2->driver);
+
+        // Third session exceeds limit of 2 and throws 429 Too Many Requests
+        try {
+            $this->service->issueTicket($this->vm, $this->owner, 'console', preferredDriver: 'exec');
+            $this->fail('Expected HttpException(429) when max exec sessions reached');
+        } catch (HttpException $e) {
+            $this->assertSame(429, $e->getStatusCode());
+            $this->assertSame('Maximum number of concurrent terminal sessions reached for this instance.', $e->getMessage());
+        }
+
+        // Close one session
+        $closed = $this->service->closeSession($this->vm, $dto1->sessionId, $this->owner);
+        $this->assertTrue($closed);
+
+        // Now third session succeeds
+        $dto3 = $this->service->issueTicket($this->vm, $this->owner, 'console', preferredDriver: 'exec');
+        $this->assertSame('exec', $dto3->driver);
+    }
+
+    public function test_idle_timeout_session_pruning_cancels_upstream_operation_and_frees_slot(): void
+    {
+        config(['hypervisor.terminal.idle_timeout_seconds' => 300]);
+
+        $fakeDriver = new FakeHypervisorDriver;
+        HypervisorManager::fake($fakeDriver);
+
+        $expiredSessionId = 'expired-idle-session-uuid-1';
+        $expiredOpId = 'op-upstream-idle-123';
+        $vmSessionsKey = sprintf('console:vm_sessions:%d', $this->vm->id);
+
+        $expiredRecord = [
+            'session_id' => $expiredSessionId,
+            'virtual_machine_id' => $this->vm->id,
+            'user_id' => $this->owner->id,
+            'driver' => 'console',
+            'console_type' => 'console',
+            'operation_id' => $expiredOpId,
+            'opened_at' => microtime(true) - 1000,
+            'last_activity_at' => microtime(true) - 800,
+            'close_token' => 'dummy-close-token',
+        ];
+
+        Redis::hset($vmSessionsKey, $expiredSessionId, json_encode($expiredRecord, JSON_THROW_ON_ERROR));
+        Redis::hset('console:session_index', $expiredSessionId, (string) $this->vm->id);
+
+        // Requesting a console session would normally conflict (409) if the old session were still active.
+        // It must automatically prune the expired session, cancel the upstream operation, and succeed.
+        $newDto = $this->service->issueTicket($this->vm, $this->owner, 'console', preferredDriver: 'console');
+
+        $this->assertSame('console', $newDto->driver);
+        $this->assertContains($expiredOpId, $fakeDriver->cancelledOperations);
+
+        // The old session was pruned from Redis
+        $this->assertNull(Redis::hget($vmSessionsKey, $expiredSessionId));
+
+        // Audit entry recorded for the pruned idle session
+        $prunedLog = AuditLog::where('action', AuditAction::TerminalSessionClosed->value)
+            ->where('context->session_id', $expiredSessionId)
+            ->first();
+
+        $this->assertNotNull($prunedLog);
+        $this->assertSame('idle_timeout', $prunedLog->context['reason'] ?? null);
+        $this->assertSame('console', $prunedLog->context['driver'] ?? null);
+        $this->assertGreaterThan(0, $prunedLog->context['duration_seconds'] ?? 0);
+    }
+
+    public function test_close_session_removes_from_redis_cancels_operation_and_records_audit(): void
+    {
+        $fakeDriver = new FakeHypervisorDriver;
+        HypervisorManager::fake($fakeDriver);
+
+        $dto = $this->service->issueTicket($this->vm, $this->owner);
+
+        $vmSessionsKey = sprintf('console:vm_sessions:%d', $this->vm->id);
+        $this->assertNotNull(Redis::hget($vmSessionsKey, $dto->sessionId));
+
+        $closed = $this->service->closeSession($this->vm, $dto->sessionId, $this->owner, 'user_exit');
+        $this->assertTrue($closed);
+
+        // Redis entries removed
+        $this->assertNull(Redis::hget($vmSessionsKey, $dto->sessionId));
+        $this->assertNull(Redis::hget('console:session_index', $dto->sessionId));
+
+        // Upstream operation cancelled
+        $this->assertNotEmpty($fakeDriver->cancelledOperations);
+
+        // Audit entry recorded
+        $audit = AuditLog::where('action', AuditAction::TerminalSessionClosed->value)
+            ->where('context->session_id', $dto->sessionId)
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($audit);
+        $this->assertSame($this->owner->id, $audit->actor_id);
+        $this->assertSame((string) $this->vm->id, $audit->subject_id);
+        $this->assertSame('exec', $audit->context['driver'] ?? null);
+        $this->assertGreaterThanOrEqual(0, $audit->context['duration_seconds'] ?? -1);
+        $this->assertSame('user_exit', $audit->context['reason'] ?? null);
+
+        // Repeated close returns false (idempotent)
+        $closedAgain = $this->service->closeSession($this->vm, $dto->sessionId, $this->owner);
+        $this->assertFalse($closedAgain);
+    }
+
+    public function test_close_session_by_token_removes_from_redis_cancels_operation_and_records_audit(): void
+    {
+        $fakeDriver = new FakeHypervisorDriver;
+        HypervisorManager::fake($fakeDriver);
+
+        $dto = $this->service->issueTicket($this->vm, $this->owner);
+
+        $vmSessionsKey = sprintf('console:vm_sessions:%d', $this->vm->id);
+        $raw = Redis::hget($vmSessionsKey, $dto->sessionId);
+        $this->assertNotNull($raw);
+        /** @var array<string, mixed> $record */
+        $record = json_decode((string) $raw, true, 512, JSON_THROW_ON_ERROR);
+        $closeToken = (string) $record['close_token'];
+
+        // Reject invalid token
+        $invalidResult = $this->service->closeSessionByToken($dto->sessionId, 'wrong-token-abc');
+        $this->assertFalse($invalidResult);
+
+        // Accept valid token
+        $validResult = $this->service->closeSessionByToken($dto->sessionId, $closeToken, 'websocket_closed');
+        $this->assertTrue($validResult);
+
+        $this->assertNull(Redis::hget($vmSessionsKey, $dto->sessionId));
+        $this->assertNull(Redis::hget('console:session_index', $dto->sessionId));
+        $this->assertNotEmpty($fakeDriver->cancelledOperations);
+
+        $audit = AuditLog::where('action', AuditAction::TerminalSessionClosed->value)
+            ->where('context->session_id', $dto->sessionId)
+            ->first();
+
+        $this->assertNotNull($audit);
+        $this->assertSame('websocket_closed', $audit->context['reason'] ?? null);
+        $this->assertSame('exec', $audit->context['driver'] ?? null);
     }
 
     public function test_single_use_ticket_redemption(): void
