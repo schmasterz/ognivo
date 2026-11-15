@@ -30,6 +30,22 @@ final class AuditContext
     private ?int $operationId = null;
 
     /**
+     * Determine if a personal access token is an impersonation token.
+     * Prevents Sanctum wildcard tokens (['*']) from falsely matching 'impersonated'.
+     */
+    public static function isImpersonatedToken(?PersonalAccessToken $token): bool
+    {
+        if ($token === null) {
+            return false;
+        }
+        if (is_array($token->abilities) && in_array('impersonated', $token->abilities, true)) {
+            return true;
+        }
+
+        return isset($token->name) && str_starts_with($token->name, 'impersonation:');
+    }
+
+    /**
      * Populate audit context from an incoming HTTP request.
      */
     public function fromRequest(Request $request): static
@@ -57,7 +73,7 @@ final class AuditContext
 
             /** @var mixed $currentToken */
             $currentToken = $user->currentAccessToken();
-            if ($currentToken instanceof PersonalAccessToken && $user->tokenCan('impersonated')) {
+            if ($currentToken instanceof PersonalAccessToken && self::isImpersonatedToken($currentToken)) {
                 $impId = null;
                 $abilities = is_iterable($currentToken->abilities) ? $currentToken->abilities : [];
                 foreach ($abilities as $ability) {
@@ -265,7 +281,7 @@ final class AuditContext
         if ($user instanceof User) {
             /** @var mixed $currentToken */
             $currentToken = $user->currentAccessToken();
-            if ($currentToken instanceof PersonalAccessToken && $user->tokenCan('impersonated')) {
+            if ($currentToken instanceof PersonalAccessToken && self::isImpersonatedToken($currentToken)) {
                 $abilities = is_iterable($currentToken->abilities) ? $currentToken->abilities : [];
                 foreach ($abilities as $ability) {
                     if (is_string($ability) && str_starts_with($ability, 'impersonator:')) {

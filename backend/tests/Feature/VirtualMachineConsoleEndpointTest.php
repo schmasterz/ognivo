@@ -233,4 +233,22 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
         $this->assertSame('console.ticket', $log->context['action'] ?? null);
         $this->assertSame('forbidden_while_impersonating', $log->context['reason'] ?? null);
     }
+
+    public function test_owner_can_request_console_session_with_sanctum_bearer_token(): void
+    {
+        Redis::spy();
+
+        $token = $this->owner->createToken('auth-token')->plainTextToken;
+
+        $response = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson("/api/vms/{$this->vm->id}/console");
+
+        $response->assertStatus(200);
+        $response->assertJsonStructure([
+            'ticket',
+            'websocket_path',
+            'expires_at',
+            'type',
+        ]);
+    }
 }

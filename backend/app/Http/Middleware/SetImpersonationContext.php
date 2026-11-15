@@ -35,7 +35,7 @@ final class SetImpersonationContext
         if ($user !== null) {
             /** @var mixed $currentToken */
             $currentToken = $user->currentAccessToken();
-            if ($currentToken instanceof PersonalAccessToken && $user->tokenCan('impersonated')) {
+            if ($currentToken instanceof PersonalAccessToken && AuditContext::isImpersonatedToken($currentToken)) {
                 $impersonatorId = $this->extractImpersonatorId($currentToken);
                 if ($impersonatorId !== null) {
                     $this->auditContext->setImpersonatorId($impersonatorId);
@@ -53,7 +53,7 @@ final class SetImpersonationContext
         if ($this->auditContext->getImpersonatorId() === null && $postUser !== null) {
             /** @var mixed $currentToken */
             $currentToken = $postUser->currentAccessToken();
-            if ($currentToken instanceof PersonalAccessToken && $postUser->tokenCan('impersonated')) {
+            if ($currentToken instanceof PersonalAccessToken && AuditContext::isImpersonatedToken($currentToken)) {
                 $impersonatorId = $this->extractImpersonatorId($currentToken);
                 if ($impersonatorId !== null) {
                     $this->auditContext->setImpersonatorId($impersonatorId);

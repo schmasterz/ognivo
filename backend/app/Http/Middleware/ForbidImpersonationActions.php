@@ -40,7 +40,7 @@ final class ForbidImpersonationActions
 
         $currentToken = $user?->currentAccessToken();
         $isImpersonated = $this->auditContext->getImpersonatorId() !== null
-            || ($user !== null && $currentToken instanceof PersonalAccessToken && $user->tokenCan('impersonated'));
+            || ($currentToken instanceof PersonalAccessToken && AuditContext::isImpersonatedToken($currentToken));
 
         if (! $isImpersonated || $user === null) {
             return $next($request);
