@@ -256,7 +256,7 @@ final readonly class ImageSelectionDTO
     {
         $normalized = [];
         foreach ($ids as $id) {
-            if (! is_int($id) && (! is_string($id) || ! ctype_digit(ltrim((string) $id, '+')))) {
+            if (! is_int($id) && (! is_string($id) || ! ctype_digit(ltrim($id, '+')))) {
                 throw new InvalidArgumentException('Image IDs must be positive integers.');
             }
             $intId = (int) $id;

@@ -108,7 +108,7 @@ final class ImageSelectionRules
 
             $ids = [];
             foreach ($value as $item) {
-                if (! is_int($item) && (! is_string($item) || ! ctype_digit(ltrim((string) $item, '+')))) {
+                if (! is_int($item) && (! is_string($item) || ! ctype_digit(ltrim($item, '+')))) {
                     // Let format/type rules report format violations
                     return;
                 }
