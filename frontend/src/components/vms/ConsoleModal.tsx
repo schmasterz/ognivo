@@ -37,10 +37,7 @@ type ErrorCategory =
 export function ConsoleModal({ vm, onClose }: ConsoleModalProps) {
   const [wsUrl, setWsUrl] = useState<string | null>(null);
   const [ticket, setTicket] = useState<string | null>(null);
-  const [, setSessionId] = useState<string | null>(null);
-  const [driverMode, setDriverMode] = useState<"exec" | "console">(
-    vm?.instance_type === "container" ? "exec" : "exec"
-  );
+  const [driverMode, setDriverMode] = useState<"exec" | "console">("exec");
   const [fallbackReason, setFallbackReason] = useState<string | null>(null);
   const [sessionLoading, setSessionLoading] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
@@ -63,7 +60,6 @@ export function ConsoleModal({ vm, onClose }: ConsoleModalProps) {
     const currentVmId = vmIdRef.current;
     if (activeSessionId && currentVmId) {
       sessionIdRef.current = null;
-      setSessionId(null);
       void api.closeConsoleSession(currentVmId, activeSessionId, reason).catch(() => {});
     }
   }, []);
@@ -107,7 +103,6 @@ export function ConsoleModal({ vm, onClose }: ConsoleModalProps) {
       setDriverMode(res.driver);
       setFallbackReason(res.fallback_reason ?? null);
       setTicket(res.ticket);
-      setSessionId(res.session_id);
       sessionIdRef.current = res.session_id;
 
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -211,7 +206,6 @@ export function ConsoleModal({ vm, onClose }: ConsoleModalProps) {
       queueMicrotask(() => {
         setWsUrl(null);
         setTicket(null);
-        setSessionId(null);
         setSessionError(null);
         setErrorCategory(null);
         setBootLog("");
@@ -229,14 +223,13 @@ export function ConsoleModal({ vm, onClose }: ConsoleModalProps) {
       if (!ignore) {
         setWsUrl(null);
         setTicket(null);
-        setSessionId(null);
         setSessionError(null);
         setErrorCategory(null);
         setBootLog("");
         setCopied(false);
         setFallbackReason(null);
         setActiveTab("terminal");
-        setDriverMode(vm.instance_type === "container" ? "exec" : "exec");
+        setDriverMode("exec");
 
         void fetchSession(vm.id);
         void fetchBootLog(vm.id);
