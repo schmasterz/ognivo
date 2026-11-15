@@ -22,6 +22,11 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
     public array $deletedInstances = [];
 
     /**
+     * @var list<string>
+     */
+    public array $cancelledOperations = [];
+
+    /**
      * @var array<string, callable>
      */
     public array $actionCallbacks = [];
@@ -691,7 +696,7 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
     }
 
     #[Override]
-    public function createConsoleSession(VirtualMachine $vm, string $type = 'console'): array
+    public function createConsoleSession(VirtualMachine $vm, string $type = 'console', int $width = 80, int $height = 24): array
     {
         if ($vm->instance_type === 'container' && $type === 'vga') {
             throw new \InvalidArgumentException('Containers do not support graphical VGA console.');
@@ -708,7 +713,49 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
             'websocket_path' => sprintf('/1.0/operations/%s/websocket?secret=fake-sec-data-%d', $opId, $vm->id),
             'control_path' => sprintf('/1.0/operations/%s/websocket?secret=fake-sec-ctrl-%d', $opId, $vm->id),
             'type' => $type,
+            'driver' => 'console',
         ];
+    }
+
+    #[Override]
+    public function createExecSession(VirtualMachine $vm, int $width = 80, int $height = 24): array
+    {
+        if ($this->shouldFail('createExecSession') || $this->shouldFail("createExecSession:{$vm->name}")) {
+            throw new \RuntimeException(sprintf("VM agent isn't currently running for instance %s", $vm->name));
+        }
+
+        $agentRunning = $this->instanceStates[$vm->name]['agent_running'] ?? null;
+        if ($agentRunning === null) {
+            try {
+                $cachedState = Cache::get("fake_driver:state:{$vm->name}");
+                if (is_array($cachedState) && array_key_exists('agent_running', $cachedState)) {
+                    $agentRunning = $cachedState['agent_running'];
+                }
+            } catch (\Throwable) {
+            }
+        }
+
+        if ($agentRunning === false) {
+            throw new \RuntimeException(sprintf("VM agent isn't currently running for instance %s", $vm->name));
+        }
+
+        $opId = 'fake-op-exec-'.$vm->id;
+
+        return [
+            'operation_id' => $opId,
+            'websocket_path' => sprintf('/1.0/operations/%s/websocket?secret=fake-sec-exec-data-%d', $opId, $vm->id),
+            'control_path' => sprintf('/1.0/operations/%s/websocket?secret=fake-sec-exec-ctrl-%d', $opId, $vm->id),
+            'type' => 'console',
+            'driver' => 'exec',
+        ];
+    }
+
+    #[Override]
+    public function cancelOperation(VirtualMachine $vm, string $operationId): bool
+    {
+        $this->cancelledOperations[] = $operationId;
+
+        return true;
     }
 
     #[Override]

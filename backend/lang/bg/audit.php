@@ -55,6 +55,8 @@ $actions = [
     'quota.default.updated' => 'Обновена квота по подразбиране',
 
     'console.ticket.issued' => 'Издаден билет за уеб конзола',
+    'terminal.session.opened' => 'Interactive terminal session opened',
+    'terminal.session.closed' => 'Interactive terminal session closed',
     'impersonation.started' => 'Стартирано администраторско представяне (impersonation)',
     'impersonation.ended' => 'Прекратено администраторско представяне (impersonation)',
     'audit.exported' => 'Експортиран архив с одит лог',

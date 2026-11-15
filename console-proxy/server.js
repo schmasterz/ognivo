@@ -15,6 +15,8 @@ const REDIS_PASSWORD = process.env.REDIS_PASSWORD || undefined;
 const REDIS_PREFIX = process.env.REDIS_PREFIX || null;
 const CLIENT_CERT_PATH = process.env.CLIENT_CERT_PATH || null;
 const CLIENT_KEY_PATH = process.env.CLIENT_KEY_PATH || null;
+const DEFAULT_MAX_PAYLOAD = parseInt(process.env.MAX_MESSAGE_BYTES || '65536', 10);
+const DEFAULT_IDLE_TIMEOUT_SECONDS = parseInt(process.env.IDLE_TIMEOUT_SECONDS || '900', 10);
 
 const TICKET_REGEX = /^[A-Za-z0-9_-]{16,128}$/;
 
@@ -24,6 +26,10 @@ const redis = new Redis({
   password: REDIS_PASSWORD,
   lazyConnect: true,
   maxRetriesPerRequest: 3,
+});
+
+redis.on('error', () => {
+  // Prevent unhandled error event when Redis is offline or restarting
 });
 
 redis.connect().catch((err) => {
@@ -42,7 +48,62 @@ const server = http.createServer((req, res) => {
   res.end('Not Found');
 });
 
-const wss = new WebSocketServer({ noServer: true });
+const wss = new WebSocketServer({
+  noServer: true,
+  maxPayload: DEFAULT_MAX_PAYLOAD,
+  handleProtocols: (protocols) => {
+    const hasOgnivo = typeof protocols.has === 'function'
+      ? protocols.has('ognivo-terminal')
+      : Array.isArray(protocols) && protocols.includes('ognivo-terminal');
+    if (hasOgnivo) {
+      return 'ognivo-terminal';
+    }
+    for (const proto of protocols) {
+      if (!proto.startsWith('ticket.')) {
+        return proto;
+      }
+    }
+    return false;
+  },
+});
+
+function extractTicket(req, url) {
+  if (req && req.headers) {
+    const wsProtocol = req.headers['sec-websocket-protocol'];
+    if (typeof wsProtocol === 'string') {
+      const parts = wsProtocol.split(',');
+      for (const part of parts) {
+        const trimmed = part.trim();
+        if (trimmed.startsWith('ticket.')) {
+          const ticket = trimmed.slice('ticket.'.length).trim();
+          if (ticket) return ticket;
+        }
+      }
+    }
+
+    const authHeader = req.headers['authorization'];
+    if (typeof authHeader === 'string') {
+      const trimmedAuth = authHeader.trim();
+      if (trimmedAuth.toLowerCase().startsWith('bearer ')) {
+        const token = trimmedAuth.slice(7).trim();
+        if (token) return token;
+      }
+    }
+  }
+
+  const parsedUrl = typeof url === 'string'
+    ? new URL(url, 'http://localhost')
+    : url;
+
+  if (parsedUrl && parsedUrl.searchParams) {
+    const queryTicket = parsedUrl.searchParams.get('ticket');
+    if (queryTicket && queryTicket.trim()) {
+      return queryTicket.trim();
+    }
+  }
+
+  return null;
+}
 
 async function redeemTicket(ticket) {
   if (!ticket || !TICKET_REGEX.test(ticket)) {
@@ -77,6 +138,81 @@ async function redeemTicket(ticket) {
   return null;
 }
 
+function cleanupRedisSession(payload) {
+  if (!payload || !payload.session_id || !payload.virtual_machine_id) {
+    return;
+  }
+
+  if (redis.status && redis.status !== 'ready') {
+    return;
+  }
+
+  const sid = String(payload.session_id);
+  const vmId = String(payload.virtual_machine_id);
+
+  const prefixes = [
+    REDIS_PREFIX,
+    'ognivo-database-',
+    'ognivo-dev-database-',
+    'laravel-database-',
+    '',
+  ].filter((p) => p !== null && p !== undefined);
+
+  const uniquePrefixes = [...new Set(prefixes)];
+
+  for (const prefix of uniquePrefixes) {
+    const vmKey = `${prefix}console:vm_sessions:${vmId}`;
+    const idxKey = `${prefix}console:session_index`;
+    try {
+      redis.hdel(vmKey, sid).catch(() => {});
+      redis.hdel(idxKey, sid).catch(() => {});
+    } catch {
+      // Ignore errors if Redis is disconnected in unit tests
+    }
+  }
+}
+
+function cancelIncusOperation(payload, tlsOptions = {}) {
+  if (!payload || !payload.operation_id || !payload.host_endpoint || payload.host_driver === 'fake') {
+    return;
+  }
+
+  try {
+    const parsedHost = new URL(payload.host_endpoint);
+    const isHttps = parsedHost.protocol === 'https:';
+    const httpModule = isHttps ? https : http;
+
+    const reqUrl = `${parsedHost.origin}/1.0/operations/${encodeURIComponent(payload.operation_id)}`;
+    const reqOptions = {
+      method: 'DELETE',
+      timeout: 3000,
+    };
+
+    if (isHttps) {
+      if (tlsOptions.agent) reqOptions.agent = tlsOptions.agent;
+      if (tlsOptions.cert) reqOptions.cert = tlsOptions.cert;
+      if (tlsOptions.key) reqOptions.key = tlsOptions.key;
+      reqOptions.rejectUnauthorized = false;
+    }
+
+    const req = httpModule.request(reqUrl, reqOptions, (res) => {
+      res.resume();
+    });
+
+    req.on('error', () => {
+      // Ignore errors so proxy never crashes
+    });
+
+    req.on('timeout', () => {
+      req.destroy();
+    });
+
+    req.end();
+  } catch {
+    // Ignore unexpected errors
+  }
+}
+
 server.on('upgrade', async (req, socket, head) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   if (url.pathname !== '/console') {
@@ -85,7 +221,7 @@ server.on('upgrade', async (req, socket, head) => {
     return;
   }
 
-  const ticket = url.searchParams.get('ticket');
+  const ticket = extractTicket(req, url);
   if (!ticket || ticket.trim() === '') {
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
     socket.destroy();
@@ -130,21 +266,88 @@ wss.on('connection', (clientWs, req, payload) => {
 });
 
 function handleFakeSession(clientWs, payload) {
-  clientWs.send(
-    `\r\n\x1b[32m[Connected to Fake Hypervisor Console: Instance #${payload.virtual_machine_id}]\x1b[0m\r\n` +
-    `\x1b[36mConsole Mode: ${payload.console_type || 'console'} (${payload.instance_type})\x1b[0m\r\n\r\n` +
-    `Welcome to Linux (TTY console)\r\n` +
-    `fake-instance login: `
-  );
+  const isExec = payload.driver === 'exec' || (payload.driver !== 'console' && payload.instance_type === 'container');
+
+  const idleTimeoutMs = parseInt(payload.idle_timeout_ms, 10) ||
+    ((parseInt(payload.idle_timeout_seconds, 10) || DEFAULT_IDLE_TIMEOUT_SECONDS) * 1000);
+  const maxBytes = parseInt(payload.max_message_bytes, 10) || DEFAULT_MAX_PAYLOAD;
+
+  let idleTimer = null;
+  function resetIdleTimer() {
+    if (idleTimer) clearTimeout(idleTimer);
+    if (idleTimeoutMs > 0) {
+      idleTimer = setTimeout(() => {
+        if (clientWs.readyState === WebSocket.OPEN) {
+          try {
+            clientWs.send('\r\n\x1b[33m[Console session closed due to inactivity]\x1b[0m\r\n');
+          } catch {}
+          try {
+            clientWs.close(4000, 'Idle timeout exceeded');
+          } catch {}
+        }
+      }, idleTimeoutMs);
+      if (typeof idleTimer.unref === 'function') idleTimer.unref();
+    }
+  }
+  resetIdleTimer();
+
+  if (isExec) {
+    clientWs.send(
+      `\r\n\x1b[32m[Connected to Fake Hypervisor Exec Shell: Instance #${payload.virtual_machine_id}]\x1b[0m\r\n` +
+      `\x1b[36mDriver: exec (${payload.instance_type || 'container'})\x1b[0m\r\n\r\n` +
+      `root@fake-instance:~# `
+    );
+  } else {
+    clientWs.send(
+      `\r\n\x1b[32m[Connected to Fake Hypervisor Console: Instance #${payload.virtual_machine_id}]\x1b[0m\r\n` +
+      `\x1b[36mConsole Mode: ${payload.console_type || 'console'} (${payload.instance_type})\x1b[0m\r\n\r\n` +
+      `Welcome to Linux (TTY console)\r\n` +
+      `fake-instance login: `
+    );
+  }
 
   let buffer = '';
   clientWs.on('message', (data, isBinary) => {
+    resetIdleTimer();
+
+    const byteLength = Buffer.isBuffer(data)
+      ? data.length
+      : (typeof data === 'string' ? Buffer.byteLength(data) : Buffer.from(data).length);
+    if (byteLength > maxBytes) {
+      if (clientWs.readyState === WebSocket.OPEN) {
+        try { clientWs.close(1009, 'Message too big'); } catch {}
+      }
+      if (idleTimer) clearTimeout(idleTimer);
+      cleanupRedisSession(payload);
+      return;
+    }
+
     if (isBinary) {
       clientWs.send(data, { binary: true });
       return;
     }
 
     const str = data.toString();
+    if (isExec) {
+      if (str === '\r' || str === '\n') {
+        clientWs.send('\r\nroot@fake-instance:~# ');
+        buffer = '';
+      } else if (str === '\u0003') { // Ctrl+C
+        clientWs.send('^C\r\nroot@fake-instance:~# ');
+        buffer = '';
+      } else if (str === '\u007f') { // Backspace
+        if (buffer.length > 0) {
+          buffer = buffer.slice(0, -1);
+          clientWs.send('\b \b');
+        }
+      } else {
+        buffer += str;
+        clientWs.send(str); // Echo back
+      }
+      return;
+    }
+
+    // console mode
     if (str === '\r' || str === '\n') {
       clientWs.send('\r\nPassword: \r\nfake-instance:~# ');
       buffer = '';
@@ -162,6 +365,11 @@ function handleFakeSession(clientWs, payload) {
     }
   });
 
+  clientWs.on('close', () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    cleanupRedisSession(payload);
+  });
+
   clientWs.on('error', (err) => {
     console.error(`[console-proxy] Fake session client error: ${err.message}`);
   });
@@ -170,6 +378,7 @@ function handleFakeSession(clientWs, payload) {
 class PinnedHttpsAgent extends https.Agent {
   constructor(expectedPin, options = {}) {
     super({
+      maxCachedSessions: 0,
       ...options,
       checkServerIdentity: (hostname, cert) => this.checkServerIdentity(hostname, cert),
     });
@@ -258,8 +467,71 @@ function handleIncusSession(clientWs, payload) {
   }
 
   let controlWs = null;
-  let terminalWidth = 80;
-  let terminalHeight = 24;
+  let terminalWidth = parseInt(payload.width, 10) || 80;
+  let terminalHeight = parseInt(payload.height, 10) || 24;
+
+  const maxBytes = parseInt(payload.max_message_bytes, 10) || DEFAULT_MAX_PAYLOAD;
+  const idleTimeoutMs = parseInt(payload.idle_timeout_ms, 10) ||
+    ((parseInt(payload.idle_timeout_seconds, 10) || DEFAULT_IDLE_TIMEOUT_SECONDS) * 1000);
+
+  let cleanedUp = false;
+  let idleTimer = null;
+  const pendingClientMessages = [];
+
+  function teardownSession(terminateRemoteProcess = false) {
+    if (cleanedUp) return;
+    cleanedUp = true;
+
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+      idleTimer = null;
+    }
+    pendingClientMessages.length = 0;
+
+    if (terminateRemoteProcess) {
+      if (controlWs && controlWs.readyState === WebSocket.OPEN) {
+        try {
+          controlWs.send(JSON.stringify({ command: 'signal', signal: 1 }));
+        } catch {}
+        try {
+          controlWs.send(JSON.stringify({ command: 'signal', signal: 15 }));
+        } catch {}
+      }
+      cancelIncusOperation(payload, options);
+    }
+
+    if (incusWs && (incusWs.readyState === WebSocket.OPEN || incusWs.readyState === WebSocket.CONNECTING)) {
+      try { incusWs.close(); } catch {}
+    }
+    if (controlWs && (controlWs.readyState === WebSocket.OPEN || controlWs.readyState === WebSocket.CONNECTING)) {
+      try { controlWs.close(); } catch {}
+    }
+
+    cleanupRedisSession(payload);
+  }
+
+  function resetIdleTimer() {
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+      idleTimer = null;
+    }
+    if (idleTimeoutMs > 0 && !cleanedUp) {
+      idleTimer = setTimeout(() => {
+        if (clientWs.readyState === WebSocket.OPEN) {
+          try {
+            clientWs.send('\r\n\x1b[33m[Console session closed due to inactivity]\x1b[0m\r\n');
+          } catch {}
+          try {
+            clientWs.close(4000, 'Idle timeout exceeded');
+          } catch {}
+        }
+        teardownSession(true);
+      }, idleTimeoutMs);
+      if (typeof idleTimer.unref === 'function') idleTimer.unref();
+    }
+  }
+
+  resetIdleTimer();
 
   if (
     typeof payload.control_path === 'string' &&
@@ -271,7 +543,7 @@ function handleIncusSession(clientWs, payload) {
       controlWs.send(
         JSON.stringify({
           command: 'window-resize',
-          args: { width: terminalWidth, height: terminalHeight },
+          args: { width: String(terminalWidth), height: String(terminalHeight) },
         })
       );
     });
@@ -281,9 +553,7 @@ function handleIncusSession(clientWs, payload) {
   }
 
   const incusWs = new WebSocket(targetUrl, options);
-
   let incusReady = false;
-  const pendingClientMessages = [];
 
   incusWs.on('open', () => {
     incusReady = true;
@@ -296,6 +566,21 @@ function handleIncusSession(clientWs, payload) {
   });
 
   clientWs.on('message', (msg, isBinary) => {
+    resetIdleTimer();
+
+    const byteLength = Buffer.isBuffer(msg)
+      ? msg.length
+      : (typeof msg === 'string' ? Buffer.byteLength(msg) : Buffer.from(msg).length);
+    if (byteLength > maxBytes) {
+      if (clientWs.readyState === WebSocket.OPEN) {
+        try {
+          clientWs.close(1009, 'Message too big');
+        } catch {}
+      }
+      teardownSession(true);
+      return;
+    }
+
     // Check if this is a resize control message from client
     if (!isBinary) {
       const text = typeof msg === 'string' ? msg : msg.toString('utf8');
@@ -308,7 +593,10 @@ function handleIncusSession(clientWs, payload) {
           terminalHeight = height;
           if (controlWs && controlWs.readyState === WebSocket.OPEN) {
             controlWs.send(
-              JSON.stringify({ command: 'window-resize', args: { width, height } })
+              JSON.stringify({
+                command: 'window-resize',
+                args: { width: String(width), height: String(height) },
+              })
             );
           }
           return;
@@ -328,41 +616,34 @@ function handleIncusSession(clientWs, payload) {
   });
 
   incusWs.on('message', (msg, isBinary) => {
+    resetIdleTimer();
     if (clientWs.readyState === WebSocket.OPEN) {
       clientWs.send(msg, { binary: isBinary });
     }
   });
 
   incusWs.on('error', (err) => {
-    pendingClientMessages.length = 0;
     console.error(`[console-proxy] Incus upstream socket error: ${err.message}`);
     if (clientWs.readyState === WebSocket.OPEN) {
       clientWs.send('\r\n\x1b[31m[Console Error: Hypervisor upstream connection failed]\x1b[0m\r\n');
       clientWs.close(1011, 'Hypervisor connection error');
     }
-    if (controlWs && (controlWs.readyState === WebSocket.OPEN || controlWs.readyState === WebSocket.CONNECTING)) {
-      controlWs.close();
-    }
-  });
-
-  clientWs.on('close', () => {
-    pendingClientMessages.length = 0;
-    if (incusWs.readyState === WebSocket.OPEN || incusWs.readyState === WebSocket.CONNECTING) {
-      incusWs.close();
-    }
-    if (controlWs && (controlWs.readyState === WebSocket.OPEN || controlWs.readyState === WebSocket.CONNECTING)) {
-      controlWs.close();
-    }
+    teardownSession(false);
   });
 
   incusWs.on('close', () => {
-    pendingClientMessages.length = 0;
     if (clientWs.readyState === WebSocket.OPEN) {
       clientWs.close();
     }
-    if (controlWs && (controlWs.readyState === WebSocket.OPEN || controlWs.readyState === WebSocket.CONNECTING)) {
-      controlWs.close();
-    }
+    teardownSession(false);
+  });
+
+  clientWs.on('close', () => {
+    teardownSession(true);
+  });
+
+  clientWs.on('error', () => {
+    teardownSession(true);
   });
 }
 
@@ -370,4 +651,13 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`[console-proxy] Listening on port ${PORT}`);
 });
 
-module.exports = { server, redis, redeemTicket, TICKET_REGEX, PinnedHttpsAgent, handleIncusSession };
+module.exports = {
+  server,
+  redis,
+  redeemTicket,
+  extractTicket,
+  TICKET_REGEX,
+  PinnedHttpsAgent,
+  handleIncusSession,
+  handleFakeSession,
+};

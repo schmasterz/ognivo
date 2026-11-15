@@ -25,6 +25,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
+use Spatie\RouteAttributes\Attributes\Delete;
 use Spatie\RouteAttributes\Attributes\Get;
 use Spatie\RouteAttributes\Attributes\Middleware;
 use Spatie\RouteAttributes\Attributes\Post;
@@ -270,9 +271,46 @@ final class VirtualMachineController extends Controller
             return response()->json(['message' => 'Containers do not support graphical VGA console.'], 422);
         }
 
-        $session = $this->ticketService()->issueTicket($virtualMachine, $request->user(), $type);
+        $rawDriver = $request->input('driver');
+        $driver = is_string($rawDriver) && $rawDriver !== '' ? $rawDriver : null;
+        if ($driver !== null && ! in_array($driver, ['auto', 'exec', 'console'], true)) {
+            return response()->json(['message' => 'Invalid driver. Supported drivers: auto, exec, console.'], 422);
+        }
+
+        $cols = Cast::int($request->input('cols') ?? $request->input('width'), 80);
+        $rows = Cast::int($request->input('rows') ?? $request->input('height'), 24);
+
+        $session = $this->ticketService()->issueTicket(
+            $virtualMachine,
+            $request->user(),
+            $type,
+            $cols,
+            $rows,
+            $driver
+        );
 
         return response()->json($session->toArray());
+    }
+
+    /**
+     * Close an active interactive console or exec terminal session.
+     */
+    #[Delete('{virtualMachine}/console/{sessionId}', name: 'vms.console.close')]
+    public function closeConsole(Request $request, VirtualMachine $virtualMachine, string $sessionId): JsonResponse
+    {
+        Gate::authorize('viewConsole', $virtualMachine);
+
+        $rawReason = $request->input('reason');
+        $reason = is_string($rawReason) && $rawReason !== '' ? $rawReason : 'client_disconnect';
+
+        $closed = $this->ticketService()->closeSession(
+            $virtualMachine,
+            $sessionId,
+            $request->user(),
+            $reason
+        );
+
+        return response()->json(['closed' => $closed]);
     }
 
     /**

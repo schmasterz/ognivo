@@ -6,7 +6,7 @@ import {
   Square,
   Pause,
   RotateCw,
-  FileText,
+  Terminal,
   Trash2,
   Cpu,
   Layers,
@@ -345,14 +345,14 @@ export function VmTable({
                         </button>
                       )}
 
-                      {/* Boot Log Button */}
+                      {/* Console / Terminal Button */}
                       <button
                         onClick={() => onOpenConsole(vm)}
                         disabled={isActing}
-                        title="View Boot Log"
+                        title="Open Console"
                         className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition disabled:opacity-50"
                       >
-                        <FileText className="w-4 h-4" />
+                        <Terminal className="w-4 h-4" />
                       </button>
 
                       {/* Start/Stop Button with Confirmation */}

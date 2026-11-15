@@ -55,6 +55,8 @@ $actions = [
     'quota.default.updated' => 'Default tier quota updated',
 
     'console.ticket.issued' => 'Web console access ticket issued',
+    'terminal.session.opened' => 'Interactive terminal session opened',
+    'terminal.session.closed' => 'Interactive terminal session closed',
     'impersonation.started' => 'Administrator impersonation session started',
     'impersonation.ended' => 'Administrator impersonation session ended',
     'audit.exported' => 'Audit log archive exported',
