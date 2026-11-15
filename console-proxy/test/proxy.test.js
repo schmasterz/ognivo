@@ -4,7 +4,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('http');
 const { WebSocket } = require('ws');
-const { server, redis, redeemTicket, TICKET_REGEX, PinnedHttpsAgent, handleIncusSession } = require('../server.js');
+const { server, redis, redeemTicket, extractTicket, TICKET_REGEX, PinnedHttpsAgent, handleIncusSession, handleFakeSession } = require('../server.js');
 const https = require('https');
 const crypto = require('crypto');
 const { execSync } = require('child_process');
@@ -129,7 +129,13 @@ function createTestTlsServer(serverOptions = {}) {
   });
 
   const cleanup = () => {
+    for (const ws of testWss.clients) {
+      try { ws.terminate(); } catch {}
+    }
     testWss.close();
+    if (typeof tlsServer.closeAllConnections === 'function') {
+      tlsServer.closeAllConnections();
+    }
     tlsServer.close();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   };
@@ -390,7 +396,7 @@ test('handleIncusSession connects to control_path, sends initial resize, and for
     assert.strictEqual(controlMessages.length, 1);
     assert.deepStrictEqual(controlMessages[0], {
       command: 'window-resize',
-      args: { width: 80, height: 24 },
+      args: { width: '80', height: '24' },
     });
 
     // 2. Client sends a resize command
@@ -410,7 +416,7 @@ test('handleIncusSession connects to control_path, sends initial resize, and for
     assert.strictEqual(controlMessages.length, 2);
     assert.deepStrictEqual(controlMessages[1], {
       command: 'window-resize',
-      args: { width: 120, height: 40 },
+      args: { width: '120', height: '40' },
     });
     assert.strictEqual(dataMessages.length, 0, 'Resize command should not be sent to data socket');
 
@@ -574,7 +580,384 @@ test('handleIncusSession forwards client input to incusWs as binary frames', asy
   }
 });
 
+test('extractTicket extracts token from Sec-WebSocket-Protocol without query string', () => {
+  const reqProto = {
+    headers: {
+      'sec-websocket-protocol': 'ognivo-terminal, ticket.subprotocol-test-token-123456',
+    },
+  };
+  const extracted = extractTicket(reqProto, new URL('http://127.0.0.1/console'));
+  assert.strictEqual(extracted, 'subprotocol-test-token-123456');
+
+  // Also test Bearer authorization header
+  const reqAuth = {
+    headers: {
+      authorization: 'Bearer auth-bearer-token-1234567890',
+    },
+  };
+  assert.strictEqual(
+    extractTicket(reqAuth, new URL('http://127.0.0.1/console')),
+    'auth-bearer-token-1234567890'
+  );
+
+  // Fallback to query parameter
+  const reqQuery = { headers: {} };
+  assert.strictEqual(
+    extractTicket(reqQuery, new URL('http://127.0.0.1/console?ticket=query-ticket-1234567890')),
+    'query-ticket-1234567890'
+  );
+
+  // Missing ticket returns null
+  assert.strictEqual(extractTicket({ headers: {} }, new URL('http://127.0.0.1/console')), null);
+});
+
+test('WebSocket handshake extracts ticket from Sec-WebSocket-Protocol header', async () => {
+  const address = server.address();
+  const port = address.port;
+
+  await new Promise((resolve) => {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/console`, [
+      'ognivo-terminal',
+      'ticket.subprotocol-valid-format-token-99999',
+    ]);
+    ws.on('error', (err) => {
+      assert.ok(
+        err.message.includes('403') || err.message.includes('Unexpected server response'),
+        `Expected 403 error, got: ${err.message}`
+      );
+      resolve();
+    });
+    ws.on('open', () => {
+      assert.fail('Should not connect with nonexistent ticket in subprotocol');
+    });
+  });
+});
+
+test('Client disconnect on an exec session sends SIGHUP and SIGTERM, closes upstream sockets, and sends DELETE operation', async () => {
+  const EventEmitter = require('events');
+  const fixture = createTestTlsServer();
+  try {
+    await new Promise((resolve) => fixture.tlsServer.listen(0, '127.0.0.1', resolve));
+    const tlsPort = fixture.tlsServer.address().port;
+
+    let serverDataWs = null;
+    let serverControlWs = null;
+    const controlMessages = [];
+    const httpDeletes = [];
+
+    fixture.tlsServer.on('request', (req, res) => {
+      if (req.method === 'DELETE') {
+        httpDeletes.push(req.url);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ type: 'sync', status: 'Success', status_code: 200 }));
+      }
+    });
+
+    const serverConnections = new Promise((resolve) => {
+      fixture.testWss.on('connection', (ws, req) => {
+        if (req.url && req.url.includes('/control')) {
+          serverControlWs = ws;
+          ws.on('message', (msg) => {
+            try {
+              controlMessages.push(JSON.parse(msg.toString('utf8')));
+            } catch {}
+          });
+        } else if (req.url && req.url.includes('/websocket')) {
+          serverDataWs = ws;
+        }
+        if (serverControlWs && serverDataWs) {
+          resolve();
+        }
+      });
+    });
+
+    const mockClientWs = new EventEmitter();
+    mockClientWs.readyState = WebSocket.OPEN;
+    mockClientWs.send = () => {};
+    mockClientWs.close = (code, reason) => {
+      mockClientWs.readyState = WebSocket.CLOSED;
+      mockClientWs.closed = { code, reason };
+      mockClientWs.emit('close');
+    };
+
+    const opId = 'op-exec-test-uuid-1234';
+    handleIncusSession(mockClientWs, {
+      host_endpoint: `https://127.0.0.1:${tlsPort}`,
+      websocket_path: `/1.0/operations/${opId}/websocket`,
+      control_path: `/1.0/operations/${opId}/control`,
+      operation_id: opId,
+      virtual_machine_id: 101,
+      session_id: 'session-exec-test-1',
+      driver: 'exec',
+      server_public_key_pin: fixture.validPin,
+    });
+
+    await serverConnections;
+    assert.ok(serverControlWs, 'Control socket connected');
+    assert.ok(serverDataWs, 'Data socket connected');
+
+    // Wait for initial resize message
+    await new Promise((resolve) => {
+      if (controlMessages.length >= 1) return resolve();
+      serverControlWs.on('message', () => {
+        if (controlMessages.length >= 1) resolve();
+      });
+    });
+
+    // Send a message to ensure data socket is fully connected
+    mockClientWs.emit('message', 'init\n', false);
+    await new Promise((resolve) => {
+      serverDataWs.once('message', () => resolve());
+    });
+
+    const dataClosePromise = new Promise((resolve) => serverDataWs.on('close', resolve));
+    const controlClosePromise = new Promise((resolve) => serverControlWs.on('close', resolve));
+
+    // Simulate client disconnect / tab close
+    mockClientWs.close(1001, 'Going away');
+
+    await Promise.all([dataClosePromise, controlClosePromise]);
+
+    // Check control messages for SIGHUP (1) and SIGTERM (15)
+    assert.ok(
+      controlMessages.some((m) => m.command === 'signal' && m.signal === 1),
+      'Must send SIGHUP (signal: 1) on disconnect'
+    );
+    assert.ok(
+      controlMessages.some((m) => m.command === 'signal' && m.signal === 15),
+      'Must send SIGTERM (signal: 15) on disconnect'
+    );
+
+    // Wait for DELETE operation request
+    await new Promise((resolve) => {
+      if (httpDeletes.length > 0) return resolve();
+      const interval = setInterval(() => {
+        if (httpDeletes.length > 0) {
+          clearInterval(interval);
+          resolve();
+        }
+      }, 20);
+    });
+
+    assert.strictEqual(httpDeletes.length, 1);
+    assert.strictEqual(httpDeletes[0], `/1.0/operations/${opId}`);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('Idle timeout closes the session and cleans up upstream connections after inactivity', async () => {
+  const EventEmitter = require('events');
+  const fixture = createTestTlsServer();
+  try {
+    await new Promise((resolve) => fixture.tlsServer.listen(0, '127.0.0.1', resolve));
+    const tlsPort = fixture.tlsServer.address().port;
+
+    let serverDataWs = null;
+    let serverControlWs = null;
+    const controlMessages = [];
+    const httpDeletes = [];
+
+    fixture.tlsServer.on('request', (req, res) => {
+      if (req.method === 'DELETE') {
+        httpDeletes.push(req.url);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'success' }));
+      }
+    });
+
+    const serverConnections = new Promise((resolve) => {
+      fixture.testWss.on('connection', (ws, req) => {
+        if (req.url && req.url.includes('/control')) {
+          serverControlWs = ws;
+          ws.on('message', (msg) => {
+            try {
+              controlMessages.push(JSON.parse(msg.toString('utf8')));
+            } catch {}
+          });
+        } else if (req.url && req.url.includes('/websocket')) {
+          serverDataWs = ws;
+        }
+        if (serverControlWs && serverDataWs) {
+          resolve();
+        }
+      });
+    });
+
+    const clientReceived = [];
+    const mockClientWs = new EventEmitter();
+    mockClientWs.readyState = WebSocket.OPEN;
+    mockClientWs.send = (msg) => {
+      clientReceived.push(typeof msg === 'string' ? msg : msg.toString('utf8'));
+    };
+    const clientClosedPromise = new Promise((resolve) => {
+      mockClientWs.close = (code, reason) => {
+        mockClientWs.readyState = WebSocket.CLOSED;
+        mockClientWs.closed = { code, reason };
+        mockClientWs.emit('close');
+        resolve();
+      };
+    });
+
+    const opId = 'op-idle-timeout-1234';
+    handleIncusSession(mockClientWs, {
+      host_endpoint: `https://127.0.0.1:${tlsPort}`,
+      websocket_path: `/1.0/operations/${opId}/websocket`,
+      control_path: `/1.0/operations/${opId}/control`,
+      operation_id: opId,
+      virtual_machine_id: 102,
+      session_id: 'session-idle-1',
+      idle_timeout_ms: 150,
+      server_public_key_pin: fixture.validPin,
+    });
+
+    await serverConnections;
+
+    const dataClosePromise = new Promise((resolve) => serverDataWs.on('close', resolve));
+    const controlClosePromise = new Promise((resolve) => serverControlWs.on('close', resolve));
+
+    // Await idle timeout trigger (150ms)
+    await clientClosedPromise;
+    await Promise.all([dataClosePromise, controlClosePromise]);
+
+    assert.strictEqual(mockClientWs.closed.code, 4000);
+    assert.strictEqual(mockClientWs.closed.reason, 'Idle timeout exceeded');
+    assert.ok(
+      clientReceived.some((m) => m.includes('[Console session closed due to inactivity]')),
+      'Should send inactivity message to client'
+    );
+    assert.ok(
+      controlMessages.some((m) => m.command === 'signal' && m.signal === 1),
+      'Should send SIGHUP'
+    );
+    assert.ok(
+      controlMessages.some((m) => m.command === 'signal' && m.signal === 15),
+      'Should send SIGTERM'
+    );
+
+    // Wait for DELETE operation request
+    await new Promise((resolve) => {
+      if (httpDeletes.length > 0) return resolve();
+      const interval = setInterval(() => {
+        if (httpDeletes.length > 0) {
+          clearInterval(interval);
+          resolve();
+        }
+      }, 20);
+    });
+
+    assert.strictEqual(httpDeletes.length, 1);
+    assert.strictEqual(httpDeletes[0], `/1.0/operations/${opId}`);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('Oversized message exceeding max_message_bytes is rejected and closes client connection with 1009', async () => {
+  const EventEmitter = require('events');
+  const fixture = createTestTlsServer();
+  try {
+    await new Promise((resolve) => fixture.tlsServer.listen(0, '127.0.0.1', resolve));
+    const tlsPort = fixture.tlsServer.address().port;
+
+    let serverDataWs = null;
+    const dataReceived = [];
+
+    const serverConnected = new Promise((resolve) => {
+      fixture.testWss.once('connection', (ws) => {
+        serverDataWs = ws;
+        ws.on('message', (msg) => {
+          dataReceived.push(msg);
+        });
+        resolve();
+      });
+    });
+
+    const mockClientWs = new EventEmitter();
+    mockClientWs.readyState = WebSocket.OPEN;
+    mockClientWs.send = () => {};
+    const clientClosedPromise = new Promise((resolve) => {
+      mockClientWs.close = (code, reason) => {
+        mockClientWs.readyState = WebSocket.CLOSED;
+        mockClientWs.closed = { code, reason };
+        mockClientWs.emit('close');
+        resolve();
+      };
+    });
+
+    handleIncusSession(mockClientWs, {
+      host_endpoint: `https://127.0.0.1:${tlsPort}`,
+      websocket_path: '/1.0/operations/123/websocket',
+      max_message_bytes: 100,
+      server_public_key_pin: fixture.validPin,
+    });
+
+    await serverConnected;
+
+    // Send oversized message (150 bytes)
+    const oversizedMsg = 'A'.repeat(150);
+    mockClientWs.emit('message', oversizedMsg, false);
+
+    await clientClosedPromise;
+
+    assert.strictEqual(mockClientWs.closed.code, 1009);
+    assert.strictEqual(mockClientWs.closed.reason, 'Message too big');
+    assert.strictEqual(dataReceived.length, 0, 'Oversized message should not be forwarded to upstream');
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('handleFakeSession differentiates exec shell vs console login prompt', async () => {
+  const EventEmitter = require('events');
+
+  // 1. Exec session
+  const execClient = new EventEmitter();
+  execClient.readyState = WebSocket.OPEN;
+  const execMessages = [];
+  execClient.send = (msg) => execMessages.push(typeof msg === 'string' ? msg : msg.toString());
+
+  handleFakeSession(execClient, {
+    virtual_machine_id: 88,
+    driver: 'exec',
+    instance_type: 'container',
+    host_driver: 'fake',
+  });
+
+  assert.ok(execMessages[0].includes('[Connected to Fake Hypervisor Exec Shell: Instance #88]'));
+  assert.ok(execMessages[0].includes('root@fake-instance:~# '));
+  assert.ok(!execMessages[0].includes('login: '));
+
+  execClient.emit('message', '\n', false);
+  assert.strictEqual(execMessages[execMessages.length - 1], '\r\nroot@fake-instance:~# ');
+
+  // 2. Console session
+  const consoleClient = new EventEmitter();
+  consoleClient.readyState = WebSocket.OPEN;
+  const consoleMessages = [];
+  consoleClient.send = (msg) => consoleMessages.push(typeof msg === 'string' ? msg : msg.toString());
+
+  handleFakeSession(consoleClient, {
+    virtual_machine_id: 89,
+    driver: 'console',
+    instance_type: 'virtual-machine',
+    host_driver: 'fake',
+  });
+
+  assert.ok(consoleMessages[0].includes('[Connected to Fake Hypervisor Console: Instance #89]'));
+  assert.ok(consoleMessages[0].includes('fake-instance login: '));
+
+  consoleClient.emit('message', '\r', false);
+  assert.strictEqual(consoleMessages[consoleMessages.length - 1], '\r\nPassword: \r\nfake-instance:~# ');
+
+  execClient.emit('close');
+  consoleClient.emit('close');
+});
+
 after(() => {
   server.close();
+  if (typeof server.closeAllConnections === 'function') {
+    server.closeAllConnections();
+  }
   redis.disconnect();
 });
