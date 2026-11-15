@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\DTO\Host;
 
 use App\DTO\Cast;
+use App\DTO\ImageSelectionDTO;
 
 /**
  * Immutable Data Transfer Object for creating an Incus / LXD host node.
@@ -28,6 +29,8 @@ final readonly class CreateHostDTO
         public ?string $serverCertificate = null,
         public ?string $serverFingerprint = null,
         public ?string $serverPublicKeyPin = null,
+        public bool $autoAttachImages = true,
+        public ?ImageSelectionDTO $images = null,
     ) {}
 
     /**
@@ -37,6 +40,7 @@ final readonly class CreateHostDTO
     {
         $allowFake = app()->environment(['local', 'testing']) || (bool) config('app.allow_fake_driver');
         $defaultDriver = $allowFake ? 'fake' : 'incus';
+        $images = Cast::arrayOrNull($data['images'] ?? null);
 
         return new self(
             name: Cast::string($data['name'] ?? ''),
@@ -52,6 +56,8 @@ final readonly class CreateHostDTO
             serverCertificate: Cast::stringOrNull($data['server_certificate'] ?? null),
             serverFingerprint: Cast::stringOrNull($data['server_fingerprint'] ?? $data['expected_fingerprint'] ?? null),
             serverPublicKeyPin: Cast::stringOrNull($data['server_public_key_pin'] ?? null),
+            autoAttachImages: Cast::bool($data['auto_attach_images'] ?? true, true),
+            images: $images !== null ? ImageSelectionDTO::fromArray($images) : null,
         );
     }
 }
