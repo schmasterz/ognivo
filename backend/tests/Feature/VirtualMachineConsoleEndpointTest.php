@@ -19,6 +19,7 @@ use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\Redis;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Role;
+use Tests\Support\FakeRedis;
 use Tests\TestCase;
 
 final class VirtualMachineConsoleEndpointTest extends TestCase
@@ -37,11 +38,16 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
 
     private VirtualMachine $container;
 
+    private FakeRedis $fakeRedis;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         HypervisorManager::resetFake();
+
+        $this->fakeRedis = new FakeRedis;
+        Redis::swap($this->fakeRedis);
 
         Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
         Role::firstOrCreate(['name' => 'customer', 'guard_name' => 'web']);
@@ -97,25 +103,12 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
             'disk_gb' => 10,
             'os_image' => 'images:alpine/3.20',
         ]);
-
-        try {
-            Redis::del('console:session_index');
-            Redis::del('console:vm_sessions:'.$this->vm->id);
-            Redis::del('console:vm_sessions:'.$this->container->id);
-        } catch (\Throwable) {
-        }
     }
 
     protected function tearDown(): void
     {
         HypervisorManager::resetFake();
-
-        try {
-            Redis::del('console:session_index');
-            Redis::del('console:vm_sessions:'.$this->vm->id);
-            Redis::del('console:vm_sessions:'.$this->container->id);
-        } catch (\Throwable) {
-        }
+        $this->fakeRedis->flush();
 
         parent::tearDown();
     }

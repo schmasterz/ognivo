@@ -18,10 +18,9 @@ use App\States\Vm\Running;
 use App\States\Vm\Stopped;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Redis;
-use Mockery\LegacyMockInterface;
-use Mockery\MockInterface;
 use Spatie\Permission\Models\Role;
 use Symfony\Component\HttpKernel\Exception\HttpException;
+use Tests\Support\FakeRedis;
 use Tests\TestCase;
 
 final class ConsoleTicketServiceTest extends TestCase
@@ -42,11 +41,16 @@ final class ConsoleTicketServiceTest extends TestCase
 
     private ConsoleTicketService $service;
 
+    private FakeRedis $fakeRedis;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         HypervisorManager::resetFake();
+
+        $this->fakeRedis = new FakeRedis;
+        Redis::swap($this->fakeRedis);
 
         Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
         Role::firstOrCreate(['name' => 'customer', 'guard_name' => 'web']);
@@ -101,34 +105,18 @@ final class ConsoleTicketServiceTest extends TestCase
 
         $hypervisorManager = app(HypervisorManager::class);
         $this->service = new ConsoleTicketService($hypervisorManager);
-
-        try {
-            Redis::del('console:session_index');
-            Redis::del('console:vm_sessions:'.$this->vm->id);
-            Redis::del('console:vm_sessions:'.$this->container->id);
-        } catch (\Throwable) {
-        }
     }
 
     protected function tearDown(): void
     {
         HypervisorManager::resetFake();
-
-        try {
-            Redis::del('console:session_index');
-            Redis::del('console:vm_sessions:'.$this->vm->id);
-            Redis::del('console:vm_sessions:'.$this->container->id);
-        } catch (\Throwable) {
-        }
+        $this->fakeRedis->flush();
 
         parent::tearDown();
     }
 
     public function test_issue_ticket_stores_payload_in_redis_and_returns_safe_dto(): void
     {
-        /** @var MockInterface&LegacyMockInterface $redisMock */
-        $redisMock = Redis::spy();
-
         $dto = $this->service->issueTicket($this->vm, $this->owner, 'console');
 
         $this->assertSame($this->vm->id, $dto->virtualMachineId);
@@ -142,33 +130,25 @@ final class ConsoleTicketServiceTest extends TestCase
         $this->assertNull($dto->fallbackReason);
         $this->assertGreaterThan(0, $dto->idleTimeout);
 
-        $redisMock->shouldHaveReceived('setex')->with(
-            'console:ticket:'.$dto->ticket,
-            60,
-            \Mockery::on(function (string $json) use ($dto): bool {
-                /** @var array<string, mixed> $data */
-                $data = json_decode($json, true);
-
-                return $data['user_id'] === $this->owner->id
-                    && $data['virtual_machine_id'] === $this->vm->id
-                    && $data['console_type'] === 'console'
-                    && $data['driver'] === 'exec'
-                    && $data['session_id'] === $dto->sessionId
-                    && is_string($data['websocket_path'])
-                    && str_contains($data['websocket_path'], 'fake-op-exec-')
-                    && $data['client_certificate'] === null
-                    && $data['client_private_key'] === null;
-            })
-        );
+        $rawPayload = $this->fakeRedis->get('console:ticket:'.$dto->ticket);
+        $this->assertNotNull($rawPayload);
+        /** @var array<string, mixed> $data */
+        $data = json_decode($rawPayload, true);
+        $this->assertSame($this->owner->id, $data['user_id']);
+        $this->assertSame($this->vm->id, $data['virtual_machine_id']);
+        $this->assertSame('console', $data['console_type']);
+        $this->assertSame('exec', $data['driver']);
+        $this->assertSame($dto->sessionId, $data['session_id']);
+        $this->assertIsString($data['websocket_path']);
+        $this->assertStringContainsString('fake-op-exec-', $data['websocket_path']);
+        $this->assertNull($data['client_certificate']);
+        $this->assertNull($data['client_private_key']);
     }
 
     public function test_issue_ticket_stores_mtls_credentials_when_panel_certificate_exists(): void
     {
         $certService = app(PanelCertificateService::class);
         $panelCert = $certService->generate();
-
-        /** @var MockInterface&LegacyMockInterface $redisMock */
-        $redisMock = Redis::spy();
 
         $dto = $this->service->issueTicket($this->vm, $this->owner, 'console');
 
@@ -179,24 +159,19 @@ final class ConsoleTicketServiceTest extends TestCase
         $this->assertSame('exec', $dto->driver);
         $this->assertNotEmpty($dto->sessionId);
 
-        $redisMock->shouldHaveReceived('setex')->with(
-            'console:ticket:'.$dto->ticket,
-            60,
-            \Mockery::on(function (string $json) use ($panelCert, $dto): bool {
-                /** @var array<string, mixed> $data */
-                $data = json_decode($json, true);
-
-                return $data['user_id'] === $this->owner->id
-                    && $data['virtual_machine_id'] === $this->vm->id
-                    && $data['console_type'] === 'console'
-                    && $data['driver'] === 'exec'
-                    && $data['session_id'] === $dto->sessionId
-                    && is_string($data['websocket_path'])
-                    && str_contains($data['websocket_path'], 'fake-op-exec-')
-                    && $data['client_certificate'] === $panelCert->certificate
-                    && $data['client_private_key'] === $panelCert->private_key;
-            })
-        );
+        $rawPayload = $this->fakeRedis->get('console:ticket:'.$dto->ticket);
+        $this->assertNotNull($rawPayload);
+        /** @var array<string, mixed> $data */
+        $data = json_decode($rawPayload, true);
+        $this->assertSame($this->owner->id, $data['user_id']);
+        $this->assertSame($this->vm->id, $data['virtual_machine_id']);
+        $this->assertSame('console', $data['console_type']);
+        $this->assertSame('exec', $data['driver']);
+        $this->assertSame($dto->sessionId, $data['session_id']);
+        $this->assertIsString($data['websocket_path']);
+        $this->assertStringContainsString('fake-op-exec-', $data['websocket_path']);
+        $this->assertSame($panelCert->certificate, $data['client_certificate']);
+        $this->assertSame($panelCert->private_key, $data['client_private_key']);
     }
 
     public function test_container_issues_exec_session_by_default(): void
@@ -420,21 +395,13 @@ final class ConsoleTicketServiceTest extends TestCase
             'console_type' => 'console',
         ];
 
-        Redis::shouldReceive('command')
-            ->with('getdel', ['console:ticket:'.$ticket])
-            ->once()
-            ->andReturn(json_encode($payload));
+        $this->fakeRedis->setex('console:ticket:'.$ticket, 60, (string) json_encode($payload));
 
         $result = $this->service->redeemTicket($ticket);
         $this->assertNotNull($result);
         $this->assertSame($this->owner->id, $result['user_id']);
 
         // Subsequent redemption returns null
-        Redis::shouldReceive('command')
-            ->with('getdel', ['console:ticket:'.$ticket])
-            ->once()
-            ->andReturn(null);
-
         $secondResult = $this->service->redeemTicket($ticket);
         $this->assertNull($secondResult);
     }
