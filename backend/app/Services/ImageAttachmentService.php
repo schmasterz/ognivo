@@ -248,7 +248,7 @@ final class ImageAttachmentService
                     ['host_id', 'image_id', 'created_at', 'updated_at'],
                     $attachSubQuery
                 );
-            } elseif ($op['action'] === 'detach') {
+            } else {
                 $detachSubQuery = $this->applyFilter(DB::table('images'), $op['filter'])
                     ->select('images.id');
 

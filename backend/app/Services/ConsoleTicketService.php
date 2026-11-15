@@ -51,7 +51,7 @@ final class ConsoleTicketService
         /** @var mixed $userToken */
         $userToken = $user?->currentAccessToken();
         $isImpersonated = $auditContext->getImpersonatorId() !== null
-            || ($user !== null && $userToken instanceof PersonalAccessToken && $user->tokenCan('impersonated'));
+            || ($userToken instanceof PersonalAccessToken && AuditContext::isImpersonatedToken($userToken));
 
         if ($isImpersonated) {
             $this->logger()->recordIndependent(new AuditEntry(

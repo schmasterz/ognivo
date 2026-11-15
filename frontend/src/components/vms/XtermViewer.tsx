@@ -57,6 +57,9 @@ export function XtermViewer({ wsUrl, onStatusChange }: XtermViewerProps) {
       ws.onopen = () => {
         onStatusChange?.("connected");
         term?.focus();
+        if (term && ws?.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
+        }
       };
 
       ws.onmessage = (event) => {
@@ -69,7 +72,8 @@ export function XtermViewer({ wsUrl, onStatusChange }: XtermViewerProps) {
 
       term.onData((data) => {
         if (ws?.readyState === WebSocket.OPEN) {
-          ws.send(data);
+          const encoder = new TextEncoder();
+          ws.send(encoder.encode(data));
         }
       });
 
@@ -86,6 +90,9 @@ export function XtermViewer({ wsUrl, onStatusChange }: XtermViewerProps) {
       const handleResize = () => {
         try {
           fitAddon.fit();
+          if (term && ws?.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
+          }
         } catch {
           // ignore resize errors on unmount
         }
