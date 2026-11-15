@@ -1,6 +1,18 @@
 import { request } from "./client";
 import { VirtualMachine, PaginatedResponse } from "./types";
 
+export interface ConsoleSessionResponse {
+  virtual_machine_id: number;
+  session_id: string;
+  ticket: string;
+  websocket_path: string;
+  expires_at: string;
+  type: "console" | "vga";
+  driver: "exec" | "console";
+  fallback_reason?: string | null;
+  idle_timeout?: number;
+}
+
 /**
  * Virtual Machines and Containers Lifecycle API Methods.
  */
@@ -104,22 +116,34 @@ export const vmsApi = {
 
   async getConsoleSession(
     vmId: number,
-    type: "console" | "vga" = "console"
-  ): Promise<{
-    virtual_machine_id: number;
-    ticket: string;
-    websocket_path: string;
-    expires_at: string;
-    type: "console" | "vga";
-  }> {
-    return request<{
-      virtual_machine_id: number;
-      ticket: string;
-      websocket_path: string;
-      expires_at: string;
-      type: "console" | "vga";
-    }>(`/vms/${vmId}/console?type=${type}`, {
+    options?:
+      | {
+          type?: "console" | "vga";
+          cols?: number;
+          rows?: number;
+        }
+      | "console"
+      | "vga"
+  ): Promise<ConsoleSessionResponse> {
+    const opts = typeof options === "string" ? { type: options } : options;
+    return request<ConsoleSessionResponse>(`/vms/${vmId}/console`, {
       method: "POST",
+      body: JSON.stringify({
+        type: opts?.type ?? "console",
+        cols: opts?.cols ?? 80,
+        rows: opts?.rows ?? 24,
+      }),
+    });
+  },
+
+  async closeConsoleSession(
+    vmId: number,
+    sessionId: string,
+    reason: string = "client_disconnect"
+  ): Promise<{ closed: boolean }> {
+    return request<{ closed: boolean }>(`/vms/${vmId}/console/${encodeURIComponent(sessionId)}`, {
+      method: "DELETE",
+      body: JSON.stringify({ reason }),
     });
   },
 };

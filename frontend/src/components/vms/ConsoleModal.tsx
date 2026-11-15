@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
   X,
   RefreshCw,
@@ -11,8 +11,12 @@ import {
   ShieldAlert,
   Maximize2,
   Minimize2,
+  AlertCircle,
+  AlertTriangle,
+  PowerOff,
+  Users,
 } from "lucide-react";
-import { VirtualMachine, api } from "@/lib/api";
+import { VirtualMachine, api, ApiError } from "@/lib/api";
 import { XtermViewer } from "./XtermViewer";
 import { useModalEscape } from "@/lib/hooks/useModalEscape";
 
@@ -21,53 +25,165 @@ interface ConsoleModalProps {
   onClose: () => void;
 }
 
-type TabType = "interactive" | "bootlog";
 type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error";
+type ErrorCategory =
+  | "forbidden"
+  | "not_running"
+  | "serial_in_use"
+  | "limit_reached"
+  | "not_found"
+  | "generic";
 
 export function ConsoleModal({ vm, onClose }: ConsoleModalProps) {
-  const [activeTab, setActiveTab] = useState<TabType>("interactive");
   const [wsUrl, setWsUrl] = useState<string | null>(null);
-  const [consoleType, setConsoleType] = useState<"console" | "vga">("console");
+  const [ticket, setTicket] = useState<string | null>(null);
+  const [, setSessionId] = useState<string | null>(null);
+  const [driverMode, setDriverMode] = useState<"exec" | "console">(
+    vm?.instance_type === "container" ? "exec" : "exec"
+  );
+  const [fallbackReason, setFallbackReason] = useState<string | null>(null);
   const [sessionLoading, setSessionLoading] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
-  const [isForbidden, setIsForbidden] = useState(false);
+  const [errorCategory, setErrorCategory] = useState<ErrorCategory | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting");
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showBootLog, setShowBootLog] = useState(true);
 
-  // Boot log tab state
+  // Boot log state
   const [bootLog, setBootLog] = useState<string>("");
   const [bootLogLoading, setBootLogLoading] = useState(false);
   const [copied, setCopied] = useState(false);
-  const terminalEndRef = useRef<HTMLDivElement>(null);
+
+  const sessionIdRef = useRef<string | null>(null);
+  const vmIdRef = useRef<number | null>(null);
+  const bootLogEndRef = useRef<HTMLDivElement>(null);
+
+  const closeActiveSession = useCallback((reason: string = "client_disconnect") => {
+    const activeSessionId = sessionIdRef.current;
+    const currentVmId = vmIdRef.current;
+    if (activeSessionId && currentVmId) {
+      sessionIdRef.current = null;
+      setSessionId(null);
+      void api.closeConsoleSession(currentVmId, activeSessionId, reason).catch(() => {});
+    }
+  }, []);
+
+  const handleClose = useCallback(() => {
+    closeActiveSession("client_closed");
+    onClose();
+  }, [closeActiveSession, onClose]);
+
+  useModalEscape(handleClose, !!vm);
+
+  const estimateTerminalDimensions = (showBootLogPane: boolean, fullscreen: boolean) => {
+    if (typeof window === "undefined") {
+      return { cols: 80, rows: 24 };
+    }
+    const modalWidth = fullscreen ? window.innerWidth : Math.min(window.innerWidth - 32, 1152);
+    const termWidth = showBootLogPane ? Math.max(300, modalWidth - 400) : modalWidth;
+    const modalHeight = fullscreen ? window.innerHeight : 680;
+    const termHeight = Math.max(200, modalHeight - 130);
+
+    const cols = Math.max(80, Math.min(240, Math.floor((termWidth - 24) / 9)));
+    const rows = Math.max(24, Math.min(80, Math.floor((termHeight - 24) / 17)));
+    return { cols, rows };
+  };
 
   const fetchSession = async (vmId: number) => {
+    closeActiveSession("reconnect");
+
     try {
       setSessionLoading(true);
       setSessionError(null);
-      setIsForbidden(false);
+      setErrorCategory(null);
       setConnectionStatus("connecting");
 
-      const res = await api.getConsoleSession(vmId, "console");
-      setConsoleType(res.type);
+      const { cols, rows } = estimateTerminalDimensions(showBootLog, isFullscreen);
+      const res = await api.getConsoleSession(vmId, {
+        type: "console",
+        cols,
+        rows,
+      });
+
+      setDriverMode(res.driver);
+      setFallbackReason(res.fallback_reason ?? null);
+      setTicket(res.ticket);
+      setSessionId(res.session_id);
+      sessionIdRef.current = res.session_id;
 
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const targetWsUrl = `${protocol}//${window.location.host}${res.websocket_path}`;
       setWsUrl(targetWsUrl);
     } catch (err: unknown) {
-      if (err instanceof Error) {
-        if (err.message.includes("403") || err.message.toLowerCase().includes("forbidden")) {
-          setIsForbidden(true);
-          setSessionError(
-            "Console access is restricted to the workload owner only. Administrators are denied guest access."
-          );
-        } else if (err.message.includes("409")) {
-          setSessionError("Interactive console is only available while the instance is running.");
+      let category: ErrorCategory = "generic";
+      let errorMessage = "Failed to initiate interactive console session.";
+
+      if (err instanceof ApiError) {
+        if (err.status === 403) {
+          category = "forbidden";
+          errorMessage =
+            "Console access is restricted to the workload owner only. Administrators and impersonated sessions are denied guest console access to uphold tenant privacy.";
+        } else if (err.status === 409) {
+          const lowerMsg = (err.message || "").toLowerCase();
+          if (
+            lowerMsg.includes("already active") ||
+            lowerMsg.includes("already in use") ||
+            lowerMsg.includes("serial console")
+          ) {
+            category = "serial_in_use";
+            errorMessage =
+              err.message ||
+              "A serial console session is already active for this instance. Only one concurrent serial console connection is permitted.";
+          } else {
+            category = "not_running";
+            errorMessage =
+              err.message ||
+              "Interactive console is only available while the instance is running. Please start the instance first.";
+          }
+        } else if (err.status === 429) {
+          category = "limit_reached";
+          errorMessage =
+            err.message ||
+            "Maximum number of concurrent terminal sessions reached for this instance. Please close existing sessions or try again later.";
+        } else if (err.status === 404 || (err.message || "").toLowerCase().includes("not found")) {
+          category = "not_found";
+          errorMessage =
+            err.message || "Workload instance or guest shell executable could not be found.";
         } else {
-          setSessionError(err.message);
+          errorMessage = err.message || "An unexpected error occurred.";
         }
-      } else {
-        setSessionError("Failed to initiate interactive console session.");
+      } else if (err instanceof Error) {
+        const lowerMsg = err.message.toLowerCase();
+        if (lowerMsg.includes("403") || lowerMsg.includes("forbidden")) {
+          category = "forbidden";
+          errorMessage =
+            "Console access is restricted to the workload owner only. Administrators and impersonated sessions are denied guest console access to uphold tenant privacy.";
+        } else if (
+          lowerMsg.includes("already active") ||
+          lowerMsg.includes("already in use") ||
+          lowerMsg.includes("serial console")
+        ) {
+          category = "serial_in_use";
+          errorMessage =
+            "A serial console session is already active for this instance. Only one concurrent serial console connection is permitted.";
+        } else if (lowerMsg.includes("409") || lowerMsg.includes("running")) {
+          category = "not_running";
+          errorMessage =
+            "Interactive console is only available while the instance is running. Please start the instance first.";
+        } else if (lowerMsg.includes("429") || lowerMsg.includes("concurrent")) {
+          category = "limit_reached";
+          errorMessage =
+            "Maximum number of concurrent terminal sessions reached for this instance.";
+        } else if (lowerMsg.includes("not found")) {
+          category = "not_found";
+          errorMessage = "Workload instance or guest shell executable could not be found.";
+        } else {
+          errorMessage = err.message;
+        }
       }
+
+      setErrorCategory(category);
+      setSessionError(errorMessage);
       setConnectionStatus("error");
     } finally {
       setSessionLoading(false);
@@ -90,58 +206,69 @@ export function ConsoleModal({ vm, onClose }: ConsoleModalProps) {
     }
   };
 
-  useModalEscape(onClose, !!vm);
-
   useEffect(() => {
     if (!vm) {
+      closeActiveSession("modal_closed");
       queueMicrotask(() => {
         setWsUrl(null);
+        setTicket(null);
+        setSessionId(null);
         setSessionError(null);
+        setErrorCategory(null);
         setBootLog("");
-        setIsForbidden(false);
         setCopied(false);
+        setFallbackReason(null);
       });
       return;
     }
+
+    vmIdRef.current = vm.id;
     let ignore = false;
+
     queueMicrotask(() => {
       if (!ignore) {
         setWsUrl(null);
+        setTicket(null);
+        setSessionId(null);
         setSessionError(null);
+        setErrorCategory(null);
         setBootLog("");
-        setIsForbidden(false);
         setCopied(false);
+        setFallbackReason(null);
+        setDriverMode(vm.instance_type === "container" ? "exec" : "exec");
+
         void fetchSession(vm.id);
         void fetchBootLog(vm.id);
       }
     });
+
     return () => {
       ignore = true;
+      closeActiveSession("modal_unmounted");
     };
-  }, [vm]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vm?.id]);
 
   useEffect(() => {
-    if (activeTab === "bootlog") {
-      terminalEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (showBootLog && bootLog) {
+      bootLogEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [bootLog, activeTab]);
+  }, [bootLog, showBootLog]);
 
   if (!vm) return null;
 
   const handleCopyBootLog = () => {
     if (bootLog) {
-      navigator.clipboard.writeText(bootLog);
+      void navigator.clipboard.writeText(bootLog);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
   };
 
   const renderStatusBadge = () => {
-    if (activeTab === "bootlog") return null;
-
     if (connectionStatus === "connected") {
       return (
-        <span className="flex items-center space-x-1 text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+        <span className="flex items-center space-x-1 text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
           <span>Connected</span>
         </span>
@@ -150,7 +277,7 @@ export function ConsoleModal({ vm, onClose }: ConsoleModalProps) {
 
     if (connectionStatus === "connecting") {
       return (
-        <span className="flex items-center space-x-1 text-[11px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
+        <span className="flex items-center space-x-1 text-[11px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono">
           <RefreshCw className="w-2.5 h-2.5 animate-spin" />
           <span>Connecting...</span>
         </span>
@@ -159,17 +286,145 @@ export function ConsoleModal({ vm, onClose }: ConsoleModalProps) {
 
     if (connectionStatus === "disconnected") {
       return (
-        <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+        <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono">
           Disconnected
         </span>
       );
     }
 
     return (
-      <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
+      <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 font-mono">
         Error
       </span>
     );
+  };
+
+  const renderErrorCard = () => {
+    switch (errorCategory) {
+      case "forbidden":
+        return (
+          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-3 font-mono">
+            <div className="p-3 bg-red-500/10 rounded-2xl border border-red-500/20 text-red-400">
+              <ShieldAlert className="w-10 h-10" />
+            </div>
+            <h3 className="text-gray-200 text-sm font-semibold tracking-wide">
+              Console Access Restricted
+            </h3>
+            <p className="text-gray-400 text-xs max-w-md leading-relaxed font-sans">
+              {sessionError ||
+                "Console access is restricted to the workload owner only. Administrators and impersonated sessions are denied guest console access to uphold tenant privacy."}
+            </p>
+          </div>
+        );
+
+      case "not_running":
+        return (
+          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-3 font-mono">
+            <div className="p-3 bg-amber-500/10 rounded-2xl border border-amber-500/20 text-amber-400">
+              <PowerOff className="w-10 h-10" />
+            </div>
+            <h3 className="text-gray-200 text-sm font-semibold tracking-wide">
+              Instance Not Running
+            </h3>
+            <p className="text-gray-400 text-xs max-w-md leading-relaxed font-sans">
+              {sessionError ||
+                "Interactive console is only available while the instance is running. Please start the instance first."}
+            </p>
+            <button
+              onClick={() => void fetchSession(vm.id)}
+              className="mt-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-sans transition"
+            >
+              Retry Connection
+            </button>
+          </div>
+        );
+
+      case "serial_in_use":
+        return (
+          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-3 font-mono">
+            <div className="p-3 bg-amber-500/10 rounded-2xl border border-amber-500/20 text-amber-400">
+              <Users className="w-10 h-10" />
+            </div>
+            <h3 className="text-gray-200 text-sm font-semibold tracking-wide">
+              Serial Console Already In Use
+            </h3>
+            <p className="text-gray-400 text-xs max-w-md leading-relaxed font-sans">
+              {sessionError ||
+                "A serial console session is already active for this instance. Only one active serial console connection is permitted at a time."}
+            </p>
+            <button
+              onClick={() => void fetchSession(vm.id)}
+              className="mt-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-sans transition"
+            >
+              Retry Connection
+            </button>
+          </div>
+        );
+
+      case "limit_reached":
+        return (
+          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-3 font-mono">
+            <div className="p-3 bg-amber-500/10 rounded-2xl border border-amber-500/20 text-amber-400">
+              <AlertCircle className="w-10 h-10" />
+            </div>
+            <h3 className="text-gray-200 text-sm font-semibold tracking-wide">
+              Session Limit Reached
+            </h3>
+            <p className="text-gray-400 text-xs max-w-md leading-relaxed font-sans">
+              {sessionError ||
+                "Maximum number of concurrent terminal sessions reached for this instance. Please close existing sessions or try again later."}
+            </p>
+            <button
+              onClick={() => void fetchSession(vm.id)}
+              className="mt-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-sans transition"
+            >
+              Retry Connection
+            </button>
+          </div>
+        );
+
+      case "not_found":
+        return (
+          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-3 font-mono">
+            <div className="p-3 bg-blue-500/10 rounded-2xl border border-blue-500/20 text-blue-400">
+              <Terminal className="w-10 h-10" />
+            </div>
+            <h3 className="text-gray-200 text-sm font-semibold tracking-wide">
+              Agent Unavailable / Shell Not Found
+            </h3>
+            <p className="text-gray-400 text-xs max-w-md leading-relaxed font-sans">
+              {sessionError || "The guest shell executable or guest agent could not be found."}
+            </p>
+            <button
+              onClick={() => void fetchSession(vm.id)}
+              className="mt-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-sans transition"
+            >
+              Retry Connection
+            </button>
+          </div>
+        );
+
+      default:
+        return (
+          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-3 font-mono">
+            <div className="p-3 bg-red-500/10 rounded-2xl border border-red-500/20 text-red-400">
+              <AlertTriangle className="w-10 h-10" />
+            </div>
+            <h3 className="text-gray-200 text-sm font-semibold tracking-wide">
+              Unable to Connect to Console
+            </h3>
+            <p className="text-gray-400 text-xs max-w-md leading-relaxed font-sans">
+              {sessionError || "An unexpected error occurred while initiating the console session."}
+            </p>
+            <button
+              onClick={() => void fetchSession(vm.id)}
+              className="mt-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-sans transition"
+            >
+              Retry Connection
+            </button>
+          </div>
+        );
+    }
   };
 
   return (
@@ -184,7 +439,7 @@ export function ConsoleModal({ vm, onClose }: ConsoleModalProps) {
         className={
           isFullscreen
             ? "flex-1 flex flex-col w-full h-full bg-gray-950 overflow-hidden"
-            : "bg-gray-950 border border-gray-800 rounded-2xl w-full max-w-5xl overflow-hidden shadow-2xl flex flex-col h-[640px]"
+            : "bg-gray-950 border border-gray-800 rounded-2xl w-full max-w-6xl overflow-hidden shadow-2xl flex flex-col h-[680px] max-h-[90vh]"
         }
       >
         {/* Header */}
@@ -206,41 +461,30 @@ export function ConsoleModal({ vm, onClose }: ConsoleModalProps) {
               </span>
             </div>
 
-            {/* Mode Tab Switcher */}
-            <div className="flex items-center space-x-1 bg-gray-950 p-1 rounded-lg border border-gray-800 ml-4">
-              <button
-                onClick={() => setActiveTab("interactive")}
-                className={`flex items-center space-x-1.5 px-2.5 py-1 rounded text-xs font-mono transition ${
-                  activeTab === "interactive"
-                    ? "bg-blue-600 text-white font-medium shadow-sm"
-                    : "text-gray-400 hover:text-gray-200 hover:bg-gray-900"
-                }`}
-              >
-                <Terminal className="w-3.5 h-3.5" />
-                <span>Console</span>
-              </button>
-              <button
-                onClick={() => setActiveTab("bootlog")}
-                className={`flex items-center space-x-1.5 px-2.5 py-1 rounded text-xs font-mono transition ${
-                  activeTab === "bootlog"
-                    ? "bg-blue-600 text-white font-medium shadow-sm"
-                    : "text-gray-400 hover:text-gray-200 hover:bg-gray-900"
-                }`}
-              >
-                <FileText className="w-3.5 h-3.5" />
-                <span>Boot Log</span>
-              </button>
+            {/* Active Driver Mode Badge */}
+            <div className="hidden sm:flex items-center">
+              {driverMode === "exec" ? (
+                <span className="flex items-center space-x-1 text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span>Exec Shell</span>
+                </span>
+              ) : (
+                <span className="flex items-center space-x-1 text-[11px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20 font-mono">
+                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
+                  <span>Serial Console</span>
+                </span>
+              )}
             </div>
           </div>
 
           <div className="flex items-center space-x-2">
             {renderStatusBadge()}
 
-            {activeTab === "interactive" && !isForbidden && (
+            {errorCategory !== "forbidden" && (
               <button
-                onClick={() => fetchSession(vm.id)}
+                onClick={() => void fetchSession(vm.id)}
                 disabled={sessionLoading}
-                title="Reconnect Console"
+                title="Reconnect Terminal"
                 className="flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-mono text-gray-300 bg-gray-800 hover:bg-gray-700 transition disabled:opacity-50"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${sessionLoading ? "animate-spin" : ""}`} />
@@ -248,30 +492,19 @@ export function ConsoleModal({ vm, onClose }: ConsoleModalProps) {
               </button>
             )}
 
-            {activeTab === "bootlog" && (
-              <>
-                <button
-                  onClick={() => fetchBootLog(vm.id)}
-                  disabled={bootLogLoading}
-                  title="Refresh Boot Log"
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${bootLogLoading ? "animate-spin" : ""}`} />
-                </button>
-                <button
-                  onClick={handleCopyBootLog}
-                  title="Copy Output"
-                  className="flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-mono text-gray-300 bg-gray-800 hover:bg-gray-700 transition"
-                >
-                  {copied ? (
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5" />
-                  )}
-                  <span>{copied ? "Copied" : "Copy"}</span>
-                </button>
-              </>
-            )}
+            {/* Side-by-side Boot Log toggle button */}
+            <button
+              onClick={() => setShowBootLog(!showBootLog)}
+              title={showBootLog ? "Hide Boot Log pane" : "Show Boot Log side-by-side"}
+              className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-mono transition ${
+                showBootLog
+                  ? "bg-blue-600 text-white font-medium shadow-sm"
+                  : "text-gray-400 hover:text-gray-200 hover:bg-gray-800"
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Boot Log</span>
+            </button>
 
             <button
               onClick={() => setIsFullscreen(!isFullscreen)}
@@ -286,7 +519,7 @@ export function ConsoleModal({ vm, onClose }: ConsoleModalProps) {
             </button>
 
             <button
-              onClick={onClose}
+              onClick={handleClose}
               title="Close"
               className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition"
             >
@@ -295,64 +528,96 @@ export function ConsoleModal({ vm, onClose }: ConsoleModalProps) {
           </div>
         </div>
 
-        {/* Modal Body */}
-        <div className="flex-1 overflow-hidden relative flex flex-col bg-black">
-          {activeTab === "interactive" ? (
-            isForbidden ? (
-              <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-3">
-                <div className="p-3 bg-red-500/10 rounded-2xl border border-red-500/20 text-red-400">
-                  <ShieldAlert className="w-10 h-10" />
-                </div>
-                <h3 className="text-gray-200 text-sm font-semibold tracking-wide">
-                  Console Access Restricted
-                </h3>
-                <p className="text-gray-400 text-xs max-w-md leading-relaxed font-mono">
-                  Console access is restricted to the workload owner only. Administrators and
-                  impersonated sessions are denied guest console access to uphold tenant privacy.
-                </p>
-              </div>
-            ) : sessionError ? (
-              <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-3 font-mono">
-                <div className="text-amber-400 text-sm">Unable to connect to console</div>
-                <div className="text-gray-400 text-xs max-w-md">{sessionError}</div>
-                <button
-                  onClick={() => fetchSession(vm.id)}
-                  className="mt-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-sans transition"
-                >
-                  Retry Connection
-                </button>
-              </div>
-            ) : sessionLoading || !wsUrl ? (
+        {/* Informational Sub-header Notice for Automatic Fallback */}
+        {fallbackReason === "agent_unavailable" && (
+          <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 text-amber-300 text-xs font-mono flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>
+                Incus guest agent is unavailable on this VM — automatically connected to Serial Console (/console).
+              </span>
+            </div>
+            <span className="text-[10px] text-amber-400/70 hidden sm:inline">Automatic Fallback</span>
+          </div>
+        )}
+
+        {/* Modal Body: Split View (Interactive Terminal + Side-by-Side Boot Log) */}
+        <div className="flex-1 overflow-hidden relative flex flex-col lg:flex-row bg-black">
+          {/* Main Pane: Terminal or Error Card */}
+          <div className="flex-1 flex flex-col min-w-0 h-full relative">
+            {errorCategory ? (
+              renderErrorCard()
+            ) : sessionLoading || !wsUrl || !ticket ? (
               <div className="flex-1 flex items-center justify-center text-gray-500 space-x-2 font-mono text-xs">
                 <RefreshCw className="w-4 h-4 animate-spin text-blue-400" />
                 <span>Acquiring secure console ticket...</span>
               </div>
             ) : (
               <div className="flex-1 w-full h-full relative">
-                {/* Pluggable Viewer: XtermViewer in v1.0.x (supports NoVncViewer in v1.1.x roadmap) */}
-                <XtermViewer wsUrl={wsUrl} onStatusChange={setConnectionStatus} />
+                <XtermViewer
+                  wsUrl={wsUrl}
+                  ticket={ticket}
+                  onStatusChange={setConnectionStatus}
+                />
               </div>
-            )
-          ) : (
-            /* Read-Only Boot Log Viewer */
-            <div className="flex-1 p-4 font-mono text-xs overflow-y-auto bg-black text-gray-300 select-text leading-relaxed whitespace-pre-wrap">
-              {bootLogLoading && !bootLog ? (
-                <div className="flex items-center justify-center h-full text-gray-500 space-x-2">
-                  <RefreshCw className="w-4 h-4 animate-spin text-blue-400" />
-                  <span>Reading hypervisor console log buffer...</span>
+            )}
+          </div>
+
+          {/* Side-by-side Read-Only Boot Log Pane */}
+          {showBootLog && (
+            <div className="w-full lg:w-[380px] xl:w-[420px] border-t lg:border-t-0 lg:border-l border-gray-800 flex flex-col bg-gray-950/95 shrink-0">
+              <div className="flex items-center justify-between px-3 py-2 bg-gray-900 border-b border-gray-800 text-xs font-mono text-gray-300 select-none">
+                <div className="flex items-center space-x-2">
+                  <FileText className="w-3.5 h-3.5 text-blue-400" />
+                  <span className="font-medium">Boot Log (Ring Buffer)</span>
                 </div>
-              ) : (
-                <div>{bootLog}</div>
-              )}
-              <div ref={terminalEndRef} />
+                <div className="flex items-center space-x-1.5">
+                  <button
+                    onClick={() => void fetchBootLog(vm.id)}
+                    disabled={bootLogLoading}
+                    title="Refresh Boot Log"
+                    className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-800 transition disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${bootLogLoading ? "animate-spin" : ""}`} />
+                  </button>
+                  <button
+                    onClick={handleCopyBootLog}
+                    title="Copy Output"
+                    className="flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-mono text-gray-300 bg-gray-800 hover:bg-gray-700 transition"
+                  >
+                    {copied ? (
+                      <Check className="w-3 h-3 text-emerald-400" />
+                    ) : (
+                      <Copy className="w-3 h-3" />
+                    )}
+                    <span>{copied ? "Copied" : "Copy"}</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 p-3 font-mono text-xs overflow-y-auto bg-black text-gray-300 select-text leading-relaxed whitespace-pre-wrap">
+                {bootLogLoading && !bootLog ? (
+                  <div className="flex items-center justify-center h-full text-gray-500 space-x-2">
+                    <RefreshCw className="w-4 h-4 animate-spin text-blue-400" />
+                    <span>Reading hypervisor console log buffer...</span>
+                  </div>
+                ) : (
+                  <div>{bootLog}</div>
+                )}
+                <div ref={bootLogEndRef} />
+              </div>
             </div>
           )}
         </div>
 
         {/* Footer */}
         <div className="px-4 py-2 bg-gray-900/80 border-t border-gray-800/80 flex items-center justify-between text-[11px] font-mono text-gray-500 select-none">
-          <div className="flex items-center space-x-2">
-            <span>Mode: {activeTab === "interactive" ? (consoleType === "vga" ? "VGA (noVNC)" : "Serial (xterm.js)") : "Ring Buffer Log"}</span>
+          <div className="flex items-center space-x-3">
+            <span>
+              Mode: {driverMode === "exec" ? "Exec Shell (root)" : "Serial Console (xterm.js)"}
+            </span>
+            <span className="text-gray-700">•</span>
+            <span>Boot Log: {showBootLog ? "Visible (Side-by-Side)" : "Hidden"}</span>
           </div>
           <span>Instance #{vm.id}</span>
         </div>

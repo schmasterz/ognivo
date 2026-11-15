@@ -6,16 +6,23 @@ import "@xterm/xterm/css/xterm.css";
 
 interface XtermViewerProps {
   wsUrl: string;
+  ticket: string;
   onStatusChange?: (status: "connecting" | "connected" | "disconnected" | "error") => void;
+  onSessionError?: (errorMessage: string) => void;
 }
 
-export function XtermViewer({ wsUrl, onStatusChange }: XtermViewerProps) {
+export function XtermViewer({
+  wsUrl,
+  ticket,
+  onStatusChange,
+  onSessionError,
+}: XtermViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    if (!containerRef.current || typeof window === "undefined") return;
+    if (!containerRef.current || typeof window === "undefined" || !wsUrl || !ticket) return;
 
     let disposed = false;
     let ws: WebSocket | null = null;
@@ -47,19 +54,28 @@ export function XtermViewer({ wsUrl, onStatusChange }: XtermViewerProps) {
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
       term.open(containerRef.current);
-      fitAddon.fit();
+      try {
+        fitAddon.fit();
+      } catch {
+        // ignore initial fit error
+      }
       terminalRef.current = term;
 
-      ws = new WebSocket(wsUrl);
+      // Authenticate via Sec-WebSocket-Protocol without placing ticket in the URL
+      ws = new WebSocket(wsUrl, ["ognivo-terminal", `ticket.${ticket}`]);
       ws.binaryType = "arraybuffer";
       wsRef.current = ws;
+
+      const sendResize = () => {
+        if (term && ws?.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
+        }
+      };
 
       ws.onopen = () => {
         onStatusChange?.("connected");
         term?.focus();
-        if (term && ws?.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
-        }
+        sendResize();
       };
 
       ws.onmessage = (event) => {
@@ -79,27 +95,51 @@ export function XtermViewer({ wsUrl, onStatusChange }: XtermViewerProps) {
 
       ws.onerror = () => {
         onStatusChange?.("error");
+        onSessionError?.("WebSocket connection error");
         term?.write("\r\n\x1b[31m[WebSocket connection error]\x1b[0m\r\n");
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event: CloseEvent) => {
         onStatusChange?.("disconnected");
-        term?.write("\r\n\x1b[33m[Console session disconnected]\x1b[0m\r\n");
+        let reasonMsg = "[Console session disconnected]";
+        if (event.code === 4000) {
+          reasonMsg = "[Console session closed: idle timeout exceeded]";
+        } else if (event.code === 1009) {
+          reasonMsg = "[Console session closed: message payload exceeded maximum limit]";
+        } else if (event.code === 1011) {
+          reasonMsg = "[Console session closed: hypervisor upstream connection error]";
+        } else if (event.reason) {
+          reasonMsg = `[Console session closed: ${event.reason}]`;
+        }
+        term?.write(`\r\n\x1b[33m${reasonMsg}\x1b[0m\r\n`);
+        if (event.code === 4000 || event.code === 1009 || event.code === 1011) {
+          onSessionError?.(reasonMsg);
+        }
       };
 
       const handleResize = () => {
         try {
           fitAddon.fit();
-          if (term && ws?.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
-          }
+          sendResize();
         } catch {
-          // ignore resize errors on unmount
+          // ignore resize errors on unmount/hidden elements
         }
       };
 
       window.addEventListener("resize", handleResize);
-      removeResize = () => window.removeEventListener("resize", handleResize);
+
+      let resizeObserver: ResizeObserver | null = null;
+      if (typeof ResizeObserver !== "undefined" && containerRef.current) {
+        resizeObserver = new ResizeObserver(() => {
+          handleResize();
+        });
+        resizeObserver.observe(containerRef.current);
+      }
+
+      removeResize = () => {
+        window.removeEventListener("resize", handleResize);
+        resizeObserver?.disconnect();
+      };
     };
 
     void initTerminal();
@@ -114,7 +154,7 @@ export function XtermViewer({ wsUrl, onStatusChange }: XtermViewerProps) {
       terminalRef.current = null;
       wsRef.current = null;
     };
-  }, [wsUrl, onStatusChange]);
+  }, [wsUrl, ticket, onStatusChange, onSessionError]);
 
   return <div ref={containerRef} className="w-full h-full p-2 bg-[#090d16]" />;
 }
