@@ -325,6 +325,255 @@ test('handleIncusSession presents client_certificate and client_private_key from
   }
 });
 
+test('handleIncusSession connects to control_path, sends initial resize, and forwards client resize commands', async () => {
+  const EventEmitter = require('events');
+  const fixture = createTestTlsServer();
+  try {
+    await new Promise((resolve) => fixture.tlsServer.listen(0, '127.0.0.1', resolve));
+    const tlsPort = fixture.tlsServer.address().port;
+
+    let serverDataWs = null;
+    let serverControlWs = null;
+    const controlMessages = [];
+    const dataMessages = [];
+
+    const serverConnections = new Promise((resolve) => {
+      fixture.testWss.on('connection', (ws, req) => {
+        if (req.url && req.url.includes('/control')) {
+          serverControlWs = ws;
+          ws.on('message', (msg) => {
+            controlMessages.push(JSON.parse(msg.toString('utf8')));
+          });
+        } else if (req.url && req.url.includes('/websocket')) {
+          serverDataWs = ws;
+          ws.on('message', (msg) => {
+            dataMessages.push(msg.toString('utf8'));
+          });
+        }
+        if (serverControlWs && serverDataWs) {
+          resolve();
+        }
+      });
+    });
+
+    const mockClientWs = new EventEmitter();
+    mockClientWs.readyState = WebSocket.OPEN;
+    const clientReceived = [];
+    mockClientWs.send = (msg) => {
+      clientReceived.push(typeof msg === 'string' ? msg : msg.toString('utf8'));
+    };
+    mockClientWs.close = (code, reason) => {
+      mockClientWs.readyState = WebSocket.CLOSED;
+      mockClientWs.closed = { code, reason };
+      mockClientWs.emit('close');
+    };
+
+    handleIncusSession(mockClientWs, {
+      host_endpoint: `https://127.0.0.1:${tlsPort}`,
+      websocket_path: '/1.0/operations/123/websocket',
+      control_path: '/1.0/operations/123/control',
+      server_public_key_pin: fixture.validPin,
+    });
+
+    await serverConnections;
+    assert.ok(serverControlWs, 'Control socket should be connected');
+    assert.ok(serverDataWs, 'Data socket should be connected');
+
+    // 1. Initial window-resize sent on control socket open
+    await new Promise((resolve) => {
+      if (controlMessages.length >= 1) return resolve();
+      serverControlWs.on('message', () => {
+        if (controlMessages.length >= 1) resolve();
+      });
+    });
+
+    assert.strictEqual(controlMessages.length, 1);
+    assert.deepStrictEqual(controlMessages[0], {
+      command: 'window-resize',
+      args: { width: 80, height: 24 },
+    });
+
+    // 2. Client sends a resize command
+    mockClientWs.emit(
+      'message',
+      JSON.stringify({ type: 'resize', cols: 120, rows: 40 }),
+      false
+    );
+
+    await new Promise((resolve) => {
+      if (controlMessages.length >= 2) return resolve();
+      serverControlWs.on('message', () => {
+        if (controlMessages.length >= 2) resolve();
+      });
+    });
+
+    assert.strictEqual(controlMessages.length, 2);
+    assert.deepStrictEqual(controlMessages[1], {
+      command: 'window-resize',
+      args: { width: 120, height: 40 },
+    });
+    assert.strictEqual(dataMessages.length, 0, 'Resize command should not be sent to data socket');
+
+    // 3. Bidirectional data flow: client -> upstream dataWs
+    mockClientWs.emit('message', 'echo test\n', false);
+    await new Promise((resolve) => {
+      if (dataMessages.length >= 1) return resolve();
+      serverDataWs.on('message', () => {
+        if (dataMessages.length >= 1) resolve();
+      });
+    });
+    assert.strictEqual(dataMessages[0], 'echo test\n');
+
+    // 4. Bidirectional data flow: upstream dataWs -> client
+    serverDataWs.send('output from vm\n');
+    await new Promise((resolve) => {
+      if (clientReceived.some((m) => m.includes('output from vm'))) return resolve();
+      const interval = setInterval(() => {
+        if (clientReceived.some((m) => m.includes('output from vm'))) {
+          clearInterval(interval);
+          resolve();
+        }
+      }, 10);
+    });
+    assert.ok(clientReceived.some((m) => m.includes('output from vm')));
+
+    // 5. Clean teardown: closing clientWs closes both upstream sockets
+    const dataClosePromise = new Promise((resolve) => serverDataWs.on('close', resolve));
+    const controlClosePromise = new Promise((resolve) => serverControlWs.on('close', resolve));
+
+    mockClientWs.close(1000, 'Normal closure');
+
+    await Promise.all([dataClosePromise, controlClosePromise]);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('handleIncusSession buffers client messages until upstream is ready', async () => {
+  const EventEmitter = require('events');
+  const fixture = createTestTlsServer();
+  try {
+    await new Promise((resolve) => fixture.tlsServer.listen(0, '127.0.0.1', resolve));
+    const tlsPort = fixture.tlsServer.address().port;
+
+    const mockClientWs = new EventEmitter();
+    mockClientWs.readyState = WebSocket.OPEN;
+    mockClientWs.send = () => {};
+    mockClientWs.close = () => {
+      mockClientWs.readyState = WebSocket.CLOSED;
+      mockClientWs.emit('close');
+    };
+
+    const received = [];
+    const upstreamConnected = new Promise((resolve) => {
+      fixture.testWss.once('connection', (ws) => {
+        ws.on('message', (data) => {
+          received.push(data.toString());
+        });
+        resolve(ws);
+      });
+    });
+
+    handleIncusSession(mockClientWs, {
+      host_endpoint: `https://127.0.0.1:${tlsPort}`,
+      websocket_path: '/1.0/operations/123/websocket',
+      server_public_key_pin: fixture.validPin,
+    });
+
+    // Send immediately before upstream opens
+    mockClientWs.emit('message', 'early-message', false);
+
+    const upstreamWs = await upstreamConnected;
+    await new Promise((resolve) => {
+      if (received.length >= 1) return resolve();
+      upstreamWs.on('message', () => {
+        if (received.length >= 1) resolve();
+      });
+    });
+
+    assert.strictEqual(received[0], 'early-message');
+    mockClientWs.close();
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('handleIncusSession forwards client input to incusWs as binary frames', async () => {
+  const EventEmitter = require('events');
+  const fixture = createTestTlsServer();
+  try {
+    await new Promise((resolve) => fixture.tlsServer.listen(0, '127.0.0.1', resolve));
+    const tlsPort = fixture.tlsServer.address().port;
+
+    let serverDataWs = null;
+    const receivedFrames = [];
+
+    const serverConnected = new Promise((resolve) => {
+      fixture.testWss.on('connection', (ws, req) => {
+        if (req.url && req.url.includes('/websocket')) {
+          serverDataWs = ws;
+          ws.on('message', (msg, isBinary) => {
+            receivedFrames.push({ msg, isBinary });
+          });
+          resolve();
+        }
+      });
+    });
+
+    const mockClientWs = new EventEmitter();
+    mockClientWs.readyState = WebSocket.OPEN;
+    mockClientWs.send = () => {};
+    mockClientWs.close = (code, reason) => {
+      mockClientWs.readyState = WebSocket.CLOSED;
+      mockClientWs.closed = { code, reason };
+      mockClientWs.emit('close');
+    };
+
+    handleIncusSession(mockClientWs, {
+      host_endpoint: `https://127.0.0.1:${tlsPort}`,
+      websocket_path: '/1.0/operations/123/websocket',
+      server_public_key_pin: fixture.validPin,
+    });
+
+    await serverConnected;
+
+    // Send string data (simulating text frame from client)
+    mockClientWs.emit('message', 'ls -la\n', false);
+
+    await new Promise((resolve) => {
+      if (receivedFrames.length >= 1) return resolve();
+      serverDataWs.on('message', () => {
+        if (receivedFrames.length >= 1) resolve();
+      });
+    });
+
+    assert.strictEqual(receivedFrames.length, 1);
+    assert.strictEqual(receivedFrames[0].isBinary, true);
+    assert.ok(Buffer.isBuffer(receivedFrames[0].msg));
+    assert.strictEqual(receivedFrames[0].msg.toString('utf8'), 'ls -la\n');
+
+    // Send binary buffer data
+    const binPayload = Buffer.from([0x01, 0x02, 0x03]);
+    mockClientWs.emit('message', binPayload, true);
+
+    await new Promise((resolve) => {
+      if (receivedFrames.length >= 2) return resolve();
+      serverDataWs.on('message', () => {
+        if (receivedFrames.length >= 2) resolve();
+      });
+    });
+
+    assert.strictEqual(receivedFrames.length, 2);
+    assert.strictEqual(receivedFrames[1].isBinary, true);
+    assert.ok(Buffer.isBuffer(receivedFrames[1].msg));
+    assert.deepStrictEqual(receivedFrames[1].msg, binPayload);
+
+    mockClientWs.close();
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 after(() => {
   server.close();
   redis.disconnect();

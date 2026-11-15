@@ -257,39 +257,111 @@ function handleIncusSession(clientWs, payload) {
     });
   }
 
+  let controlWs = null;
+  let terminalWidth = 80;
+  let terminalHeight = 24;
+
+  if (
+    typeof payload.control_path === 'string' &&
+    payload.control_path.trim() !== ''
+  ) {
+    const ctrlUrl = `${targetProtocol}//${parsedHost.host}${payload.control_path}`;
+    controlWs = new WebSocket(ctrlUrl, options);
+    controlWs.on('open', () => {
+      controlWs.send(
+        JSON.stringify({
+          command: 'window-resize',
+          args: { width: terminalWidth, height: terminalHeight },
+        })
+      );
+    });
+    controlWs.on('error', (err) => {
+      console.warn(`[console-proxy] Incus control socket error: ${err.message}`);
+    });
+  }
+
   const incusWs = new WebSocket(targetUrl, options);
 
-  incusWs.on('open', () => {
-    clientWs.on('message', (msg, isBinary) => {
-      if (incusWs.readyState === WebSocket.OPEN) {
-        incusWs.send(msg, { binary: isBinary });
-      }
-    });
+  let incusReady = false;
+  const pendingClientMessages = [];
 
-    incusWs.on('message', (msg, isBinary) => {
-      if (clientWs.readyState === WebSocket.OPEN) {
-        clientWs.send(msg, { binary: isBinary });
+  incusWs.on('open', () => {
+    incusReady = true;
+    while (pendingClientMessages.length > 0) {
+      const buf = pendingClientMessages.shift();
+      if (incusWs.readyState === WebSocket.OPEN) {
+        incusWs.send(buf, { binary: true });
       }
-    });
+    }
+  });
+
+  clientWs.on('message', (msg, isBinary) => {
+    // Check if this is a resize control message from client
+    if (!isBinary) {
+      const text = typeof msg === 'string' ? msg : msg.toString('utf8');
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed && typeof parsed === 'object' && parsed.type === 'resize') {
+          const width = parseInt(parsed.cols || parsed.width || 80, 10) || 80;
+          const height = parseInt(parsed.rows || parsed.height || 24, 10) || 24;
+          terminalWidth = width;
+          terminalHeight = height;
+          if (controlWs && controlWs.readyState === WebSocket.OPEN) {
+            controlWs.send(
+              JSON.stringify({ command: 'window-resize', args: { width, height } })
+            );
+          }
+          return;
+        }
+      } catch {
+        // Not a JSON message, pass through to incusWs
+      }
+    }
+
+    const buf = Buffer.isBuffer(msg) ? msg : Buffer.from(msg);
+
+    if (incusReady && incusWs.readyState === WebSocket.OPEN) {
+      incusWs.send(buf, { binary: true });
+    } else if (!incusReady && incusWs.readyState === WebSocket.CONNECTING) {
+      pendingClientMessages.push(buf);
+    }
+  });
+
+  incusWs.on('message', (msg, isBinary) => {
+    if (clientWs.readyState === WebSocket.OPEN) {
+      clientWs.send(msg, { binary: isBinary });
+    }
   });
 
   incusWs.on('error', (err) => {
+    pendingClientMessages.length = 0;
     console.error(`[console-proxy] Incus upstream socket error: ${err.message}`);
     if (clientWs.readyState === WebSocket.OPEN) {
       clientWs.send('\r\n\x1b[31m[Console Error: Hypervisor upstream connection failed]\x1b[0m\r\n');
       clientWs.close(1011, 'Hypervisor connection error');
     }
+    if (controlWs && (controlWs.readyState === WebSocket.OPEN || controlWs.readyState === WebSocket.CONNECTING)) {
+      controlWs.close();
+    }
   });
 
   clientWs.on('close', () => {
+    pendingClientMessages.length = 0;
     if (incusWs.readyState === WebSocket.OPEN || incusWs.readyState === WebSocket.CONNECTING) {
       incusWs.close();
+    }
+    if (controlWs && (controlWs.readyState === WebSocket.OPEN || controlWs.readyState === WebSocket.CONNECTING)) {
+      controlWs.close();
     }
   });
 
   incusWs.on('close', () => {
+    pendingClientMessages.length = 0;
     if (clientWs.readyState === WebSocket.OPEN) {
       clientWs.close();
+    }
+    if (controlWs && (controlWs.readyState === WebSocket.OPEN || controlWs.readyState === WebSocket.CONNECTING)) {
+      controlWs.close();
     }
   });
 }
