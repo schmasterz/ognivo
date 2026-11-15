@@ -127,8 +127,10 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
 
     /**
      * Handle hypervisor operation response, waiting for asynchronous operations to finish.
+     *
+     * @param  list<string>  $acceptableErrors  Error substrings that should be treated as idempotent success
      */
-    protected function handleOperationResponse(Response $response, ?string $project = null): bool
+    protected function handleOperationResponse(Response $response, ?string $project = null, array $acceptableErrors = []): bool
     {
         $this->lastError = null;
 
@@ -137,6 +139,15 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
             $errStr = is_string($err) && $err !== ''
                 ? $err
                 : sprintf('HTTP %d: %s', $response->status(), substr(trim($response->body()), 0, 300));
+
+            foreach ($acceptableErrors as $acceptable) {
+                if (stripos($errStr, $acceptable) !== false) {
+                    Log::info(sprintf('Hypervisor synchronous request idempotent outcome (project %s): %s', $project ?? 'default', $errStr));
+
+                    return true;
+                }
+            }
+
             $this->lastError = $errStr;
             Log::error(sprintf('Hypervisor synchronous request failed (HTTP %d, project %s): %s', $response->status(), $project ?? 'default', $errStr));
 
@@ -182,6 +193,15 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
                     $err = $metadata['err'] ?? ($waitData['error'] ?? 'Operation failed');
                     $encoded = is_scalar($err) || is_array($err) ? json_encode($err) : false;
                     $errStr = is_string($err) && $err !== '' ? $err : ($encoded !== false ? $encoded : 'Operation failed');
+
+                    foreach ($acceptableErrors as $acceptable) {
+                        if (stripos($errStr, $acceptable) !== false) {
+                            Log::info(sprintf('Hypervisor operation idempotent outcome (project %s): %s', $project ?? 'default', $errStr));
+
+                            return true;
+                        }
+                    }
+
                     $this->lastError = $errStr;
                     Log::error(sprintf('Hypervisor operation failed: %s', $errStr));
 
@@ -291,7 +311,7 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
                 'timeout' => 30,
             ]);
 
-        return $this->handleOperationResponse($response, $vm->incus_project);
+        return $this->handleOperationResponse($response, $vm->incus_project, ['already running']);
     }
 
     #[Override]
@@ -306,7 +326,7 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
                 'timeout' => 30,
             ]);
 
-        return $this->handleOperationResponse($response, $vm->incus_project);
+        return $this->handleOperationResponse($response, $vm->incus_project, ['already stopped', 'is not running', 'not running']);
     }
 
     #[Override]
@@ -320,7 +340,7 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
                 'timeout' => 30,
             ]);
 
-        return $this->handleOperationResponse($response, $vm->incus_project);
+        return $this->handleOperationResponse($response, $vm->incus_project, ['already frozen', 'already suspended']);
     }
 
     #[Override]
@@ -603,17 +623,39 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
             throw new InvalidArgumentException('Containers do not support graphical VGA console.');
         }
 
-        /** @var Response $response */
-        $response = $this->client()
-            ->withQueryParameters([
-                'project' => $vm->incus_project,
-                'wait-for-websocket' => 'true',
-            ])
-            ->post(sprintf('/1.0/instances/%s/console', $vm->name), [
-                'type' => $type,
-                'width' => 80,
-                'height' => 24,
-            ]);
+        if ($vm->instance_type === 'container') {
+            /** @var Response $response */
+            $response = $this->client()
+                ->withQueryParameters(['project' => $vm->incus_project])
+                ->post(sprintf('/1.0/instances/%s/exec', $vm->name), [
+                    'command' => [
+                        'sh',
+                        '-c',
+                        'if [ -x /bin/login ]; then exec /bin/login; elif [ -x /usr/bin/login ]; then exec /usr/bin/login; else exec /bin/sh; fi',
+                    ],
+                    'environment' => [
+                        'TERM' => 'xterm-256color',
+                        'HOME' => '/root',
+                        'USER' => 'root',
+                    ],
+                    'interactive' => true,
+                    'wait-for-websocket' => true,
+                    'width' => 80,
+                    'height' => 24,
+                ]);
+        } else {
+            /** @var Response $response */
+            $response = $this->client()
+                ->withQueryParameters([
+                    'project' => $vm->incus_project,
+                    'wait-for-websocket' => 'true',
+                ])
+                ->post(sprintf('/1.0/instances/%s/console', $vm->name), [
+                    'type' => $type,
+                    'width' => 80,
+                    'height' => 24,
+                ]);
+        }
 
         if (! $response->successful()) {
             $err = $response->json('error');

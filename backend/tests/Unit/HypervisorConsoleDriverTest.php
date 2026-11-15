@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Tests\Unit;
 
 use App\Models\Host;
-use App\Models\PanelCertificate;
 use App\Models\User;
 use App\Models\VirtualMachine;
 use App\Services\Hypervisor\Drivers\FakeHypervisorDriver;
@@ -30,8 +29,6 @@ final class HypervisorConsoleDriverTest extends TestCase
 
     private VirtualMachine $container;
 
-    private PanelCertificate $cert;
-
     protected function setUp(): void
     {
         parent::setUp();
@@ -40,7 +37,7 @@ final class HypervisorConsoleDriverTest extends TestCase
             'project_name' => 'tenant-console-proj',
         ]);
 
-        $this->cert = app(PanelCertificateService::class)->generate(365);
+        app(PanelCertificateService::class)->generate(365);
 
         $this->incusHost = Host::create([
             'name' => 'incus-console-node',
@@ -141,6 +138,46 @@ final class HypervisorConsoleDriverTest extends TestCase
         $this->assertSame('op-uuid-12345', $session['operation_id']);
         $this->assertSame('/1.0/operations/op-uuid-12345/websocket?secret=secret-data-token', $session['websocket_path']);
         $this->assertSame('/1.0/operations/op-uuid-12345/websocket?secret=secret-ctrl-token', $session['control_path']);
+        $this->assertSame('console', $session['type']);
+    }
+
+    public function test_incus_driver_sends_correct_exec_post_request_for_container(): void
+    {
+        Http::fake([
+            'https://incus-console.local:8443/1.0/instances/ct-console-01/exec*' => Http::response([
+                'type' => 'async',
+                'status' => 'Operation created',
+                'status_code' => 100,
+                'operation' => '/1.0/operations/op-uuid-container-exec',
+                'metadata' => [
+                    'id' => 'op-uuid-container-exec',
+                    'class' => 'websocket',
+                    'metadata' => [
+                        'fds' => [
+                            '0' => 'secret-data-ct-token',
+                            'control' => 'secret-ctrl-ct-token',
+                        ],
+                    ],
+                ],
+            ], 202),
+        ]);
+
+        $driver = new IncusDriver($this->incusHost);
+
+        $session = $driver->createConsoleSession($this->container, 'console');
+
+        Http::assertSent(function (Request $request): bool {
+            return $request->method() === 'POST'
+                && str_contains($request->url(), '/1.0/instances/ct-console-01/exec')
+                && str_contains($request->url(), 'project=tenant-console-proj')
+                && $request['interactive'] === true
+                && $request['wait-for-websocket'] === true
+                && is_array($request['command']);
+        });
+
+        $this->assertSame('op-uuid-container-exec', $session['operation_id']);
+        $this->assertSame('/1.0/operations/op-uuid-container-exec/websocket?secret=secret-data-ct-token', $session['websocket_path']);
+        $this->assertSame('/1.0/operations/op-uuid-container-exec/websocket?secret=secret-ctrl-ct-token', $session['control_path']);
         $this->assertSame('console', $session['type']);
     }
 
