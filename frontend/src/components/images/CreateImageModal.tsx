@@ -248,35 +248,6 @@ export function CreateImageModal({
               </div>
             </div>
 
-            {/* Selected Badges with X */}
-            {selectedHostIds.length > 0 ? (
-              <div className="flex flex-wrap gap-1.5 p-2 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/60 rounded-xl mb-2 max-h-24 overflow-y-auto">
-                {hosts
-                  .filter((h) => selectedHostIds.includes(h.id))
-                  .map((host) => (
-                    <span
-                      key={host.id}
-                      className="inline-flex items-center space-x-1 px-2.5 py-1 bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 rounded-lg text-[11px] font-medium"
-                    >
-                      <Server className="w-3 h-3 text-blue-500" />
-                      <span>{host.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => toggleHost(host.id)}
-                        className="hover:bg-blue-200 dark:hover:bg-blue-500/40 rounded p-0.5 ml-1 transition"
-                        title="Remove compute node association"
-                      >
-                        <X className="w-3 h-3 text-blue-600 dark:text-blue-300" />
-                      </button>
-                    </span>
-                  ))}
-              </div>
-            ) : (
-              <div className="p-2.5 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl mb-2 text-[11px] text-amber-700 dark:text-amber-300">
-                Warning: No compute nodes selected. This image will not be available for installation anywhere.
-              </div>
-            )}
-
             {/* Compute Nodes Checklist */}
             <div className="space-y-1.5 max-h-36 overflow-y-auto p-2 border border-gray-200 dark:border-gray-800 rounded-xl bg-gray-50/50 dark:bg-gray-900/50">
               {hosts.map((host) => {
