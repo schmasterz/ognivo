@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   X,
   Server,
@@ -13,7 +13,14 @@ import {
   ShieldAlert,
   FileCheck,
 } from "lucide-react";
-import { api, HostNode, TestConnectionResponse } from "@/lib/api";
+import { api, HostNode, TestConnectionResponse, ImageCatalogCounts } from "@/lib/api";
+import {
+  createInitialSelection,
+  canSaveSelection,
+  toSelectionPayload,
+  StagedImageSelection,
+} from "@/lib/images/imageSelection";
+import { HostImagesSection } from "./HostImagesSection";
 import { useI18n } from "@/lib/i18n/I18nContext";
 import { useModalEscape } from "@/lib/hooks/useModalEscape";
 
@@ -49,14 +56,47 @@ export function CreateHostModal({ onClose, onSuccess }: CreateHostModalProps) {
   const [verifyResult, setVerifyResult] = useState<TestConnectionResponse | null>(null);
   const [verifyError, setVerifyError] = useState<string | null>(null);
 
+  // Image Selection State
+  const [autoAttachImages, setAutoAttachImages] = useState(true);
+  const [imageSelection, setImageSelection] = useState<StagedImageSelection>(() =>
+    createInitialSelection("create")
+  );
+  const [imageCounts, setImageCounts] = useState<ImageCatalogCounts | null>(null);
+  const [countsLoading, setCountsLoading] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useModalEscape(onClose, !loading && !verifyLoading);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    queueMicrotask(() => {
+      setCountsLoading(true);
+    });
+    api
+      .adminGetImages({ per_page: 1 }, { signal: controller.signal })
+      .then((res) => {
+        setImageCounts(res.counts);
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
+      })
+      .finally(() => {
+        setCountsLoading(false);
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, []);
+
   // Validation
   const isNameValid = name.trim().length >= 2 && /^[a-z0-9-]+$/.test(name.trim());
   const isCapacityValid = totalCpuCores >= 1 && totalRamGb >= 1 && totalStorageGb >= 10;
+  const selectionValidation = canSaveSelection(imageSelection, imageCounts);
 
   const isValidUrl = (urlStr: string): boolean => {
     try {
@@ -109,9 +149,15 @@ export function CreateHostModal({ onClose, onSuccess }: CreateHostModalProps) {
       return;
     }
 
+    if (!selectionValidation.valid) {
+      setError(t("atLeastOneImageRequired"));
+      return;
+    }
+
     try {
       setLoading(true);
 
+      const imagesPayload = toSelectionPayload(imageSelection, "create");
       let createdHost: HostNode;
 
       if (mode === "token") {
@@ -124,6 +170,8 @@ export function CreateHostModal({ onClose, onSuccess }: CreateHostModalProps) {
           total_cpu_cores: totalCpuCores,
           total_ram_mb: totalRamGb * 1024,
           total_storage_gb: totalStorageGb,
+          auto_attach_images: autoAttachImages,
+          images: imagesPayload,
         });
         createdHost = res.host;
       } else {
@@ -137,6 +185,8 @@ export function CreateHostModal({ onClose, onSuccess }: CreateHostModalProps) {
           total_cpu_cores: totalCpuCores,
           total_ram_mb: totalRamGb * 1024,
           total_storage_gb: totalStorageGb,
+          auto_attach_images: autoAttachImages,
+          images: imagesPayload,
         });
         createdHost = res.host;
       }
@@ -371,7 +421,7 @@ export function CreateHostModal({ onClose, onSuccess }: CreateHostModalProps) {
                 Generate a single-use token on your {driver === "lxd" ? "LXD" : "Incus"} server via:
                 <code className="ml-1 px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 font-mono text-[10px]">
                   {driver === "lxd"
-                    ? "lxc config trust add panel"
+                    ? "lxc config trust add --name panel"
                     : "incus config trust add panel"}
                 </code>
               </p>
@@ -502,6 +552,19 @@ export function CreateHostModal({ onClose, onSuccess }: CreateHostModalProps) {
               </div>
             </div>
           </div>
+
+          {/* Node Images */}
+          <HostImagesSection
+            flow="create"
+            autoAttachImages={autoAttachImages}
+            onAutoAttachChange={setAutoAttachImages}
+            selection={imageSelection}
+            onSelectionChange={setImageSelection}
+            counts={imageCounts}
+            onCountsUpdate={setImageCounts}
+            countsLoading={countsLoading}
+            validationError={!selectionValidation.valid ? t("atLeastOneImageRequired") : null}
+          />
 
           <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/60">
             <label className="flex items-center space-x-2.5 cursor-pointer">

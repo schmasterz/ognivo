@@ -12,7 +12,21 @@ import {
   ShieldAlert,
   Fingerprint,
 } from "lucide-react";
-import { api, HostNode, TestConnectionResponse } from "@/lib/api";
+import {
+  api,
+  HostNode,
+  TestConnectionResponse,
+  ImageCatalogCounts,
+  PreviewImageDetachResponse,
+} from "@/lib/api";
+import {
+  createInitialSelection,
+  canSaveSelection,
+  toSelectionPayload,
+  StagedImageSelection,
+} from "@/lib/images/imageSelection";
+import { HostImagesSection } from "./HostImagesSection";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { useI18n } from "@/lib/i18n/I18nContext";
 import { useModalEscape } from "@/lib/hooks/useModalEscape";
 
@@ -45,12 +59,26 @@ export function EditHostModal({ host, onClose, onSuccess }: EditHostModalProps) 
   const [verifyResult, setVerifyResult] = useState<TestConnectionResponse | null>(null);
   const [verifyError, setVerifyError] = useState<string | null>(null);
 
+  // Image Selection State
+  const [autoAttachImages, setAutoAttachImages] = useState(host.auto_attach_images ?? true);
+  const [imageSelection, setImageSelection] = useState<StagedImageSelection>(() =>
+    createInitialSelection("edit")
+  );
+  const [imageCounts, setImageCounts] = useState<ImageCatalogCounts | null>(null);
+  const [countsLoading, setCountsLoading] = useState(false);
+  const [detachPreview, setDetachPreview] = useState<PreviewImageDetachResponse | null>(null);
+  const [pendingUpdatePayload, setPendingUpdatePayload] = useState<Parameters<
+    typeof api.adminUpdateHost
+  >[1] | null>(null);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useModalEscape(onClose, !loading && !verifyLoading);
 
   useEffect(() => {
+    const controller = new AbortController();
+
     queueMicrotask(() => {
       setName(host.name);
       setRegion(host.region || "");
@@ -60,11 +88,37 @@ export function EditHostModal({ host, onClose, onSuccess }: EditHostModalProps) 
       setTotalCpuCores(host.total_cpu_cores || 64);
       setTotalRamGb(Math.round((host.total_ram_mb || 262144) / 1024));
       setTotalStorageGb(host.total_storage_gb || 4000);
+      setAutoAttachImages(host.auto_attach_images ?? true);
+      setImageSelection(createInitialSelection("edit"));
+      setDetachPreview(null);
+      setPendingUpdatePayload(null);
       setError(null);
       setVerifyError(null);
       setVerifyResult(null);
+      setCountsLoading(true);
       setLoading(false);
     });
+
+    api
+      .adminGetImages(
+        { host_id: host.id, per_page: 1 },
+        { signal: controller.signal }
+      )
+      .then((res) => {
+        setImageCounts(res.counts);
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
+      })
+      .finally(() => {
+        setCountsLoading(false);
+      });
+
+    return () => {
+      controller.abort();
+    };
   }, [host]);
 
   const isValidUrl = (urlStr: string): boolean => {
@@ -81,6 +135,7 @@ export function EditHostModal({ host, onClose, onSuccess }: EditHostModalProps) 
   const isCapacityValid = totalCpuCores >= 1 && totalRamGb >= 1 && totalStorageGb >= 10;
 
   const isFormValid = Boolean(isNameValid && isEndpointValid && isCapacityValid);
+  const selectionValidation = canSaveSelection(imageSelection, imageCounts);
 
   const handleVerifyConnection = async () => {
     setVerifyLoading(true);
@@ -102,6 +157,26 @@ export function EditHostModal({ host, onClose, onSuccess }: EditHostModalProps) 
     }
   };
 
+  const executeHostUpdate = async (payload: Parameters<typeof api.adminUpdateHost>[1]) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await api.adminUpdateHost(host.id, payload);
+      onSuccess(res.host);
+      onClose();
+    } catch (err: unknown) {
+      setDetachPreview(null);
+      setPendingUpdatePayload(null);
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("Failed to update compute node.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -111,36 +186,54 @@ export function EditHostModal({ host, onClose, onSuccess }: EditHostModalProps) 
       return;
     }
 
-    try {
-      setLoading(true);
-      const updatePayload: Parameters<typeof api.adminUpdateHost>[1] = {
-        name: name.trim().toLowerCase(),
-        region: region.trim() || undefined,
-        endpoint_url: endpointUrl.trim(),
-        driver,
-        is_active: isActive,
-        total_cpu_cores: totalCpuCores,
-        total_ram_mb: totalRamGb * 1024,
-        total_storage_gb: totalStorageGb,
-      };
-
-      if (tokenModified) {
-        updatePayload.token = token.trim() || null;
-      }
-
-      const res = await api.adminUpdateHost(host.id, updatePayload);
-
-      onSuccess(res.host);
-      onClose();
-    } catch (err: unknown) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("Failed to update compute node.");
-      }
-    } finally {
-      setLoading(false);
+    if (!selectionValidation.valid) {
+      setError(t("atLeastOneImageRequired"));
+      return;
     }
+
+    const updatePayload: Parameters<typeof api.adminUpdateHost>[1] = {
+      name: name.trim().toLowerCase(),
+      region: region.trim() || undefined,
+      endpoint_url: endpointUrl.trim(),
+      driver,
+      is_active: isActive,
+      total_cpu_cores: totalCpuCores,
+      total_ram_mb: totalRamGb * 1024,
+      total_storage_gb: totalStorageGb,
+      auto_attach_images: autoAttachImages,
+    };
+
+    if (tokenModified) {
+      updatePayload.token = token.trim() || null;
+    }
+
+    const imagesPayload = toSelectionPayload(imageSelection, "edit");
+    if (imagesPayload !== undefined) {
+      updatePayload.images = imagesPayload;
+    }
+
+    if (updatePayload.images !== undefined) {
+      try {
+        setLoading(true);
+        const preview = await api.adminPreviewHostImageDetach(host.id, updatePayload.images);
+        if (preview.detached > 0 && preview.total_instances > 0) {
+          setPendingUpdatePayload(updatePayload);
+          setDetachPreview(preview);
+          setLoading(false);
+          return;
+        }
+      } catch (err: unknown) {
+        setLoading(false);
+        if (err instanceof Error) {
+          setError(err.message);
+        } else {
+          setError("Failed to preview image detachment.");
+        }
+        return;
+      }
+    }
+
+    await executeHostUpdate(updatePayload);
   };
 
   const renderStateBadge = (res: TestConnectionResponse) => {
@@ -443,6 +536,20 @@ export function EditHostModal({ host, onClose, onSuccess }: EditHostModalProps) 
             </div>
           </div>
 
+          {/* Node Images */}
+          <HostImagesSection
+            flow="edit"
+            hostId={host.id}
+            autoAttachImages={autoAttachImages}
+            onAutoAttachChange={setAutoAttachImages}
+            selection={imageSelection}
+            onSelectionChange={setImageSelection}
+            counts={imageCounts}
+            onCountsUpdate={setImageCounts}
+            countsLoading={countsLoading}
+            validationError={!selectionValidation.valid ? t("atLeastOneImageRequired") : null}
+          />
+
           <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/60">
             <label className="flex items-center space-x-2.5 cursor-pointer">
               <input
@@ -474,6 +581,39 @@ export function EditHostModal({ host, onClose, onSuccess }: EditHostModalProps) 
             </button>
           </div>
         </form>
+
+        {detachPreview !== null && pendingUpdatePayload !== null && (
+          <ConfirmModal
+            isOpen={detachPreview !== null && pendingUpdatePayload !== null}
+            title={t("confirmDetachImagesTitle")}
+            message={t("confirmDetachImagesMessage")
+              .replace("{count}", String(detachPreview.total_instances))
+              .replace(
+                "{images}",
+                detachPreview.images
+                  .slice(0, 5)
+                  .map((img) => `${img.name} (${img.instance_count})`)
+                  .join(", ") +
+                  (detachPreview.images.length > 5
+                    ? ` +${detachPreview.images.length - 5}`
+                    : "")
+              )}
+            confirmText={t("confirmDetachImagesBtn")}
+            variant="warning"
+            isLoading={loading}
+            onConfirm={async () => {
+              if (pendingUpdatePayload) {
+                await executeHostUpdate(pendingUpdatePayload);
+              }
+            }}
+            onClose={() => {
+              if (!loading) {
+                setDetachPreview(null);
+                setPendingUpdatePayload(null);
+              }
+            }}
+          />
+        )}
       </div>
     </div>
   );
