@@ -163,7 +163,7 @@ final class ConsoleTicketService
             if ($now - $lastActivity >= $idleTimeout) {
                 $deleted = 0;
                 try {
-                    $deleted = (int) Redis::hdel($vmSessionsKey, Cast::string($sid));
+                    $deleted = Cast::int(Redis::hdel($vmSessionsKey, Cast::string($sid)));
                     Redis::hdel('console:session_index', Cast::string($sid));
                 } catch (Throwable) {
                 }
@@ -405,9 +405,9 @@ final class ConsoleTicketService
         }
 
         try {
-            $deleted = Redis::hdel($vmSessionsKey, $sessionId);
+            $deleted = Cast::int(Redis::hdel($vmSessionsKey, $sessionId));
             Redis::hdel('console:session_index', $sessionId);
-            if ((int) $deleted === 0) {
+            if ($deleted === 0) {
                 return false;
             }
         } catch (Throwable) {
@@ -478,9 +478,9 @@ final class ConsoleTicketService
         }
 
         try {
-            $deleted = Redis::hdel($vmSessionsKey, $sessionId);
+            $deleted = Cast::int(Redis::hdel($vmSessionsKey, $sessionId));
             Redis::hdel('console:session_index', $sessionId);
-            if ((int) $deleted === 0) {
+            if ($deleted === 0) {
                 return false;
             }
         } catch (Throwable) {
