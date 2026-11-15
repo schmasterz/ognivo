@@ -122,9 +122,21 @@ interface HypervisorDriverInterface
      * Create an interactive console session operation on the hypervisor.
      *
      * @param  string  $type  Console type ('console' for text/serial, 'vga' for graphical display).
-     * @return array{operation_id: string, websocket_path: string, control_path: string|null, type: string}
+     * @return array{operation_id: string, websocket_path: string, control_path: string|null, type: string, driver?: string}
      */
-    public function createConsoleSession(VirtualMachine $vm, string $type = 'console'): array;
+    public function createConsoleSession(VirtualMachine $vm, string $type = 'console', int $width = 80, int $height = 24): array;
+
+    /**
+     * Create an interactive exec shell session operation on the hypervisor.
+     *
+     * @return array{operation_id: string, websocket_path: string, control_path: string|null, type: string, driver: string}
+     */
+    public function createExecSession(VirtualMachine $vm, int $width = 80, int $height = 24): array;
+
+    /**
+     * Cancel/delete a running or waiting operation on the hypervisor.
+     */
+    public function cancelOperation(VirtualMachine $vm, string $operationId): bool;
 
     /**
      * Retrieve discovered compute and storage resources for the host.

@@ -617,45 +617,27 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
     }
 
     #[Override]
-    public function createConsoleSession(VirtualMachine $vm, string $type = 'console'): array
+    public function createConsoleSession(VirtualMachine $vm, string $type = 'console', int $width = 80, int $height = 24): array
     {
         if ($vm->instance_type === 'container' && $type === 'vga') {
             throw new InvalidArgumentException('Containers do not support graphical VGA console.');
         }
 
-        if ($vm->instance_type === 'container') {
-            /** @var Response $response */
-            $response = $this->client()
-                ->withQueryParameters(['project' => $vm->incus_project])
-                ->post(sprintf('/1.0/instances/%s/exec', $vm->name), [
-                    'command' => [
-                        'sh',
-                        '-c',
-                        'if [ -x /bin/login ]; then exec /bin/login; elif [ -x /usr/bin/login ]; then exec /usr/bin/login; else exec /bin/sh; fi',
-                    ],
-                    'environment' => [
-                        'TERM' => 'xterm-256color',
-                        'HOME' => '/root',
-                        'USER' => 'root',
-                    ],
-                    'interactive' => true,
-                    'wait-for-websocket' => true,
-                    'width' => 80,
-                    'height' => 24,
-                ]);
-        } else {
-            /** @var Response $response */
-            $response = $this->client()
-                ->withQueryParameters([
-                    'project' => $vm->incus_project,
-                    'wait-for-websocket' => 'true',
-                ])
-                ->post(sprintf('/1.0/instances/%s/console', $vm->name), [
-                    'type' => $type,
-                    'width' => 80,
-                    'height' => 24,
-                ]);
-        }
+        $width = max(20, min(500, $width));
+        $height = max(5, min(200, $height));
+
+        /** @var Response $response */
+        $response = $this->client()
+            ->withQueryParameters([
+                'project' => $vm->incus_project,
+                'wait-for-websocket' => 'true',
+            ])
+            ->post(sprintf('/1.0/instances/%s/console', rawurlencode($vm->name)), [
+                'type' => $type,
+                'width' => $width,
+                'height' => $height,
+                'wait-for-websocket' => true,
+            ]);
 
         if (! $response->successful()) {
             $err = $response->json('error');
@@ -663,6 +645,82 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
             throw new RuntimeException(sprintf('Failed to create console session on hypervisor: %s', $msg !== '' ? $msg : 'Unknown error'));
         }
 
+        return $this->parseWebsocketOperationResponse($response, $type, 'console');
+    }
+
+    #[Override]
+    public function createExecSession(VirtualMachine $vm, int $width = 80, int $height = 24): array
+    {
+        $width = max(20, min(500, $width));
+        $height = max(5, min(200, $height));
+
+        $client = $this->client();
+        if ($vm->instance_type !== 'container') {
+            $client = $client->timeout(5)->connectTimeout(3);
+        }
+
+        /** @var Response $response */
+        $response = $client
+            ->withQueryParameters(['project' => $vm->incus_project])
+            ->post(sprintf('/1.0/instances/%s/exec', rawurlencode($vm->name)), [
+                'command' => [
+                    '/bin/sh',
+                    '-c',
+                    'if [ -x /bin/bash ]; then exec /bin/bash -l; elif [ -x /usr/bin/bash ]; then exec /usr/bin/bash -l; elif [ -x /bin/sh ]; then exec /bin/sh -l; else exit 127; fi',
+                ],
+                'cwd' => '/root',
+                'environment' => [
+                    'TERM' => 'xterm-256color',
+                    'HOME' => '/root',
+                    'USER' => 'root',
+                ],
+                'interactive' => true,
+                'wait-for-websocket' => true,
+                'width' => $width,
+                'height' => $height,
+                'user' => 0,
+                'group' => 0,
+            ]);
+
+        if (! $response->successful()) {
+            $err = $response->json('error');
+            $msg = is_string($err) && $err !== '' ? $err : $response->body();
+            throw new RuntimeException(sprintf('Failed to create exec session on hypervisor: %s', $msg !== '' ? $msg : 'Unknown error'));
+        }
+
+        return $this->parseWebsocketOperationResponse($response, 'console', 'exec');
+    }
+
+    #[Override]
+    public function cancelOperation(VirtualMachine $vm, string $operationId): bool
+    {
+        $operationId = trim($operationId);
+        if ($operationId === '') {
+            return false;
+        }
+
+        try {
+            /** @var Response $response */
+            $response = $this->client()
+                ->timeout(5)
+                ->withQueryParameters(['project' => $vm->incus_project])
+                ->delete(sprintf('/1.0/operations/%s', rawurlencode($operationId)));
+
+            return $response->successful() || $response->status() === 404;
+        } catch (FingerprintMismatchException $e) {
+            throw $e;
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * Parse the websocket operation response from the hypervisor.
+     *
+     * @return array{operation_id: string, websocket_path: string, control_path: string|null, type: string, driver: string}
+     */
+    protected function parseWebsocketOperationResponse(Response $response, string $type, string $driver): array
+    {
         /** @var mixed $rawJson */
         $rawJson = $response->json();
         $data = is_array($rawJson) ? $rawJson : [];
@@ -680,7 +738,7 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
         $rawNested = $metadata['metadata'] ?? null;
         $nestedMeta = is_array($rawNested) ? $rawNested : [];
         /** @var mixed $rawFds */
-        $rawFds = $nestedMeta['fds'] ?? null;
+        $rawFds = $nestedMeta['fds'] ?? ($metadata['fds'] ?? null);
         $fds = is_array($rawFds) ? $rawFds : [];
 
         $dataSecret = isset($fds['0']) && is_string($fds['0']) ? $fds['0'] : '';
@@ -700,6 +758,7 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
             'websocket_path' => $websocketPath,
             'control_path' => $controlPath,
             'type' => $type,
+            'driver' => $driver,
         ];
     }
 }
