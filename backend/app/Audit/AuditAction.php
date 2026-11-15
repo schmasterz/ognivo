@@ -66,6 +66,8 @@ enum AuditAction: string
 
     // Console, Impersonation, Audit
     case ConsoleTicketIssued = 'console.ticket.issued';
+    case TerminalSessionOpened = 'terminal.session.opened';
+    case TerminalSessionClosed = 'terminal.session.closed';
     case ImpersonationStarted = 'impersonation.started';
     case ImpersonationEnded = 'impersonation.ended';
     case AuditExported = 'audit.exported';
