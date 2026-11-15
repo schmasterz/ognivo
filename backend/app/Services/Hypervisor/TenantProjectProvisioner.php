@@ -79,6 +79,7 @@ class TenantProjectProvisioner
     {
         return array_merge([
             'restricted' => 'true',
+            'restricted.snapshots' => 'allow',
             'restricted.containers.privilege' => 'unprivileged',
             'restricted.devices.nic' => 'allow',
             'restricted.devices.disk' => 'managed',
