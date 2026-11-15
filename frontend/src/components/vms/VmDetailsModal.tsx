@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   X,
-  FileText,
+  Terminal,
   Loader2,
   Box,
   Pause,
@@ -246,15 +246,15 @@ export function VmDetailsModal({
           </div>
 
           <div className="flex items-center space-x-2">
-            {/* View Boot Log Action */}
+            {/* Open Console Action */}
             {onOpenConsole && (
               <button
                 onClick={() => onOpenConsole(vm)}
-                title="View Boot Log"
+                title="Open Console"
                 className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700/60 transition"
               >
-                <FileText className="w-3.5 h-3.5 text-blue-500" />
-                <span>Boot Log</span>
+                <Terminal className="w-3.5 h-3.5 text-blue-500" />
+                <span>Open Console</span>
               </button>
             )}
 
