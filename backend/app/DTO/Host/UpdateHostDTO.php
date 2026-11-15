@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\DTO\Host;
 
 use App\DTO\Cast;
+use App\DTO\ImageSelectionDTO;
 
 /**
  * Immutable Data Transfer Object for updating an existing host node.
@@ -30,6 +31,8 @@ final readonly class UpdateHostDTO
         public bool $hasCertificateUpdate = false,
         public ?string $serverFingerprint = null,
         public ?string $serverPublicKeyPin = null,
+        public ?bool $autoAttachImages = null,
+        public ?ImageSelectionDTO $images = null,
     ) {}
 
     /**
@@ -37,6 +40,8 @@ final readonly class UpdateHostDTO
      */
     public static function fromArray(array $data): self
     {
+        $images = Cast::arrayOrNull($data['images'] ?? null);
+
         return new self(
             name: Cast::string($data['name'] ?? ''),
             endpointUrl: Cast::string($data['endpoint_url'] ?? ''),
@@ -53,6 +58,8 @@ final readonly class UpdateHostDTO
             hasCertificateUpdate: array_key_exists('server_certificate', $data),
             serverFingerprint: Cast::stringOrNull($data['server_fingerprint'] ?? $data['expected_fingerprint'] ?? null),
             serverPublicKeyPin: Cast::stringOrNull($data['server_public_key_pin'] ?? null),
+            autoAttachImages: Cast::boolOrNull($data['auto_attach_images'] ?? null),
+            images: $images !== null ? ImageSelectionDTO::fromArray($images) : null,
         );
     }
 }

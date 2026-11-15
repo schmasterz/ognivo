@@ -35,6 +35,7 @@ use Override;
  * @property string|null $capacity_source
  * @property Carbon|null $capacity_synced_at
  * @property array<string, mixed>|null $settings
+ * @property bool $auto_attach_images
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -62,6 +63,7 @@ final class Host extends Model
         'capacity_source',
         'capacity_synced_at',
         'settings',
+        'auto_attach_images',
         'server_fingerprint',
         'server_public_key_pin',
         'status',
@@ -76,6 +78,7 @@ final class Host extends Model
     protected $attributes = [
         'is_active' => true,
         'capacity_source' => 'unknown',
+        'auto_attach_images' => true,
     ];
 
     /**
@@ -102,6 +105,7 @@ final class Host extends Model
         'capacity_source',
         'capacity_synced_at',
         'settings',
+        'auto_attach_images',
     ];
 
     /**
@@ -126,6 +130,7 @@ final class Host extends Model
         return [
             'is_active' => 'boolean',
             'needs_retrust' => 'boolean',
+            'auto_attach_images' => 'boolean',
             'last_checked_at' => 'datetime',
             'total_cpu_cores' => 'integer',
             'total_ram_mb' => 'integer',

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   X,
   Layers,
@@ -15,7 +15,8 @@ import {
   XCircle,
 } from "lucide-react";
 import { api, HostNode, ImageItem } from "@/lib/api";
-import { extractPaginationMeta } from "@/lib/api/client";
+import type { AdminImagesResponse } from "@/lib/api/types";
+import { computeCursorPaginationMeta } from "@/components/audit/auditUrl";
 import { CreateImageModal } from "./CreateImageModal";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { PaginationBar } from "@/components/ui/PaginationBar";
@@ -44,6 +45,7 @@ export function ImagesModal({ onClose, hosts }: ImagesModalProps) {
   const [togglingId, setTogglingId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ImageItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const pageCursorsRef = useRef<Record<number, string | null>>({ 1: null });
 
   useModalEscape(onClose, !deleting && togglingId === null);
 
@@ -59,29 +61,87 @@ export function ImagesModal({ onClose, hosts }: ImagesModalProps) {
     return () => clearTimeout(timer);
   }, [search]);
 
-  const fetchImagesList = useCallback(async () => {
-    try {
+  // Reset cursor history and target page whenever filters or perPage change
+  useEffect(() => {
+    pageCursorsRef.current = { 1: null };
+    queueMicrotask(() => {
+      setPage(1);
+    });
+  }, [debouncedSearch, osTypeFilter, perPage]);
+
+  const fetchImagesList = useCallback(
+    async (targetPage?: number) => {
+      const safeTarget = Math.max(1, targetPage ?? page);
       setLoading(true);
-      const res = await api.adminGetImages({
-        search: debouncedSearch.trim() || undefined,
-        os_type: osTypeFilter === "all" ? undefined : osTypeFilter,
-        page,
-        per_page: perPage,
-      });
-      setImages(res.data);
-      const meta = extractPaginationMeta(res, perPage);
-      setLastPage(meta.lastPage);
-      setTotal(meta.total);
-      if (page > meta.lastPage && meta.lastPage >= 1) {
-        setPage(meta.lastPage);
+      try {
+        // Determine highest page number for which we already have a keyset cursor
+        let cursorPage = safeTarget;
+        while (cursorPage > 1 && !(cursorPage in pageCursorsRef.current)) {
+          cursorPage--;
+        }
+
+        let currentRes: AdminImagesResponse | null = null;
+
+        // Walk forward from the nearest known cursor up to safeTarget without using SQL OFFSET
+        for (let p = cursorPage; p <= safeTarget; p++) {
+          const cursorForPage = p === 1 ? null : (pageCursorsRef.current[p] ?? null);
+          if (p > 1 && cursorForPage === null) {
+            // Reached the end of available keyset pages before safeTarget
+            break;
+          }
+
+          const res = await api.adminGetImages({
+            search: debouncedSearch.trim() || undefined,
+            os_type: osTypeFilter === "all" ? undefined : osTypeFilter,
+            cursor: cursorForPage,
+            per_page: perPage,
+          });
+          currentRes = res;
+
+          if (res.next_cursor) {
+            pageCursorsRef.current[p + 1] = res.next_cursor;
+          } else {
+            delete pageCursorsRef.current[p + 1];
+            if (p < safeTarget) {
+              // No further pages exist beyond page p
+              const meta = computeCursorPaginationMeta({
+                currentPage: p,
+                perPage,
+                itemsCount: res.data.length,
+                nextCursor: res.next_cursor,
+                reportedTotal: res.counts?.filtered?.catalog,
+              });
+              setImages(res.data);
+              setPage(p);
+              setTotal(meta.total);
+              setLastPage(meta.lastPage);
+              return;
+            }
+          }
+        }
+
+        if (currentRes) {
+          const meta = computeCursorPaginationMeta({
+            currentPage: safeTarget,
+            perPage,
+            itemsCount: currentRes.data.length,
+            nextCursor: currentRes.next_cursor,
+            reportedTotal: currentRes.counts?.filtered?.catalog,
+          });
+          setImages(currentRes.data);
+          setPage(safeTarget);
+          setTotal(meta.total);
+          setLastPage(meta.lastPage);
+        }
+      } catch (err) {
+        console.error("Failed to load images", err);
+        toast.error(err instanceof Error ? err.message : "Failed to load images");
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.error("Failed to load images", err);
-      toast.error(err instanceof Error ? err.message : "Failed to load images");
-    } finally {
-      setLoading(false);
-    }
-  }, [debouncedSearch, osTypeFilter, page, perPage, toast]);
+    },
+    [debouncedSearch, osTypeFilter, page, perPage, toast]
+  );
 
   useEffect(() => {
     let ignore = false;
@@ -137,6 +197,7 @@ export function ImagesModal({ onClose, hosts }: ImagesModalProps) {
       await api.adminDeleteImage(deleteTarget.id);
       toast.success(`Image '${deleteTarget.name}' removed from allowlist catalog.`);
       setDeleteTarget(null);
+      pageCursorsRef.current = { 1: null };
       await fetchImagesList();
     } catch (err) {
       console.error("Failed to delete image", err);
@@ -389,7 +450,8 @@ export function ImagesModal({ onClose, hosts }: ImagesModalProps) {
           hosts={hosts}
           onClose={() => setIsCreateOpen(false)}
           onSuccess={() => {
-            fetchImagesList();
+            pageCursorsRef.current = { 1: null };
+            void fetchImagesList();
           }}
         />
       )}

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Services\ImageAttachmentService;
 use Database\Factories\ImageFactory;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -29,6 +30,21 @@ final class Image extends Model
 {
     /** @use HasFactory<ImageFactory> */
     use HasFactory;
+
+    /**
+     * Bootstrap model events to attach newly registered images to eligible compute nodes.
+     */
+    #[Override]
+    protected static function booted(): void
+    {
+        self::created(function (Image $image): void {
+            try {
+                app(ImageAttachmentService::class)->attachToAutoAttachHosts($image);
+            } catch (\Throwable) {
+                // Silently ignore during migrations or before schema readiness
+            }
+        });
+    }
 
     /**
      * The attributes that are mass assignable.

@@ -70,6 +70,7 @@ final class HostNodeResource extends JsonResource
             'last_checked_at' => $host->last_checked_at?->toISOString(),
             'has_token' => $host->token !== null && $host->token !== '',
             'is_active' => (bool) $host->is_active,
+            'auto_attach_images' => (bool) $host->auto_attach_images,
             'total_cpu_cores' => $host->total_cpu_cores,
             'total_ram_mb' => $host->total_ram_mb,
             'total_storage_gb' => $host->total_storage_gb,

@@ -1,5 +1,13 @@
 import { request } from "./client";
-import { HostNode, HostResourcesResponse, PaginatedResponse, PanelCertificateInfo, TestConnectionResponse } from "./types";
+import {
+  HostNode,
+  HostResourcesResponse,
+  ImageSelectionPayload,
+  PaginatedResponse,
+  PanelCertificateInfo,
+  PreviewImageDetachResponse,
+  TestConnectionResponse,
+} from "./types";
 
 /**
  * Host Nodes and Multi-Region Hypervisor Clusters API Methods.
@@ -31,6 +39,8 @@ export const hostsApi = {
     total_ram_mb?: number;
     total_storage_gb?: number;
     settings?: Record<string, unknown> | null;
+    auto_attach_images?: boolean;
+    images?: ImageSelectionPayload;
   }): Promise<{ message: string; host: HostNode }> {
     return request<{ message: string; host: HostNode }>("/admin/hosts", {
       method: "POST",
@@ -51,6 +61,8 @@ export const hostsApi = {
       total_ram_mb?: number;
       total_storage_gb?: number;
       settings?: Record<string, unknown> | null;
+      auto_attach_images?: boolean;
+      images?: ImageSelectionPayload;
     }
   ): Promise<{ message: string; host: HostNode }> {
     return request<{ message: string; host: HostNode }>(`/admin/hosts/${hostId}`, {
@@ -111,6 +123,8 @@ export const hostsApi = {
     total_ram_mb?: number;
     total_storage_gb?: number;
     settings?: Record<string, unknown> | null;
+    auto_attach_images?: boolean;
+    images?: ImageSelectionPayload;
   }): Promise<{ message: string; host: HostNode }> {
     return request<{ message: string; host: HostNode }>("/admin/hosts/connect-token", {
       method: "POST",
@@ -129,11 +143,26 @@ export const hostsApi = {
     total_ram_mb?: number;
     total_storage_gb?: number;
     settings?: Record<string, unknown> | null;
+    auto_attach_images?: boolean;
+    images?: ImageSelectionPayload;
   }): Promise<{ message: string; host: HostNode }> {
     return request<{ message: string; host: HostNode }>("/admin/hosts/add-certificate", {
       method: "POST",
       body: JSON.stringify(params),
     });
+  },
+
+  async adminPreviewHostImageDetach(
+    hostId: number,
+    images: ImageSelectionPayload
+  ): Promise<PreviewImageDetachResponse> {
+    return request<PreviewImageDetachResponse>(
+      `/admin/hosts/${hostId}/images/preview-detach`,
+      {
+        method: "POST",
+        body: JSON.stringify({ images }),
+      }
+    );
   },
 
   async adminGetPanelCertificate(): Promise<PanelCertificateInfo> {

@@ -37,6 +37,10 @@ final class ImageResource extends JsonResource
             'protocol' => $image->protocol,
             'os_type' => $image->os_type,
             'enabled' => (bool) $image->enabled,
+            'attached' => $this->when(
+                array_key_exists('attached', $image->getAttributes()),
+                fn () => (bool) $image->getAttribute('attached')
+            ),
             'hosts' => $isAdmin
                 ? HostNodeResource::collection($this->whenLoaded('hosts'))
                 : TenantHostResource::collection($this->whenLoaded('hosts')),

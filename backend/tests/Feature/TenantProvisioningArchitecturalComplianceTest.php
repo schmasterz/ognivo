@@ -69,6 +69,7 @@ final class TenantProvisioningArchitecturalComplianceTest extends TestCase
             'total_storage_gb' => 4000,
             'capacity_source' => 'discovered',
             'capacity_synced_at' => now(),
+            'auto_attach_images' => false,
         ]);
     }
 

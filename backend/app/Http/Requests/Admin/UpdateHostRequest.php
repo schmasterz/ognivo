@@ -30,7 +30,7 @@ final class UpdateHostRequest extends FormRequest
         $allowFake = app()->environment(['local', 'testing']) || (bool) config('app.allow_fake_driver');
         $allowedDrivers = $allowFake ? ['fake', 'incus', 'lxd'] : ['incus', 'lxd'];
 
-        return [
+        return array_merge([
             'name' => ['required', 'string', 'max:255', Rule::unique('hosts')->ignore($hostId)],
             'region' => ['nullable', 'string', 'max:255'],
             'endpoint_url' => ['required', 'string', 'max:255'],
@@ -41,7 +41,7 @@ final class UpdateHostRequest extends FormRequest
             'total_ram_mb' => ['nullable', 'integer', 'min:1024'],
             'total_storage_gb' => ['nullable', 'integer', 'min:10'],
             'settings' => ['nullable', 'array'],
-        ];
+        ], ImageSelectionRules::rules());
     }
 
     public function toDTO(): UpdateHostDTO
