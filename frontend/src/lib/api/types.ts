@@ -95,6 +95,7 @@ export interface HostNode extends TenantHost {
   capacity?: HostCapacityDetails;
   virtual_machines_count?: number;
   ip_pools_count?: number;
+  auto_attach_images?: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -428,6 +429,7 @@ export interface ImageItem {
   enabled: boolean;
   hosts?: HostNode[];
   host_ids?: number[];
+  attached?: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -437,6 +439,58 @@ export interface CursorPage<T> {
   next_cursor: string | null;
   per_page?: number;
   total?: number;
+}
+
+export interface ImageCatalogFilter {
+  search?: string;
+  os_type?: string;
+  protocol?: string;
+  enabled?: boolean;
+}
+
+export interface ImageFilterOp {
+  action: "attach" | "detach";
+  filter: ImageCatalogFilter;
+}
+
+export type ImageSelectionPayload =
+  | { mode: "all" }
+  | { mode: "selected"; ids: number[] }
+  | { mode: "filter"; filter: ImageCatalogFilter; exclude_ids?: number[] }
+  | {
+      mode: "delta";
+      filter_ops?: ImageFilterOp[];
+      attach_ids?: number[];
+      detach_ids?: number[];
+    };
+
+export interface ImageCatalogCounts {
+  filtered: {
+    catalog: number;
+    attached: number | null;
+  };
+  overall: {
+    catalog: number;
+    attached: number | null;
+  };
+}
+
+export interface AdminImagesResponse extends CursorPage<ImageItem> {
+  per_page: number;
+  counts: ImageCatalogCounts;
+}
+
+export interface PreviewImageDetachItem {
+  id: number;
+  name: string;
+  instance_count: number;
+}
+
+export interface PreviewImageDetachResponse {
+  attached: number;
+  detached: number;
+  total_instances: number;
+  images: PreviewImageDetachItem[];
 }
 
 export interface AuditActor {

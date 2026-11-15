@@ -1,5 +1,5 @@
 import { request } from "./client";
-import { ImageItem, PaginatedResponse } from "./types";
+import { AdminImagesResponse, ImageItem } from "./types";
 
 /**
  * Image allowlist and catalog API methods.
@@ -23,24 +23,31 @@ export const imagesApi = {
   /**
    * Administrator: List all catalog images with optional filters.
    */
-  async adminGetImages(params?: {
-    search?: string;
-    os_type?: string;
-    enabled?: boolean;
-    host_id?: number | null;
-    page?: number;
-    per_page?: number;
-  }): Promise<PaginatedResponse<ImageItem>> {
+  async adminGetImages(
+    params?: {
+      search?: string;
+      os_type?: string;
+      protocol?: string;
+      enabled?: boolean;
+      host_id?: number | null;
+      attachment?: "all" | "attached" | "detached";
+      cursor?: string | null;
+      per_page?: number;
+    },
+    options?: { signal?: AbortSignal }
+  ): Promise<AdminImagesResponse> {
     const queryParams = new URLSearchParams();
     if (params?.search) queryParams.set("search", params.search);
     if (params?.os_type) queryParams.set("os_type", params.os_type);
+    if (params?.protocol) queryParams.set("protocol", params.protocol);
     if (params?.enabled !== undefined) queryParams.set("enabled", String(params.enabled));
-    if (params?.host_id) queryParams.set("host_id", String(params.host_id));
-    if (params?.page) queryParams.set("page", String(params.page));
-    if (params?.per_page) queryParams.set("per_page", String(params.per_page));
+    if (params?.host_id !== undefined && params?.host_id !== null) queryParams.set("host_id", String(params.host_id));
+    if (params?.attachment) queryParams.set("attachment", params.attachment);
+    if (params?.cursor) queryParams.set("cursor", params.cursor);
+    if (params?.per_page !== undefined && params?.per_page !== null) queryParams.set("per_page", String(params.per_page));
     const query = queryParams.toString() ? `?${queryParams.toString()}` : "";
 
-    return request<PaginatedResponse<ImageItem>>(`/admin/images${query}`);
+    return request<AdminImagesResponse>(`/admin/images${query}`, { signal: options?.signal });
   },
 
   /**
