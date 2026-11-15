@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Admin;
 
 use App\DTO\Cast;
+use App\DTO\ImageSelectionDTO;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\CreateHostRequest;
+use App\Http\Requests\Admin\ImageSelectionRules;
 use App\Http\Requests\Admin\UpdateHostRequest;
 use App\Http\Resources\HostNodeResource;
 use App\Http\Resources\TenantHostResource;
@@ -15,6 +17,7 @@ use App\Models\User;
 use App\Services\HostCapacityGuard;
 use App\Services\HostNodeService;
 use App\Services\Hypervisor\TenantProjectProvisioner;
+use App\Services\ImageAttachmentService;
 use App\Services\IncusConnectionChecker;
 use App\Services\IncusTrustService;
 use App\Services\PanelCertificateService;
@@ -36,6 +39,7 @@ final class HostNodeController extends Controller
         private readonly IncusTrustService $trustService,
         private readonly IncusConnectionChecker $connectionChecker,
         private readonly PanelCertificateService $certService,
+        private readonly ImageAttachmentService $imageAttachmentService,
     ) {}
 
     /**
@@ -127,6 +131,7 @@ final class HostNodeController extends Controller
             'driver' => $driver,
             'region' => isset($validated['region']) && is_string($validated['region']) ? $validated['region'] : null,
             'is_active' => (bool) ($validated['is_active'] ?? true),
+            'auto_attach_images' => (bool) ($validated['auto_attach_images'] ?? true),
             'settings' => isset($validated['settings']) && is_array($validated['settings']) ? $validated['settings'] : null,
         ];
 
@@ -143,6 +148,8 @@ final class HostNodeController extends Controller
             $extraAttributes['capacity_source'] = 'manual';
         }
 
+        $dto = $request->toDTO();
+
         $isTrustToken = false;
         if ($token !== '' && $driver !== 'fake') {
             $decoded = base64_decode($token, true);
@@ -153,11 +160,17 @@ final class HostNodeController extends Controller
 
         if ($isTrustToken) {
             $host = $this->trustService->addHostWithToken(Cast::string($validated['name'] ?? ''), $token, $extraAttributes);
+            if ($dto->images !== null) {
+                $this->imageAttachmentService->apply($host, $dto->images);
+            }
         } elseif ($expectedFingerprint !== '' && $driver !== 'fake') {
             $address = Cast::string($validated['endpoint_url'] ?? $validated['address'] ?? '');
             $host = $this->trustService->addHostWithCertificate(Cast::string($validated['name'] ?? ''), $address, $expectedFingerprint, $extraAttributes);
+            if ($dto->images !== null) {
+                $this->imageAttachmentService->apply($host, $dto->images);
+            }
         } else {
-            $host = $this->hostNodeService->create($request->toDTO());
+            $host = $this->hostNodeService->create($dto);
             if ($driver === 'fake') {
                 $this->connectionChecker->check($host);
             }
@@ -176,7 +189,7 @@ final class HostNodeController extends Controller
     public function connectWithToken(Request $request): JsonResponse
     {
         /** @var array<string, mixed> $validated */
-        $validated = $request->validate([
+        $validated = $request->validate(array_merge([
             'name' => ['required', 'string', 'max:255', 'unique:hosts,name'],
             'token' => ['required', 'string'],
             'driver' => ['nullable', 'string', Rule::in(['fake', 'incus', 'lxd'])],
@@ -186,12 +199,13 @@ final class HostNodeController extends Controller
             'total_ram_mb' => ['nullable', 'integer', 'min:1024'],
             'total_storage_gb' => ['nullable', 'integer', 'min:10'],
             'settings' => ['nullable', 'array'],
-        ]);
+        ], ImageSelectionRules::rules()));
 
         $extraAttributes = [
             'driver' => isset($validated['driver']) && is_string($validated['driver']) ? $validated['driver'] : 'incus',
             'region' => isset($validated['region']) && is_string($validated['region']) ? $validated['region'] : null,
             'is_active' => (bool) ($validated['is_active'] ?? true),
+            'auto_attach_images' => (bool) ($validated['auto_attach_images'] ?? true),
             'total_cpu_cores' => isset($validated['total_cpu_cores']) && is_numeric($validated['total_cpu_cores']) ? (int) $validated['total_cpu_cores'] : 32,
             'total_ram_mb' => isset($validated['total_ram_mb']) && is_numeric($validated['total_ram_mb']) ? (int) $validated['total_ram_mb'] : 65536,
             'total_storage_gb' => isset($validated['total_storage_gb']) && is_numeric($validated['total_storage_gb']) ? (int) $validated['total_storage_gb'] : 2000,
@@ -199,6 +213,13 @@ final class HostNodeController extends Controller
         ];
 
         $host = $this->trustService->addHostWithToken(Cast::string($validated['name'] ?? ''), Cast::string($validated['token'] ?? ''), $extraAttributes);
+
+        if (isset($validated['images']) && is_array($validated['images'])) {
+            /** @var array<string, mixed> $imagesPayload */
+            $imagesPayload = $validated['images'];
+            $selection = ImageSelectionDTO::fromArray($imagesPayload);
+            $this->imageAttachmentService->apply($host, $selection);
+        }
 
         return response()->json([
             'message' => 'Compute node onboarded and trusted successfully via token.',
@@ -213,7 +234,7 @@ final class HostNodeController extends Controller
     public function addWithCertificate(Request $request): JsonResponse
     {
         /** @var array<string, mixed> $validated */
-        $validated = $request->validate([
+        $validated = $request->validate(array_merge([
             'name' => ['required', 'string', 'max:255', 'unique:hosts,name'],
             'address' => ['required', 'string', 'max:255'],
             'expected_fingerprint' => ['required', 'string', 'max:128'],
@@ -224,12 +245,13 @@ final class HostNodeController extends Controller
             'total_ram_mb' => ['nullable', 'integer', 'min:1024'],
             'total_storage_gb' => ['nullable', 'integer', 'min:10'],
             'settings' => ['nullable', 'array'],
-        ]);
+        ], ImageSelectionRules::rules()));
 
         $extraAttributes = [
             'driver' => isset($validated['driver']) && is_string($validated['driver']) ? $validated['driver'] : 'incus',
             'region' => isset($validated['region']) && is_string($validated['region']) ? $validated['region'] : null,
             'is_active' => (bool) ($validated['is_active'] ?? true),
+            'auto_attach_images' => (bool) ($validated['auto_attach_images'] ?? true),
             'total_cpu_cores' => isset($validated['total_cpu_cores']) && is_numeric($validated['total_cpu_cores']) ? (int) $validated['total_cpu_cores'] : 32,
             'total_ram_mb' => isset($validated['total_ram_mb']) && is_numeric($validated['total_ram_mb']) ? (int) $validated['total_ram_mb'] : 65536,
             'total_storage_gb' => isset($validated['total_storage_gb']) && is_numeric($validated['total_storage_gb']) ? (int) $validated['total_storage_gb'] : 2000,
@@ -242,6 +264,13 @@ final class HostNodeController extends Controller
             Cast::string($validated['expected_fingerprint'] ?? ''),
             $extraAttributes
         );
+
+        if (isset($validated['images']) && is_array($validated['images'])) {
+            /** @var array<string, mixed> $imagesPayload */
+            $imagesPayload = $validated['images'];
+            $selection = ImageSelectionDTO::fromArray($imagesPayload);
+            $this->imageAttachmentService->apply($host, $selection);
+        }
 
         return response()->json([
             'message' => 'Compute node verified and added successfully.',
@@ -261,6 +290,21 @@ final class HostNodeController extends Controller
             'message' => 'Compute node updated successfully.',
             'host' => new HostNodeResource($updatedHost),
         ]);
+    }
+
+    /**
+     * Preview impact of detaching images from an existing host node.
+     */
+    #[Post('admin/hosts/{host}/images/preview-detach', name: 'admin.hosts.images.preview_detach', middleware: ['auth:sanctum', 'active', 'admin'])]
+    public function previewImageDetach(Request $request, Host $host): JsonResponse
+    {
+        /** @var array<string, mixed> $validated */
+        $validated = $request->validate(ImageSelectionRules::forPreviewRequest());
+        $imagesPayload = Cast::arrayOrNull($validated['images'] ?? null) ?? [];
+        $selection = ImageSelectionDTO::fromArray($imagesPayload);
+        $preview = $this->imageAttachmentService->preview($host, $selection);
+
+        return response()->json($preview);
     }
 
     /**

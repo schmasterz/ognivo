@@ -8,6 +8,7 @@ use App\Audit\AuditAction;
 use App\Audit\AuditEntry;
 use App\Audit\AuditLogger;
 use App\Audit\AuditOutcome;
+use App\Audit\AuditRedactor;
 use App\DTO\Host\CreateHostDTO;
 use App\DTO\Host\UpdateHostDTO;
 use App\Models\Host;
@@ -25,13 +26,20 @@ final class HostNodeService
 {
     public function __construct(
         private ?AuditLogger $auditLogger = null,
+        private ?ImageAttachmentService $imageAttachmentService = null,
     ) {
         $this->auditLogger ??= app(AuditLogger::class);
+        $this->imageAttachmentService ??= app(ImageAttachmentService::class);
     }
 
     private function logger(): AuditLogger
     {
         return $this->auditLogger ??= app(AuditLogger::class);
+    }
+
+    private function imageAttachments(): ImageAttachmentService
+    {
+        return $this->imageAttachmentService ??= app(ImageAttachmentService::class);
     }
 
     /**
@@ -92,40 +100,56 @@ final class HostNodeService
 
         $hasManualCapacity = $dto->totalCpuCores > 0 && $dto->totalRamMb > 0 && $dto->totalStorageGb > 0;
 
-        /** @var Host $host */
-        $host = Host::create([
-            'name' => $dto->name,
-            'region' => $dto->region,
-            'endpoint_url' => $dto->endpointUrl,
-            'server_certificate' => $dto->serverCertificate,
-            'server_fingerprint' => $dto->serverFingerprint,
-            'server_public_key_pin' => $pin,
-            'driver' => $dto->driver,
-            'token' => $dto->token,
-            'is_active' => $dto->isActive,
-            'total_cpu_cores' => $hasManualCapacity ? $dto->totalCpuCores : 0,
-            'total_ram_mb' => $hasManualCapacity ? $dto->totalRamMb : 0,
-            'total_storage_gb' => $hasManualCapacity ? $dto->totalStorageGb : 0,
-            'capacity_source' => $hasManualCapacity ? 'manual' : 'unknown',
-            'settings' => $dto->settings,
-        ]);
+        return DB::transaction(function () use ($dto, $pin, $hasManualCapacity): Host {
+            /** @var Host $host */
+            $host = Host::create([
+                'name' => $dto->name,
+                'region' => $dto->region,
+                'endpoint_url' => $dto->endpointUrl,
+                'server_certificate' => $dto->serverCertificate,
+                'server_fingerprint' => $dto->serverFingerprint,
+                'server_public_key_pin' => $pin,
+                'driver' => $dto->driver,
+                'token' => $dto->token,
+                'is_active' => $dto->isActive,
+                'total_cpu_cores' => $hasManualCapacity ? $dto->totalCpuCores : 0,
+                'total_ram_mb' => $hasManualCapacity ? $dto->totalRamMb : 0,
+                'total_storage_gb' => $hasManualCapacity ? $dto->totalStorageGb : 0,
+                'capacity_source' => $hasManualCapacity ? 'manual' : 'unknown',
+                'settings' => $dto->settings,
+                'auto_attach_images' => $dto->autoAttachImages,
+            ]);
 
-        $parsedCreateHost = parse_url($host->endpoint_url, PHP_URL_HOST);
+            $parsedCreateHost = parse_url($host->endpoint_url, PHP_URL_HOST);
 
-        $this->logger()->record(new AuditEntry(
-            action: AuditAction::HostCreated,
-            outcome: AuditOutcome::Success,
-            subject: $host,
-            tenantUserId: null,
-            visibility: 'admin',
-            context: [
+            /** @var array<string, mixed> $context */
+            $context = [
                 'name' => $host->name,
                 'endpoint_host' => is_string($parsedCreateHost) && $parsedCreateHost !== '' ? $parsedCreateHost : $host->endpoint_url,
                 'server_fingerprint' => $host->server_fingerprint,
-            ],
-        ));
+                'auto_attach_images' => (bool) $host->auto_attach_images,
+            ];
 
-        return $host->fresh(['ipPools', 'virtualMachines']) ?? $host;
+            if ($dto->images !== null) {
+                $imgResult = $this->imageAttachments()->apply($host, $dto->images);
+                $context['images'] = [
+                    'mode' => $dto->images->mode,
+                    'attached' => DB::table('host_image')->where('host_id', $host->id)->count(),
+                    'detached' => $imgResult['detached'],
+                ];
+            }
+
+            $this->logger()->record(new AuditEntry(
+                action: AuditAction::HostCreated,
+                outcome: AuditOutcome::Success,
+                subject: $host,
+                tenantUserId: null,
+                visibility: 'admin',
+                context: $context,
+            ));
+
+            return $host->fresh(['ipPools', 'virtualMachines']) ?? $host;
+        });
     }
 
     /**
@@ -143,6 +167,8 @@ final class HostNodeService
             }
         }
 
+        $oldAutoAttach = (bool) $host->auto_attach_images;
+
         /** @var array<string, mixed> $attributes */
         $attributes = [
             'name' => $dto->name,
@@ -154,7 +180,10 @@ final class HostNodeService
             'total_ram_mb' => $dto->totalRamMb ?? $host->total_ram_mb,
             'total_storage_gb' => $dto->totalStorageGb ?? $host->total_storage_gb,
             'settings' => $dto->settings ?? $host->settings,
+            'auto_attach_images' => $dto->autoAttachImages ?? $host->auto_attach_images,
         ];
+
+        $autoAttachChanged = (bool) $attributes['auto_attach_images'] !== $oldAutoAttach;
 
         if ($dto->hasTokenUpdate) {
             $attributes['token'] = $dto->token;
@@ -183,9 +212,61 @@ final class HostNodeService
             $attributes['capacity_source'] = 'manual';
         }
 
-        $host->update($attributes);
+        if ($dto->images === null) {
+            $host->update($attributes);
 
-        return $host->fresh(['ipPools', 'virtualMachines']) ?? $host;
+            return $host->fresh(['ipPools', 'virtualMachines']) ?? $host;
+        }
+
+        return DB::transaction(function () use ($host, $attributes, $dto, $autoAttachChanged): Host {
+            $host->fill($attributes);
+
+            $diff = [];
+            foreach ($host->getAuditableFields() as $field) {
+                if ($host->isDirty($field)) {
+                    if (in_array(strtolower($field), AuditRedactor::REDACTED_KEYS, true)) {
+                        continue;
+                    }
+
+                    $oldVal = $host->getOriginal($field);
+                    $newVal = $host->getAttribute($field);
+
+                    if ($oldVal !== $newVal) {
+                        $diff[$field] = [
+                            'old' => $oldVal,
+                            'new' => $newVal,
+                        ];
+                    }
+                }
+            }
+
+            Host::withoutAuditing(fn () => $host->save());
+
+            $imgResult = $this->imageAttachments()->apply($host, $dto->images);
+
+            if (! empty($diff) || $imgResult['attached'] > 0 || $imgResult['detached'] > 0 || $autoAttachChanged) {
+                $context = [];
+                if (! empty($diff)) {
+                    $context['diff'] = $diff;
+                }
+                $context['images'] = [
+                    'attached' => $imgResult['attached'],
+                    'detached' => $imgResult['detached'],
+                    'auto_attach_changed' => $autoAttachChanged,
+                ];
+
+                $this->logger()->record(new AuditEntry(
+                    action: AuditAction::HostUpdated,
+                    outcome: AuditOutcome::Success,
+                    subject: $host,
+                    tenantUserId: null,
+                    visibility: 'admin',
+                    context: $context,
+                ));
+            }
+
+            return $host->fresh(['ipPools', 'virtualMachines']) ?? $host;
+        });
     }
 
     /**
