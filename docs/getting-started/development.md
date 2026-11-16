@@ -17,7 +17,7 @@ All components run inside an isolated Docker bridge network (`app-network-dev`).
 | 5 | `scheduler` | `ognivo-scheduler-dev` | Periodic task runner (`php artisan schedule:work`) |
 | 6 | `incus-events` | `ognivo-incus-events-dev` | Hypervisor event stream listener (`php artisan incus:listen`) |
 | 7 | `reverb` | `ognivo-reverb-dev` | Laravel Reverb WebSocket server on port `8080` |
-| 8 | `console-proxy` | `ognivo-console-proxy-dev` | Node.js 22 WebSocket-to-Incus mTLS console bridge (`:8085`) |
+| 8 | `console-proxy` | `ognivo-console-proxy-dev` | Node.js 26 WebSocket-to-Incus mTLS console bridge (`:8085`) |
 | 9 | `frontend` | `ognivo-frontend-dev` | Next.js 16 dev server (`npm run dev`) on port `3000` with Turbopack |
 | 10 | `webserver` | `ognivo-nginx-dev` | Unified Nginx reverse proxy on port `80` |
 
@@ -50,39 +50,74 @@ make reset-dev     # Wipe database volumes and restart a clean dev stack
 
 ## 3. Seeded Demo Data
 
+Seeded by `backend/database/seeders/DatabaseSeeder.php`. The seeder refuses to run when `APP_ENV=production` and is idempotent (`firstOrCreate`), so re-running it never overwrites records you changed.
+
 ### 3.1 Demo Accounts
 
-| Role | Email | Password | Assigned Quota Group | Resource Limits |
+| Role | Email | Password | Quota group | Effective limits |
 | :--- | :--- | :--- | :--- | :--- |
-| **Administrator** | `admin@ognivo.local` | `password` | **Enterprise Unlimited** | `∞` Unlimited across VMs, vCPU, RAM, Disk, IPs, and Snapshots |
-| **Customer** | `customer@ognivo.local` | `password` | **Standard Tier** *(Default)* | `3` VMs, `6` vCPU, `8 GB` RAM, `120 GB` Disk, `2` IPs, `3` Snapshots |
+| **Administrator** | `admin@ognivo.local` | `password` | *None* | Personal quota set to `∞` (unlimited) for VMs, vCPU, RAM, Disk, IPs, and Snapshots |
+| **Customer** | `customer@ognivo.local` | `password` | **Standard Tier** *(Default)* | Personal quota: `3` VMs, `6` vCPU, `8 GB` RAM, `120 GB` Disk, `2` IPs, `3` Snapshots |
+
+> [!NOTE]
+> The customer's personal quota is created with its own values, which are **higher than the Standard Tier group limits** listed below (`2` VMs, `4` vCPU, `4 GB` RAM, `80 GB` Disk, `1` IP). Group limits are applied to a user when an administrator edits the group or re-assigns it. Until then the customer keeps the personal values above. New accounts created through registration receive the default group's limits.
 
 > [!CAUTION]
 > These demo accounts use publicly documented credentials and are restricted strictly to local development (`APP_ENV != production`). Never expose `make up-dev` to the public internet.
 
 ### 3.2 Quota Groups (Plans / Tiers)
 
-| Tier Name | Default | Limits (VMs / vCPU / RAM / Disk / IPs / Snapshots) |
-| :--- | :--- | :--- |
-| **Standard Tier** | Yes (`★`) | `3` VMs / `6` Cores / `8 GB` RAM / `120 GB` Disk / `2` IPs / `3` Snapshots |
-| **Developer Tier** | No | `10` VMs / `24` Cores / `32 GB` RAM / `500 GB` Disk / `5` IPs / `10` Snapshots |
-| **Enterprise Unlimited** | No | `∞` VMs / `∞` Cores / `∞` RAM / `∞` Disk / `∞` IPs / `∞` Snapshots |
+| Tier name | Default | VMs | vCPU | RAM | Disk | IPs | Snapshots |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Standard Tier** | Yes (`★`) | `2` | `4` | `4 GB` | `80 GB` | `1` | `3` |
+| **Developer Tier** | No | `8` | `16` | `16 GB` | `300 GB` | `4` | `10` |
+| **Enterprise Tier** | No | `32` | `64` | `64 GB` | `1500 GB` | `16` | `30` |
+
+All three tiers have finite limits. Unlimited (`∞`, stored as `-1`) is only used for the seeded administrator's personal quota. You can create an unlimited group yourself under **Users & Quotas → Quota Groups & Plans**.
 
 ### 3.3 Demo Hypervisor Nodes (`FakeHypervisorDriver`)
 
-| Node Identifier | Region / Location | Capacity |
-| :--- | :--- | :--- |
-| `eu-west-1` | Europe West, Frankfurt | `64` Cores, `256 GB` RAM, `8 TB` Storage |
-| `us-east-1` | US East, N. Virginia | `64` Cores, `256 GB` RAM, `8 TB` Storage |
-| `bg-sofia-1` | Europe East, Sofia | `32` Cores, `128 GB` RAM, `4 TB` Storage |
-| `node-1-development` | Local Development Node | `32` Cores, `64 GB` RAM, `2 TB` Storage |
+Three active nodes using the `fake` driver, so no real Incus server is needed. Each has the three demo images below attached.
 
-### 3.4 Default Network Pool (Ranged IPAM)
+| Node identifier | Region / Location | Endpoint (placeholder) | Capacity |
+| :--- | :--- | :--- | :--- |
+| `eu-west-1` | Europe West (Frankfurt) | `https://eu-west-1.incus.local:8443` | `64` Cores, `256 GB` RAM, `8 TB` Storage |
+| `us-east-1` | US East (N. Virginia) | `https://us-east-1.incus.local:8443` | `64` Cores, `256 GB` RAM, `8 TB` Storage |
+| `bg-sofia-1` | Europe East (Sofia) | `https://bg-sofia-1.incus.local:8443` | `32` Cores, `128 GB` RAM, `4 TB` Storage |
+
+Capacity is marked as `discovered` and synced at seed time. The endpoints are placeholders and are never contacted by the fake driver.
+
+### 3.4 Demo OS Images
+
+| Image | Source | Protocol | OS type |
+| :--- | :--- | :--- | :--- |
+| `images:ubuntu/24.04` | `https://images.linuxcontainers.org` | `simplestreams` | `linux` |
+| `images:debian/12` | `https://images.linuxcontainers.org` | `simplestreams` | `linux` |
+| `images:alpine/3.20` | `https://images.linuxcontainers.org` | `simplestreams` | `linux` |
+
+All three are enabled and attached to every demo node.
+
+### 3.5 Default Network Pool (Ranged IPAM)
 
 - **Name:** `Default Public IPv4 Pool`
 - **CIDR:** `192.168.100.0/24` (usable range: `192.168.100.2` – `192.168.100.254`)
 - **Gateway:** `192.168.100.1` (excluded from allocation)
-- **Network Mode:** `routed` (`parent_interface: eth0`), assigned to `eu-west-1`
+- **DNS servers:** `1.1.1.1`, `8.8.8.8`
+- **Network mode:** `routed` (`parent_interface: eth0`), IPv4, public, active
+- **Cooldown:** `300` seconds before a released IP can be reused
+- **Assigned to:** the first active host, which is `eu-west-1`
+
+### 3.6 Demo Instances
+
+Two running instances owned by `customer@ognivo.local`, both on `eu-west-1` in the `default` Incus project:
+
+| Name | Type | vCPU | RAM | Disk | Image | IPv4 |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `dev-container-01` | LXC container | `2` | `2 GB` | `20 GB` | `images:ubuntu/24.04` | `192.168.100.10` |
+| `dev-vm-01` | KVM virtual machine | `2` | `2 GB` | `25 GB` | `images:debian/12` | `192.168.100.11` |
+
+> [!NOTE]
+> Because the nodes use the `fake` driver, these instances are database records only. Lifecycle actions, snapshots and the terminal are simulated and do not touch a real hypervisor. Connect a real Incus node (see [Host Onboarding](../features/host-onboarding.md)) to manage real instances.
 
 ---
 
