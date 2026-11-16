@@ -1,57 +1,88 @@
-# 🔥 Ognivo
+# Ognivo
 
-**Modern Open-Source Cloud Control Plane for Incus & LXD Hypervisors**
+**Open-source, multi-tenant control plane for KVM virtual machines and LXC system containers on Incus.**
 
+[![CI](https://img.shields.io/github/actions/workflow/status/OWNER/ognivo/ci.yml?label=CI)](https://github.com/OWNER/ognivo/actions)
+[![Release](https://img.shields.io/github/v/release/OWNER/ognivo?include_prereleases)](CHANGELOG.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](LICENSE)
 [![PHP 8.5](https://img.shields.io/badge/PHP-8.5-777BB4?logo=php&logoColor=white)](https://www.php.net/)
 [![Laravel 13](https://img.shields.io/badge/Laravel-13-FF2D20?logo=laravel&logoColor=white)](https://laravel.com/)
 [![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?logo=next.js&logoColor=white)](https://nextjs.org/)
-[![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
-[![Docker Compose](https://img.shields.io/badge/Docker-Compose_v2-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](LICENSE)
 
-**Ognivo** is a multi-tenant virtualization control plane for orchestrating **KVM virtual machines** and **LXC system containers** across distributed **Incus** and **LXD** clusters. Built as a clean, security-first open-source alternative to SolusVM, Virtualizor, and Proxmox VE, it combines a strongly typed Laravel 13 backend, a reactive Next.js 16 dashboard, real-time Reverb WebSockets, and a dedicated SPKI-pinned WebSocket console proxy.
+> [!WARNING]
+> **Status: alpha.** Ognivo is not yet production-ready. APIs and the database schema may change without migration paths until 1.0. See [Upgrade Notes](#upgrade-notes).
 
----
+<!-- TODO: replace with a real screenshot or short GIF (dashboard, console, IPAM) -->
+<p align="center">
+  <img src="docs/assets/dashboard.png" alt="Ognivo dashboard" width="800">
+</p>
 
-## ✨ Key Highlights
+Ognivo lets you offer VPS-style hosting on your own **Incus** hypervisors: customers get a self-service dashboard, administrators get node, network and quota management, and everything is built around tenant isolation and an auditable trail of actions.
 
-- **🔐 Cryptographic Hypervisor Onboarding (mTLS & Trust Pinning)**
-  Automatic `secp384r1` X.509 client certificate lifecycle, one-time trust token onboarding, server certificate SHA-256 fingerprint pinning, and zero-downtime certificate rotation.
-- **🖥️ Zero-Knowledge Interactive Web Console (`xterm.js`)**
-  Live terminal streaming via an isolated Node.js `console-proxy` microservice using single-use 60-second Redis tickets (`GETDEL`). Enforces **strict tenant privacy**: administrators are cryptographically and policy-blocked from accessing customer guest consoles.
-- **📸 Asynchronous Point-in-Time Snapshots**
-  Stateful and stateless snapshots for VMs and containers with distributed Redis locks, real-time WebSocket progress transitions, per-tier quota limits, and a pluggable `BackupTargetInterface`.
-- **🌐 Ranged IPAM & Multi-Mode Networking**
-  IPv4 subnet pools with **Routed** (Layer 3 point-to-point + Cloud-Init Netplan) and **Manual** modes, dedicated IP lifecycle with cooldown quarantine periods, and hypervisor preflight checks.
-- **📊 Multi-Tenant Quota Groups & Atomic Resource Locking**
-  Reusable plans/tiers (Standard, Developer, Enterprise Unlimited `∞`) with instant multi-tenant synchronization and race-free provisioning via database row locks and Redis mutexes.
-- **🛡️ Tamper-Evident Audit Subsystem**
-  Dual-connection transactional audit trail with MySQL privilege separation (`INSERT`/`SELECT`-only app grants in production), periodic SHA-256 hash-chain + HMAC sealing, and GDPR-friendly PII pseudonymisation.
-- **⚡ Real-Time Telemetry & Internationalization**
-  Instant UI updates over **Laravel Reverb** WebSockets, hypervisor drift detection, bilingual interface (**English** & **Bulgarian**), and **Dark / Light / System** themes.
+*Ognivo* (Огниво) is the Bulgarian word for a flint-and-steel fire starter.
 
----
+## Contents
 
-## 🏗️ System Architecture
+- [Why Ognivo?](#why-ognivo)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Quick Start](#quick-start)
+- [Connect Your First Incus Node](#connect-your-first-incus-node)
+- [Supported Versions](#supported-versions)
+- [Documentation](#documentation)
+- [Known Limitations](#known-limitations)
+- [Roadmap](#roadmap)
+- [Upgrade Notes](#upgrade-notes)
+- [Security](#security)
+- [Contributing](#contributing)
+- [Technology Stack](#technology-stack)
+- [License](#license)
+
+## Why Ognivo?
+
+Ognivo is aimed at small hosting providers, labs and self-hosters who run Incus and want a multi-tenant panel with quotas, IP management and a web console, without adopting a full virtualization platform.
+
+It is an open-source alternative to hosting panels such as SolusVM and Virtualizor, focused on Incus. It is not a replacement for general-purpose platforms like Proxmox VE, and it does not aim to be one.
+
+## Features
+
+| Area | What you get | Status |
+| :--- | :--- | :--- |
+| Hypervisor onboarding | mTLS with `secp384r1` client certificates, one-time trust tokens, server fingerprint pinning, certificate rotation | Alpha |
+| Web console | `xterm.js` terminal through an isolated `console-proxy`, single-use 60-second Redis tickets, SPKI-pinned upstream connection | Alpha |
+| Snapshots | Async stateful and stateless snapshots, distributed locks, per-tier quotas, pluggable `BackupTargetInterface` | Alpha |
+| Networking / IPAM | IPv4 pools, Routed and Manual modes, IP cooldown quarantine, hypervisor preflight checks | Alpha |
+| Quotas | Reusable plans and tiers, race-free provisioning with row locks and Redis mutexes | Alpha |
+| Audit log | Separate audit DB connection, `INSERT`/`SELECT`-only grants in production, SHA-256 hash chain with HMAC seals, PII pseudonymisation | Alpha |
+| Real-time UI | Laravel Reverb WebSockets, drift detection, English and Bulgarian UI, light/dark/system themes | Alpha |
+| LXD driver | Best-effort compatibility, see [Supported Versions](#supported-versions) | Experimental |
+
+Details for each area live in [`docs/`](docs/README.md).
+
+### Tenant privacy
+
+Administrators are blocked by panel policy from opening customer guest consoles. This protects tenants from the panel's own staff, not from someone with root access to the hypervisor itself. See the [threat model](docs/architecture/security-and-audit.md) for what Ognivo does and does not protect against.
+
+## Architecture
 
 ```mermaid
 flowchart TB
-    Browser["🌐 Browser Client<br/>(Next.js 16 / React 19 / Echo / xterm.js)"]
+    Browser["Browser<br/>(Next.js 16 / React 19 / Echo / xterm.js)"]
 
-    subgraph Docker["Docker Network (app-network)"]
-        Nginx["🔒 Nginx Reverse Proxy<br/>(:80 HTTP / :443 HTTPS)"]
-        Frontend["⚛️ Next.js 16 App Server<br/>(:3000)"]
-        Backend["🐘 Laravel 13 API (PHP 8.5-FPM)<br/>(:9000)"]
-        Reverb["📡 Laravel Reverb WS<br/>(:8080)"]
-        ConsoleProxy["🖥️ Console Proxy (Node 26)<br/>(:8085)"]
-        Workers["⚙️ Background Daemons<br/>(queue-worker · scheduler · incus-events)"]
-        MySQL[("🗄️ MySQL 8.4 LTS<br/>(App & Audit Grants)")]
-        Redis[("⚡ Redis 7 Alpine<br/>(Queues · Locks · Console Tickets)")]
+    subgraph Docker["Docker network (app-network)"]
+        Nginx["Nginx reverse proxy<br/>(:80 / :443)"]
+        Frontend["Next.js 16 app server<br/>(:3000)"]
+        Backend["Laravel 13 API (PHP 8.5-FPM)<br/>(:9000)"]
+        Reverb["Laravel Reverb WS<br/>(:8080)"]
+        ConsoleProxy["Console proxy (Node 26)<br/>(:8085)"]
+        Workers["Background daemons<br/>(queue-worker, scheduler, incus-events)"]
+        MySQL[("MySQL 8.4 LTS<br/>(app and audit grants)")]
+        Redis[("Redis 7<br/>(queues, locks, console tickets)")]
     end
 
-    Incus["🖧 Incus / LXD Hypervisor Cluster<br/>(mTLS REST & WSS API :8443)"]
+    Incus["Incus / LXD hypervisor<br/>(mTLS REST and WSS API :8443)"]
 
-    Browser -->|"HTTPS (:443) / HTTP (:80)"| Nginx
+    Browser -->|"HTTPS / HTTP"| Nginx
     Nginx -->|"/"| Frontend
     Nginx -->|"/api, /sanctum, /docs"| Backend
     Nginx -->|"/app/{key} (WSS)"| Reverb
@@ -59,139 +90,131 @@ flowchart TB
 
     Backend --> MySQL
     Backend --> Redis
-    Backend -->|"Broadcast Events"| Reverb
+    Backend -->|"Broadcast events"| Reverb
     Workers --> MySQL
     Workers --> Redis
 
-    ConsoleProxy -->|"Atomic GETDEL Ticket"| Redis
+    ConsoleProxy -->|"Atomic GETDEL ticket"| Redis
     Backend -->|"mTLS REST (:8443)"| Incus
-    Workers -->|"mTLS REST / Events (:8443)"| Incus
-    ConsoleProxy -->|"WSS (Secret + SPKI Pinning :8443)"| Incus
+    Workers -->|"mTLS REST / events (:8443)"| Incus
+    ConsoleProxy -->|"WSS (secret + SPKI pinning :8443)"| Incus
 ```
 
----
+Full walkthrough: [System Architecture](docs/architecture/overview.md).
 
-## 🚀 Quick Start
+## Quick Start
 
-### Prerequisites
+**Prerequisites:** Docker Engine 24.0+, Docker Compose v2 (2.20+), GNU Make, Bash and OpenSSL. Free host ports: `80`, `3000`, `8080`, `3306` (development) or `80`, `443` (production).
 
-- **Docker Engine** `24.0+` & **Docker Compose v2** (`2.20+`)
-- **GNU Make**, **Bash**, and **OpenSSL**
-- Free host ports: `80`, `3000`, `8080`, `3306` (Development) or `80`, `443` (Production)
-
-### Option A: Development Environment (with Hot-Reload & Demo Seeders)
+### Development (hot reload, demo data)
 
 ```bash
-# 1. Generate cryptographically random secrets in .env.development and .env.production
-make secrets
-
-# 2. Build (if first run) and start all 10 development containers, run migrations & seed demo data
-make up-dev
+make secrets   # generates random secrets in .env.development and .env.production
+make up-dev    # builds images, starts all containers, runs migrations, seeds demo data
 ```
 
-### Option B: Production Environment (Hardened HTTPS on Port 443)
+Open `http://localhost`. Health check: `http://localhost/up`.
+
+| Role | Email | Password |
+| :--- | :--- | :--- |
+| Admin | `admin@ognivo.local` | `password` |
+| Customer | `customer@ognivo.local` | `password` |
+
+> [!CAUTION]
+> **Local development only.** The development stack runs with debug tooling and well-known demo credentials. Never expose it to the internet. Use `make up-prod` for any public server.
+
+### Production (hardened HTTPS on port 443)
 
 ```bash
-# 1. Generate cryptographic secrets (edit .env.production first if using a custom domain)
-make secrets
-
-# 2. Build self-contained production images and launch the HTTPS stack
+make secrets   # edit .env.production afterwards if you use a custom domain
 make build-prod
 make up-prod
 
-# 3. Create your initial Administrator account (database seeders are disabled in production)
+# Seeders are disabled in production, so create the first administrator:
 docker exec -it ognivo-backend php artisan admin:create admin@yourdomain.com --name="Super Admin"
 ```
 
-| Environment | URL | Health Check | Credentials & TLS Notes |
-| :--- | :--- | :--- | :--- |
-| **Development** | `http://localhost` *(or `:3000`)* | `http://localhost/up` | **Admin:** `admin@ognivo.local` / `password`<br/>**Customer:** `customer@ognivo.local` / `password` |
-| **Production** | `https://localhost` | `https://localhost/up` | Created via `php artisan admin:create`.<br/>Auto-generates a self-signed TLS cert in `./docker/certs/` (`server.crt` / `server.key`); replace files and run `docker exec ognivo-nginx nginx -s reload` for custom TLS. |
+Open `https://localhost`. Health check: `https://localhost/up`.
 
-> [!CAUTION]
-> **Local Development Only:** Never expose the development environment (`make up-dev`) to the public internet. It runs with debug tooling enabled and seeds well-known demo credentials (`admin@ognivo.local` / `password`). For any internet-facing server, always use `make up-prod`.
+On first start a self-signed certificate is generated in `./docker/certs/` (`server.crt`, `server.key`). To use your own certificate, replace both files and run:
+
+```bash
+docker exec ognivo-nginx nginx -s reload
+```
+
+> [!IMPORTANT]
+> Back up `.env.production`, especially `APP_KEY`. Losing it makes encrypted data unreadable. `make secrets` writes both `.env.development` and `.env.production`.
 
 > [!TIP]
-> - **Auto-Build & Auto-Secrets:** Running `make up-dev` or `make up-prod` on a fresh clone automatically generates missing `.env.*` files, builds missing Docker images, and installs missing `composer` dependencies in development. Use `make build-dev` / `make build-prod` to rebuild images after changing `Dockerfile` or package manifests.
-> - **Port Conflict Guard:** Starting `make up-dev` automatically stops the production containers (and vice versa). Run `make ps` to inspect container health or see the [**Quickstart Guide**](docs/getting-started/quickstart.md) for a complete walkthrough.
+> - `make up-dev` and `make up-prod` generate missing `.env.*` files, build missing images and (in development) install missing Composer dependencies. Use `make build-dev` / `make build-prod` to rebuild after changing a `Dockerfile` or package manifest.
+> - Starting one environment stops the other to avoid port conflicts. Run `make ps` to inspect container health.
+> - Full walkthrough: [Quickstart Guide](docs/getting-started/quickstart.md).
 
----
+## Connect Your First Incus Node
 
-## 📚 Documentation
+Ognivo is only useful once it manages a hypervisor. In short:
 
-All documentation is organized by domain inside the [`docs/`](docs/README.md) directory:
+1. Install **Incus 6.0+ LTS** on a host with KVM support (nested virtualization if the host is itself a VM) and expose the API on `:8443`.
+2. In the admin UI, add a host and generate a one-time trust token.
+3. Add the panel's client certificate to the node's Incus trust store, using the command shown in the UI.
+4. Verify the server fingerprint in the UI to pin it.
 
-### 🏁 Getting Started
-| Guide | Description |
+<!-- TODO: put the exact commands here (e.g. the `incus config trust add` step) once finalized -->
+
+Full guide: [Host Onboarding & mTLS](docs/features/host-onboarding.md). For Routed networking you also need host `sysctl` and Proxy ARP settings, see [Networking & IPAM](docs/features/networking.md).
+
+## Supported Versions
+
+- **Incus 6.0+ LTS** is the officially supported platform. Container and VM orchestration, snapshots and console streaming are tested against it.
+- **LXD** is experimental and best-effort. Core operations share API compatibility, but production deployments should use Incus.
+
+## Documentation
+
+| Section | Guides |
 | :--- | :--- |
-| [**Quickstart Guide**](docs/getting-started/quickstart.md) | Prerequisites, secret generation, and launching your first environment |
-| [**Development Environment**](docs/getting-started/development.md) | Container topology, hot reloading, seeded demo accounts, and local ports |
+| Getting started | [Quickstart](docs/getting-started/quickstart.md), [Development environment](docs/getting-started/development.md) |
+| Architecture and security | [System architecture](docs/architecture/overview.md), [Security and audit log](docs/architecture/security-and-audit.md) |
+| Features | [Host onboarding & mTLS](docs/features/host-onboarding.md), [Networking & IPAM](docs/features/networking.md), [Web console](docs/features/console.md), [Snapshots](docs/features/snapshots.md) |
+| Operations | [Production deployment](docs/operations/production.md), [Configuration reference](docs/operations/configuration.md), [Commands cheat sheet](docs/operations/commands.md), [Troubleshooting](docs/operations/troubleshooting.md) |
+| Testing | [Automated testing](docs/testing/automated-testing.md), [Manual QA & API scenarios](docs/testing/manual-qa.md) |
 
-### 🏛️ Architecture & Security
-| Guide | Description |
-| :--- | :--- |
-| [**System Architecture**](docs/architecture/overview.md) | Backend domain model, Next.js App Router structure, API map, WebSockets, and data flows |
-| [**Security & Audit Log**](docs/architecture/security-and-audit.md) | Security controls, tamper-evident audit logging, strict DB grants, and HMAC seal key rotation |
+## Known Limitations
 
-### 🧩 Core Features & Subsystems
-| Guide | Description |
-| :--- | :--- |
-| [**Host Onboarding & mTLS**](docs/features/host-onboarding.md) | Panel X.509 certificates, one-time trust tokens, fingerprint pinning, and verification |
-| [**Networking & IPAM Modes**](docs/features/networking.md) | Routed vs. Manual network modes, host `sysctl` / Proxy ARP setup, and preflight checks |
-| [**Interactive Web Console**](docs/features/console.md) | `xterm.js` terminal, `console-proxy` architecture, Redis tickets, and tenant privacy guardrails |
-| [**Virtual Machine Snapshots**](docs/features/snapshots.md) | Snapshot state machine, concurrency locks, quota behavior, REST API, and backup extensions |
+- **IPv4 only.** IPAM supports IPv4 pools and allocation. IPv6 and dual-stack guests are planned.
+- **Single-node scope.** Ognivo manages standalone hypervisor nodes. Incus/LXD clustering (cross-cluster migration, cluster-wide storage pools), SSO/OIDC and object storage buckets are out of scope for 1.0.
+- **Bearer tokens in `localStorage`.** API tokens are stored in the browser and mitigated by strict CSP and XSS hygiene. Migration to `httpOnly` SameSite cookies is planned (tracked in [issues](https://github.com/OWNER/ognivo/issues)).
 
-### 🛠️ Operations & Reference
-| Guide | Description |
-| :--- | :--- |
-| [**Production Deployment**](docs/operations/production.md) | Building images, safety enforcement, admin creation, and Let's Encrypt / custom TLS setup |
-| [**Configuration Reference**](docs/operations/configuration.md) | Complete `.env` variable reference, Reverb origin rules, healthchecks, and `APP_KEY` rotation |
-| [**Commands Cheat Sheet**](docs/operations/commands.md) | Makefile targets, Docker Compose commands, Artisan CLI, and MySQL/Redis inspection |
-| [**Troubleshooting**](docs/operations/troubleshooting.md) | Common startup, database, port conflict, and reverse-proxy fixes |
+## Roadmap
 
-### 🧪 Testing & Quality Assurance
-| Guide | Description |
-| :--- | :--- |
-| [**Automated Testing**](docs/testing/automated-testing.md) | Fast SQLite unit tests, MySQL/Redis integration suite, PHPStan Level 10, Psalm, and Node tests |
-| [**Manual QA & API Scenarios**](docs/testing/manual-qa.md) | Step-by-step UI verification workflows and ready-to-run `curl` API recipes |
+Planned work is tracked in [GitHub milestones](https://github.com/OWNER/ognivo/milestones) and [`CHANGELOG.md`](CHANGELOG.md). Current priorities: `httpOnly` cookie authentication, IPv6 IPAM, and further backup targets.
 
----
+## Upgrade Notes
 
-## 📋 Supported Versions
+- **From pre-alpha or early `alpha.1`:** do a fresh install. Breaking schema and security-model changes cannot be upgraded in place.
+- **MySQL grants:** existing users (`ognivo_user`, `audit_writer`, `audit_maintenance`) are set up at initial install and are not modified on upgrade. When a release adds table grants or changes privileges, re-apply them manually:
 
-- **Incus (Official Support):** **Incus 6.0+ LTS** is the officially supported hypervisor platform. Container and virtual machine orchestration, snapshot lifecycle, and console streaming are tested and supported against Incus 6.0+ LTS.
-- **LXD (Experimental):** The LXD driver is **experimental / best-effort**. While core operations share API compatibility, production deployments should use Incus 6.0+ LTS.
+  ```bash
+  php artisan audit:grants --force
+  ```
 
----
+## Security
 
-## ⚠️ Known Limitations
+Please report vulnerabilities privately, not through public issues. See [`SECURITY.md`](SECURITY.md) for the contact address and disclosure process. The security model and threat model are described in [Security and Audit Log](docs/architecture/security-and-audit.md).
 
-- **IPv4-Only IPAM (v1):** IPAM v1 supports IPv4 subnet pools and allocation only. IPv6 pools and dual-stack guest networking are not supported in 1.0 and are planned for a subsequent release.
-- **Single-Node & Non-Clustered Scope:** Version 1.0 focuses on standalone hypervisor node orchestration. Incus/LXD clustering features (live cross-cluster migration, cluster-wide storage pools), enterprise Single Sign-On (SSO / OIDC), and object storage buckets are out of scope for 1.0.
-- **Bearer Token Storage:** API authentication tokens are stored in browser `localStorage`. While this is mitigated by strict Content Security Policy (CSP) headers and input/output XSS hygiene, migration to `httpOnly` SameSite cookies is planned for a future release.
+## Contributing
 
----
+Contributions are welcome, including translations (the UI is available in English and Bulgarian). Read [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) first. Tests and static analysis (Pest, PHPStan level 10, Psalm, ESLint) are described in [Automated testing](docs/testing/automated-testing.md).
 
-## 🔄 Upgrade Notes
-
-- **Pre-Alpha / Alpha.1 Deployments:** If upgrading from pre-alpha or early `alpha.1` builds, perform a **fresh install**. Breaking database schema and security model changes introduced prior to the stable 1.0 release cannot be upgraded in-place.
-- **MySQL User Grants:** Existing MySQL database user grants (`ognivo_user`, `audit_writer`, `audit_maintenance`) are configured during initial setup and are **not retroactively modified** on application upgrade. When updating between releases that introduce new table grants or privilege changes, re-apply privileges manually using `php artisan audit:grants --force`.
-
----
-
-## 🧰 Technology Stack
+## Technology Stack
 
 | Layer | Technologies |
 | :--- | :--- |
-| **Backend API** | PHP `8.5` (FPM Alpine), Laravel `13`, Laravel Sanctum `4`, Spatie Permission & Model States, Dedoc Scramble (OpenAPI v3) |
-| **Frontend UI** | Next.js `16` (App Router, Turbopack), React `19`, TypeScript (Strict), Tailwind CSS `v4`, Lucide Icons, `xterm.js` |
-| **Real-Time & Proxy** | Laravel Reverb `1.12` (WebSockets), Laravel Echo, Node.js `26 LTS` (`console-proxy` WebSocket SPKI-pinned bridge) |
-| **Data & Messaging** | Oracle MySQL `8.4 LTS`, Redis `7 Alpine` (`predis`), Nginx `1.27` (Reverse Proxy & TLS Termination) |
-| **Quality & Analysis** | Pest PHP `5` / PHPUnit `13`, Larastan / PHPStan (Level 10), Vimeo Psalm (Level 1), ESLint `9`, Node Native Test Runner |
+| Backend | PHP 8.5 (FPM Alpine), Laravel 13, Sanctum 4, Spatie Permission and Model States, Dedoc Scramble (OpenAPI 3) |
+| Frontend | Next.js 16 (App Router, Turbopack), React 19, strict TypeScript, Tailwind CSS 4, Lucide, `xterm.js` |
+| Real-time | Laravel Reverb 1.12, Laravel Echo, Node.js 26 LTS `console-proxy` |
+| Data | MySQL 8.4 LTS, Redis 7 (`predis`), Nginx 1.27 |
+| Quality | Pest 5 / PHPUnit 13, Larastan (level 10), Psalm (level 1), ESLint 9, Node test runner |
 
----
+## License
 
-## 📄 License & Changelog
-
-- Distributed under the [MIT License](LICENSE).
-- Release history and version roadmap are tracked in [`CHANGELOG.md`](CHANGELOG.md).
+Distributed under the [MIT License](LICENSE). Release history: [`CHANGELOG.md`](CHANGELOG.md).
