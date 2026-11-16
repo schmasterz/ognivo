@@ -31,6 +31,7 @@ final class TenantHostResource extends JsonResource
             'name' => $host->name,
             'region' => $host->region,
             'driver' => $host->driver,
+            'status' => $host->status,
             'is_active' => (bool) $host->is_active,
         ];
     }
