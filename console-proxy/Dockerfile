@@ -1,5 +1,7 @@
 FROM node:26-alpine
 
+RUN apk add --no-cache openssl
+
 WORKDIR /app
 
 COPY --chown=node:node package*.json ./

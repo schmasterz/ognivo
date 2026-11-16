@@ -368,8 +368,12 @@ final class ConsoleTicketService
             $raw = Redis::command('getdel', [$key]);
         } catch (Throwable) {
             $lua = "local v = redis.call('get', KEYS[1]); if v then redis.call('del', KEYS[1]); end; return v";
-            /** @var mixed $raw */
-            $raw = Redis::eval($lua, [$key], 1);
+            /**
+             * @psalm-suppress InvalidArgument
+             *
+             * @var mixed $raw
+             */
+            $raw = Redis::eval($lua, 1, $key);
         }
 
         if (! is_string($raw) || $raw === '') {

@@ -5,10 +5,10 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test test/*.test.js"
+    "test": "PORT=0 node --test test/*.test.js"
   },
   "dependencies": {
-    "ioredis": "^5.4.2",
-    "ws": "^8.18.0"
+    "ioredis": "^5.11.1",
+    "ws": "^8.23.0"
   }
 }
