@@ -13,6 +13,7 @@
 > **Status: alpha (`1.0.0-alpha.1`).** Ognivo is not production-ready yet. APIs, configuration keys and the database schema may change without migration paths until 1.0. Keep external backups of anything you care about. See [Upgrading](docs/operations/upgrading.md).
 
 <!-- TODO: replace with a real screenshot or short GIF (dashboard, console, IPAM) -->
+
 <p align="center">
   <img src="docs/assets/dashboard.png" alt="Ognivo dashboard" width="800">
 </p>
@@ -46,17 +47,17 @@ It is an open-source alternative to hosting panels such as SolusVM and Virtualiz
 
 ## Features
 
-| Area | What you get | Status |
-| :--- | :--- | :--- |
-| Hypervisor onboarding | mTLS with `secp384r1` client certificates, one-time trust tokens, server certificate fingerprint and public-key (SPKI) pinning, certificate rotation | Alpha |
-| Web terminal | `xterm.js` through an isolated `console-proxy`; exec-based shell with a serial-console fallback; single-use Redis tickets (60 s by default) | Alpha |
-| Images | Admin-managed image catalog, per-node image selection | Alpha |
-| Snapshots | Async stateful and stateless snapshots, distributed locks, per-tier quotas, pluggable `BackupTargetInterface` | Alpha |
-| Networking / IPAM | IPv4 pools, Routed and Manual modes, IP cooldown quarantine, hypervisor preflight checks | Alpha |
-| Quotas | Reusable plans and tiers, race-free provisioning with row locks and Redis mutexes | Alpha |
-| Audit log | Separate audit DB connection, `INSERT`/`SELECT`-only grants in production, SHA-256 hash chain with HMAC seals, PII pseudonymisation | Alpha |
-| Real-time UI | Laravel Reverb WebSockets, drift detection, English and Bulgarian UI, light/dark/system themes | Alpha |
-| LXD driver | Best-effort compatibility, see [Supported versions](#supported-versions) | Experimental |
+| Area                  | What you get                                                                                                                                         | Status       |
+|:--------------------- |:---------------------------------------------------------------------------------------------------------------------------------------------------- |:------------ |
+| Hypervisor onboarding | mTLS with `secp384r1` client certificates, one-time trust tokens, server certificate fingerprint and public-key (SPKI) pinning, certificate rotation | Alpha        |
+| Web terminal          | `xterm.js` through an isolated `console-proxy`; exec-based shell with a serial-console fallback; single-use Redis tickets (60 s by default)          | Alpha        |
+| Images                | Admin-managed image catalog, per-node image selection                                                                                                | Alpha        |
+| Snapshots             | Async stateful and stateless snapshots, distributed locks, per-tier quotas, pluggable `BackupTargetInterface`                                        | Alpha        |
+| Networking / IPAM     | IPv4 pools, Routed and Manual modes, IP cooldown quarantine, hypervisor preflight checks                                                             | Alpha        |
+| Quotas                | Reusable plans and tiers, race-free provisioning with row locks and Redis mutexes                                                                    | Alpha        |
+| Audit log             | Separate audit DB connection, `INSERT`/`SELECT`-only grants in production, SHA-256 hash chain with HMAC seals, PII pseudonymisation                  | Alpha        |
+| Real-time UI          | Laravel Reverb WebSockets, drift detection, English and Bulgarian UI, light/dark/system themes                                                       | Alpha        |
+| LXD driver            | Best-effort compatibility, see [Supported versions](#supported-versions)                                                                             | Experimental |
 
 Details for each area live in [`docs/`](docs/README.md).
 
@@ -109,16 +110,16 @@ Ognivo runs as a Docker Compose stack. There is nothing to install on the host e
 
 ### Requirements
 
-| Requirement | Version / note |
-| :--- | :--- |
-| Operating system | Linux (recommended). macOS works for development. On Windows use WSL2 with Docker Desktop's WSL integration, because the scripts need Bash |
-| Docker Engine | 24.0 or newer |
-| Docker Compose | v2, 2.20 or newer (`docker compose`, not `docker-compose`) |
-| GNU Make, Bash, OpenSSL | Any recent version (used by `make secrets`) |
-| Git | To clone the repository |
-| Resources | 2 CPU cores and 4 GB RAM are enough for a development stack. The first build downloads several images and runs `composer install` and `npm install`, so allow a few minutes |
-| Free host ports | Development: `80`, `3000`, `8080`, `3306` (MySQL, localhost only). Production: `80`, `443` |
-| An Incus node | Only needed to manage real instances. The development stack seeds demo data with a fake driver, so you can explore the UI without one |
+| Requirement             | Version / note                                                                                                                                                              |
+|:----------------------- |:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Operating system        | Linux (recommended). macOS works for development. On Windows use WSL2 with Docker Desktop's WSL integration, because the scripts need Bash                                  |
+| Docker Engine           | 24.0 or newer                                                                                                                                                               |
+| Docker Compose          | v2, 2.20 or newer (`docker compose`, not `docker-compose`)                                                                                                                  |
+| GNU Make, Bash, OpenSSL | Any recent version (used by `make secrets`)                                                                                                                                 |
+| Git                     | To clone the repository                                                                                                                                                     |
+| Resources               | 2 CPU cores and 4 GB RAM are enough for a development stack. The first build downloads several images and runs `composer install` and `npm install`, so allow a few minutes |
+| Free host ports         | Development: `80`, `3000`, `8080`, `3306` (MySQL, localhost only). Production: `80`, `443`                                                                                  |
+| An Incus node           | Only needed to manage real instances. The development stack seeds demo data with a fake driver, so you can explore the UI without one                                       |
 
 Check your tools:
 
@@ -160,15 +161,15 @@ make logs-dev      # Ctrl+C to stop following
 
 Then open:
 
-| What | URL |
-| :--- | :--- |
-| Web panel | `http://localhost` |
+| What                        | URL                         |
+|:--------------------------- |:--------------------------- |
+| Web panel                   | `http://localhost`          |
 | API documentation (OpenAPI) | `http://localhost/docs/api` |
-| Health check | `http://localhost/up` |
+| Health check                | `http://localhost/up`       |
 
-| Role | Email | Password |
-| :--- | :--- | :--- |
-| Admin | `admin@ognivo.local` | `password` |
+| Role     | Email                   | Password   |
+|:-------- |:----------------------- |:---------- |
+| Admin    | `admin@ognivo.local`    | `password` |
 | Customer | `customer@ognivo.local` | `password` |
 
 > [!CAUTION]
@@ -234,14 +235,14 @@ Firewall: expose only `80` and `443` to the internet. The panel host must be abl
 
 ### Day-to-day commands
 
-| Action | Development | Production |
-| :--- | :--- | :--- |
-| Start (builds missing images) | `make up-dev` | `make up-prod` |
+| Action                                         | Development      | Production        |
+|:---------------------------------------------- |:---------------- |:----------------- |
+| Start (builds missing images)                  | `make up-dev`    | `make up-prod`    |
 | Rebuild after Dockerfile or dependency changes | `make build-dev` | `make build-prod` |
-| Status and health | `make ps` | `make ps` |
-| Follow logs | `make logs-dev` | `make logs-prod` |
-| Stop | `make down-dev` | `make down-prod` |
-| Reset the dev database | `make reset-dev` | not applicable |
+| Status and health                              | `make ps`        | `make ps`         |
+| Follow logs                                    | `make logs-dev`  | `make logs-prod`  |
+| Stop                                           | `make down-dev`  | `make down-prod`  |
+| Reset the dev database                         | `make reset-dev` | not applicable    |
 
 Starting one environment stops the other, so they never fight over ports. After editing `.env.development` or `.env.production`, run `make up-dev` or `make up-prod` so the containers are recreated with the new values. More in the [Commands reference](docs/operations/commands.md).
 
@@ -267,14 +268,12 @@ Ognivo is only useful once it manages a hypervisor.
 incus config set core.https_address <host-ip>:8443
 
 # Create a one-time trust token for the panel
-incus config trust add-token ognivo-panel
+incus config trust add token ognivo-panel
 ```
-
-<!-- TODO: verify these two commands on a clean Incus 6.0 LTS install and note any per-version differences. -->
 
 **In the Ognivo admin UI:**
 
-1. Open **Host Nodes & Regions**, click **Create Node**, choose **Connect with token**.
+1. Open **Compute Nodes**, click **Create Node**, choose **Connect with token**.
 2. Enter a name, paste the token and set the CPU, RAM and storage capacity.
 3. Click **Connect with token**. Ognivo verifies the server fingerprint from the token before sending any secret, then pins it.
 4. Select the images this node should offer, then create an IP pool for it under **Networking & IPAM**.
@@ -294,14 +293,14 @@ Alternative flow with a pre-trusted certificate and full details: [Host Onboardi
 
 ## Documentation
 
-| Section | Guides |
-| :--- | :--- |
-| Getting started | [Installation](docs/getting-started/installation.md), [Quickstart](docs/getting-started/quickstart.md), [Development environment](docs/getting-started/development.md) |
-| Architecture and security | [System architecture](docs/architecture/overview.md), [Security and audit log](docs/architecture/security-and-audit.md) |
-| Features | [Host onboarding & mTLS](docs/features/host-onboarding.md), [Images](docs/features/images.md), [Networking & IPAM](docs/features/networking.md), [Web terminal](docs/features/terminal.md), [Snapshots](docs/features/snapshots.md) |
-| Operations | [Production deployment](docs/operations/production.md), [Upgrading](docs/operations/upgrading.md), [Backup and restore](docs/operations/backup-restore.md), [Scheduled tasks](docs/operations/scheduler.md), [Configuration reference](docs/operations/configuration.md), [Commands](docs/operations/commands.md), [Troubleshooting](docs/operations/troubleshooting.md) |
-| Reference | [API](docs/reference/api.md) (interactive OpenAPI at `/docs/api` on a running panel) |
-| Testing | [Automated testing](docs/testing/automated-testing.md), [Manual QA & API scenarios](docs/testing/manual-qa.md) |
+| Section                   | Guides                                                                                                                                                                                                                                                                                                                                                                   |
+|:------------------------- |:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Getting started           | [Installation](docs/getting-started/installation.md), [Quickstart](docs/getting-started/quickstart.md), [Development environment](docs/getting-started/development.md)                                                                                                                                                                                                   |
+| Architecture and security | [System architecture](docs/architecture/overview.md), [Security and audit log](docs/architecture/security-and-audit.md)                                                                                                                                                                                                                                                  |
+| Features                  | [Host onboarding & mTLS](docs/features/host-onboarding.md), [Images](docs/features/images.md), [Networking & IPAM](docs/features/networking.md), [Web terminal](docs/features/terminal.md), [Snapshots](docs/features/snapshots.md)                                                                                                                                      |
+| Operations                | [Production deployment](docs/operations/production.md), [Upgrading](docs/operations/upgrading.md), [Backup and restore](docs/operations/backup-restore.md), [Scheduled tasks](docs/operations/scheduler.md), [Configuration reference](docs/operations/configuration.md), [Commands](docs/operations/commands.md), [Troubleshooting](docs/operations/troubleshooting.md) |
+| Reference                 | [API](docs/reference/api.md) (interactive OpenAPI at `/docs/api` on a running panel)                                                                                                                                                                                                                                                                                     |
+| Testing                   | [Automated testing](docs/testing/automated-testing.md), [Manual QA & API scenarios](docs/testing/manual-qa.md)                                                                                                                                                                                                                                                           |
 
 <!-- NOTE: Images, Upgrading, Backup and restore, Scheduled tasks, Web terminal and API pages do not exist yet. Create them or remove these links before publishing. -->
 
@@ -314,13 +313,14 @@ Alternative flow with a pre-trusted certificate and full details: [Host Onboardi
 
 ## Roadmap
 
-Planned work is tracked in [GitHub milestones](https://github.com/<OWNER>/ognivo/milestones) and [`CHANGELOG.md`](CHANGELOG.md). Current priorities: finishing 1.0 (instance access provisioning, VM metrics), `httpOnly` cookie authentication, IPv6 IPAM, storage pool selection and more backup targets.
+Planned work is tracked [`CHANGELOG.md`](CHANGELOG.md). Current priorities: finishing 1.0 (instance access provisioning, VM metrics), `httpOnly` cookie authentication, IPv6 IPAM, storage pool selection and more backup targets.
 
 ## Upgrading and backups
 
 - **Alpha releases:** versions before the first beta may need a fresh install. Each release's notes in [`CHANGELOG.md`](CHANGELOG.md) say whether an in-place upgrade is supported. See [Upgrading](docs/operations/upgrading.md).
-- **Typical upgrade of an existing install** (when supported):
 
+- **Typical upgrade of an existing install** (when supported):
+  
   ```bash
   git fetch --tags && git checkout <new-tag>
   make build-prod
@@ -329,6 +329,7 @@ Planned work is tracked in [GitHub milestones](https://github.com/<OWNER>/ognivo
   ```
 
 - **MySQL grants:** the users `ognivo_user`, `audit_writer` and `audit_maintenance` are created at first install and not modified on upgrade. When a release changes privileges, re-apply them with `php artisan audit:grants --force`.
+
 - **What to back up:** the MySQL volume, `.env.production`, `docker/certs/`. Details in [Backup and restore](docs/operations/backup-restore.md).
 
 ## Security
@@ -341,13 +342,13 @@ Contributions are welcome, including translations (the UI is available in Englis
 
 ## Technology stack
 
-| Layer | Technologies |
-| :--- | :--- |
-| Backend | PHP 8.5 (FPM Alpine), Laravel 13, Sanctum 4, Spatie Permission and Model States, Dedoc Scramble (OpenAPI 3) |
-| Frontend | Next.js 16 (App Router, Turbopack), React 19, strict TypeScript, Tailwind CSS 4, Lucide, `xterm.js` |
-| Real-time | Laravel Reverb 1.12, Laravel Echo, Node.js 26 `console-proxy` |
-| Data | MySQL 8.4 LTS, Redis 7 (`predis`), Nginx |
-| Quality | Pest 5 / PHPUnit 13, Pint, Larastan (level 10), Psalm (level 1), ESLint 9, Node test runner |
+| Layer     | Technologies                                                                                                |
+|:--------- |:----------------------------------------------------------------------------------------------------------- |
+| Backend   | PHP 8.5 (FPM Alpine), Laravel 13, Sanctum 4, Spatie Permission and Model States, Dedoc Scramble (OpenAPI 3) |
+| Frontend  | Next.js 16 (App Router, Turbopack), React 19, strict TypeScript, Tailwind CSS 4, Lucide, `xterm.js`         |
+| Real-time | Laravel Reverb 1.12, Laravel Echo, Node.js 26 `console-proxy`                                               |
+| Data      | MySQL 8.4 LTS, Redis 7 (`predis`), Nginx                                                                    |
+| Quality   | Pest 5 / PHPUnit 13, Pint, Larastan (level 10), Psalm (level 1), ESLint 9, Node test runner                 |
 
 ## License
 
