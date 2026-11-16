@@ -172,6 +172,7 @@ test('customer requests never leak host secrets or infrastructure keys across en
         'name',
         'region',
         'driver',
+        'status',
         'is_active',
     ]);
 
@@ -198,6 +199,7 @@ test('customer requests never leak host secrets or infrastructure keys across en
         'name' => 'sec-node-01',
         'region' => 'eu-central-1',
         'driver' => 'incus',
+        'status' => 'ok',
         'is_active' => true,
     ]);
 
