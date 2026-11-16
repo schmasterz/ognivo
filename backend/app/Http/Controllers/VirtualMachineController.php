@@ -83,11 +83,16 @@ final class VirtualMachineController extends Controller
 
         if ($request->filled('status')) {
             $status = $request->string('status')->value();
-            if (in_array($status, ['active', 'inactive', 'pending'], true)) {
-                $query->whereHas('user', fn (Builder $uq): Builder => $uq->where('status', $status));
+            if ($status === 'deleted') {
+                $query->where('status', 'deleted');
+            } elseif (in_array($status, ['active', 'inactive', 'pending'], true)) {
+                $query->whereHas('user', fn (Builder $uq): Builder => $uq->where('status', $status))
+                    ->where('status', '!=', 'deleted');
             } else {
                 $query->where('status', $status);
             }
+        } else {
+            $query->where('status', '!=', 'deleted');
         }
 
         if ($request->filled('instance_type')) {
