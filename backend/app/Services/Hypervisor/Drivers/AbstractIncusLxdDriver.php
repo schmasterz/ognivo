@@ -521,6 +521,16 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
     #[Override]
     public function createSnapshot(VirtualMachine $vm, string $name, bool $stateful = false): bool
     {
+        if ($stateful) {
+            $this->client()
+                ->withQueryParameters(['project' => $vm->incus_project])
+                ->patch(sprintf('/1.0/instances/%s', rawurlencode($vm->name)), [
+                    'config' => [
+                        'migration.stateful' => 'true',
+                    ],
+                ]);
+        }
+
         /** @var Response $response */
         $response = $this->client()
             ->withQueryParameters(['project' => $vm->incus_project])
@@ -613,7 +623,11 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
             ->withQueryParameters(['project' => $vm->incus_project])
             ->delete(sprintf('/1.0/instances/%s/snapshots/%s', rawurlencode($vm->name), rawurlencode($name)));
 
-        return $this->handleOperationResponse($response, $vm->incus_project);
+        if ($response->status() === 404) {
+            return true;
+        }
+
+        return $this->handleOperationResponse($response, $vm->incus_project, ['not found']);
     }
 
     #[Override]

@@ -53,6 +53,7 @@ class InstanceSpecBuilder
         $config = [
             'limits.cpu' => (string) $vm->cpu_cores,
             'limits.memory' => sprintf('%dMB', $vm->ram_mb),
+            'migration.stateful' => 'true',
         ];
 
         $userData = $this->extractUserData($vm);

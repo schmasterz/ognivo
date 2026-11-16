@@ -85,7 +85,7 @@ class VmSnapshotService
         }
 
         try {
-            $this->assertValidVmStateForCreate($vm);
+            $this->assertValidVmStateForCreate($vm, $stateful);
             $this->assertValidSnapshotName($snapshotName);
             $this->assertValidSource($source);
 
@@ -94,7 +94,7 @@ class VmSnapshotService
             /** @var VmSnapshot $snapshot */
             $snapshot = $lock->block(5, function () use ($vm, $snapshotName, $stateful, $source): VmSnapshot {
                 return DB::transaction(function () use ($vm, $snapshotName, $stateful, $source): VmSnapshot {
-                    $this->assertValidVmStateForCreate($vm);
+                    $this->assertValidVmStateForCreate($vm, $stateful);
 
                     if (VmSnapshot::query()
                         ->where('virtual_machine_id', $vm->id)
@@ -388,8 +388,16 @@ class VmSnapshotService
      *
      * @throws InvalidVmStateException
      */
-    private function assertValidVmStateForCreate(VirtualMachine $vm): void
+    private function assertValidVmStateForCreate(VirtualMachine $vm, bool $stateful = false): void
     {
+        if ($stateful && ! $vm->status->equals(Running::class)) {
+            throw new InvalidVmStateException(
+                (string) $vm->status,
+                'create stateful snapshot',
+                sprintf('Cannot create stateful snapshot for virtual machine "%s" while in "%s" state. Virtual machine must be running to capture memory state.', $vm->name, (string) $vm->status)
+            );
+        }
+
         if (! $this->isVmInStableState($vm)) {
             throw new InvalidVmStateException(
                 (string) $vm->status,

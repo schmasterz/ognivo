@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Unit;
 
+use App\Contracts\BackupTargetInterface;
 use App\Exceptions\FingerprintMismatchException;
+use App\Jobs\DeleteSnapshotJob;
 use App\Models\Host;
 use App\Models\PanelCertificate;
 use App\Models\User;
 use App\Models\VirtualMachine;
+use App\Models\VmSnapshot;
 use App\Services\Hypervisor\Drivers\FakeHypervisorDriver;
 use App\Services\Hypervisor\Drivers\IncusDriver;
 use App\Services\Hypervisor\Drivers\LxdDriver;
@@ -221,6 +224,7 @@ final class HypervisorSnapshotDriverTest extends TestCase
     public function test_incus_driver_create_snapshot_sends_request_and_waits_for_async_operation(): void
     {
         Http::fake([
+            'https://incus-snap.local:8443/1.0/instances/vm-snap-01?project=tenant-snap-proj' => Http::response([], 200),
             'https://incus-snap.local:8443/1.0/instances/vm-snap-01/snapshots?project=tenant-snap-proj' => Http::response([
                 'type' => 'async',
                 'status' => 'Operation created',
@@ -379,12 +383,18 @@ final class HypervisorSnapshotDriverTest extends TestCase
                 'error' => 'Instance snapshot not found',
                 'error_code' => 404,
             ], 404),
+            'https://incus-snap.local:8443/1.0/instances/vm-snap-01/snapshots/snap-error?project=tenant-snap-proj' => Http::response([
+                'type' => 'error',
+                'error' => 'Internal server error',
+                'error_code' => 500,
+            ], 500),
         ]);
 
         $driver = new IncusDriver($this->incusHost);
 
         $this->assertTrue($driver->deleteSnapshot($this->vm, 'snap-exists'));
-        $this->assertFalse($driver->deleteSnapshot($this->vm, 'snap-missing'));
+        $this->assertTrue($driver->deleteSnapshot($this->vm, 'snap-missing'));
+        $this->assertFalse($driver->deleteSnapshot($this->vm, 'snap-error'));
     }
 
     public function test_gateway_delegates_snapshot_methods_and_propagates_hypervisor_fingerprint_mismatch_exception(): void
@@ -422,5 +432,49 @@ final class HypervisorSnapshotDriverTest extends TestCase
 
         $this->expectException(FingerprintMismatchException::class);
         $driver->createSnapshot($this->vm, 'should-fail-pinning');
+    }
+
+    public function test_delete_snapshot_job_safely_removes_failed_snapshot_record_even_if_backup_target_fails(): void
+    {
+        $snapshot = VmSnapshot::create([
+            'virtual_machine_id' => $this->vm->id,
+            'user_id' => $this->user->id,
+            'name' => 'failed-snap-target-failure',
+            'source' => VmSnapshot::SOURCE_MANUAL,
+            'status' => VmSnapshot::STATUS_FAILED,
+            'error' => 'Creation failed earlier',
+        ]);
+
+        $mockTarget = Mockery::mock(BackupTargetInterface::class);
+        $mockTarget->shouldReceive('delete')
+            ->once()
+            ->with(Mockery::type(VirtualMachine::class), 'failed-snap-target-failure')
+            ->andReturn(false);
+
+        (new DeleteSnapshotJob($snapshot))->handle($mockTarget);
+
+        $this->assertDatabaseMissing('vm_snapshots', ['id' => $snapshot->id]);
+    }
+
+    public function test_delete_snapshot_job_safely_removes_failed_snapshot_record_even_if_backup_target_throws(): void
+    {
+        $snapshot = VmSnapshot::create([
+            'virtual_machine_id' => $this->vm->id,
+            'user_id' => $this->user->id,
+            'name' => 'failed-snap-target-throw',
+            'source' => VmSnapshot::SOURCE_MANUAL,
+            'status' => VmSnapshot::STATUS_FAILED,
+            'error' => 'Creation failed earlier',
+        ]);
+
+        $mockTarget = Mockery::mock(BackupTargetInterface::class);
+        $mockTarget->shouldReceive('delete')
+            ->once()
+            ->with(Mockery::type(VirtualMachine::class), 'failed-snap-target-throw')
+            ->andThrow(new \RuntimeException('Hypervisor unreachable'));
+
+        (new DeleteSnapshotJob($snapshot))->handle($mockTarget);
+
+        $this->assertDatabaseMissing('vm_snapshots', ['id' => $snapshot->id]);
     }
 }

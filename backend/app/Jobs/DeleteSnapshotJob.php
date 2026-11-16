@@ -83,14 +83,22 @@ final class DeleteSnapshotJob implements ShouldQueue
             if ($vm !== null && ! $vm->status->equals(Deleted::class)) {
                 Log::info(sprintf('Deleting snapshot "%s" on VM #%d (%s)', $this->snapshot->name, $vm->id, $vm->name));
 
-                $deleted = $target->delete($vm, $this->snapshot->name);
-                if (! $deleted) {
-                    throw new RuntimeException(sprintf(
-                        'Backup target failed to delete snapshot "%s" on VM #%d (%s).',
-                        $this->snapshot->name,
-                        $vm->id,
-                        $vm->name
-                    ));
+                $isFailed = $this->snapshot->status === VmSnapshot::STATUS_FAILED;
+                try {
+                    $deleted = $target->delete($vm, $this->snapshot->name);
+                    if (! $deleted && ! $isFailed) {
+                        throw new RuntimeException(sprintf(
+                            'Backup target failed to delete snapshot "%s" on VM #%d (%s).',
+                            $this->snapshot->name,
+                            $vm->id,
+                            $vm->name
+                        ));
+                    }
+                } catch (Throwable $e) {
+                    if (! $isFailed) {
+                        throw $e;
+                    }
+                    Log::warning(sprintf('Ignoring backup target error while deleting failed snapshot "%s" on VM #%d: %s', $this->snapshot->name, $vm->id, $e->getMessage()));
                 }
             }
 
