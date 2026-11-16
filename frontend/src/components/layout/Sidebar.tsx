@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { User } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
+import { OgnivoLogo } from "@/components/ui/OgnivoLogo";
 
 interface SidebarProps {
   user: User | null;
@@ -87,8 +88,8 @@ export function Sidebar({
         <div className="p-5 border-b border-gray-200 dark:border-gray-800/60">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="p-2.5 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl text-white shadow-md shadow-blue-500/20">
-                <Server className="w-5 h-5" />
+              <div className="flex items-center justify-center">
+                <OgnivoLogo variant="mark" className="w-10 h-10" />
               </div>
               <div>
                 <div className="flex items-center space-x-1.5">
@@ -110,7 +111,7 @@ export function Sidebar({
               className="lg:hidden p-1.5 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
               aria-label={t("closeMenu")}
             >
-              <X className="w-5 h-5" />
+              <X className="w-8 h-8" />
             </button>
           </div>
         </div>
