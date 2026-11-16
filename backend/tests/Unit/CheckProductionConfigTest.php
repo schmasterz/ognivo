@@ -9,6 +9,117 @@ use Tests\TestCase;
 
 final class CheckProductionConfigTest extends TestCase
 {
+    /**
+     * @var array<string, string|false>
+     */
+    private array $originalGetenv = [];
+
+    /**
+     * @var array<string, mixed>
+     */
+    private array $originalEnv = [];
+
+    /**
+     * @var array<string, mixed>
+     */
+    private array $originalServer = [];
+
+    /**
+     * @var array<string, mixed>
+     */
+    private array $originalConfig = [];
+
+    private const TRACKED_ENV_VARS = [
+        'APP_KEY',
+        'APP_DEBUG',
+        'RUN_SEEDERS',
+        'DB_PASSWORD',
+        'DB_ROOT_PASSWORD',
+        'REVERB_APP_SECRET',
+        'REVERB_ALLOWED_ORIGINS',
+        'REDIS_PASSWORD',
+        'REVERB_APP_KEY',
+        'AUDIT_DB_PASSWORD',
+        'AUDIT_MAINT_DB_PASSWORD',
+        'DB_MIGRATION_PASSWORD',
+        'AUDIT_HMAC_KEY',
+        'AUDIT_HMAC_KEY_ID',
+        'AUDIT_PSEUDONYM_SALT',
+    ];
+
+    private const TRACKED_CONFIGS = [
+        'app.key',
+        'app.debug',
+        'app.run_seeders',
+        'database.connections.mysql.password',
+        'database.connections.mysql.root_password',
+        'reverb.apps.apps.0.secret',
+        'reverb.apps.apps.0.allowed_origins',
+        'database.redis.default.password',
+        'reverb.apps.apps.0.key',
+        'database.connections.audit.password',
+        'database.connections.audit_maintenance.password',
+        'database.connections.migration.password',
+        'audit.hmac_keys.v1',
+        'audit.hmac_key_id',
+        'audit.hmac.current_key',
+        'audit.hmac.keys.v1',
+        'audit.pseudonym_salt',
+    ];
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->originalGetenv = [];
+        $this->originalEnv = [];
+        $this->originalServer = [];
+        $this->originalConfig = [];
+
+        foreach (self::TRACKED_ENV_VARS as $key) {
+            $this->originalGetenv[$key] = getenv($key);
+            if (array_key_exists($key, $_ENV)) {
+                $this->originalEnv[$key] = $_ENV[$key];
+            }
+            if (array_key_exists($key, $_SERVER)) {
+                $this->originalServer[$key] = $_SERVER[$key];
+            }
+        }
+
+        foreach (self::TRACKED_CONFIGS as $key) {
+            $this->originalConfig[$key] = config($key);
+        }
+    }
+
+    protected function tearDown(): void
+    {
+        foreach (self::TRACKED_ENV_VARS as $key) {
+            if ($this->originalGetenv[$key] === false) {
+                putenv($key);
+            } else {
+                putenv("{$key}={$this->originalGetenv[$key]}");
+            }
+
+            if (array_key_exists($key, $this->originalEnv)) {
+                $_ENV[$key] = $this->originalEnv[$key];
+            } else {
+                unset($_ENV[$key]);
+            }
+
+            if (array_key_exists($key, $this->originalServer)) {
+                $_SERVER[$key] = $this->originalServer[$key];
+            } else {
+                unset($_SERVER[$key]);
+            }
+        }
+
+        foreach ($this->originalConfig as $key => $val) {
+            config([$key => $val]);
+        }
+
+        parent::tearDown();
+    }
+
     private function setEnv(string $key, string $value): void
     {
         $_ENV[$key] = $value;

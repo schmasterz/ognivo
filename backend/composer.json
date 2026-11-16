@@ -9,6 +9,7 @@
         "php": "^8.5",
         "ext-openssl": "*",
         "dedoc/scramble": "^0.13.52",
+        "guzzlehttp/guzzle": "^7.8.2",
         "laravel/framework": "^13.30",
         "laravel/reverb": "^1.12",
         "laravel/sanctum": "^4.0",
