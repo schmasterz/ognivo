@@ -120,6 +120,25 @@ class VmLifecycleService
             abort(409, is_string($msg) ? $msg : 'Invalid state transition.');
         }
 
+        $isAdmin = $user !== null && $user->hasRole('admin');
+        $actualForce = ($action === 'delete') ? ($isAdmin && $force) : $force;
+
+        if ($vm->host !== null && $vm->host->status === 'unreachable') {
+            if (! ($action === 'delete' && $actualForce)) {
+                $exception = ValidationException::withMessages([
+                    'host' => ['The compute node hosting this virtual machine is currently unreachable.'],
+                ]);
+                $exception->errorBag = 'default';
+                $exception->response = response()->json([
+                    'message' => 'Host Unreachable',
+                    'errors' => [
+                        'host' => ['The compute node hosting this virtual machine is currently unreachable.'],
+                    ],
+                ], 422);
+                throw $exception;
+            }
+        }
+
         if ($action === 'reinstall') {
             if ($osImage !== null && $osImage !== '') {
                 $allowedImage = Image::where('name', $osImage)->where('enabled', true)->first();
@@ -169,9 +188,6 @@ class VmLifecycleService
 
             return;
         }
-
-        $isAdmin = $user !== null && $user->hasRole('admin');
-        $actualForce = ($action === 'delete') ? ($isAdmin && $force) : $force;
 
         if ($action === 'delete' && $actualForce) {
             $this->logger()->record(new AuditEntry(

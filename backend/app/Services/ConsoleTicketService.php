@@ -21,6 +21,7 @@ use App\States\Vm\Running;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -122,6 +123,20 @@ final class ConsoleTicketService
 
         if ($vm->instance_type === 'container' && $type === 'vga') {
             throw new InvalidArgumentException('Containers do not support graphical VGA console.');
+        }
+
+        if ($vm->host !== null && $vm->host->status === 'unreachable') {
+            $exception = ValidationException::withMessages([
+                'host' => ['The compute node hosting this virtual machine is currently unreachable.'],
+            ]);
+            $exception->errorBag = 'default';
+            $exception->response = response()->json([
+                'message' => 'Host Unreachable',
+                'errors' => [
+                    'host' => ['The compute node hosting this virtual machine is currently unreachable.'],
+                ],
+            ], 422);
+            throw $exception;
         }
 
         $ticketTtl = max(10, Cast::int(config('hypervisor.terminal.ticket_ttl_seconds'), 60));
