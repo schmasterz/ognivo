@@ -15,7 +15,7 @@ interface CreateVmModalProps {
     allow_virtual_machines?: boolean;
     allow_containers?: boolean;
   } | null;
-  existingVms?: { name: string; host_id?: number | null }[];
+  existingVms?: { name: string; host_id?: number | null; status?: string }[];
   existingVmNames?: string[];
   onSuccess: () => void;
 }
@@ -54,6 +54,7 @@ export function CreateVmModal({
       existingVms && selectedHostId !== null
         ? existingVms.some(
             (vm) =>
+              (vm.status ? vm.status.toLowerCase() !== "deleted" : true) &&
               vm.name.toLowerCase() === name.trim().toLowerCase() &&
               (vm.host_id === selectedHostId || (!vm.host_id && hosts.length > 0 && hosts[0].id === selectedHostId))
           )

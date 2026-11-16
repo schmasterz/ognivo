@@ -182,7 +182,9 @@ export function DashboardModals({
           onClose={() => setCreateModalOpen(false)}
           quotaData={quotaData}
           systemSettings={systemSettings}
-          existingVms={vms.map((v) => ({ name: v.name, host_id: v.host_id }))}
+          existingVms={vms
+            .filter((v) => v.status?.toLowerCase() !== "deleted")
+            .map((v) => ({ name: v.name, host_id: v.host_id, status: v.status }))}
           onSuccess={() => {
             toast.success("Instance provisioning started!");
             loadData();
