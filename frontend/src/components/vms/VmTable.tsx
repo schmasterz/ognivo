@@ -57,6 +57,9 @@ export function VmTable({
     vm: VirtualMachine,
     action: "start" | "stop" | "restart" | "suspend" | "delete"
   ) => {
+    if (vm.host?.status === "unreachable") {
+      return;
+    }
     if (onRequestAction) {
       onRequestAction(vm, action);
       return;
@@ -233,6 +236,7 @@ export function VmTable({
               const isRunning = vm.status.toLowerCase() === "running";
               const isStopped = vm.status.toLowerCase() === "stopped";
               const isSuspended = vm.status.toLowerCase() === "suspended";
+              const isHostUnreachable = vm.host?.status === "unreachable";
 
               return (
                 <tr key={vm.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition group">
@@ -296,12 +300,25 @@ export function VmTable({
                   )}
 
                   <td className="px-4 sm:px-6 py-3.5" title={vm.failure_reason || undefined}>
-                    {getStatusBadge(vm.status)}
-                    {vm.status.toLowerCase() === "failed" && vm.failure_reason && (
-                      <div className="mt-1 max-w-[220px] truncate text-[11px] text-red-500 dark:text-red-400 font-mono">
-                        {vm.failure_reason}
+                    <div className="flex flex-col items-start gap-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {getStatusBadge(vm.status)}
+                        {isHostUnreachable && (
+                          <span
+                            className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                            title={t("hostUnreachableTooltip")}
+                          >
+                            <AlertCircle className="w-3 h-3 mr-1" />
+                            {t("hostUnreachable")}
+                          </span>
+                        )}
                       </div>
-                    )}
+                      {vm.status.toLowerCase() === "failed" && vm.failure_reason && (
+                        <div className="mt-1 max-w-[220px] truncate text-[11px] text-red-500 dark:text-red-400 font-mono">
+                          {vm.failure_reason}
+                        </div>
+                      )}
+                    </div>
                   </td>
 
                   <td className="px-4 sm:px-6 py-3.5 font-mono text-xs whitespace-nowrap">
@@ -348,8 +365,8 @@ export function VmTable({
                       {/* Console / Terminal Button */}
                       <button
                         onClick={() => onOpenConsole(vm)}
-                        disabled={isActing}
-                        title="Open Console"
+                        disabled={isActing || isHostUnreachable}
+                        title={isHostUnreachable ? t("hostUnreachableTooltip") : "Open Console"}
                         className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition disabled:opacity-50"
                       >
                         <Terminal className="w-4 h-4" />
@@ -360,8 +377,8 @@ export function VmTable({
                         <>
                           <button
                             onClick={() => handleActionClick(vm, "stop")}
-                            disabled={isActing}
-                            title={t("stopInstance")}
+                            disabled={isActing || isHostUnreachable}
+                            title={isHostUnreachable ? t("hostUnreachableTooltip") : t("stopInstance")}
                             className="p-1.5 rounded-lg bg-gray-100 hover:bg-amber-500/20 dark:bg-gray-800 dark:hover:bg-amber-500/20 text-gray-600 dark:text-gray-300 hover:text-amber-500 transition disabled:opacity-50"
                           >
                             {isActing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Square className="w-4 h-4" />}
@@ -369,8 +386,8 @@ export function VmTable({
 
                           <button
                             onClick={() => handleActionClick(vm, "suspend")}
-                            disabled={isActing}
-                            title={t("suspendInstance")}
+                            disabled={isActing || isHostUnreachable}
+                            title={isHostUnreachable ? t("hostUnreachableTooltip") : t("suspendInstance")}
                             className="p-1.5 rounded-lg bg-gray-100 hover:bg-yellow-500/20 dark:bg-gray-800 dark:hover:bg-yellow-500/20 text-gray-600 dark:text-gray-300 hover:text-yellow-500 transition disabled:opacity-50"
                           >
                             <Pause className="w-4 h-4" />
@@ -379,8 +396,8 @@ export function VmTable({
                       ) : (
                         <button
                           onClick={() => handleActionClick(vm, "start")}
-                          disabled={isActing || vm.status.toLowerCase() === "deleting"}
-                          title={t("startInstance")}
+                          disabled={isActing || isHostUnreachable || vm.status.toLowerCase() === "deleting"}
+                          title={isHostUnreachable ? t("hostUnreachableTooltip") : t("startInstance")}
                           className="p-1.5 rounded-lg bg-gray-100 hover:bg-emerald-500/20 dark:bg-gray-800 dark:hover:bg-emerald-500/20 text-gray-600 dark:text-gray-300 hover:text-emerald-500 transition disabled:opacity-50"
                         >
                           {isActing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
@@ -390,8 +407,8 @@ export function VmTable({
                       {/* Restart Button with Confirmation */}
                       <button
                         onClick={() => handleActionClick(vm, "restart")}
-                        disabled={isActing || isStopped || isSuspended || vm.status.toLowerCase() === "deleting"}
-                        title={t("restartInstance")}
+                        disabled={isActing || isStopped || isSuspended || isHostUnreachable || vm.status.toLowerCase() === "deleting"}
+                        title={isHostUnreachable ? t("hostUnreachableTooltip") : t("restartInstance")}
                         className="p-1.5 rounded-lg bg-gray-100 hover:bg-blue-500/20 dark:bg-gray-800 dark:hover:bg-blue-500/20 text-gray-600 dark:text-gray-300 hover:text-blue-500 transition disabled:opacity-50"
                       >
                         <RotateCw className="w-4 h-4" />
@@ -400,8 +417,8 @@ export function VmTable({
                       {/* Delete Button with Confirmation */}
                       <button
                         onClick={() => handleActionClick(vm, "delete")}
-                        disabled={isActing}
-                        title={t("deleteInstance")}
+                        disabled={isActing || isHostUnreachable}
+                        title={isHostUnreachable ? t("hostUnreachableTooltip") : t("deleteInstance")}
                         className="p-1.5 rounded-lg bg-gray-100 hover:bg-red-500/20 dark:bg-gray-800 dark:hover:bg-red-500/20 text-gray-600 dark:text-gray-300 hover:text-red-500 transition disabled:opacity-50"
                       >
                         <Trash2 className="w-4 h-4" />

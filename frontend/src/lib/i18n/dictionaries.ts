@@ -63,6 +63,8 @@ export const dictionaries = {
     reinstallSuccess: "Instance reinstallation initiated successfully.",
     reinstallError: "Failed to reinstall instance.",
     statusSuspended: "Suspended",
+    hostUnreachable: "Host Unreachable",
+    hostUnreachableTooltip: "The compute node hosting this instance is unreachable. All actions are disabled.",
 
     // Deploy Modal
     deployTitle: "Deploy New Instance",
@@ -746,6 +748,8 @@ export const dictionaries = {
     reinstallSuccess: "Преинсталирането на инстанцията е стартирано успешно.",
     reinstallError: "Неуспешно преинсталиране на инстанцията.",
     statusSuspended: "Приспана",
+    hostUnreachable: "Нодът е недостъпен",
+    hostUnreachableTooltip: "Сървърът на тази инстанция е недостъпен. Всички действия са блокирани.",
 
     // Deploy Modal
     deployTitle: "Създаване на Нова Инстанция",

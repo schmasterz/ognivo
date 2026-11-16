@@ -43,6 +43,7 @@ export interface TenantHost {
   region?: string | null;
   driver: "incus" | "lxd" | "fake" | string;
   is_active: boolean;
+  status?: "ok" | "unreachable" | string;
 }
 
 export interface HostDiscoveredNetwork {
