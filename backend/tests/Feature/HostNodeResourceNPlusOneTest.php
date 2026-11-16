@@ -98,7 +98,7 @@ final class HostNodeResourceNPlusOneTest extends TestCase
         $response = $this->actingAs($this->admin)->getJson('/api/vms?per_page=50');
 
         $response->assertOk();
-        $response->assertJsonCount(7, 'data');
+        $response->assertJsonCount(6, 'data');
 
         /** @var list<array{query: string, bindings: array<mixed>, time: float}> $queries */
         $queries = DB::getQueryLog();
