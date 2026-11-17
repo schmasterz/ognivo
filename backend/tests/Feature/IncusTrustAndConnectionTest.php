@@ -196,6 +196,13 @@ describe('Panel Certificate Generation & Lifecycle', function () {
         $custRes = $this->actingAs($this->customer)->get('/api/admin/incus/certificate/download');
         $custRes->assertForbidden();
     });
+
+    test('unauthenticated download without Accept header returns 401 JSON instead of 500', function () {
+        $res = $this->get('/api/admin/incus/certificate/download');
+
+        $res->assertUnauthorized()
+            ->assertExactJson(['message' => 'Unauthenticated.']);
+    });
 });
 
 /*

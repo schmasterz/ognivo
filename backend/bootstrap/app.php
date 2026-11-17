@@ -35,6 +35,8 @@ return Application::configure(basePath: dirname(__DIR__))
         };
         $middleware->trustProxies(at: $at);
 
+        $middleware->redirectGuestsTo(fn (Request $request) => null);
+
         $middleware->append(SetLocaleMiddleware::class);
         $middleware->api(prepend: [
             SetAuditContext::class,
