@@ -174,10 +174,11 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-8">
           {/* Dynamic Resource Quotas / Cluster Overview Section */}
-          {(activeTab === "vms" ||
-            activeTab === "snapshots" ||
-            activeTab === "networking" ||
-            activeTab === "users") && (
+          {(isAdmin
+            ? activeTab === "vms"
+            : activeTab === "vms" ||
+              activeTab === "snapshots" ||
+              activeTab === "networking") && (
             <DashboardQuotaSection
               quotaData={quotaData}
               adminStats={adminStats}
