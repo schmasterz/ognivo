@@ -2,8 +2,8 @@
 
 **Open-source, multi-tenant control plane for KVM virtual machines and LXC system containers on Incus.**
 
-[![CI](https://img.shields.io/github/actions/workflow/status/<OWNER>/ognivo/ci.yml?label=CI)](https://github.com/<OWNER>/ognivo/actions)
-[![Release](https://img.shields.io/github/v/release/<OWNER>/ognivo?include_prereleases)](CHANGELOG.md)
+[![CI](https://img.shields.io/github/actions/workflow/status/schmasterz/ognivo/ci.yml?label=CI)](https://github.com/schmasterz/ognivo/actions)
+[![Release](https://img.shields.io/github/v/release/schmasterz/ognivo?include_prereleases)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](LICENSE)
 [![PHP 8.5](https://img.shields.io/badge/PHP-8.5-777BB4?logo=php&logoColor=white)](https://www.php.net/)
 [![Laravel 13](https://img.shields.io/badge/Laravel-13-FF2D20?logo=laravel&logoColor=white)](https://laravel.com/)
@@ -130,7 +130,7 @@ docker --version && docker compose version && make --version && openssl version 
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/<OWNER>/ognivo.git
+git clone https://github.com/schmasterz/ognivo.git
 cd ognivo
 ```
 
@@ -309,7 +309,7 @@ Alternative flow with a pre-trusted certificate and full details: [Host Onboardi
 - **IPv4 only.** IPAM supports IPv4 pools and allocation. IPv6 and dual-stack guests are planned for 1.1.
 - **Standalone nodes.** Each Incus endpoint is one compute node. Cross-cluster migration, cluster-wide storage pools, SSO/OIDC and object storage buckets are out of scope for 1.0.
 - **No plans or products yet.** Tenants pick CPU, RAM and disk within their quota. Overcommit is a global setting in `.env`.
-- **Bearer tokens in `localStorage`.** API tokens are stored in the browser and mitigated by a strict CSP and XSS hygiene. Migration to `httpOnly` SameSite cookies is planned (tracked in [issues](https://github.com/<OWNER>/ognivo/issues)).
+- **Bearer tokens in `localStorage`.** API tokens are stored in the browser and mitigated by a strict CSP and XSS hygiene. Migration to `httpOnly` SameSite cookies is planned (tracked in [issues](https://github.com/schmasterz/ognivo/issues)).
 
 ## Roadmap
 
