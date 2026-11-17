@@ -63,7 +63,8 @@ Ognivo maintainers aim to follow this process:
 
 We aim to acknowledge reports within 72 hours.
 
-Response and remediation times may vary depending on severity, complexity, and maintainer availability.
+This is a response target, not a guaranteed service-level agreement (SLA). Actual response and remediation times depend on severity, complexity, available information, and maintainer availability.
+If a report requires additional information, maintainers may contact the reporter for clarification.
 
 We ask reporters to allow reasonable time for remediation before public disclosure.
 
