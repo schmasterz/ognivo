@@ -94,9 +94,11 @@ export function QuotaOverview({
 
               <div className="mt-2 flex justify-between items-center text-[11px] text-gray-500 dark:text-gray-400">
                 <span>{item.subtitle}</span>
-                <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">
-                  {hasActiveFilters ? `${t("clusterOverview")} (${t("filtered")})` : t("clusterOverview")}
-                </span>
+                {hasActiveFilters && (
+                  <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">
+                    {t("filtered")}
+                  </span>
+                )}
               </div>
             </div>
           );
