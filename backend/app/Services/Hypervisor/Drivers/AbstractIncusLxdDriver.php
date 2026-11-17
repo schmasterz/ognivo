@@ -521,7 +521,7 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
     #[Override]
     public function createSnapshot(VirtualMachine $vm, string $name, bool $stateful = false): bool
     {
-        if ($stateful) {
+        if ($stateful && $vm->instance_type === 'virtual-machine') {
             $this->client()
                 ->withQueryParameters(['project' => $vm->incus_project])
                 ->patch(sprintf('/1.0/instances/%s', rawurlencode($vm->name)), [
