@@ -1,4 +1,4 @@
-import { request } from "./client";
+import { API_BASE, ApiError, request } from "./client";
 import {
   HostNode,
   HostResourcesResponse,
@@ -167,6 +167,38 @@ export const hostsApi = {
 
   async adminGetPanelCertificate(): Promise<PanelCertificateInfo> {
     return request<PanelCertificateInfo>("/admin/incus/certificate");
+  },
+
+  async adminDownloadPanelCertificate(): Promise<void> {
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    const url = `${API_BASE}/admin/incus/certificate/download`;
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Accept: "application/x-x509-ca-cert, application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new ApiError(
+        response.status,
+        (errorData as { message?: string }).message || "Failed to download panel certificate"
+      );
+    }
+
+    const blob = await response.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.download = "incus-panel.crt";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(downloadUrl);
   },
 
   async adminRotatePanelCertificate(days: number = 365): Promise<{
