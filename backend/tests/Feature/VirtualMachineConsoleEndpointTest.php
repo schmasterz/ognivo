@@ -333,6 +333,40 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
         $this->assertStringContainsString('Console access is restricted to the workload owner only', (string) $response->json('message'));
     }
 
+    public function test_admin_can_request_console_session_for_their_own_vm(): void
+    {
+        $adminVm = VirtualMachine::create([
+            'user_id' => $this->admin->id,
+            'host_id' => $this->host->id,
+            'name' => 'admin-owned-vm',
+            'incus_project' => 'default',
+            'instance_type' => 'virtual-machine',
+            'status' => Running::class,
+            'cpu_cores' => 2,
+            'ram_mb' => 2048,
+            'disk_gb' => 20,
+            'os_image' => 'images:ubuntu/24.04',
+        ]);
+
+        Sanctum::actingAs($this->admin);
+
+        $response = $this->postJson("/api/vms/{$adminVm->id}/console");
+
+        $response->assertStatus(200);
+        $response->assertJsonStructure([
+            'virtual_machine_id',
+            'ticket',
+            'websocket_path',
+            'expires_at',
+            'type',
+            'driver',
+            'session_id',
+            'fallback_reason',
+            'idle_timeout',
+        ]);
+        $this->assertSame($adminVm->id, $response->json('virtual_machine_id'));
+    }
+
     public function test_stopped_vm_returns_409_conflict(): void
     {
         $this->vm->status->transitionTo(Stopped::class);

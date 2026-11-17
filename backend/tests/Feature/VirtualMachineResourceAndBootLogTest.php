@@ -193,6 +193,29 @@ final class VirtualMachineResourceAndBootLogTest extends TestCase
         $adminRes->assertStatus(403);
     }
 
+    public function test_admin_can_view_boot_log_for_their_own_vm(): void
+    {
+        $adminVm = VirtualMachine::create([
+            'user_id' => $this->admin->id,
+            'host_id' => $this->host->id,
+            'name' => 'admin-console-log-vm',
+            'incus_project' => 'default',
+            'instance_type' => 'virtual-machine',
+            'status' => Running::class,
+            'cpu_cores' => 2,
+            'ram_mb' => 2048,
+            'disk_gb' => 20,
+            'os_image' => 'images:ubuntu/24.04',
+        ]);
+
+        $response = $this->actingAs($this->admin)
+            ->getJson("/api/vms/{$adminVm->id}/console-log");
+
+        $response->assertStatus(200)
+            ->assertJsonStructure(['virtual_machine_id', 'name', 'output']);
+        $this->assertSame($adminVm->id, $response->json('virtual_machine_id'));
+    }
+
     public function test_boot_log_emits_structured_log_line(): void
     {
         Log::shouldReceive('info')
