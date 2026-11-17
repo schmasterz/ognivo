@@ -67,6 +67,7 @@ This is a response target, not a guaranteed service-level agreement (SLA). Actua
 If a report requires additional information, maintainers may contact the reporter for clarification.
 
 We ask reporters to allow reasonable time for remediation before public disclosure.
+Please coordinate public disclosure with the Ognivo maintainers. We encourage responsible disclosure after affected users have had a reasonable opportunity to apply available security fixes or mitigations.
 
 ---
 
