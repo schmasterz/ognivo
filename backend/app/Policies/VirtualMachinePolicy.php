@@ -64,11 +64,16 @@ final class VirtualMachinePolicy
     /**
      * Determine whether the user can access the interactive web console.
      *
-     * Privacy constraint: Administrators are strictly forbidden from guest console access.
-     * Only the workload tenant owner is permitted access.
+     * Privacy constraint: Workload owners (including administrators for their own instances)
+     * are permitted access, while administrators remain strictly forbidden from other
+     * tenants' guest consoles.
      */
     public function viewConsole(User $user, VirtualMachine $vm): Response
     {
+        if ($vm->user_id === $user->id) {
+            return Response::allow();
+        }
+
         if ($user->hasRole('admin')) {
             $msg = __('messages.vm.console_access_forbidden');
 
@@ -77,14 +82,10 @@ final class VirtualMachinePolicy
             );
         }
 
-        if ($vm->user_id !== $user->id) {
-            $msg = __('messages.vm.unauthorized_access');
+        $msg = __('messages.vm.unauthorized_access');
 
-            return Response::deny(
-                is_string($msg) ? $msg : 'Unauthorized access.'
-            );
-        }
-
-        return Response::allow();
+        return Response::deny(
+            is_string($msg) ? $msg : 'Unauthorized access.'
+        );
     }
 }
