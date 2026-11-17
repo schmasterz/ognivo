@@ -57,6 +57,7 @@ export function CreateSnapshotModal({
   const isUnlimited = maxSnapshots === -1;
   const isQuotaExceeded = !isUnlimited && remaining <= 0;
   const isVmRunning = vm.status.toLowerCase() === "running";
+  const isVirtualMachine = vm.instance_type === "virtual-machine";
 
   const handleNameChange = (val: string) => {
     const clean = val.toLowerCase().trim();
@@ -99,7 +100,7 @@ export function CreateSnapshotModal({
     try {
       const res = await api.createSnapshot(vm.id, {
         name: name.trim(),
-        stateful: stateful && isVmRunning,
+        stateful: isVirtualMachine && stateful && isVmRunning,
       });
 
       toast.success(res.message || t("snapshotCreateSuccess"));
@@ -216,29 +217,31 @@ export function CreateSnapshotModal({
           </div>
 
           {/* Stateful Checkbox */}
-          <div className="pt-1">
-            <label
-              className={`flex items-start space-x-3 p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/40 cursor-pointer select-none ${
-                !isVmRunning ? "opacity-50 cursor-not-allowed" : ""
-              }`}
-            >
-              <input
-                type="checkbox"
-                checked={stateful && isVmRunning}
-                onChange={(e) => isVmRunning && setStateful(e.target.checked)}
-                disabled={!isVmRunning || loading || isQuotaExceeded}
-                className="mt-0.5 h-4 w-4 rounded border-zinc-300 text-blue-600 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800"
-              />
-              <div className="flex-1">
-                <div className="text-xs font-medium text-zinc-900 dark:text-zinc-100">
-                  {t("snapshotStatefulLabel")}
+          {isVirtualMachine && (
+            <div className="pt-1">
+              <label
+                className={`flex items-start space-x-3 p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/40 cursor-pointer select-none ${
+                  !isVmRunning ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={stateful && isVmRunning}
+                  onChange={(e) => isVmRunning && setStateful(e.target.checked)}
+                  disabled={!isVmRunning || loading || isQuotaExceeded}
+                  className="mt-0.5 h-4 w-4 rounded border-zinc-300 text-blue-600 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800"
+                />
+                <div className="flex-1">
+                  <div className="text-xs font-medium text-zinc-900 dark:text-zinc-100">
+                    {t("snapshotStatefulLabel")}
+                  </div>
+                  <div className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                    {t("snapshotStatefulHelp")}
+                  </div>
                 </div>
-                <div className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
-                  {t("snapshotStatefulHelp")}
-                </div>
-              </div>
-            </label>
-          </div>
+              </label>
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex items-center justify-end space-x-3 pt-3 border-t border-zinc-200 dark:border-zinc-800">
