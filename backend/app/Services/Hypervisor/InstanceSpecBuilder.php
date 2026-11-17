@@ -53,8 +53,11 @@ class InstanceSpecBuilder
         $config = [
             'limits.cpu' => (string) $vm->cpu_cores,
             'limits.memory' => sprintf('%dMB', $vm->ram_mb),
-            'migration.stateful' => 'true',
         ];
+
+        if ($vm->instance_type === 'virtual-machine') {
+            $config['migration.stateful'] = 'true';
+        }
 
         $userData = $this->extractUserData($vm);
         if ($userData !== null && $userData !== '') {

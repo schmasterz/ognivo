@@ -66,6 +66,7 @@ class VmSnapshotService
      * @param  string|array{name?: string, stateful?: bool, source?: string}  $name
      *
      * @throws InvalidVmStateException
+     * @throws InvalidSnapshotStateException
      * @throws InvalidSnapshotNameException
      * @throws DuplicateSnapshotNameException
      * @throws SnapshotQuotaExceededException
@@ -355,8 +356,8 @@ class VmSnapshotService
                     if ($dbSnapshot->isDirty()) {
                         $dbSnapshot->save();
                     }
-                } elseif (! in_array($dbSnapshot->status, [VmSnapshot::STATUS_CREATING, VmSnapshot::STATUS_DELETING], true)) {
-                    // Snapshot no longer exists on hypervisor -> remove stale DB row (preserve in-flight creating/deleting jobs)
+                } elseif (! in_array($dbSnapshot->status, [VmSnapshot::STATUS_CREATING, VmSnapshot::STATUS_DELETING, VmSnapshot::STATUS_FAILED], true)) {
+                    // Snapshot no longer exists on hypervisor -> remove stale DB row (preserve in-flight creating/deleting jobs and failed records)
                     $dbSnapshot->delete();
                 }
             }
@@ -387,15 +388,26 @@ class VmSnapshotService
      * Validate that the VM is in a state that permits creating a snapshot.
      *
      * @throws InvalidVmStateException
+     * @throws InvalidSnapshotStateException
      */
     private function assertValidVmStateForCreate(VirtualMachine $vm, bool $stateful = false): void
     {
-        if ($stateful && ! $vm->status->equals(Running::class)) {
-            throw new InvalidVmStateException(
-                (string) $vm->status,
-                'create stateful snapshot',
-                sprintf('Cannot create stateful snapshot for virtual machine "%s" while in "%s" state. Virtual machine must be running to capture memory state.', $vm->name, (string) $vm->status)
-            );
+        if ($stateful) {
+            if ($vm->instance_type === 'container') {
+                throw new InvalidSnapshotStateException(
+                    $vm->name,
+                    'create stateful snapshot',
+                    sprintf('Cannot create stateful snapshot for container "%s". In-memory snapshots are only supported for virtual machines.', $vm->name)
+                );
+            }
+
+            if (! $vm->status->equals(Running::class)) {
+                throw new InvalidVmStateException(
+                    (string) $vm->status,
+                    'create stateful snapshot',
+                    sprintf('Cannot create stateful snapshot for virtual machine "%s" while in "%s" state. Virtual machine must be running to capture memory state.', $vm->name, (string) $vm->status)
+                );
+            }
         }
 
         if (! $this->isVmInStableState($vm)) {

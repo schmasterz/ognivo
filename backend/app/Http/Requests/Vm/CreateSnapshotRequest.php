@@ -10,6 +10,7 @@ use App\Models\VirtualMachine;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 /**
  * Form Request validating virtual machine snapshot creation payload.
@@ -50,6 +51,25 @@ final class CreateSnapshotRequest extends FormRequest
             ],
             'stateful' => ['sometimes', 'nullable', 'boolean'],
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $v): void {
+            if ($this->boolean('stateful')) {
+                $instance = $this->route('vm') ?? $this->route('virtualMachine');
+                if (! $instance instanceof VirtualMachine && (is_numeric($instance) || is_string($instance))) {
+                    $instance = VirtualMachine::query()->find($instance);
+                }
+
+                if ($instance instanceof VirtualMachine && $instance->instance_type === 'container') {
+                    $v->errors()->add(
+                        'stateful',
+                        'In-memory (stateful) snapshots are only supported for virtual machines, not containers.'
+                    );
+                }
+            }
+        });
     }
 
     public function toDTO(): CreateSnapshotDTO

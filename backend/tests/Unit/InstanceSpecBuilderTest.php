@@ -108,6 +108,7 @@ final class InstanceSpecBuilderTest extends TestCase
         // Limits
         $this->assertEquals('4', $spec['config']['limits.cpu']);
         $this->assertEquals('8192MB', $spec['config']['limits.memory']);
+        $this->assertEquals('true', $spec['config']['migration.stateful'] ?? null);
         $this->assertEquals("#cloud-config\npackage_update: true", $spec['config']['cloud-init.user-data']);
 
         // Devices
@@ -185,6 +186,7 @@ final class InstanceSpecBuilderTest extends TestCase
 
         // Containers configure networking in-kernel; cloud-init.network-config should NOT be present
         $this->assertArrayNotHasKey('cloud-init.network-config', $spec['config']);
+        $this->assertArrayNotHasKey('migration.stateful', $spec['config']);
     }
 
     public function test_build_virtual_machine_spec_with_manual_pool_produces_no_nic_or_netplan_config(): void
