@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Exceptions\InvalidSnapshotStateException;
 use App\Jobs\CreateSnapshotJob;
 use App\Jobs\DeleteSnapshotJob;
 use App\Jobs\RestoreSnapshotJob;
@@ -13,6 +14,7 @@ use App\Models\User;
 use App\Models\UserQuota;
 use App\Models\VirtualMachine;
 use App\Models\VmSnapshot;
+use App\Services\VmSnapshotService;
 use App\States\Vm\Deleting;
 use App\States\Vm\Failed;
 use App\States\Vm\Provisioning;
@@ -490,6 +492,77 @@ final class VmSnapshotApiTest extends TestCase
                 'name' => str_repeat('a', 63),
             ])
             ->assertStatus(202);
+    }
+
+    public function test_user_cannot_create_stateful_snapshot_on_container(): void
+    {
+        Queue::fake();
+
+        $container = VirtualMachine::create([
+            'user_id' => $this->customerA->id,
+            'host_id' => $this->host->id,
+            'name' => 'alpha-container-app',
+            'incus_project' => 'tenant-alpha',
+            'instance_type' => 'container',
+            'status' => 'running',
+            'cpu_cores' => 1,
+            'ram_mb' => 1024,
+            'disk_gb' => 10,
+            'os_image' => 'images:alpine/3.20',
+        ]);
+
+        $response = $this->actingAs($this->customerA)
+            ->postJson("/api/vms/{$container->id}/snapshots", [
+                'name' => 'cont-mem-snap',
+                'stateful' => true,
+            ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['stateful']);
+
+        $this->assertDatabaseMissing('vm_snapshots', [
+            'virtual_machine_id' => $container->id,
+            'name' => 'cont-mem-snap',
+        ]);
+        Queue::assertNotPushed(CreateSnapshotJob::class);
+    }
+
+    public function test_snapshot_service_guards_against_stateful_snapshot_on_container(): void
+    {
+        $container = VirtualMachine::create([
+            'user_id' => $this->customerA->id,
+            'host_id' => $this->host->id,
+            'name' => 'alpha-guard-container',
+            'incus_project' => 'tenant-alpha',
+            'instance_type' => 'container',
+            'status' => Running::class,
+            'cpu_cores' => 1,
+            'ram_mb' => 1024,
+            'disk_gb' => 10,
+            'os_image' => 'images:alpine/3.20',
+        ]);
+
+        $this->expectException(InvalidSnapshotStateException::class);
+        $this->expectExceptionMessage('Cannot create stateful snapshot for container "alpha-guard-container". In-memory snapshots are only supported for virtual machines.');
+
+        app(VmSnapshotService::class)->create($container, 'container-stateful', true);
+    }
+
+    public function test_sync_from_hypervisor_preserves_failed_snapshots(): void
+    {
+        $failedSnap = VmSnapshot::factory()->failed()->create([
+            'virtual_machine_id' => $this->vmA->id,
+            'user_id' => $this->customerA->id,
+            'name' => 'failed-sync-preserved',
+        ]);
+
+        app(VmSnapshotService::class)->syncFromHypervisor($this->vmA);
+
+        $this->assertDatabaseHas('vm_snapshots', [
+            'id' => $failedSnap->id,
+            'status' => VmSnapshot::STATUS_FAILED,
+            'name' => 'failed-sync-preserved',
+        ]);
     }
 
     public function test_invalid_vm_state_returns_409_conflict_for_create_and_restore(): void
