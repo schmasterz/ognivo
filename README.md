@@ -2,7 +2,6 @@
 
 **Open-source, multi-tenant control plane for KVM virtual machines and LXC system containers on Incus.**
 
-# Project Name
 
 > [!WARNING]
 > **Pre-Alpha Software — Early Development**
