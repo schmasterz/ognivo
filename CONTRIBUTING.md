@@ -4,6 +4,8 @@ First of all, thank you for your interest in contributing to Ognivo!
 
 We welcome contributions of all kinds, including bug reports, feature requests, documentation improvements, tests, and code contributions.
 
+Ognivo is an open-source, self-hosted infrastructure management platform built on Incus. Contributions that improve its reliability, security, usability, and extensibility are always welcome.
+
 This document explains how to get involved.
 
 ## Code of Conduct
@@ -20,6 +22,7 @@ Before submitting a contribution:
 - For significant changes, open an issue first to discuss the proposed approach.
 - Keep changes focused and avoid unrelated modifications.
 - Make sure your contribution does not introduce unnecessary breaking changes.
+- Consider whether the proposed functionality belongs in Ognivo Core or should be maintained as an independent integration.
 
 ## Reporting Bugs
 
@@ -50,6 +53,36 @@ When suggesting a feature, please describe:
 - Any relevant examples or alternatives.
 
 For larger architectural changes, please discuss the idea before starting implementation.
+
+Not every feature request will necessarily be accepted into Ognivo Core. Some functionality may be better suited for independent integrations or optional modules.
+
+## Core vs. Optional Integrations
+
+Ognivo Core is designed to provide the essential infrastructure management capabilities and stable interfaces for third-party integrations.
+
+Optional integrations, including payment gateways, billing providers, monitoring services, and other external integrations, may be maintained as separate modules.
+
+The project maintainers reserve the right to determine whether a proposed feature belongs in Core or should be maintained as an independent integration.
+
+Pull requests are evaluated based on:
+
+- Architectural fit.
+- Security.
+- Maintainability.
+- Compatibility with existing functionality.
+- Long-term project direction.
+
+Contributors are encouraged to discuss substantial integrations and architectural changes before starting implementation.
+
+## Commercial Modules
+
+Ognivo may offer optional commercial modules and services alongside its open-source Core.
+
+Commercial modules are maintained and distributed separately under their respective licenses.
+
+Contributions to Ognivo Core do not automatically grant contribution rights, ownership, or licensing rights over separately maintained commercial modules.
+
+Contributions to commercial modules, if accepted, may require a separate written agreement and will be governed by the applicable commercial license and contribution terms.
 
 ## Development Setup
 
@@ -95,7 +128,9 @@ When opening a pull request:
 
 Keep pull requests focused on one logical change whenever possible.
 
-Pull requests may require review and changes before they are merged.
+Pull requests are subject to maintainer review and may require changes before being merged.
+
+The project maintainers reserve the right to accept, request changes to, or reject any contribution based on the project's architectural direction, quality standards, security requirements, and long-term goals.
 
 ## Commit Messages
 
@@ -123,7 +158,13 @@ Please keep documentation:
 
 ## License
 
-By submitting a contribution, you agree that your contributions will be licensed under the same license as this project.
+Ognivo Core is distributed under the MIT License.
+
+By submitting a contribution to Ognivo Core, you agree that your contribution will be licensed under the same MIT License.
+
+You retain the copyright to your contributions while granting the rights provided by the project's license.
+
+Commercial modules and other separately maintained components may be distributed under different licenses.
 
 ## Questions
 
