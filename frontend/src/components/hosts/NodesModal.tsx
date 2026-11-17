@@ -53,6 +53,7 @@ export function NodesModal({
   const [total, setTotal] = useState(initialHosts.length);
   const [tableLoading, setTableLoading] = useState(false);
   const [certInfo, setCertInfo] = useState<PanelCertificateInfo | null>(null);
+  const [downloadLoading, setDownloadLoading] = useState(false);
   const [rotateLoading, setRotateLoading] = useState(false);
   const [revokeLoading, setRevokeLoading] = useState(false);
   const [verifyingHostId, setVerifyingHostId] = useState<number | null>(null);
@@ -61,7 +62,10 @@ export function NodesModal({
   const [syncingHostId, setSyncingHostId] = useState<number | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
-  useModalEscape(onClose, !tableLoading && !rotateLoading && !revokeLoading && !retrustLoadingId && !syncingHostId);
+  useModalEscape(
+    onClose,
+    !tableLoading && !downloadLoading && !rotateLoading && !revokeLoading && !retrustLoadingId && !syncingHostId
+  );
 
   const fetchHostsPage = useCallback(async () => {
     try {
@@ -115,6 +119,17 @@ export function NodesModal({
       ignore = true;
     };
   }, []);
+
+  const handleDownloadCertificate = async () => {
+    try {
+      setDownloadLoading(true);
+      await api.adminDownloadPanelCertificate();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to download certificate.");
+    } finally {
+      setDownloadLoading(false);
+    }
+  };
 
   const handleRotateCertificate = async () => {
     if (
@@ -356,14 +371,19 @@ export function NodesModal({
               </div>
 
               <div className="flex items-center space-x-2">
-                <a
-                  href="/api/admin/incus/certificate/download"
-                  download="incus-panel.crt"
-                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 text-xs font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition shadow-sm"
+                <button
+                  type="button"
+                  onClick={handleDownloadCertificate}
+                  disabled={downloadLoading}
+                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 text-xs font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition shadow-sm disabled:opacity-40"
                 >
-                  <Download className="w-3.5 h-3.5 text-indigo-500" />
+                  {downloadLoading ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5 text-indigo-500" />
+                  )}
                   <span>{t("downloadPublicCertificate") || "Download .crt"}</span>
-                </a>
+                </button>
                 <button
                   type="button"
                   onClick={handleRotateCertificate}
