@@ -12,11 +12,6 @@
 > [!WARNING]
 > **Status: alpha (`1.0.0-alpha.1`).** Ognivo is not production-ready yet. APIs, configuration keys and the database schema may change without migration paths until 1.0. Keep external backups of anything you care about. See [Upgrading](docs/operations/upgrading.md).
 
-<!-- TODO: replace with a real screenshot or short GIF (dashboard, console, IPAM) -->
-
-<p align="center">
-  <img src="docs/assets/dashboard.png" alt="Ognivo dashboard" width="800">
-</p>
 
 Ognivo lets you offer VPS-style hosting on your own **Incus** hypervisors. Customers get a self-service dashboard. Administrators get node, image, network and quota management. Everything is built around tenant isolation and a tamper-evident audit trail.
 
