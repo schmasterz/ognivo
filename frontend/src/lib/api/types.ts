@@ -437,6 +437,14 @@ export interface ImageItem {
   updated_at?: string;
 }
 
+export interface RemoteImageValidationResult {
+  valid: boolean;
+  error?: string | null;
+  architectures?: string[];
+  matched_alias?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
 export interface CursorPage<T> {
   data: T[];
   next_cursor: string | null;

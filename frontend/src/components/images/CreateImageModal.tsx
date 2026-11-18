@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, Server, Layers } from "lucide-react";
-import { api, HostNode, ImageItem } from "@/lib/api";
+import { X, Server, Layers, Globe, Loader2 } from "lucide-react";
+import { api, HostNode, ImageItem, RemoteImageValidationResult } from "@/lib/api";
 import { useModalEscape } from "@/lib/hooks/useModalEscape";
 
 interface CreateImageModalProps {
@@ -32,6 +32,9 @@ export function CreateImageModal({
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [testingRemote, setTestingRemote] = useState(false);
+  const [remoteValidation, setRemoteValidation] = useState<RemoteImageValidationResult | null>(null);
+  const [skipRemoteValidation, setSkipRemoteValidation] = useState(false);
 
   useModalEscape(onClose, !loading);
 
@@ -48,6 +51,9 @@ export function CreateImageModal({
       );
       setError(null);
       setLoading(false);
+      setRemoteValidation(null);
+      setSkipRemoteValidation(false);
+      setTestingRemote(false);
     });
   }, [image, hosts]);
 
@@ -63,6 +69,31 @@ export function CreateImageModal({
 
   const clearAllHosts = () => {
     setSelectedHostIds([]);
+  };
+
+  const handleTestRemote = async () => {
+    if (!name.trim() || !source.trim()) {
+      setError("Please specify both Image Identifier and Source URL to test.");
+      return;
+    }
+    setError(null);
+    setTestingRemote(true);
+    try {
+      const res = await api.adminValidateImage({
+        source: source.trim(),
+        name: name.trim(),
+        protocol: protocol.trim(),
+        os_type: osType,
+      });
+      setRemoteValidation(res);
+    } catch (err: unknown) {
+      setRemoteValidation({
+        valid: false,
+        error: err instanceof Error ? err.message : "Remote verification failed.",
+      });
+    } finally {
+      setTestingRemote(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -96,6 +127,7 @@ export function CreateImageModal({
           os_type: osType,
           enabled,
           host_ids: selectedHostIds,
+          skip_remote_validation: skipRemoteValidation,
         });
       } else {
         await api.adminCreateImage({
@@ -106,6 +138,7 @@ export function CreateImageModal({
           os_type: osType,
           enabled,
           host_ids: selectedHostIds,
+          skip_remote_validation: skipRemoteValidation,
         });
       }
 
@@ -180,7 +213,10 @@ export function CreateImageModal({
               type="text"
               required
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value);
+                setRemoteValidation(null);
+              }}
               placeholder="e.g. images:debian/12, ubuntu/24.04"
               className="w-full px-3.5 py-2.5 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-xl text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
             />
@@ -228,7 +264,10 @@ export function CreateImageModal({
                 type="text"
                 required
                 value={source}
-                onChange={(e) => setSource(e.target.value)}
+                onChange={(e) => {
+                  setSource(e.target.value);
+                  setRemoteValidation(null);
+                }}
                 placeholder="https://images.linuxcontainers.org"
                 className="w-full px-3.5 py-2.5 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-xl text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
               />
@@ -240,11 +279,56 @@ export function CreateImageModal({
               <input
                 type="text"
                 value={protocol}
-                onChange={(e) => setProtocol(e.target.value)}
+                onChange={(e) => {
+                  setProtocol(e.target.value);
+                  setRemoteValidation(null);
+                }}
                 placeholder="simplestreams"
                 className="w-full px-3.5 py-2.5 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-xl text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
               />
             </div>
+          </div>
+
+          {/* Remote Server Pre-flight Check */}
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={handleTestRemote}
+              disabled={testingRemote || loading}
+              className="inline-flex items-center space-x-2 px-3.5 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 hover:bg-gray-100 dark:hover:bg-gray-800 text-xs font-semibold text-gray-700 dark:text-gray-200 transition disabled:opacity-50"
+            >
+              {testingRemote ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500" />
+              ) : (
+                <Globe className="w-3.5 h-3.5 text-blue-500" />
+              )}
+              <span>{testingRemote ? "Testing Remote..." : "Test Remote"}</span>
+            </button>
+
+            {remoteValidation?.valid === true && (
+              <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs rounded-xl p-3">
+                {`✓ Verified on remote server${
+                  remoteValidation.architectures?.length
+                    ? ` (Architectures: ${remoteValidation.architectures.join(", ")})`
+                    : ""
+                }`}
+              </div>
+            )}
+
+            {remoteValidation?.valid === false && (
+              <div className="bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs rounded-xl p-3">
+                <div>{remoteValidation.error || "Remote verification failed."}</div>
+                <label className="flex items-center space-x-2 mt-2 text-xs cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={skipRemoteValidation}
+                    onChange={(e) => setSkipRemoteValidation(e.target.checked)}
+                    className="rounded text-blue-600"
+                  />
+                  <span>Bypass remote verification and save anyway</span>
+                </label>
+              </div>
+            )}
           </div>
 
           {/* Compute Nodes Association (Multi-Select with X) */}
