@@ -100,8 +100,8 @@ All three are enabled and attached to every demo node.
 ### 3.5 Default Network Pool (Ranged IPAM)
 
 - **Name:** `Default Public IPv4 Pool`
-- **CIDR:** `192.168.100.0/24` (usable range: `192.168.100.2` – `192.168.100.254`)
-- **Gateway:** `192.168.100.1` (excluded from allocation)
+- **CIDR:** `198.51.100.0/24` (usable range: `198.51.100.2` – `198.51.100.254`)
+- **Gateway:** `198.51.100.1` (excluded from allocation)
 - **DNS servers:** `1.1.1.1`, `8.8.8.8`
 - **Network mode:** `routed` (`parent_interface: eth0`), IPv4, public, active
 - **Cooldown:** `300` seconds before a released IP can be reused
@@ -113,8 +113,8 @@ Two running instances owned by `customer@ognivo.local`, both on `eu-west-1` in t
 
 | Name | Type | vCPU | RAM | Disk | Image | IPv4 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `dev-container-01` | LXC container | `2` | `2 GB` | `20 GB` | `images:ubuntu/24.04` | `192.168.100.10` |
-| `dev-vm-01` | KVM virtual machine | `2` | `2 GB` | `25 GB` | `images:debian/12` | `192.168.100.11` |
+| `dev-container-01` | LXC container | `2` | `2 GB` | `20 GB` | `images:ubuntu/24.04` | `198.51.100.10` |
+| `dev-vm-01` | KVM virtual machine | `2` | `2 GB` | `25 GB` | `images:debian/12` | `198.51.100.11` |
 
 > [!NOTE]
 > Because the nodes use the `fake` driver, these instances are database records only. Lifecycle actions, snapshots and the terminal are simulated and do not touch a real hypervisor. Connect a real Incus node (see [Host Onboarding](../features/host-onboarding.md)) to manage real instances.
