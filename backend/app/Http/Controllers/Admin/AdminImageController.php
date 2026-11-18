@@ -180,6 +180,12 @@ final class AdminImageController extends Controller
             $query->select('images.*');
         }
 
+        $query->withCount([
+            'virtualMachines as active_vms_count' => function (Builder $q): void {
+                $q->whereNotIn('status', ['deleted']);
+            },
+        ]);
+
         if ($cursorId !== null) {
             $query->where('images.id', '<', $cursorId);
         }
@@ -424,6 +430,13 @@ final class AdminImageController extends Controller
     #[Delete('admin/images/{image}', name: 'admin.images.destroy', middleware: ['auth:sanctum', 'active', 'admin'])]
     public function destroy(Image $image): JsonResponse
     {
+        $activeVmsCount = $image->virtualMachines()->whereNotIn('status', ['deleted'])->count();
+        if ($activeVmsCount > 0) {
+            throw ValidationException::withMessages([
+                'image' => ["Cannot delete image '{$image->alias}' because it is currently used by {$activeVmsCount} active virtual machine(s)."],
+            ]);
+        }
+
         $this->logger()->record(new AuditEntry(
             action: AuditAction::ImageDeleted,
             outcome: AuditOutcome::Success,

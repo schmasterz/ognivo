@@ -430,6 +430,7 @@ export interface ImageItem {
   protocol: string;
   os_type: "linux" | "windows" | "bsd" | "other";
   enabled: boolean;
+  active_vms_count?: number;
   hosts?: HostNode[];
   host_ids?: number[];
   attached?: boolean;

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Resources;
 
+use App\DTO\Cast;
 use App\Models\Image;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -46,6 +47,12 @@ final class ImageResource extends JsonResource
                 ? HostNodeResource::collection($this->whenLoaded('hosts'))
                 : TenantHostResource::collection($this->whenLoaded('hosts')),
             'host_ids' => $image->relationLoaded('hosts') ? $image->hosts->pluck('id')->values()->all() : [],
+            'active_vms_count' => $this->when(
+                $isAdmin,
+                fn (): int => $image->relationLoaded('virtualMachines')
+                    ? $image->virtualMachines->where('status', '!=', 'deleted')->count()
+                    : Cast::int($image->getAttribute('active_vms_count') ?? $image->virtualMachines()->whereNotIn('status', ['deleted'])->count())
+            ),
             'created_at' => $image->created_at?->toISOString(),
             'updated_at' => $image->updated_at?->toISOString(),
         ];

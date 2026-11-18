@@ -133,10 +133,10 @@ Results are ordered by newest first (`id` descending). The response contains `da
 
 ### Deleting and disabling
 
-- **Delete** removes the image and its node links. It does not check whether instances use it.
-- **Disable** keeps the image but removes it from every list.
+- **Delete** removes the image and its node links, subject to deletion protection: Ognivo checks the database for any active virtual machines (`status != 'deleted'`) using the image. If active instances exist, deletion is rejected with an explanatory error, preventing broken workload blueprints. In the administrative UI, an **in use** badge displays the number of active workloads and disables the removal action until those workloads are reallocated or terminated.
+- **Disable** keeps the image in the catalog and removes it from every provisioning list.
 
-Instances already created from the image keep running. They store the image name as plain text. However, since the allowlist is checked again when an instance is rebuilt, **reinstalling an instance whose image was deleted or disabled fails** until you re-enable it or choose another image.
+Instances already created from a disabled image keep running. They store the image name as plain text. However, since the allowlist is checked again when an instance is rebuilt, **reinstalling an instance whose image is disabled (or missing from the catalog) fails** until you re-enable it or choose another image.
 
 ### Audit logging
 
@@ -242,7 +242,7 @@ At most 50 images are listed, most-used first. Instances in the `deleted` state 
 | :--- | :--- | :--- |
 | Detach an image from a node | None. They keep running. Reinstalling them with their current image still works | The image is no longer offered on that node |
 | Disable an image | None while they run. **Reinstall fails** | The image is no longer offered anywhere |
-| Delete an image | None while they run. **Reinstall fails** | The image is gone from the catalog |
+| Delete an image | Blocked while active workloads (`status != 'deleted'`) use it | The image is gone from the catalog once no active workloads remain |
 | Re-enable or re-add an image | Reinstall works again | Offered again where attached |
 
 ---
@@ -287,5 +287,5 @@ When no node is chosen, placement only considers nodes that have the image attac
 
 - **No automatic discovery.** Ognivo does not read images from the Incus server or the image server. Every image is added to the catalog by hand.
 - **Remote validation.** Images can be pre-flight verified with the "Test Remote" button or `php artisan images:verify-catalog`. By default, unverified or invalid remote images are rejected during creation and update unless the administrator chooses to bypass verification.
-- **No image-in-use check on delete.** Deleting or disabling an image does not warn you about instances that use it.
+- **Image-in-use protection on delete.** Image deletion is safeguarded against active workloads: deleting an image is rejected while any active virtual machines (`status != 'deleted'`) use it, while disabling an image remains permitted to hide it from new provisioning.
 - **One global catalog.** Images are shared by all tenants. There are no per-tenant or per-plan image lists.

@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Override;
 
@@ -26,6 +27,7 @@ use Override;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Collection<int, Host> $hosts
+ * @property-read Collection<int, VirtualMachine> $virtualMachines
  */
 final class Image extends Model
 {
@@ -88,5 +90,15 @@ final class Image extends Model
     public function hosts(): BelongsToMany
     {
         return $this->belongsToMany(Host::class, 'host_image')->withTimestamps();
+    }
+
+    /**
+     * Virtual machines referencing this image.
+     *
+     * @return HasMany<VirtualMachine, $this>
+     */
+    public function virtualMachines(): HasMany
+    {
+        return $this->hasMany(VirtualMachine::class, 'os_image', 'name');
     }
 }
