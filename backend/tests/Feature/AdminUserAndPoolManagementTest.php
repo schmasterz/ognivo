@@ -168,8 +168,8 @@ final class AdminUserAndPoolManagementTest extends TestCase
             ->postJson('/api/admin/ip-pools', [
                 'name' => 'Public IPv4 DMZ',
                 'host_id' => $this->host->id,
-                'cidr' => '192.168.100.0/29', // 6 usable IPs (.1 to .6)
-                'gateway' => '192.168.100.1',
+                'cidr' => '198.51.100.0/29', // 6 usable IPs (.1 to .6)
+                'gateway' => '198.51.100.1',
                 'dns_servers' => ['8.8.8.8', '1.1.1.1'],
                 'ip_version' => 4,
                 'is_public' => true,
@@ -180,7 +180,7 @@ final class AdminUserAndPoolManagementTest extends TestCase
 
         $this->assertDatabaseHas('ip_pools', [
             'name' => 'Public IPv4 DMZ',
-            'cidr' => '192.168.100.0/29',
+            'cidr' => '198.51.100.0/29',
         ]);
 
         $this->assertEquals(5, $response->json('pool.utilization.total'));

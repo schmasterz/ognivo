@@ -213,15 +213,15 @@ final class DatabaseSeeder extends Seeder
                 ['name' => 'Default Public IPv4 Pool'],
                 [
                     'host_id' => $primaryHost->id,
-                    'cidr' => '192.168.100.0/24',
-                    'first_usable' => '192.168.100.2',
-                    'last_usable' => '192.168.100.254',
+                    'cidr' => '198.51.100.0/24',
+                    'first_usable' => '198.51.100.2',
+                    'last_usable' => '198.51.100.254',
                     'network_mode' => 'routed',
                     'parent_interface' => 'eth0',
-                    'subnet' => '192.168.100.0/24',
-                    'gateway' => '192.168.100.1',
+                    'subnet' => '198.51.100.0/24',
+                    'gateway' => '198.51.100.1',
                     'dns_servers' => ['1.1.1.1', '8.8.8.8'],
-                    'excluded_ips' => ['192.168.100.1'],
+                    'excluded_ips' => ['198.51.100.1'],
                     'ip_version' => 4,
                     'cooldown_seconds' => 300,
                     'is_public' => true,
@@ -245,7 +245,7 @@ final class DatabaseSeeder extends Seeder
                     'ram_mb' => 2048,
                     'disk_gb' => 20,
                     'os_image' => 'ubuntu/24.04',
-                    'ipv4_address' => '192.168.100.10',
+                    'ipv4_address' => '198.51.100.10',
                 ]
             );
 
@@ -261,7 +261,7 @@ final class DatabaseSeeder extends Seeder
                     'ram_mb' => 2048,
                     'disk_gb' => 25,
                     'os_image' => 'debian/12',
-                    'ipv4_address' => '192.168.100.11',
+                    'ipv4_address' => '198.51.100.11',
                 ]
             );
         }

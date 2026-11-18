@@ -79,7 +79,7 @@ final class AdminManagementTest extends TestCase
             'ram_mb' => 2048,
             'disk_gb' => 20,
             'os_image' => 'images:ubuntu/24.04',
-            'ipv4_address' => '192.168.100.10',
+            'ipv4_address' => '198.51.100.10',
         ]);
 
         // Virtual machines for Bob
@@ -92,7 +92,7 @@ final class AdminManagementTest extends TestCase
             'ram_mb' => 4096,
             'disk_gb' => 50,
             'os_image' => 'images:debian/12',
-            'ipv4_address' => '192.168.100.20',
+            'ipv4_address' => '198.51.100.20',
         ]);
     }
 
