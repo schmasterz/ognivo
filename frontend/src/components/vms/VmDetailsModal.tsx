@@ -242,7 +242,7 @@ export function VmDetailsModal({
                 </span>
               </div>
               <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 flex items-center space-x-2">
-                <span>{vm.os_image.replace("images:", "")}</span>
+                <span>{vm.os_image_alias || vm.os_image.replace("images:", "")}</span>
                 <span>&bull;</span>
                 <span className="font-mono">
                   {vm.network?.primary?.address ?? vm.ipv4_address ?? "No IP"}

@@ -220,8 +220,11 @@ export function VmOverviewTab({ vm, isAdmin }: VmOverviewTabProps) {
 
           <div>
             <div className="text-zinc-400 font-medium mb-1">{t("osImage")}</div>
-            <div className="font-mono text-zinc-800 dark:text-zinc-200">
-              {vm.os_image.replace("images:", "")}
+            <div className="text-zinc-800 dark:text-zinc-200">
+              <div className="font-semibold text-xs">{vm.os_image_alias || vm.os_image.replace("images:", "")}</div>
+              {vm.os_image_alias && vm.os_image_alias !== vm.os_image && (
+                <div className="text-[10px] font-mono text-zinc-400">{vm.os_image}</div>
+              )}
             </div>
           </div>
 

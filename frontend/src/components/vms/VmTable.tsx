@@ -343,8 +343,8 @@ export function VmTable({
                   </td>
 
                   <td className="px-4 sm:px-6 py-3.5 text-xs font-mono text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                    <span className="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700/50">
-                      {vm.os_image.replace("images:", "")}
+                    <span className="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700/50 font-medium">
+                      {vm.os_image_alias || vm.os_image.replace("images:", "")}
                     </span>
                   </td>
 
