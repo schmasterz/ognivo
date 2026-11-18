@@ -20,6 +20,7 @@ export function CreateImageModal({
 }: CreateImageModalProps) {
   const isEditing = Boolean(image);
 
+  const [alias, setAlias] = useState(image?.alias ?? "");
   const [name, setName] = useState(image?.name ?? "");
   const [source, setSource] = useState(image?.source ?? "https://images.linuxcontainers.org");
   const [protocol, setProtocol] = useState(image?.protocol ?? "simplestreams");
@@ -36,6 +37,7 @@ export function CreateImageModal({
 
   useEffect(() => {
     queueMicrotask(() => {
+      setAlias(image?.alias ?? "");
       setName(image?.name ?? "");
       setSource(image?.source ?? "https://images.linuxcontainers.org");
       setProtocol(image?.protocol ?? "simplestreams");
@@ -67,8 +69,13 @@ export function CreateImageModal({
     e.preventDefault();
     setError(null);
 
+    if (!alias.trim()) {
+      setError("Image alias (e.g. Debian 12) is required.");
+      return;
+    }
+
     if (!name.trim()) {
-      setError("Image name/alias is required.");
+      setError("Image technical name (e.g. images:debian/12) is required.");
       return;
     }
 
@@ -82,6 +89,7 @@ export function CreateImageModal({
     try {
       if (isEditing && image) {
         await api.adminUpdateImage(image.id, {
+          alias: alias.trim(),
           name: name.trim(),
           source: source.trim(),
           protocol: protocol.trim(),
@@ -91,6 +99,7 @@ export function CreateImageModal({
         });
       } else {
         await api.adminCreateImage({
+          alias: alias.trim(),
           name: name.trim(),
           source: source.trim(),
           protocol: protocol.trim(),
@@ -147,17 +156,32 @@ export function CreateImageModal({
             </div>
           )}
 
-          {/* Image Name / Alias */}
+          {/* Display Name / Alias */}
           <div>
             <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-              Image Name / Alias *
+              Display Name / Alias *
+            </label>
+            <input
+              type="text"
+              required
+              value={alias}
+              onChange={(e) => setAlias(e.target.value)}
+              placeholder="e.g. Debian 12, Ubuntu 24.04 LTS"
+              className="w-full px-3.5 py-2.5 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-xl text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          {/* Image Identifier / Technical Name */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+              Image Identifier / Technical Name *
             </label>
             <input
               type="text"
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. ubuntu/24.04, debian/12, rocky/9, windows/server-2022"
+              placeholder="e.g. images:debian/12, ubuntu/24.04"
               className="w-full px-3.5 py-2.5 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-xl text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
             />
           </div>

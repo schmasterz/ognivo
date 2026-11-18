@@ -202,6 +202,7 @@ export interface VirtualMachine {
   ram_mb: number;
   disk_gb: number;
   os_image: string;
+  os_image_alias?: string;
   ipv4_address: string | null;
   ipv6_address: string | null;
   mac_address?: string | null;
@@ -424,6 +425,7 @@ export interface UpdateSystemSettingsPayload {
 export interface ImageItem {
   id: number;
   name: string;
+  alias: string;
   source: string;
   protocol: string;
   os_type: "linux" | "windows" | "bsd" | "other";

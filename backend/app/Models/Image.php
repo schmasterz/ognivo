@@ -18,6 +18,7 @@ use Override;
  *
  * @property int $id
  * @property string $name
+ * @property string $alias
  * @property string $source
  * @property string $protocol
  * @property string $os_type
@@ -37,6 +38,12 @@ final class Image extends Model
     #[Override]
     protected static function booted(): void
     {
+        self::saving(function (Image $image): void {
+            if (empty($image->alias) && ! empty($image->name)) {
+                $image->alias = $image->name;
+            }
+        });
+
         self::created(function (Image $image): void {
             try {
                 app(ImageAttachmentService::class)->attachToAutoAttachHosts($image);
@@ -53,6 +60,7 @@ final class Image extends Model
      */
     protected $fillable = [
         'name',
+        'alias',
         'source',
         'protocol',
         'os_type',

@@ -23,6 +23,7 @@ final class ImageFactory extends Factory
     {
         return [
             'name' => fake()->unique()->word().'/'.fake()->numerify('#.##'),
+            'alias' => fake()->words(2, true),
             'source' => 'https://images.linuxcontainers.org',
             'protocol' => 'simplestreams',
             'os_type' => 'linux',

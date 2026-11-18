@@ -71,6 +71,7 @@ final class VirtualMachineResource extends JsonResource
             'ram_mb' => $vm->ram_mb,
             'disk_gb' => $vm->disk_gb,
             'os_image' => $vm->os_image,
+            'os_image_alias' => $vm->image->alias ?? $vm->os_image,
             'ipv4_address' => $vm->ipv4_address,
             'ipv6_address' => $vm->ipv6_address,
             'mac_address' => $macAddress,

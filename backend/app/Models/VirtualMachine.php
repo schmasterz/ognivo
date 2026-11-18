@@ -120,6 +120,16 @@ final class VirtualMachine extends Model
     }
 
     /**
+     * OS Image catalog definition for this workload.
+     *
+     * @return BelongsTo<Image, $this>
+     */
+    public function image(): BelongsTo
+    {
+        return $this->belongsTo(Image::class, 'os_image', 'name');
+    }
+
+    /**
      * IP allocations assigned to this virtual machine.
      *
      * @return HasMany<IpAllocation, $this>

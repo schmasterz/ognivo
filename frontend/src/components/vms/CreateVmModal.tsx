@@ -375,7 +375,10 @@ export function CreateVmModal({
                         className="text-blue-600 focus:ring-blue-500"
                       />
                       <div>
-                        <div className="text-xs font-semibold font-mono">{os.name}</div>
+                        <div className="text-xs font-semibold text-gray-900 dark:text-white flex items-center space-x-1.5">
+                          <span>{os.alias || os.name}</span>
+                          <span className="font-mono text-[10px] text-gray-400 font-normal">({os.name})</span>
+                        </div>
                         <div className="text-[10px] text-gray-400 font-mono truncate max-w-xs">{os.source}</div>
                       </div>
                     </div>

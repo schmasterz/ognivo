@@ -21,6 +21,7 @@ final class CreateImageRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255', 'unique:images,name'],
+            'alias' => ['required', 'string', 'max:255'],
             'source' => ['required', 'string', 'max:500'],
             'protocol' => ['nullable', 'string', 'max:50'],
             'os_type' => ['nullable', 'string', Rule::in(['linux', 'windows', 'bsd', 'other'])],
