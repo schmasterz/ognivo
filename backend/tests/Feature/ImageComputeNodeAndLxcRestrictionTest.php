@@ -208,6 +208,7 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
         // 1. Create with multiple nodes
         $createRes = $this->actingAs($this->admin)->postJson('/api/admin/images', [
             'name' => 'alpine/edge',
+            'alias' => 'Test Image Alias',
             'source' => 'https://images.linuxcontainers.org',
             'protocol' => 'simplestreams',
             'os_type' => 'linux',
@@ -230,6 +231,7 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
         // 3. Customer is forbidden from admin endpoints
         $customerRes = $this->actingAs($this->customer)->postJson('/api/admin/images', [
             'name' => 'hacked/image',
+            'alias' => 'Test Image Alias',
             'source' => 'https://bad.org',
         ]);
         $customerRes->assertStatus(403);

@@ -34,6 +34,7 @@ test('creating an image via POST /api/admin/images without host_ids attaches onl
 
     $response = $this->actingAs($this->admin)->postJson('/api/admin/images', [
         'name' => 'ubuntu/noble-auto-test',
+        'alias' => 'Test Auto Attach Image',
         'source' => 'https://images.canonical.com',
         'protocol' => 'simplestreams',
         'os_type' => 'linux',
@@ -54,6 +55,7 @@ test('creating an image via POST /api/admin/images with explicit host_ids overri
 
     $response = $this->actingAs($this->admin)->postJson('/api/admin/images', [
         'name' => 'ubuntu/noble-explicit-test',
+        'alias' => 'Test Auto Attach Image',
         'source' => 'https://images.canonical.com',
         'protocol' => 'simplestreams',
         'os_type' => 'linux',
@@ -74,6 +76,7 @@ test('creating an image via POST /api/admin/images with empty host_ids array att
 
     $response = $this->actingAs($this->admin)->postJson('/api/admin/images', [
         'name' => 'ubuntu/noble-empty-test',
+        'alias' => 'Test Auto Attach Image',
         'source' => 'https://images.canonical.com',
         'protocol' => 'simplestreams',
         'os_type' => 'linux',

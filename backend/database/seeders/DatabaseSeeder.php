@@ -77,6 +77,7 @@ final class DatabaseSeeder extends Seeder
         $defaultImages = [
             [
                 'name' => 'images:ubuntu/24.04',
+                'alias' => 'Ubuntu 24.04 LTS',
                 'source' => 'https://images.linuxcontainers.org',
                 'protocol' => 'simplestreams',
                 'os_type' => 'linux',
@@ -84,6 +85,7 @@ final class DatabaseSeeder extends Seeder
             ],
             [
                 'name' => 'images:debian/12',
+                'alias' => 'Debian 12',
                 'source' => 'https://images.linuxcontainers.org',
                 'protocol' => 'simplestreams',
                 'os_type' => 'linux',
@@ -91,6 +93,7 @@ final class DatabaseSeeder extends Seeder
             ],
             [
                 'name' => 'images:alpine/3.20',
+                'alias' => 'Alpine 3.20',
                 'source' => 'https://images.linuxcontainers.org',
                 'protocol' => 'simplestreams',
                 'os_type' => 'linux',
