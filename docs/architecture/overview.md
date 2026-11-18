@@ -54,43 +54,23 @@ flowchart TB
     ConsoleProxy -->|"WSS Secret + SPKI Pin (:8443)"| Incus
 ```
 
----
+## 2. Backend Domain Architecture
 
-## 2. Technology Stack
-
-| Layer | Technology | Version | Purpose |
-| :--- | :--- | :--- | :--- |
-| **Backend Runtime** | PHP | `8.5` (FPM Alpine) | Server API runtime |
-| **Backend Framework** | Laravel Framework | `13.x` | REST API, Queue Jobs, Scheduling, Broadcasting |
-| **WebSocket Server** | Laravel Reverb | `1.12.x` | Real-time private channel event broadcasting (`:8080`) |
-| **Console Bridge** | Node.js + `ws` + `ioredis` | `22` (Alpine) | Zero-knowledge WebSocket-to-Incus SPKI-pinned console proxy (`:8085`) |
-| **Authentication & RBAC** | Laravel Sanctum & Spatie Permission | `4.x` / `8.x` | Bearer API tokens, role-based access (`admin`, `customer`), impersonation |
-| **State Machine & Routing** | Spatie Model States & Route Attributes | `2.x` / `1.x` | Strict VM state transitions (`VmState`) and PHP 8 route attributes |
-| **API Specification** | Dedoc Scramble | `0.13.x` | Automated OpenAPI v3 specification (`/docs/api`) |
-| **Frontend Framework** | Next.js & React | `16.x` / `19.x` | App Router UI, route groups, Turbopack |
-| **Styling & Terminal** | Tailwind CSS v4 & `@xterm/xterm` | `4.x` / `5.x` | Responsive UI styling and browser terminal emulator |
-| **Database & Broker** | Oracle MySQL & Redis | `8.4 LTS` / `7 Alpine` | ACID storage, row locks, distributed locks, and async queues |
-| **Static Analysis & Tests** | Pest PHP, PHPStan (L10), Psalm (L1) | `5.x` / `2.x` / `5.x` | Automated verification and strict static type checking |
-
----
-
-## 3. Backend Domain Architecture
-
-### 3.1 Core Eloquent Models (`backend/app/Models/`)
+### 2.1 Core Eloquent Models (`backend/app/Models/`)
 
 1. **`User`** — Tenant and administrator accounts (`HasApiTokens`, `HasRoles`). Generates isolated per-tenant Incus projects (`proj-{uuid}`) via `ensureProjectName()`.
 2. **`UserQuota` & `QuotaGroup`** — Tiered resource plans and per-user limits for VMs, vCPU cores, RAM, disk, public IPs, and snapshots (`-1` denotes unlimited `∞`). Editing a `QuotaGroup` automatically synchronizes all assigned users.
 3. **`Host`** — Hypervisor cluster nodes (`incus`, `lxd`, or `fake` driver), capacity boundaries, pinned TLS certificate fingerprint, and `needs_retrust` status.
 4. **`VirtualMachine`** — Customer workloads (KVM VMs and LXC containers) managed via `VmState` (`Provisioning`, `Running`, `Stopped`, `Suspended`, `Deleting`, `Deleted`, `Failed`). Dispatches `VirtualMachineStatusUpdated` on state/IP mutations.
 5. **`VmSnapshot`** — Point-in-time snapshots (`creating`, `ready`, `restoring`, `deleting`, `failed`) with `stateful` flag and `source` discriminator (`manual`, `scheduled`).
-6. **`IpPool` & `IpAllocation`** — Ranged IPv4/IPv6 subnet pools (`routed` or `manual` mode) and individual IP allocations (`allocated`, `cooling`).
+6. **`IpPool` & `IpAllocation`** — Ranged IPv4 subnet pools (`routed` or `manual` mode) and individual IP allocations (`allocated`, `cooling`).
 7. **`Image`** — Curated OS image catalog synchronized with hypervisor image servers.
 8. **`PanelCertificate`** — Self-signed `secp384r1` mTLS client certificate and encrypted private key (`active`, `retiring`).
 9. **`AuditLog` & `AuditSeal`** — Tamper-evident audit events and periodic SHA-256 + HMAC cryptographic seals.
 10. **`DriftReport`** — Records of state discrepancies detected between the control-plane database and live Incus/LXD hypervisors.
 11. **`SystemSetting`** — Global key-value configuration (public registration toggle, allowed instance types, SMTP settings).
 
-### 3.2 Service & Driver Layer (`backend/app/Services/`)
+### 2.2 Service & Driver Layer (`backend/app/Services/`)
 
 - **`VmProvisioningService`** — Performs race-free quota and IP allocation inside database transactions with `lockForUpdate()` and Redis distributed locks, then dispatches `ProvisionVmJob` after commit.
 - **`HypervisorManager` & Drivers (`IncusDriver`, `LxdDriver`, `FakeHypervisorDriver`)** — Implements `HypervisorDriverInterface` over mTLS REST (`/1.0/instances`, `/1.0/projects`, `/1.0/certificates`, `/1.0/events`).
@@ -101,7 +81,7 @@ flowchart TB
 
 ---
 
-## 4. Frontend Architecture (`frontend/src/`)
+## 3. Frontend Architecture (`frontend/src/`)
 
 Routes are organized using **Next.js App Router Route Groups** (see [`frontend/AGENTS.md`](../../frontend/AGENTS.md)):
 
@@ -125,9 +105,9 @@ src/app/
 
 ---
 
-## 5. Core Lifecycle Flows
+## 4. Core Lifecycle Flows
 
-### 5.1 Instance Provisioning Flow
+### 4.1 Instance Provisioning Flow
 
 ```mermaid
 sequenceDiagram
@@ -151,7 +131,7 @@ sequenceDiagram
     WS-->>UI: Live update status -> Running
 ```
 
-### 5.2 WebSocket Broadcasting Channels (`backend/routes/channels.php`)
+### 4.2 WebSocket Broadcasting Channels (`backend/routes/channels.php`)
 
 - **Endpoint:** `/api/broadcasting/auth` (authenticated via Sanctum Bearer token).
 - **`private-users.{id}`:** Receives `VirtualMachineStatusUpdated` and `SnapshotStatusUpdated` events for workloads owned by user `{id}`.

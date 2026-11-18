@@ -92,14 +92,14 @@ seed-dev: .env.development
 	@echo "Running database seeders in development backend..."
 	@docker exec -i ognivo-backend-dev php artisan db:seed --force
 
-reset-dev: .env.development .env.production
+reset-dev: .env.development
 	@$(MAKE) down-prod
 	@$(MAKE) down-dev
-	@echo "Removing database volumes..."
+	@echo "Removing dev database volumes..."
 	@for vol in $$(docker volume ls -q | grep -E '(^|_)db_data(_dev)?$$'); do \
-		echo "Removing volume: $$vol"; \
-		docker volume rm "$$vol"; \
-	done
+     		echo "Removing volume: $$vol"; \
+     		docker volume rm "$$vol"; \
+    done
 	@$(MAKE) up-dev
 
 # Logs and status

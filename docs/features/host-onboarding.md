@@ -26,7 +26,7 @@ SSH into your hypervisor server and run:
 
 - **On Incus:**
   ```bash
-  incus config trust add-token <node-name-or-panel>
+  incus config trust add token <node-name-or-panel>
   ```
 - **On LXD:**
   ```bash
@@ -40,7 +40,7 @@ Token: eyJjbGllbnRfbmFtZSI6InBhbmVsIiwiZmluZ2VycHJpbnQiOiI5YjkzNWY5...
 ```
 
 #### Step 2: Onboard Node in the Web UI
-1. Open **Host Nodes & Regions** in the Admin sidebar.
+1. Open **Compute Nodes** in the Admin sidebar.
 2. Click **Create Node** and select the **Connect with token** tab.
 3. Enter the Node Name, paste the generated token into the **Trust Token** field, and configure CPU/RAM/Storage capacity.
 4. Click **Connect with token**.
