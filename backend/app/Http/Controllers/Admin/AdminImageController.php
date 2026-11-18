@@ -462,7 +462,7 @@ final class AdminImageController extends Controller
     private function shouldValidateRemoteImages(Request $request): bool
     {
         return ! $request->boolean('skip_remote_validation')
-            && Cast::bool(config('hypervisor.validate_remote_images', ! App::environment('testing')));
+            && Cast::bool(config('hypervisor.validate_remote_images', App::environment('testing') === false));
     }
 
     private function assertRemoteImageValid(

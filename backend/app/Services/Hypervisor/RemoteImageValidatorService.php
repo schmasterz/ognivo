@@ -89,6 +89,7 @@ final class RemoteImageValidatorService
         $cacheKey = 'simplestreams:catalog:'.md5($normalizedSource);
 
         try {
+            /** @var array<string, mixed> $catalog */
             $catalog = Cache::remember(
                 $cacheKey,
                 self::CATALOG_CACHE_TTL_SECONDS,
@@ -160,10 +161,12 @@ final class RemoteImageValidatorService
      */
     private function fetchSimplestreamsCatalog(string $source): array
     {
+        /** @var Response $indexResponse */
         $indexResponse = Http::timeout(self::HTTP_TIMEOUT_SECONDS)
             ->get($source.'/streams/v1/index.json');
 
         if (! $indexResponse->successful()) {
+            /** @var Response $directResponse */
             $directResponse = Http::timeout(self::HTTP_TIMEOUT_SECONDS)
                 ->get($source.'/streams/v1/images.json');
 
@@ -171,6 +174,7 @@ final class RemoteImageValidatorService
         }
 
         $imagesPath = $this->extractImageDownloadsPath($indexResponse->json()) ?? 'streams/v1/images.json';
+        /** @var Response $imagesResponse */
         $imagesResponse = Http::timeout(self::HTTP_TIMEOUT_SECONDS)
             ->get($source.'/'.ltrim($imagesPath, '/'));
 
@@ -241,6 +245,7 @@ final class RemoteImageValidatorService
         }
 
         try {
+            /** @var Response $response */
             $response = Http::timeout(self::HTTP_TIMEOUT_SECONDS)
                 ->get($normalizedSource.'/1.0/images/aliases/'.rawurlencode($cleanAlias));
         } catch (Throwable $e) {
