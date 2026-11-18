@@ -2,7 +2,7 @@
 
 ## 1. Tech Stack & Runtime
 - **Framework:** Next.js 16 (App Router, Turbopack, `cacheComponents: true`, `partialPrefetching: true`)
-- **UI & Styling:** React 19, TypeScript (strict), Tailwind CSS v4, `lucide-react` icons
+- **UI & Styling:** React 19, TypeScript (strict), Tailwind CSS v4, `lucide-react` icons, `xterm.js` for the web terminal
 - **Real-Time:** Laravel Echo (`pusher-js` / Reverb WebSocket client in `src/lib/echo.ts`)
 - **Testing:** Native Node.js test runner (`node --test`) with TypeScript strip-only mode
 
@@ -25,8 +25,8 @@ src/app/
     ├── instances/page.tsx            # -> /instances (VmsTab)
     ├── snapshots/page.tsx            # -> /snapshots (SnapshotsTab)
     ├── networking/page.tsx           # -> /networking (NetworkingTab)
-    ├── users/page.tsx                # -> /users (UsersTab, admin-only guard)
-    ├── audit/page.tsx                # -> /audit (AuditLogTab, admin-only guard)
+    ├── users/page.tsx                # -> /users (UsersTab, admin-only: non-admins are redirected to /instances)
+    ├── audit/page.tsx                # -> /audit (AuditLogTab, admin-only: non-admins are redirected to /instances)
     └── activity/page.tsx             # -> /activity (AuditLogTab for tenants; redirects admins to /audit)
 ```
 
@@ -48,32 +48,38 @@ src/
 │   │   ├── DashboardContext.tsx      # Shared dashboard state, domain hooks, and action handlers
 │   │   ├── DashboardShell.tsx        # Persistent layout chrome (Sidebar, Navbar, QuotaSection, FilterToolbar, Modals)
 │   │   ├── DashboardModals.tsx       # Centralized modal mounting point
+│   │   ├── Sidebar.tsx, Navbar.tsx, FilterToolbar.tsx, LanguageToggle.tsx, ThemeToggle.tsx, WsStatusBadge.tsx
 │   │   ├── ImpersonationBanner.tsx   # Sticky banner shown during admin tenant impersonation
 │   │   ├── useDashboardData.ts       # Static config (hosts, quotaGroups, settings) & quota/stats fetching
 │   │   ├── useDashboardRealtime.ts   # Echo subscriptions (users.{id}, admin.workloads), reconnect resync, polling
 │   │   ├── useDashboardNavigation.ts # Route-to-tab resolution & ?vm=<id>&vm_tab=<tab> deep-link sync
 │   │   ├── useDashboardModals.ts     # Consolidated modal open/target state
 │   │   └── useDashboardConfirmActions.ts # Domain confirmation dialog handlers
-│   ├── vms/                          # VM table, console, details modal, per-VM snapshots, useVms hook
+│   ├── auth/                         # AuthView (login, register, forgot password), ProfileModal, ResetPasswordView, VerifyEmailView
+│   ├── vms/                          # VM table, CreateVmModal, VmDetailsModal, ConsoleModal + XtermViewer (web terminal), per-VM snapshots, useVms hook
 │   ├── snapshots/                    # Global SnapshotsTab
 │   ├── networking/                   # IP allocations, IP pools, preflight modal, useNetworking hook
 │   ├── users/                        # Admin user management table, modals, useUsers hook
-│   ├── quotas/                       # QuotaOverview, DashboardQuotaSection, QuotaLimitsFormSection, quota modals
-│   ├── hosts/                        # Compute node modals (NodesModal, CreateHostModal, EditHostModal)
-│   ├── images/                       # OS Images catalog modals
+│   ├── quotas/                       # QuotaOverview, DashboardQuotaSection, QuotaLimitsFormSection, quota group modals
+│   ├── hosts/                        # Compute node modals (NodesModal, CreateHostModal, EditHostModal) and per-node image selection (HostImagesSection, ImageSelectionDrawer)
+│   ├── images/                       # OS Images catalog modals (ImagesModal, CreateImageModal)
 │   ├── audit/                        # Unified AuditLogTab, keyset cursor pagination, AuditDetailDrawer
 │   ├── settings/                     # Platform SettingsModal
 │   └── ui/                           # Reusable primitives (ConfirmModal, PaginationBar, SearchableUserSelect)
 └── lib/
-    ├── api/                          # Typed HTTP client (client.ts) and domain API modules (vms, networking, etc.)
-    ├── auth/AuthContext.tsx          # Session state, login/logout, and tenant impersonation (start/stop)
+    ├── api/                          # Typed HTTP client (client.ts, ApiError) and domain API modules (vms, hosts, images, networking, quotas, snapshots, audit, admin, auth)
+    ├── auth/                         # AuthContext.tsx (session state, login/logout, tenant impersonation) and impersonationStorage.ts
     ├── filters/GlobalFilterContext.tsx # Global tenant/host/status/search/perPage filters with debounce
     ├── hooks/
     │   ├── useCachedFetch.ts         # Session-scoped TTL cache with AbortController & force-refetch
-    │   └── useConfirmDialog.ts       # Reusable confirmation dialog state machine
-    ├── i18n/                         # EN/BG dictionary and useI18n() hook
+    │   ├── useConfirmDialog.ts       # Reusable confirmation dialog state machine
+    │   └── useModalEscape.ts         # Escape-key handling for modals
+    ├── images/imageSelection.ts      # Pure helpers for the per-node image selection payload
+    ├── registry/vmRegistry.ts        # Registry of VM details tabs
+    ├── i18n/                         # EN/BG dictionaries.ts, I18nContext.tsx and useI18n() hook
     ├── theme/                        # Dark/Light/System theme provider
-    └── toast/                        # Toast notifications (useToast())
+    ├── toast/                        # Toast notifications (useToast())
+    └── echo.ts                       # Laravel Echo / Reverb client setup
 ```
 
 ---
@@ -92,7 +98,12 @@ src/
    - Domain hooks using `useCachedFetch` must include `sessionUserId` (`user?.id`) in their cache key.
    - Explicit `refetch()` calls bypass TTL cache (`force: true`). Session transitions (login, logout, impersonation) must call `clearAllCachedFetchEntries()`.
 6. **Unit Test Compatibility (`node --test`):**
-   - Pure logic and state helpers tested under `src/**/__tests__/*.test.ts` are executed directly by Node's native TypeScript runner (`node --test`). Avoid TypeScript parameter properties (`constructor(public x: number)`) and path aliases (`@/`) inside files imported directly by `.test.ts` files, and use `import { type Foo }` for type-only imports.
+   - Pure logic and state helpers tested by `src/**/*.test.ts` files (for example under `__tests__/` folders or next to the module) are executed directly by Node's native TypeScript runner (`node --test`). Avoid TypeScript parameter properties (`constructor(public x: number)`) and path aliases (`@/`) inside files imported directly by `.test.ts` files, and use `import { type Foo }` for type-only imports.
+7. **Web Terminal:**
+   - The terminal WebSocket (`XtermViewer`) connects to the `websocket_path` returned by `POST /api/vms/{id}/console` and passes the single-use ticket through the subprotocols `["ognivo-terminal", "ticket.<ticket>"]`. Never put the ticket in a URL or log it.
+   - Close the session with `DELETE /api/vms/{id}/console/{sessionId}` when the terminal is closed or reconnects.
+8. **Documentation:**
+   - When you change user-visible behavior or add UI text, update the matching page in `docs/` and both languages in `dictionaries.ts`.
 
 ---
 
@@ -105,11 +116,13 @@ Run from `frontend/`:
 npx next typegen && npx tsc --noEmit -p . --incremental false
 
 # 2. Run ESLint (must report 0 errors)
-npx eslint src
+npm run lint
 
-# 3. Run unit tests via native Node test runner
-node --test src/lib/hooks/__tests__/useConfirmDialog.test.ts src/lib/hooks/__tests__/useCachedFetch.test.ts src/components/audit/__tests__/audit.test.ts
+# 3. Run unit tests via the native Node test runner (all src/**/*.test.ts files)
+npm test
 
 # 4. Verify production build
 npm run build
 ```
+
+CI runs lint, tests and the build. The TypeScript check in step 1 is a local check, so run it before pushing.

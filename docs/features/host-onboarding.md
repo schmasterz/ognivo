@@ -17,6 +17,16 @@ The panel automatically generates and manages a self-signed elliptic-curve X.509
 
 ## 2. Adding an Incus / LXD Compute Node
 
+### Before You Start
+
+- **The hypervisor must listen on the network.** By default Incus only listens locally. On the hypervisor host, run once:
+  ```bash
+  incus config set core.https_address <node-ip>:8443
+  ```
+  On LXD, use `lxc config set core.https_address <node-ip>:8443`.
+- **The panel must be able to reach it.** The panel's containers need a route to `<node-ip>:8443`. If Incus runs on the same machine as the panel, use an address that containers can reach; `localhost` inside a container is the container itself.
+- **Private addresses in production.** A production panel rejects nodes on private (RFC 1918) or loopback addresses unless `HYPERVISOR_ALLOW_PRIVATE_ENDPOINTS=true` is set in `.env.production`. See the [Configuration Reference](../operations/configuration.md#hypervisor-connectivity).
+
 ### Path A: Connect with a Single-Use Trust Token (Recommended)
 
 This is the fastest and safest onboarding flow. The trust token encodes connection addresses, the server certificate fingerprint, and a one-time secret.
@@ -26,17 +36,17 @@ SSH into your hypervisor server and run:
 
 - **On Incus:**
   ```bash
-  incus config trust add token <node-name-or-panel>
+  incus config trust add <node-name-or-panel>
   ```
 - **On LXD:**
   ```bash
   lxc config trust add --name <node-name-or-panel>
   ```
 
-*Example Output:*
+*Example Output (Incus):*
 ```text
-Client panel has been added to the trust store.
-Token: eyJjbGllbnRfbmFtZSI6InBhbmVsIiwiZmluZ2VycHJpbnQiOiI5YjkzNWY5...
+Client ognivo-panel certificate add token:
+eyJjbGllbnRfbmFtZSI6InBhbmVsIiwiZmluZ2VycHJpbnQiOiI5YjkzNWY5...
 ```
 
 #### Step 2: Onboard Node in the Web UI
@@ -50,7 +60,7 @@ Token: eyJjbGllbnRfbmFtZSI6InBhbmVsIiwiZmluZ2VycHJpbnQiOiI5YjkzNWY5...
 2. Connects to the first reachable address, extracts the remote peer certificate during the TLS handshake (`TlsPeerCertificateFetcher`), and computes its SHA-256 fingerprint.
 3. Compares the live peer fingerprint with the token's expected fingerprint. On mismatch, onboarding is aborted immediately before transmitting any secrets (MITM protection).
 4. Submits the panel's public certificate to `POST /1.0/certificates` with `trust_token: <secret>`.
-5. Pins the verified server certificate fingerprint in the database for all future mTLS connections.
+5. Pins the verified server certificate for all future mTLS connections. Both the SHA-256 certificate fingerprint and the SHA-256 hash of the certificate's public key (SPKI pin) are stored; the SPKI pin is also enforced by the `console-proxy` when it connects to the hypervisor.
 6. Discards the one-time token (never stored in the database).
 
 ---
@@ -60,7 +70,7 @@ Token: eyJjbGllbnRfbmFtZSI6InBhbmVsIiwiZmluZ2VycHJpbnQiOiI5YjkzNWY5...
 Use this path when manual trust store management or firewall rules require out-of-band certificate registration.
 
 #### Step 1: Download the Panel Public Certificate
-In the Admin UI under **Host Nodes & Regions**, click **Download .crt** (or call `GET /api/admin/incus/certificate/download`).
+In the Admin UI under **Compute Nodes**, click **Download public certificate** (or call `GET /api/admin/incus/certificate/download`). The file is named `incus-panel.crt`.
 
 #### Step 2: Trust the Certificate on the Hypervisor Host
 Copy `incus-panel.crt` to your server and register it in the trust store:
@@ -75,17 +85,24 @@ Copy `incus-panel.crt` to your server and register it in the trust store:
   ```
 
 #### Step 3: Retrieve the Host Server Fingerprint
-Run on the hypervisor host:
+Run on the hypervisor host (`lxc info` on LXD):
 ```bash
 incus info
 ```
-Copy the 64-character SHA-256 `server_certificate` fingerprint.
+Copy the 64-character SHA-256 `certificate_fingerprint` value from the `environment` section.
 
 #### Step 4: Register the Node in the Web UI
 1. In **Create Node**, select the **Add with certificate** tab.
 2. Enter the Node Name, Endpoint URL (e.g., `https://192.168.1.100:8443`), and the Expected Fingerprint.
 3. Click **Verify connection** to test reachability, fingerprint matching, and mTLS client authentication.
 4. Click **Add with certificate**.
+
+---
+
+### After the Node Is Added
+
+- **Choose its OS images.** A new node is offered every image that exists in the catalog at that moment. Narrow the list with **Manage images** in the node's form. See [OS Images](images.md).
+- **Add an IP pool** for the node under **Networking & IPAM**: [Networking & IPAM](networking.md).
 
 ---
 
@@ -108,5 +125,4 @@ The **Verify connection** action (`POST /api/admin/hosts/verify-connection` or `
 Upon successful onboarding, the panel queries `GET /1.0/resources` and `GET /1.0/storage-pools/{pool}/resources` to automatically discover compute threads, memory, and storage pool capacity.
 
 > [!NOTE]
-> For an Incus or LXD **cluster endpoint**, the resource discovery values describe the specific cluster member that answered the REST API request. Full cluster-wide aggregate resource tracking is handled separately; individual cluster members should be onboarded or synced accordingly.
-
+> For an Incus or LXD **cluster endpoint**, the resource discovery values describe the specific cluster member that answered the REST API request. Ognivo treats each endpoint as one compute node and does not aggregate resources across a cluster, so onboard individual cluster members as separate nodes if you need to use them.
