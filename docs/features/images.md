@@ -38,19 +38,22 @@ An image is usable on a node only if it is both **enabled** and **attached** to 
 
 | Field | Required | Values and rules | Notes |
 | :--- | :--- | :--- | :--- |
-| `name` | Yes | Up to 255 characters, **unique** | Shown to tenants and used as the Incus image alias. See [Name and alias](#21-name-and-alias) |
+| `alias` | Yes | Up to 255 characters | Friendly display name shown to users and administrators, for example `Debian 12`, `AlmaLinux 10`, `Ubuntu 24.04 LTS` |
+| `name` | Yes | Up to 255 characters, **unique** | Technical image identifier / alias on the remote image server, for example `debian/12`, `almalinux/10`, `ubuntu/24.04`. See [Name and remote identifier](#21-name-and-remote-identifier) |
 | `source` | Yes | Up to 500 characters | Image server URL, for example `https://images.linuxcontainers.org` |
 | `protocol` | No | Up to 50 characters, default `simplestreams` | Passed to Incus as the image source protocol |
 | `os_type` | No | `linux`, `windows`, `bsd`, `other`. Default `linux` | Containers can only run `linux` images |
 | `enabled` | No | Boolean, default `true` | Global on/off switch |
 
-Ognivo does **not** check that the name exists on the image server when you save it. A wrong name or source is only detected when an instance is created.
+When saving or updating an image, Ognivo verifies that the technical name exists and is reachable on the remote server (`simplestreams`, `incus`, or `lxd`). You can test reachability beforehand with the **Test Remote** button in the web panel or via `POST /api/admin/images/validate`. For offline or isolated lab networks, validation can be bypassed by passing `skip_remote_validation: true`.
 
-### 2.1 Name and alias
+### 2.1 Name and remote identifier
+
+`name` is the technical identifier on the remote image server, while `alias` is the friendly display name shown in the panel. Clean remote identifiers like `debian/12`, `almalinux/10`, and `ubuntu/24.04` are the standard recommended format.
 
 The `name` is resolved to the Incus image alias like this:
 
-1. A leading remote prefix such as `images:` or `local:` is removed when it is followed by a path. `images:ubuntu/24.04` becomes `ubuntu/24.04`. Both spellings work.
+1. Legacy CLI remote prefixes such as `images:` or `local:` are stripped automatically when resolving the remote alias (for example, `images:ubuntu/24.04` becomes `ubuntu/24.04`). Both spellings work.
 2. For Linux images from `images.linuxcontainers.org` with the `simplestreams` protocol, `/cloud` is appended when the instance needs cloud-init (for example, a user-supplied cloud-init configuration, the network configuration of an instance on a Manual pool, or the network configuration of a virtual machine on a Routed pool), so `ubuntu/24.04` becomes `ubuntu/24.04/cloud`.
 
 Custom images from other servers are used as they are. Manual-mode instances and virtual machines on Routed pools get their network settings through cloud-init, so make sure such images contain cloud-init. Containers on Routed pools get the address through the Incus NIC and do not need it.
@@ -89,6 +92,7 @@ All catalog endpoints require an administrator token.
 | :--- | :--- |
 | `GET /api/admin/images` | List the catalog (see below) |
 | `POST /api/admin/images` | Create an image. Optional `host_ids` sets exactly which nodes it is attached to |
+| `POST /api/admin/images/validate` | Pre-flight test reachability and architecture compatibility on the remote server |
 | `GET /api/admin/images/{id}` | Show one image with its nodes |
 | `PUT /api/admin/images/{id}` | Update fields. If `host_ids` is sent, the image's node list is replaced with it |
 | `DELETE /api/admin/images/{id}` | Remove the image from the catalog |
@@ -100,6 +104,7 @@ curl -X POST http://localhost/api/admin/images \
   -H "Authorization: Bearer <ADMIN_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
+    "alias": "Rocky Linux 9",
     "name": "rocky/9",
     "source": "https://images.linuxcontainers.org",
     "protocol": "simplestreams",
@@ -107,6 +112,8 @@ curl -X POST http://localhost/api/admin/images \
     "enabled": true
   }'
 ```
+
+You can also include `"skip_remote_validation": true` in the payload to bypass remote server verification when creating or updating an image in offline or isolated environments.
 
 **Which nodes get the image.** If you omit `host_ids`, the new image is attached to every node that has **auto-attach** on. If you send `host_ids`, the image ends up attached to **exactly** those nodes, and auto-attach does not add others.
 

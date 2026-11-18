@@ -106,7 +106,7 @@ export function CreateImageModal({
     }
 
     if (!name.trim()) {
-      setError("Image technical name (e.g. images:debian/12) is required.");
+      setError("Image technical name (e.g. debian/12, almalinux/10) is required.");
       return;
     }
 
@@ -217,7 +217,7 @@ export function CreateImageModal({
                 setName(e.target.value);
                 setRemoteValidation(null);
               }}
-              placeholder="e.g. images:debian/12, ubuntu/24.04"
+              placeholder="e.g. debian/12, almalinux/10, ubuntu/24.04"
               className="w-full px-3.5 py-2.5 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-xl text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
             />
           </div>

@@ -76,7 +76,7 @@ final class DatabaseSeeder extends Seeder
         // 3. Allowed OS Images
         $defaultImages = [
             [
-                'name' => 'images:ubuntu/24.04',
+                'name' => 'ubuntu/24.04',
                 'alias' => 'Ubuntu 24.04 LTS',
                 'source' => 'https://images.linuxcontainers.org',
                 'protocol' => 'simplestreams',
@@ -84,7 +84,7 @@ final class DatabaseSeeder extends Seeder
                 'enabled' => true,
             ],
             [
-                'name' => 'images:debian/12',
+                'name' => 'debian/12',
                 'alias' => 'Debian 12',
                 'source' => 'https://images.linuxcontainers.org',
                 'protocol' => 'simplestreams',
@@ -92,7 +92,7 @@ final class DatabaseSeeder extends Seeder
                 'enabled' => true,
             ],
             [
-                'name' => 'images:alpine/3.20',
+                'name' => 'alpine/3.20',
                 'alias' => 'Alpine 3.20',
                 'source' => 'https://images.linuxcontainers.org',
                 'protocol' => 'simplestreams',
@@ -244,7 +244,7 @@ final class DatabaseSeeder extends Seeder
                     'cpu_cores' => 2,
                     'ram_mb' => 2048,
                     'disk_gb' => 20,
-                    'os_image' => 'images:ubuntu/24.04',
+                    'os_image' => 'ubuntu/24.04',
                     'ipv4_address' => '192.168.100.10',
                 ]
             );
@@ -260,7 +260,7 @@ final class DatabaseSeeder extends Seeder
                     'cpu_cores' => 2,
                     'ram_mb' => 2048,
                     'disk_gb' => 25,
-                    'os_image' => 'images:debian/12',
+                    'os_image' => 'debian/12',
                     'ipv4_address' => '192.168.100.11',
                 ]
             );
