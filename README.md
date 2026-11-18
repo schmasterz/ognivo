@@ -2,20 +2,9 @@
 
 **Open-source, multi-tenant control plane for KVM virtual machines and LXC system containers on Incus.**
 
-[![CI](https://img.shields.io/github/actions/workflow/status/schmasterz/ognivo/ci.yml?label=CI)](https://github.com/schmasterz/ognivo/actions)
-[![Release](https://img.shields.io/github/v/release/schmasterz/ognivo?include_prereleases)](CHANGELOG.md)
-[![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](LICENSE)
-[![PHP 8.5](https://img.shields.io/badge/PHP-8.5-777BB4?logo=php&logoColor=white)](https://www.php.net/)
-[![Laravel 13](https://img.shields.io/badge/Laravel-13-FF2D20?logo=laravel&logoColor=white)](https://laravel.com/)
-[![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?logo=next.js&logoColor=white)](https://nextjs.org/)
 
 > [!WARNING]
 > **Status: alpha (`1.0.0-alpha.1`).** Ognivo is not production-ready yet. APIs, configuration keys and the database schema may change without migration paths until 1.0. Keep external backups of anything you care about. See [Upgrading](docs/operations/upgrading.md).
-
-<!-- TODO: replace with a real screenshot or short GIF (dashboard, console, IPAM) -->
-<p align="center">
-  <img src="docs/assets/dashboard.png" alt="Ognivo dashboard" width="800">
-</p>
 
 Ognivo lets you offer VPS-style hosting on your own **Incus** hypervisors. Customers get a self-service dashboard. Administrators get node, image, network and quota management. Everything is built around tenant isolation and a tamper-evident audit trail.
 
