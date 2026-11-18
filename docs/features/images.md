@@ -272,8 +272,7 @@ When no node is chosen, placement only considers nodes that have the image attac
 ## 8. Limitations
 
 - **No automatic discovery.** Ognivo does not read images from the Incus server or the image server. Every image is added to the catalog by hand.
-- **No validation against the remote.** A catalog entry is accepted even if the alias or server is wrong.
+- **Remote validation.** Images can be pre-flight verified with the "Test Remote" button or `php artisan images:verify-catalog`. By default, unverified or invalid remote images are rejected during creation and update unless the administrator chooses to bypass verification.
 - **No audit entries for catalog changes.** Creating, editing and deleting catalog images is not recorded in the audit log. Changes to a node's image selection are recorded as a node update, with the number of images attached and detached.
 - **No image-in-use check on delete.** Deleting or disabling an image does not warn you about instances that use it.
 - **One global catalog.** Images are shared by all tenants. There are no per-tenant or per-plan image lists.
-- **Name doubles as alias.** The Ognivo name and the Incus alias are the same string (after the prefix is removed), so you cannot give an image a friendly display name that differs from its alias.
