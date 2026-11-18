@@ -263,7 +263,7 @@ incus config trust add ognivo-panel
 
 On LXD, create the token with `lxc config trust add --name ognivo-panel`.
 
-**In the admin UI:** **Host Nodes & Regions**, **Create Node**, tab **Connect with token**. Enter a name, paste the token and set the capacity, then click **Connect with token**. Ognivo compares the server certificate fingerprint with the one in the token before sending any secret, then pins it for future connections.
+**In the admin UI:** **Compute Nodes**, **Create Node**, tab **Connect with token**. Enter a name, paste the token and set the capacity, then click **Connect with token**. Ognivo compares the server certificate fingerprint with the one in the token before sending any secret, then pins it for future connections.
 
 Requirements for this to work:
 

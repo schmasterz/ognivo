@@ -16,7 +16,6 @@ import { VmDetailsModal } from "@/components/vms/VmDetailsModal";
 import { CreateIpPoolModal } from "@/components/networking/CreateIpPoolModal";
 import { CreateHostModal } from "@/components/hosts/CreateHostModal";
 import { EditHostModal } from "@/components/hosts/EditHostModal";
-import { NodesModal } from "@/components/hosts/NodesModal";
 import { ImagesModal } from "@/components/images/ImagesModal";
 import { DefaultQuotaModal } from "@/components/quotas/DefaultQuotaModal";
 import { QuotaGroupsModal } from "@/components/quotas/QuotaGroupsModal";
@@ -91,8 +90,6 @@ export interface DashboardModalsProps {
   setAssignQuotaGroupTarget: (user: AdminUserItem | null) => void;
 
   // Host Nodes Modal States
-  nodesModalOpen: boolean;
-  setNodesModalOpen: (open: boolean) => void;
   imagesModalOpen?: boolean;
   setImagesModalOpen?: (open: boolean) => void;
   createHostModalOpen: boolean;
@@ -154,15 +151,12 @@ export function DashboardModals({
   assignQuotaGroupTarget,
   setAssignQuotaGroupTarget,
 
-  nodesModalOpen,
-  setNodesModalOpen,
   imagesModalOpen,
   setImagesModalOpen,
   createHostModalOpen,
   setCreateHostModalOpen,
   editHostTarget,
   setEditHostTarget,
-  handleRequestDeleteHost,
 
   settingsModalOpen,
   setSettingsModalOpen,
@@ -320,21 +314,6 @@ export function DashboardModals({
           onClose={() => setAssignQuotaGroupTarget(null)}
           onSuccess={() => {
             toast.success(t("quotaGroupAssignedNotice"));
-            loadStaticData?.();
-            loadData();
-          }}
-        />
-      )}
-
-      {/* Admin: Compute Nodes Modal */}
-      {nodesModalOpen && (
-        <NodesModal
-          hosts={hosts}
-          onClose={() => setNodesModalOpen(false)}
-          onAddNode={() => setCreateHostModalOpen(true)}
-          onEditNode={(h) => setEditHostTarget(h)}
-          onDeleteNode={handleRequestDeleteHost}
-          onRefreshHosts={() => {
             loadStaticData?.();
             loadData();
           }}

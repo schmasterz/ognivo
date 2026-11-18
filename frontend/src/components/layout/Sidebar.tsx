@@ -17,12 +17,13 @@ import {
 import { User } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
 import { OgnivoLogo } from "@/components/ui/OgnivoLogo";
+import { TabType } from "./useDashboardNavigation";
 
 interface SidebarProps {
   user: User | null;
   roles: string[];
-  activeTab: "vms" | "snapshots" | "networking" | "users" | "activity" | "audit";
-  onTabChange: (tab: "vms" | "snapshots" | "networking" | "users" | "activity" | "audit") => void;
+  activeTab: TabType;
+  onTabChange: (tab: TabType) => void;
   counts: {
     vms: number;
     snapshots?: number;
@@ -37,7 +38,6 @@ interface SidebarProps {
   onOpenProfile: () => void;
   onOpenQuotaGroups: () => void;
   onOpenDefaultQuota: () => void;
-  onOpenNodes?: () => void;
   onOpenImages?: () => void;
   onOpenSettings?: () => void;
   onLogout: () => void;
@@ -54,7 +54,6 @@ export function Sidebar({
   onOpenProfile,
   onOpenQuotaGroups,
   onOpenDefaultQuota,
-  onOpenNodes,
   onOpenImages,
   onOpenSettings,
   onLogout,
@@ -62,7 +61,7 @@ export function Sidebar({
   const { t } = useI18n();
   const isAdmin = roles.includes("admin");
 
-  const handleNavClick = (tab: "vms" | "snapshots" | "networking" | "users" | "activity" | "audit") => {
+  const handleNavClick = (tab: TabType) => {
     onTabChange(tab);
     onClose();
   };
@@ -266,26 +265,31 @@ export function Sidebar({
                   </div>
                 </button>
 
-                {/* Host Nodes & Regions Action */}
-                {onOpenNodes && (
-                  <button
-                    onClick={() => {
-                      onOpenNodes();
-                      onClose();
-                    }}
-                    className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-indigo-500/10 hover:text-indigo-600 dark:hover:text-indigo-400 transition group"
-                  >
-                    <div className="flex items-center space-x-3">
-                      <Server className="w-4 h-4 text-indigo-500" />
-                      <span>{t("menuNodes")}</span>
-                    </div>
-                    {counts.nodes !== undefined && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-semibold">
-                        {counts.nodes}
-                      </span>
-                    )}
-                  </button>
-                )}
+                {/* Compute Nodes Tab */}
+                <button
+                  onClick={() => handleNavClick("nodes")}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition ${
+                    activeTab === "nodes"
+                      ? "bg-purple-600 text-white shadow-md shadow-purple-600/25"
+                      : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-900"
+                  }`}
+                >
+                  <div className="flex items-center space-x-3">
+                    <Server className={`w-4 h-4 ${activeTab === "nodes" ? "text-white" : "text-purple-400"}`} />
+                    <span>{t("menuNodes")}</span>
+                  </div>
+                  {counts.nodes !== undefined && (
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
+                        activeTab === "nodes"
+                          ? "bg-white/20 text-white font-bold"
+                          : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400"
+                      }`}
+                    >
+                      {counts.nodes}
+                    </span>
+                  )}
+                </button>
 
                 {/* OS Images Catalog Action */}
                 {onOpenImages && (

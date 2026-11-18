@@ -30,7 +30,6 @@ export function useDashboardModals() {
     useState<AdminUserItem | null>(null);
 
   // Host Node Modals state
-  const [nodesModalOpen, setNodesModalOpen] = useState(false);
   const [imagesModalOpen, setImagesModalOpen] = useState(false);
   const [createHostModalOpen, setCreateHostModalOpen] = useState(false);
   const [editHostTarget, setEditHostTarget] = useState<HostNode | null>(null);
@@ -61,8 +60,6 @@ export function useDashboardModals() {
     setEditQuotaGroupTarget,
     assignQuotaGroupTarget,
     setAssignQuotaGroupTarget,
-    nodesModalOpen,
-    setNodesModalOpen,
     imagesModalOpen,
     setImagesModalOpen,
     createHostModalOpen,
