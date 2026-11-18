@@ -1,5 +1,5 @@
 import { request } from "./client";
-import { AdminImagesResponse, ImageItem } from "./types";
+import { AdminImagesResponse, ImageItem, RemoteImageValidationResult } from "./types";
 
 /**
  * Image allowlist and catalog API methods.
@@ -51,6 +51,21 @@ export const imagesApi = {
   },
 
   /**
+   * Administrator: Pre-flight validate an image against its remote server.
+   */
+  async adminValidateImage(params: {
+    source: string;
+    name: string;
+    protocol?: string;
+    os_type?: string;
+  }): Promise<RemoteImageValidationResult> {
+    return request<RemoteImageValidationResult>("/admin/images/validate", {
+      method: "POST",
+      body: JSON.stringify(params),
+    });
+  },
+
+  /**
    * Administrator: Add an approved image with compute node associations.
    */
   async adminCreateImage(params: {
@@ -61,6 +76,7 @@ export const imagesApi = {
     os_type?: string;
     enabled?: boolean;
     host_ids?: number[];
+    skip_remote_validation?: boolean;
   }): Promise<{ message: string; image: ImageItem }> {
     return request<{ message: string; image: ImageItem }>("/admin/images", {
       method: "POST",
@@ -81,6 +97,7 @@ export const imagesApi = {
       os_type?: string;
       enabled?: boolean;
       host_ids?: number[];
+      skip_remote_validation?: boolean;
     }
   ): Promise<{ message: string; image: ImageItem }> {
     return request<{ message: string; image: ImageItem }>(`/admin/images/${id}`, {

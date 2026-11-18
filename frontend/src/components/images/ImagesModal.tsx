@@ -190,7 +190,7 @@ export function ImagesModal({ onClose, hosts }: ImagesModalProps) {
   };
 
   const handleConfirmDeleteImage = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || (deleteTarget.active_vms_count ?? 0) > 0) return;
 
     try {
       setDeleting(true);
@@ -311,7 +311,7 @@ export function ImagesModal({ onClose, hosts }: ImagesModalProps) {
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                       {/* Left: Name, Type, Source */}
                       <div className="space-y-1">
-                        <div className="flex items-center space-x-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="text-xs font-bold text-gray-900 dark:text-white">
                             {img.alias || img.name}
                           </span>
@@ -334,6 +334,13 @@ export function ImagesModal({ onClose, hosts }: ImagesModalProps) {
                           <span className="text-[10px] text-gray-400">
                             {img.os_type === "linux" ? "KVM & LXC" : "KVM Only"}
                           </span>
+
+                          {(img.active_vms_count ?? 0) > 0 && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                              {img.active_vms_count}{" "}
+                              {img.active_vms_count === 1 ? "VM in use" : "VMs in use"}
+                            </span>
+                          )}
                         </div>
 
                         <div className="text-[11px] text-gray-500 dark:text-gray-400 font-mono flex items-center space-x-1.5">
@@ -465,11 +472,14 @@ export function ImagesModal({ onClose, hosts }: ImagesModalProps) {
         title="Remove Approved Image"
         message={
           deleteTarget
-            ? `Are you sure you want to remove '${deleteTarget.alias || deleteTarget.name}' from the allowlist catalog?`
+            ? (deleteTarget.active_vms_count ?? 0) > 0
+              ? `Cannot remove '${deleteTarget.alias || deleteTarget.name}'. It is currently in use by ${deleteTarget.active_vms_count} active virtual machine(s). Reassign or delete those workloads first.`
+              : `Are you sure you want to remove '${deleteTarget.alias || deleteTarget.name}' from the allowlist catalog?`
             : ""
         }
-        variant="danger"
+        variant={deleteTarget && (deleteTarget.active_vms_count ?? 0) > 0 ? "warning" : "danger"}
         isLoading={deleting}
+        confirmDisabled={Boolean(deleteTarget && (deleteTarget.active_vms_count ?? 0) > 0)}
         onConfirm={handleConfirmDeleteImage}
         onClose={() => {
           if (!deleting) {

@@ -52,6 +52,11 @@ enum AuditAction: string
     case HostRetrusted = 'host.retrusted';
     case HostResourcesSynced = 'host.resources.synced';
 
+    // Image
+    case ImageCreated = 'image.created';
+    case ImageUpdated = 'image.updated';
+    case ImageDeleted = 'image.deleted';
+
     // Certificate
     case CertGenerated = 'cert.generated';
     case CertRotated = 'cert.rotated';

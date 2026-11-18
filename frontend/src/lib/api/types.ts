@@ -430,11 +430,20 @@ export interface ImageItem {
   protocol: string;
   os_type: "linux" | "windows" | "bsd" | "other";
   enabled: boolean;
+  active_vms_count?: number;
   hosts?: HostNode[];
   host_ids?: number[];
   attached?: boolean;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface RemoteImageValidationResult {
+  valid: boolean;
+  error?: string | null;
+  architectures?: string[];
+  matched_alias?: string | null;
+  metadata?: Record<string, unknown>;
 }
 
 export interface CursorPage<T> {

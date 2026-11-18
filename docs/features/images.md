@@ -38,19 +38,22 @@ An image is usable on a node only if it is both **enabled** and **attached** to 
 
 | Field | Required | Values and rules | Notes |
 | :--- | :--- | :--- | :--- |
-| `name` | Yes | Up to 255 characters, **unique** | Shown to tenants and used as the Incus image alias. See [Name and alias](#21-name-and-alias) |
+| `alias` | Yes | Up to 255 characters | Friendly display name shown to users and administrators, for example `Debian 12`, `AlmaLinux 10`, `Ubuntu 24.04 LTS` |
+| `name` | Yes | Up to 255 characters, **unique** | Technical image identifier / alias on the remote image server, for example `debian/12`, `almalinux/10`, `ubuntu/24.04`. See [Name and remote identifier](#21-name-and-remote-identifier) |
 | `source` | Yes | Up to 500 characters | Image server URL, for example `https://images.linuxcontainers.org` |
 | `protocol` | No | Up to 50 characters, default `simplestreams` | Passed to Incus as the image source protocol |
 | `os_type` | No | `linux`, `windows`, `bsd`, `other`. Default `linux` | Containers can only run `linux` images |
 | `enabled` | No | Boolean, default `true` | Global on/off switch |
 
-Ognivo does **not** check that the name exists on the image server when you save it. A wrong name or source is only detected when an instance is created.
+When saving or updating an image, Ognivo verifies that the technical name exists and is reachable on the remote server (`simplestreams`, `incus`, or `lxd`). You can test reachability beforehand with the **Test Remote** button in the web panel or via `POST /api/admin/images/validate`. For offline or isolated lab networks, validation can be bypassed by passing `skip_remote_validation: true`.
 
-### 2.1 Name and alias
+### 2.1 Name and remote identifier
+
+`name` is the technical identifier on the remote image server, while `alias` is the friendly display name shown in the panel. Clean remote identifiers like `debian/12`, `almalinux/10`, and `ubuntu/24.04` are the standard recommended format.
 
 The `name` is resolved to the Incus image alias like this:
 
-1. A leading remote prefix such as `images:` or `local:` is removed when it is followed by a path. `images:ubuntu/24.04` becomes `ubuntu/24.04`. Both spellings work.
+1. Legacy CLI remote prefixes such as `images:` or `local:` are stripped automatically when resolving the remote alias (for example, `images:ubuntu/24.04` becomes `ubuntu/24.04`). Both spellings work.
 2. For Linux images from `images.linuxcontainers.org` with the `simplestreams` protocol, `/cloud` is appended when the instance needs cloud-init (for example, a user-supplied cloud-init configuration, the network configuration of an instance on a Manual pool, or the network configuration of a virtual machine on a Routed pool), so `ubuntu/24.04` becomes `ubuntu/24.04/cloud`.
 
 Custom images from other servers are used as they are. Manual-mode instances and virtual machines on Routed pools get their network settings through cloud-init, so make sure such images contain cloud-init. Containers on Routed pools get the address through the Incus NIC and do not need it.
@@ -89,6 +92,7 @@ All catalog endpoints require an administrator token.
 | :--- | :--- |
 | `GET /api/admin/images` | List the catalog (see below) |
 | `POST /api/admin/images` | Create an image. Optional `host_ids` sets exactly which nodes it is attached to |
+| `POST /api/admin/images/validate` | Pre-flight test reachability and architecture compatibility on the remote server |
 | `GET /api/admin/images/{id}` | Show one image with its nodes |
 | `PUT /api/admin/images/{id}` | Update fields. If `host_ids` is sent, the image's node list is replaced with it |
 | `DELETE /api/admin/images/{id}` | Remove the image from the catalog |
@@ -100,6 +104,7 @@ curl -X POST http://localhost/api/admin/images \
   -H "Authorization: Bearer <ADMIN_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
+    "alias": "Rocky Linux 9",
     "name": "rocky/9",
     "source": "https://images.linuxcontainers.org",
     "protocol": "simplestreams",
@@ -107,6 +112,8 @@ curl -X POST http://localhost/api/admin/images \
     "enabled": true
   }'
 ```
+
+You can also include `"skip_remote_validation": true` in the payload to bypass remote server verification when creating or updating an image in offline or isolated environments.
 
 **Which nodes get the image.** If you omit `host_ids`, the new image is attached to every node that has **auto-attach** on. If you send `host_ids`, the image ends up attached to **exactly** those nodes, and auto-attach does not add others.
 
@@ -126,10 +133,17 @@ Results are ordered by newest first (`id` descending). The response contains `da
 
 ### Deleting and disabling
 
-- **Delete** removes the image and its node links. It does not check whether instances use it.
-- **Disable** keeps the image but removes it from every list.
+- **Delete** removes the image and its node links, subject to deletion protection: Ognivo checks the database for any active virtual machines (`status != 'deleted'`) using the image. If active instances exist, deletion is rejected with an explanatory error, preventing broken workload blueprints. In the administrative UI, an **in use** badge displays the number of active workloads and disables the removal action until those workloads are reallocated or terminated.
+- **Disable** keeps the image in the catalog and removes it from every provisioning list.
 
-Instances already created from the image keep running. They store the image name as plain text. However, since the allowlist is checked again when an instance is rebuilt, **reinstalling an instance whose image was deleted or disabled fails** until you re-enable it or choose another image.
+Instances already created from a disabled image keep running. They store the image name as plain text. However, since the allowlist is checked again when an instance is rebuilt, **reinstalling an instance whose image is disabled (or missing from the catalog) fails** until you re-enable it or choose another image.
+
+### Audit logging
+
+All image catalog lifecycle events are recorded in the immutable audit log with administrator visibility:
+- `image.created`: Recorded when a new image is added to the catalog, capturing name, alias, source, protocol, and initial compute node attachments.
+- `image.updated`: Recorded when image properties or compute node associations change, capturing attribute diffs.
+- `image.deleted`: Recorded when an image is deleted from the catalog, including unlinked compute node counts.
 
 ---
 
@@ -228,7 +242,7 @@ At most 50 images are listed, most-used first. Instances in the `deleted` state 
 | :--- | :--- | :--- |
 | Detach an image from a node | None. They keep running. Reinstalling them with their current image still works | The image is no longer offered on that node |
 | Disable an image | None while they run. **Reinstall fails** | The image is no longer offered anywhere |
-| Delete an image | None while they run. **Reinstall fails** | The image is gone from the catalog |
+| Delete an image | Blocked while active workloads (`status != 'deleted'`) use it | The image is gone from the catalog once no active workloads remain |
 | Re-enable or re-add an image | Reinstall works again | Offered again where attached |
 
 ---
@@ -272,8 +286,6 @@ When no node is chosen, placement only considers nodes that have the image attac
 ## 8. Limitations
 
 - **No automatic discovery.** Ognivo does not read images from the Incus server or the image server. Every image is added to the catalog by hand.
-- **No validation against the remote.** A catalog entry is accepted even if the alias or server is wrong.
-- **No audit entries for catalog changes.** Creating, editing and deleting catalog images is not recorded in the audit log. Changes to a node's image selection are recorded as a node update, with the number of images attached and detached.
-- **No image-in-use check on delete.** Deleting or disabling an image does not warn you about instances that use it.
+- **Remote validation.** Images can be pre-flight verified with the "Test Remote" button or `php artisan images:verify-catalog`. By default, unverified or invalid remote images are rejected during creation and update unless the administrator chooses to bypass verification.
+- **Image-in-use protection on delete.** Image deletion is safeguarded against active workloads: deleting an image is rejected while any active virtual machines (`status != 'deleted'`) use it, while disabling an image remains permitted to hide it from new provisioning.
 - **One global catalog.** Images are shared by all tenants. There are no per-tenant or per-plan image lists.
-- **Name doubles as alias.** The Ognivo name and the Incus alias are the same string (after the prefix is removed), so you cannot give an image a friendly display name that differs from its alias.

@@ -105,12 +105,16 @@ docker exec -it ognivo-backend php artisan optimize:clear && docker exec -it ogn
 | `hosts:sync-resources [host]` | Sync CPU, RAM and storage capacity from the hypervisors for hosts with `discovered` or `unknown` capacity (never overwrites capacity you set manually) |
 | `hosts:backfill-pins [--force]` | Compute and store `server_public_key_pin` (SPKI hash) for existing hosts from their stored server certificate. `--force` overwrites existing pins |
 | `hypervisor:cleanup-cert-keys` | Remove leftover `panel_cert_*.key` files from storage and temporary directories |
+| `images:verify-catalog [--skip-disabled] [--id=]` | Verify allowlist catalog images against their remote servers (simplestreams, Incus, LXD) and report reachability or missing aliases |
 
 ```bash
 docker exec -it ognivo-backend php artisan incus:generate-cert --force
 docker exec -it ognivo-backend php artisan vm:reconcile eu-west-1
 docker exec -it ognivo-backend php artisan hosts:sync-resources eu-west-1
 docker exec -it ognivo-backend php artisan hosts:backfill-pins
+docker exec -it ognivo-backend php artisan images:verify-catalog
+docker exec -it ognivo-backend php artisan images:verify-catalog --skip-disabled
+docker exec -it ognivo-backend php artisan images:verify-catalog --id=1
 ```
 
 ### 3.3 Audit Log
@@ -148,6 +152,7 @@ The `scheduler` container runs `php artisan schedule:work` and triggers these ta
 | `hosts:sync-resources` | Hourly | No overlapping runs |
 | `audit:prune` | Daily | |
 | Panel certificate expiry warning (`WarnExpiringPanelCertificateJob`) | Daily | Warns before the panel mTLS certificate expires |
+| Image catalog health (`images:verify-catalog`) | Daily | Warns if remote images are retired, unreachable, or missing |
 
 ### 3.5 Background Daemons
 

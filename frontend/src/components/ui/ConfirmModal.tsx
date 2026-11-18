@@ -15,6 +15,7 @@ export interface ConfirmModalProps {
   cancelText?: string;
   variant?: ConfirmVariant;
   isLoading?: boolean;
+  confirmDisabled?: boolean;
   onConfirm: () => void | Promise<void>;
   onClose: () => void;
 }
@@ -27,6 +28,7 @@ export function ConfirmModal({
   cancelText,
   variant = "danger",
   isLoading = false,
+  confirmDisabled = false,
   onConfirm,
   onClose,
 }: ConfirmModalProps) {
@@ -105,7 +107,7 @@ export function ConfirmModal({
           <button
             type="button"
             onClick={onConfirm}
-            disabled={isLoading}
+            disabled={isLoading || confirmDisabled}
             className={`px-5 py-2 rounded-xl text-xs font-semibold flex items-center space-x-2 transition disabled:opacity-50 ${config.buttonClass}`}
           >
             {isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
