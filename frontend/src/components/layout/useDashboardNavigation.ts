@@ -10,7 +10,8 @@ export type TabType =
   | "networking"
   | "users"
   | "activity"
-  | "audit";
+  | "audit"
+  | "nodes";
 
 export function resolveTabFromPathname(
   pathname: string,
@@ -27,6 +28,8 @@ export function resolveTabFromPathname(
       return isAdmin ? "audit" : "activity";
     case "/audit":
       return isAdmin ? "audit" : "vms";
+    case "/nodes":
+      return isAdmin ? "nodes" : "vms";
     case "/instances":
     case "/workloads":
     case "/workload":
@@ -152,6 +155,7 @@ export function useDashboardNavigation({
         users: "/users",
         activity: "/activity",
         audit: "/audit",
+        nodes: "/nodes",
       };
       if (pathMap[tab]) {
         router.push(pathMap[tab]);

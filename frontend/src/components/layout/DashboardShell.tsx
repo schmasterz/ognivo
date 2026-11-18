@@ -137,7 +137,6 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         onOpenProfile={() => modals.setProfileModalOpen(true)}
         onOpenQuotaGroups={() => modals.setQuotaGroupsModalOpen(true)}
         onOpenDefaultQuota={() => modals.setDefaultQuotaModalOpen(true)}
-        onOpenNodes={() => modals.setNodesModalOpen(true)}
         onOpenImages={() => modals.setImagesModalOpen(true)}
         onOpenSettings={() => modals.setSettingsModalOpen(true)}
         onLogout={onLogout}
@@ -165,6 +164,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 ? t("menuUsers")
                 : activeTab === "audit"
                 ? t("menuAuditLog")
+                : activeTab === "nodes"
+                ? t("menuNodes")
                 : t("menuActivity")
             }
             onToggleSidebar={() => setSidebarOpen(true)}

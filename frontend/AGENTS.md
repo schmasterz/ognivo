@@ -26,6 +26,7 @@ src/app/
     ├── snapshots/page.tsx            # -> /snapshots (SnapshotsTab)
     ├── networking/page.tsx           # -> /networking (NetworkingTab)
     ├── users/page.tsx                # -> /users (UsersTab, admin-only: non-admins are redirected to /instances)
+    ├── nodes/page.tsx                # -> /nodes (NodesTab, admin-only: non-admins are redirected to /instances)
     ├── audit/page.tsx                # -> /audit (AuditLogTab, admin-only: non-admins are redirected to /instances)
     └── activity/page.tsx             # -> /activity (AuditLogTab for tenants; redirects admins to /audit)
 ```
@@ -61,7 +62,7 @@ src/
 │   ├── networking/                   # IP allocations, IP pools, preflight modal, useNetworking hook
 │   ├── users/                        # Admin user management table, modals, useUsers hook
 │   ├── quotas/                       # QuotaOverview, DashboardQuotaSection, QuotaLimitsFormSection, quota group modals
-│   ├── hosts/                        # Compute node modals (NodesModal, CreateHostModal, EditHostModal) and per-node image selection (HostImagesSection, ImageSelectionDrawer)
+│   ├── hosts/                        # Compute node tab & table (NodesTab, NodesTable, CreateHostModal, EditHostModal) and per-node image selection (HostImagesSection, ImageSelectionDrawer)
 │   ├── images/                       # OS Images catalog modals (ImagesModal, CreateImageModal)
 │   ├── audit/                        # Unified AuditLogTab, keyset cursor pagination, AuditDetailDrawer
 │   ├── settings/                     # Platform SettingsModal

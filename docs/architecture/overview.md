@@ -96,6 +96,7 @@ src/app/
     ├── snapshots/page.tsx            # -> /snapshots (Global SnapshotsTab)
     ├── networking/page.tsx           # -> /networking (NetworkingTab & IPAM)
     ├── users/page.tsx                # -> /users (UsersTab, admin-only)
+    ├── nodes/page.tsx                # -> /nodes (NodesTab, admin-only)
     ├── audit/page.tsx                # -> /audit (AuditLogTab, admin-only)
     └── activity/page.tsx             # -> /activity (Tenant activity log)
 ```

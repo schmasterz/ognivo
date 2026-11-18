@@ -35,7 +35,7 @@ Open the development panel at **`http://localhost`**.
 4. In the Create/Edit User modal, verify that individual quota inputs are locked while a preset Quota Group is selected, and unlock only when **No Group (Custom)** is chosen.
 
 ### Scenario F: Multi-Region Host Nodes & Ranged IPAM Pools
-1. Open **Host Nodes & Regions** from the Admin sidebar to inspect or onboard nodes (`eu-west-1`, `us-east-1`, `bg-sofia-1`).
+1. Open **Compute Nodes** from the Admin sidebar to inspect or onboard nodes (`eu-west-1`, `us-east-1`, `bg-sofia-1`).
 2. Navigate to **Networking & IPAM** (`/networking`) and click **Create Subnet Pool**:
    - Assign the pool to a specific host node or leave global.
    - Choose `routed` or `manual` mode and run the **Preflight Check** to verify hypervisor reachability and parent NIC existence.

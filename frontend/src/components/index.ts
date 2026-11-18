@@ -55,7 +55,8 @@ export { EditQuotaGroupModal } from "./quotas/EditQuotaGroupModal";
 export { AssignQuotaGroupModal } from "./quotas/AssignQuotaGroupModal";
 
 // Compute Nodes & Hypervisors
-export { NodesModal } from "./hosts/NodesModal";
+export { NodesTab } from "./hosts/NodesTab";
+export { NodesTable } from "./hosts/NodesTable";
 export { CreateHostModal } from "./hosts/CreateHostModal";
 export { EditHostModal } from "./hosts/EditHostModal";
 
