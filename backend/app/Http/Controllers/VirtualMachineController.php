@@ -67,7 +67,7 @@ final class VirtualMachineController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        $query = VirtualMachine::with(['host', 'primaryAllocation.pool', 'user:id,name,email']);
+        $query = VirtualMachine::with(['host', 'primaryAllocation.pool', 'user:id,name,email', 'image']);
 
         if (! $user->hasRole('admin')) {
             $query->where('user_id', $user->id);

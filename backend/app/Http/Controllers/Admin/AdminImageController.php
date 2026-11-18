@@ -93,6 +93,7 @@ final class AdminImageController extends Controller
             $escaped = addcslashes($search, '%_\\');
             $catalogQuery->where(function (Builder $q) use ($escaped): void {
                 $q->where('images.name', 'like', "%{$escaped}%")
+                    ->orWhere('images.alias', 'like', "%{$escaped}%")
                     ->orWhere('images.source', 'like', "%{$escaped}%");
             });
         }
@@ -218,6 +219,7 @@ final class AdminImageController extends Controller
             /** @var Image $image */
             $image = Image::create([
                 'name' => Cast::string($data['name'] ?? ''),
+                'alias' => Cast::string($data['alias'] ?? ($data['name'] ?? '')),
                 'source' => Cast::string($data['source'] ?? ''),
                 'protocol' => Cast::string($data['protocol'] ?? 'simplestreams'),
                 'os_type' => Cast::string($data['os_type'] ?? 'linux'),
@@ -264,6 +266,9 @@ final class AdminImageController extends Controller
         $updateData = [];
         if (array_key_exists('name', $data)) {
             $updateData['name'] = Cast::string($data['name']);
+        }
+        if (array_key_exists('alias', $data)) {
+            $updateData['alias'] = Cast::string($data['alias']);
         }
         if (array_key_exists('source', $data)) {
             $updateData['source'] = Cast::string($data['source']);

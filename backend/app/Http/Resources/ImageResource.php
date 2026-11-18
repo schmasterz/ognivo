@@ -33,6 +33,7 @@ final class ImageResource extends JsonResource
         return [
             'id' => $image->id,
             'name' => $image->name,
+            'alias' => $image->alias,
             'source' => $image->source,
             'protocol' => $image->protocol,
             'os_type' => $image->os_type,

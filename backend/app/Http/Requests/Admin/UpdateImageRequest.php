@@ -26,6 +26,7 @@ final class UpdateImageRequest extends FormRequest
 
         return [
             'name' => ['sometimes', 'required', 'string', 'max:255', Rule::unique('images', 'name')->ignore($imageId)],
+            'alias' => ['sometimes', 'required', 'string', 'max:255'],
             'source' => ['sometimes', 'required', 'string', 'max:500'],
             'protocol' => ['nullable', 'string', 'max:50'],
             'os_type' => ['nullable', 'string', Rule::in(['linux', 'windows', 'bsd', 'other'])],
