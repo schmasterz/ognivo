@@ -144,9 +144,9 @@ final class InstanceSpecBuilderTest extends TestCase
         $pool = IpPool::create([
             'host_id' => $this->host->id,
             'name' => 'Container Pool',
-            'cidr' => '192.168.100.0/24',
-            'first_usable' => '192.168.100.2',
-            'last_usable' => '192.168.100.254',
+            'cidr' => '198.51.100.0/24',
+            'first_usable' => '198.51.100.2',
+            'last_usable' => '198.51.100.254',
             'network_mode' => 'routed',
             'parent_interface' => 'eth0',
         ]);
@@ -163,16 +163,16 @@ final class InstanceSpecBuilderTest extends TestCase
             'ram_mb' => 1024,
             'disk_gb' => 10,
             'os_image' => 'ubuntu/24.04',
-            'ipv4_address' => '192.168.100.42',
+            'ipv4_address' => '198.51.100.42',
         ]);
 
         $allocation = IpAllocation::create([
             'pool_id' => $pool->id,
-            'address' => inet_pton('192.168.100.42'),
-            'ip_string' => '192.168.100.42',
+            'address' => inet_pton('198.51.100.42'),
+            'ip_string' => '198.51.100.42',
             'virtual_machine_id' => $container->id,
             'user_id' => $this->user->id,
-            'mac_address' => '02:54:19:68:10:42',
+            'mac_address' => '02:54:c6:33:64:2a',
             'status' => 'allocated',
             'allocated_at' => now(),
         ]);
@@ -181,8 +181,8 @@ final class InstanceSpecBuilderTest extends TestCase
 
         $this->assertEquals('container', $spec['type']);
         $this->assertEquals('routed', $spec['devices']['eth0']['nictype']);
-        $this->assertEquals('192.168.100.42', $spec['devices']['eth0']['ipv4.address']);
-        $this->assertEquals('02:54:19:68:10:42', $spec['devices']['eth0']['hwaddr']);
+        $this->assertEquals('198.51.100.42', $spec['devices']['eth0']['ipv4.address']);
+        $this->assertEquals('02:54:c6:33:64:2a', $spec['devices']['eth0']['hwaddr']);
 
         // Containers configure networking in-kernel; cloud-init.network-config should NOT be present
         $this->assertArrayNotHasKey('cloud-init.network-config', $spec['config']);
@@ -310,10 +310,10 @@ final class InstanceSpecBuilderTest extends TestCase
         $macvlanPool = IpPool::create([
             'host_id' => $this->host->id,
             'name' => 'Macvlan LAN Pool',
-            'cidr' => '192.168.100.0/24',
-            'first_usable' => '192.168.100.10',
-            'last_usable' => '192.168.100.200',
-            'gateway' => '192.168.100.1',
+            'cidr' => '198.51.100.0/24',
+            'first_usable' => '198.51.100.10',
+            'last_usable' => '198.51.100.200',
+            'gateway' => '198.51.100.1',
             'network_mode' => 'macvlan',
             'parent_interface' => 'eth0',
         ]);
@@ -329,16 +329,16 @@ final class InstanceSpecBuilderTest extends TestCase
             'ram_mb' => 2048,
             'disk_gb' => 20,
             'os_image' => 'images:ubuntu/24.04',
-            'ipv4_address' => '192.168.100.20',
+            'ipv4_address' => '198.51.100.20',
         ]);
 
         $allocMacvlan = IpAllocation::create([
             'pool_id' => $macvlanPool->id,
-            'address' => inet_pton('192.168.100.20'),
-            'ip_string' => '192.168.100.20',
+            'address' => inet_pton('198.51.100.20'),
+            'ip_string' => '198.51.100.20',
             'virtual_machine_id' => $vmMacvlan->id,
             'user_id' => $this->user->id,
-            'mac_address' => '02:54:c0:a8:64:14',
+            'mac_address' => '02:54:c6:33:64:14',
             'status' => 'allocated',
             'allocated_at' => now(),
         ]);
@@ -347,7 +347,7 @@ final class InstanceSpecBuilderTest extends TestCase
         $this->assertSame('macvlan', $macvlanSpec['devices']['eth0']['nictype']);
         $this->assertSame('eno1', $macvlanSpec['devices']['eth0']['parent']);
         $this->assertSame('ubuntu/24.04/cloud', $macvlanSpec['source']['alias']);
-        $this->assertStringContainsString('- 192.168.100.20/24', $macvlanSpec['config']['cloud-init.network-config']);
-        $this->assertStringContainsString('via: 192.168.100.1', $macvlanSpec['config']['cloud-init.network-config']);
+        $this->assertStringContainsString('- 198.51.100.20/24', $macvlanSpec['config']['cloud-init.network-config']);
+        $this->assertStringContainsString('via: 198.51.100.1', $macvlanSpec['config']['cloud-init.network-config']);
     }
 }

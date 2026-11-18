@@ -53,7 +53,7 @@ final class VmActionRateLimitTest extends TestCase
 
         $pool = IpPool::create([
             'name' => 'Rate Limit IP Pool',
-            'subnet' => '192.168.100.0/24',
+            'subnet' => '198.51.100.0/24',
             'host_id' => $host->id,
             'is_public' => true,
         ]);
