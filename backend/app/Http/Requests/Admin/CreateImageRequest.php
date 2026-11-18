@@ -26,6 +26,7 @@ final class CreateImageRequest extends FormRequest
             'protocol' => ['nullable', 'string', 'max:50'],
             'os_type' => ['nullable', 'string', Rule::in(['linux', 'windows', 'bsd', 'other'])],
             'enabled' => ['nullable', 'boolean'],
+            'skip_remote_validation' => ['nullable', 'boolean'],
             'host_ids' => ['nullable', 'array'],
             'host_ids.*' => ['integer', 'exists:hosts,id'],
         ];

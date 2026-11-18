@@ -8,16 +8,20 @@ use App\DTO\Cast;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\CreateImageRequest;
 use App\Http\Requests\Admin\UpdateImageRequest;
+use App\Http\Requests\Admin\ValidateImageRequest;
 use App\Http\Resources\ImageResource;
 use App\Models\Image;
+use App\Services\Hypervisor\RemoteImageValidatorService;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use JsonException;
 use Spatie\RouteAttributes\Attributes\Delete;
 use Spatie\RouteAttributes\Attributes\Get;
@@ -206,13 +210,42 @@ final class AdminImageController extends Controller
     }
 
     /**
-     * Create a new approved image allowlist entry and link compute nodes.
+     * Pre-flight validate an image against its remote server.
      */
-    #[Post('admin/images', name: 'admin.images.store', middleware: ['auth:sanctum', 'active', 'admin'])]
-    public function store(CreateImageRequest $request): JsonResponse
+    #[Post('admin/images/validate', name: 'admin.images.validate', middleware: ['auth:sanctum', 'active', 'admin'])]
+    public function validateRemote(ValidateImageRequest $request, RemoteImageValidatorService $validator): JsonResponse
     {
         /** @var array<string, mixed> $data */
         $data = $request->validated();
+
+        $result = $validator->validate(
+            source: Cast::string($data['source']),
+            imageName: Cast::string($data['name']),
+            protocol: Cast::string($data['protocol'] ?? 'simplestreams'),
+            osType: isset($data['os_type']) ? Cast::string($data['os_type']) : null,
+        );
+
+        return response()->json($result->toArray());
+    }
+
+    /**
+     * Create a new approved image allowlist entry and link compute nodes.
+     */
+    #[Post('admin/images', name: 'admin.images.store', middleware: ['auth:sanctum', 'active', 'admin'])]
+    public function store(CreateImageRequest $request, RemoteImageValidatorService $validator): JsonResponse
+    {
+        /** @var array<string, mixed> $data */
+        $data = $request->validated();
+
+        if ($this->shouldValidateRemoteImages($request)) {
+            $this->assertRemoteImageValid(
+                validator: $validator,
+                source: Cast::string($data['source'] ?? ''),
+                imageName: Cast::string($data['name'] ?? ''),
+                protocol: Cast::string($data['protocol'] ?? 'simplestreams'),
+                osType: isset($data['os_type']) ? Cast::string($data['os_type']) : null,
+            );
+        }
 
         /** @var Image $image */
         $image = DB::transaction(function () use ($data): Image {
@@ -258,10 +291,24 @@ final class AdminImageController extends Controller
      * Update an approved image and synchronize its compute node associations.
      */
     #[Put('admin/images/{image}', name: 'admin.images.update', middleware: ['auth:sanctum', 'active', 'admin'])]
-    public function update(UpdateImageRequest $request, Image $image): JsonResponse
+    public function update(UpdateImageRequest $request, Image $image, RemoteImageValidatorService $validator): JsonResponse
     {
         /** @var array<string, mixed> $data */
         $data = $request->validated();
+
+        $remoteFieldChanged = array_key_exists('name', $data)
+            || array_key_exists('source', $data)
+            || array_key_exists('protocol', $data);
+
+        if ($remoteFieldChanged && $this->shouldValidateRemoteImages($request)) {
+            $this->assertRemoteImageValid(
+                validator: $validator,
+                source: Cast::string($data['source'] ?? $image->source),
+                imageName: Cast::string($data['name'] ?? $image->name),
+                protocol: Cast::string($data['protocol'] ?? $image->protocol),
+                osType: isset($data['os_type']) ? Cast::string($data['os_type']) : $image->os_type,
+            );
+        }
 
         $updateData = [];
         if (array_key_exists('name', $data)) {
@@ -310,5 +357,32 @@ final class AdminImageController extends Controller
         return response()->json([
             'message' => 'Image removed from allowlist successfully.',
         ]);
+    }
+
+    private function shouldValidateRemoteImages(Request $request): bool
+    {
+        return ! $request->boolean('skip_remote_validation')
+            && Cast::bool(config('hypervisor.validate_remote_images', ! App::environment('testing')));
+    }
+
+    private function assertRemoteImageValid(
+        RemoteImageValidatorService $validator,
+        string $source,
+        string $imageName,
+        string $protocol,
+        ?string $osType,
+    ): void {
+        $validation = $validator->validate(
+            source: $source,
+            imageName: $imageName,
+            protocol: $protocol,
+            osType: $osType,
+        );
+
+        if (! $validation->isValid) {
+            throw ValidationException::withMessages([
+                'name' => [$validation->error ?? 'The specified image was not found or is invalid on the remote server.'],
+            ]);
+        }
     }
 }
