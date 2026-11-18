@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Admin;
 
+use App\Audit\AuditAction;
+use App\Audit\AuditEntry;
+use App\Audit\AuditLogger;
+use App\Audit\AuditOutcome;
 use App\DTO\Cast;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\CreateImageRequest;
@@ -33,6 +37,15 @@ use Spatie\RouteAttributes\Attributes\Put;
  */
 final class AdminImageController extends Controller
 {
+    public function __construct(
+        private readonly ?AuditLogger $auditLogger = null,
+    ) {}
+
+    private function logger(): AuditLogger
+    {
+        return $this->auditLogger ?? app(AuditLogger::class);
+    }
+
     /**
      * List all images in allowlist catalog with keyset cursor pagination and optional filtering.
      */
@@ -268,6 +281,23 @@ final class AdminImageController extends Controller
 
         $image->load('hosts');
 
+        $this->logger()->record(new AuditEntry(
+            action: AuditAction::ImageCreated,
+            outcome: AuditOutcome::Success,
+            subject: $image,
+            tenantUserId: null,
+            visibility: 'admin',
+            context: [
+                'name' => $image->name,
+                'alias' => $image->alias,
+                'source' => $image->source,
+                'protocol' => $image->protocol,
+                'os_type' => $image->os_type,
+                'enabled' => $image->enabled,
+                'attached_hosts_count' => $image->hosts->count(),
+            ],
+        ));
+
         return response()->json([
             'message' => 'Image added to allowlist successfully.',
             'image' => new ImageResource($image),
@@ -310,6 +340,16 @@ final class AdminImageController extends Controller
             );
         }
 
+        $oldAttributes = [
+            'name' => $image->name,
+            'alias' => $image->alias,
+            'source' => $image->source,
+            'protocol' => $image->protocol,
+            'os_type' => $image->os_type,
+            'enabled' => $image->enabled,
+        ];
+        $oldHostCount = $image->hosts()->count();
+
         $updateData = [];
         if (array_key_exists('name', $data)) {
             $updateData['name'] = Cast::string($data['name']);
@@ -340,6 +380,38 @@ final class AdminImageController extends Controller
 
         $image->load('hosts');
 
+        $changes = [];
+        foreach ($updateData as $key => $newVal) {
+            if (array_key_exists($key, $oldAttributes) && $oldAttributes[$key] !== $newVal) {
+                $changes[$key] = [
+                    'old' => $oldAttributes[$key],
+                    'new' => $newVal,
+                ];
+            }
+        }
+        if (array_key_exists('host_ids', $data) && is_array($data['host_ids'])) {
+            $newHostCount = count($data['host_ids']);
+            if ($oldHostCount !== $newHostCount) {
+                $changes['attached_hosts'] = [
+                    'old_count' => $oldHostCount,
+                    'new_count' => $newHostCount,
+                ];
+            }
+        }
+
+        $this->logger()->record(new AuditEntry(
+            action: AuditAction::ImageUpdated,
+            outcome: AuditOutcome::Success,
+            subject: $image,
+            tenantUserId: null,
+            visibility: 'admin',
+            context: [
+                'name' => $image->name,
+                'alias' => $image->alias,
+                'changes' => $changes,
+            ],
+        ));
+
         return response()->json([
             'message' => 'Image updated successfully.',
             'image' => new ImageResource($image),
@@ -352,6 +424,21 @@ final class AdminImageController extends Controller
     #[Delete('admin/images/{image}', name: 'admin.images.destroy', middleware: ['auth:sanctum', 'active', 'admin'])]
     public function destroy(Image $image): JsonResponse
     {
+        $this->logger()->record(new AuditEntry(
+            action: AuditAction::ImageDeleted,
+            outcome: AuditOutcome::Success,
+            subject: $image,
+            tenantUserId: null,
+            visibility: 'admin',
+            context: [
+                'name' => $image->name,
+                'alias' => $image->alias,
+                'source' => $image->source,
+                'protocol' => $image->protocol,
+                'unlinked_hosts_count' => $image->hosts()->count(),
+            ],
+        ));
+
         $image->delete();
 
         return response()->json([

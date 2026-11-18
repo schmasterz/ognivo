@@ -138,6 +138,13 @@ Results are ordered by newest first (`id` descending). The response contains `da
 
 Instances already created from the image keep running. They store the image name as plain text. However, since the allowlist is checked again when an instance is rebuilt, **reinstalling an instance whose image was deleted or disabled fails** until you re-enable it or choose another image.
 
+### Audit logging
+
+All image catalog lifecycle events are recorded in the immutable audit log with administrator visibility:
+- `image.created`: Recorded when a new image is added to the catalog, capturing name, alias, source, protocol, and initial compute node attachments.
+- `image.updated`: Recorded when image properties or compute node associations change, capturing attribute diffs.
+- `image.deleted`: Recorded when an image is deleted from the catalog, including unlinked compute node counts.
+
 ---
 
 ## 4. Choosing Which Images a Node Offers
@@ -280,6 +287,5 @@ When no node is chosen, placement only considers nodes that have the image attac
 
 - **No automatic discovery.** Ognivo does not read images from the Incus server or the image server. Every image is added to the catalog by hand.
 - **Remote validation.** Images can be pre-flight verified with the "Test Remote" button or `php artisan images:verify-catalog`. By default, unverified or invalid remote images are rejected during creation and update unless the administrator chooses to bypass verification.
-- **No audit entries for catalog changes.** Creating, editing and deleting catalog images is not recorded in the audit log. Changes to a node's image selection are recorded as a node update, with the number of images attached and detached.
 - **No image-in-use check on delete.** Deleting or disabling an image does not warn you about instances that use it.
 - **One global catalog.** Images are shared by all tenants. There are no per-tenant or per-plan image lists.

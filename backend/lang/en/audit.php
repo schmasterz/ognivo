@@ -44,6 +44,10 @@ $actions = [
     'host.retrusted' => 'Compute host trust re-established',
     'host.resources.synced' => 'Compute host resources synchronized',
 
+    'image.created' => 'OS image added to catalog',
+    'image.updated' => 'OS image updated',
+    'image.deleted' => 'OS image removed from catalog',
+
     'cert.generated' => 'Client certificate generated',
     'cert.rotated' => 'Client certificate rotated',
     'cert.revoked' => 'Client certificate revoked',
