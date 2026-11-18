@@ -55,6 +55,7 @@ export const imagesApi = {
    */
   async adminCreateImage(params: {
     name: string;
+    alias: string;
     source: string;
     protocol?: string;
     os_type?: string;
@@ -74,6 +75,7 @@ export const imagesApi = {
     id: number,
     params: {
       name?: string;
+      alias?: string;
       source?: string;
       protocol?: string;
       os_type?: string;

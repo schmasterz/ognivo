@@ -195,7 +195,7 @@ export function ImagesModal({ onClose, hosts }: ImagesModalProps) {
     try {
       setDeleting(true);
       await api.adminDeleteImage(deleteTarget.id);
-      toast.success(`Image '${deleteTarget.name}' removed from allowlist catalog.`);
+      toast.success(`Image '${deleteTarget.alias || deleteTarget.name}' removed from allowlist catalog.`);
       setDeleteTarget(null);
       pageCursorsRef.current = { 1: null };
       await fetchImagesList();
@@ -312,7 +312,10 @@ export function ImagesModal({ onClose, hosts }: ImagesModalProps) {
                       {/* Left: Name, Type, Source */}
                       <div className="space-y-1">
                         <div className="flex items-center space-x-2">
-                          <span className="font-mono text-xs font-bold text-gray-900 dark:text-white">
+                          <span className="text-xs font-bold text-gray-900 dark:text-white">
+                            {img.alias || img.name}
+                          </span>
+                          <span className="font-mono text-[11px] text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">
                             {img.name}
                           </span>
 
@@ -462,7 +465,7 @@ export function ImagesModal({ onClose, hosts }: ImagesModalProps) {
         title="Remove Approved Image"
         message={
           deleteTarget
-            ? `Are you sure you want to remove '${deleteTarget.name}' from the allowlist catalog?`
+            ? `Are you sure you want to remove '${deleteTarget.alias || deleteTarget.name}' from the allowlist catalog?`
             : ""
         }
         variant="danger"
