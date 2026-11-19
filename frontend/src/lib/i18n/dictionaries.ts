@@ -171,7 +171,7 @@ export const dictionaries = {
 
     // Networking & IPAM
     networkingTitle: "IPAM & Network Management",
-    networkingSubtitle: "IPv4/IPv6 address pools and IPAM allocations",
+    networkingSubtitle: "IPv4 address pools and IPAM allocations",
     allocateFloating: "Allocate IP",
     colAddress: "IP Address",
     colSubnet: "Subnet Pool",
@@ -943,7 +943,7 @@ export const dictionaries = {
 
     // Networking & IPAM
     networkingTitle: "IPAM и Мрежово Управление",
-    networkingSubtitle: "IPv4/IPv6 адресни пулове и IPAM разпределения",
+    networkingSubtitle: "IPv4 адресни пулове и IPAM разпределения",
     allocateFloating: "Заяви IP",
     colAddress: "IP Адрес",
     colSubnet: "Мрежов Пул",

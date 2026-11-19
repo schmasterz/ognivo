@@ -39,8 +39,8 @@ Open the development panel at **`http://localhost`**.
    - Verify the **mTLS Panel Client Certificate** card (**Download .crt**, **Rotate**, and **Revoke Old Certificate** during rotation).
    - Filter the **Compute Nodes** table by keyword search (name, region, endpoint URL, fingerprint), connection/trust status, active state, and driver.
 2. Navigate to **Networking & IPAM** (`/networking`) and click **Create Subnet Pool**:
-   - Assign the pool to a specific host node or leave global.
-   - Choose `routed` or `manual` mode and run the **Preflight Check** to verify hypervisor reachability and parent NIC existence.
+   - Assign the pool to a specific host node (`host_id` is required).
+   - Choose `routed`, `bridged`, `macvlan`, or `manual` mode (provide `parent_interface` for non-manual modes), run **Preflight Check** to verify hypervisor reachability and parent NIC existence/type, and open **View Pool & IPs** (`PoolDetailModal`) to inspect pool addresses and free IPs.
 
 ### Scenario G: Virtual Machine Snapshots
 1. Log in as Customer (`customer@ognivo.local` / `password`), open any instance details modal, and select the **Snapshots** tab.

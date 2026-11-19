@@ -48,7 +48,7 @@ It is an open-source alternative to hosting panels such as SolusVM and Virtualiz
 | Web terminal          | `xterm.js` through an isolated `console-proxy`; exec-based shell with a serial-console fallback; single-use Redis tickets (60 s by default)          | Alpha        |
 | Images                | Admin-managed image catalog, per-node image selection                                                                                                | Alpha        |
 | Snapshots             | Async stateful and stateless snapshots, distributed locks, per-tier quotas, pluggable `BackupTargetInterface`                                        | Alpha        |
-| Networking / IPAM     | IPv4 pools, Routed and Manual modes, IP cooldown quarantine, hypervisor preflight checks                                                             | Alpha        |
+| Networking / IPAM     | IPv4 pools (Routed, Bridged, Macvlan, and Manual modes), pool address/free-IP inspector, IP cooldown quarantine, hypervisor preflight checks | Alpha        |
 | Quotas                | Reusable plans and tiers, race-free provisioning with row locks and Redis mutexes                                                                    | Alpha        |
 | Audit log             | Separate audit DB connection, `INSERT`/`SELECT`-only grants in production, SHA-256 hash chain with HMAC seals, PII pseudonymisation                  | Alpha        |
 | Real-time UI          | Laravel Reverb WebSockets, drift detection, English and Bulgarian UI, light/dark/system themes                                                       | Alpha        |
@@ -295,7 +295,7 @@ Alternative flow with a pre-trusted certificate and full details: [Host Onboardi
 | Features                  | [Host onboarding & mTLS](docs/features/host-onboarding.md), [Images](docs/features/images.md), [Networking & IPAM](docs/features/networking.md), [Web terminal](docs/features/console.md), [Snapshots](docs/features/snapshots.md)                                                                                                                                      |
 | Operations                | [Production deployment](docs/operations/production.md), [Configuration reference](docs/operations/configuration.md), [Commands](docs/operations/commands.md), [Scheduled tasks](docs/operations/commands.md#34-scheduled-tasks), [Troubleshooting](docs/operations/troubleshooting.md) |
 | Reference                 | [API surface](docs/architecture/overview.md#4-api-surface-overview) (interactive OpenAPI at `/docs/api` on a running panel)                                                                                                                                                                                                                                                                                     |
-| Testing                   | [Automated testing](docs/testing/automated-testing.md), [Manual QA & API scenarios](docs/testing/manual-qa.md)                                                                                                                                                                                                                                                           |
+| Testing                   | [Automated testing](docs/testing/automated-testing.md), [Manual QA & API scenarios](docs/testing/manual-qa.md), [Manual Incus network tests](docs/testing/manual-incus-network-tests.md) |
 
 ## Known limitations
 

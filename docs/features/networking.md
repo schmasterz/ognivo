@@ -3,7 +3,7 @@
 Ognivo provides ranged **IPv4** subnet management (**IPAM**) with four operational network modes for pools assigned to hypervisor nodes: **Routed** (`routed`), **Bridged** (`bridged`), **Macvlan** (`macvlan`), and **Manual** (`manual`).
 
 > [!IMPORTANT]
-> **IPv4 only in 1.0.** IPv6 pools, allocation and dual-stack guests are not supported yet and are planned for a future release. See [IP Version Support](#8-ip-version-support-ipv4-only-in-10) for exactly what is enforced.
+> **IPv4 only in 1.0.** IPv6 pools, allocation and dual-stack guests are not supported yet and are planned for a future release. See [IP Version Support](#9-ip-version-support-ipv4-only-in-10) for exactly what is enforced.
 
 ---
 
@@ -149,7 +149,7 @@ In `manual` mode, guest networking is managed externally by the infrastructure o
   - If `parent_interface` is not present in the host's reported networks, `InstanceSpecBuilder` throws a `DomainException` (`Permanent network configuration error: Configured parent_interface "..." for network mode "..." was not found on the hypervisor host (available: ...).`). Ognivo **never** silently substitutes another interface.
   - `ProvisionVmJob` treats permanent configuration errors as non-retryable, rolls back reserved allocations via `ProvisioningCompensator`, and transitions the instance to `Failed` with the readable failure reason shown in the UI.
 - **Updating Existing Pools:** `parent_interface` can be updated even on pools that already have active or cooling allocations; the updated interface applies only to newly created or rebuilt/reinstalled instances, while running instances keep their existing device. `cidr`, `host_id`, and `network_mode` remain immutable while allocations exist.
-- **Host Interface Recommendations:** When discovering host networks (`GET /1.0/admin/hosts/{host}/resources`), Ognivo recommends `bridged` and `routed` for `bridge` interfaces, and `routed` and `macvlan` for `physical`, `bond`, and `vlan` interfaces.
+- **Host Interface Recommendations:** When discovering host networks (`GET /api/admin/hosts/{host}/resources`), Ognivo recommends `bridged` and `routed` for `bridge` interfaces, and `routed` and `macvlan` for `physical`, `bond`, and `vlan` interfaces.
 
 ---
 
@@ -182,7 +182,28 @@ Before putting an IP pool into production, administrators can trigger a prefligh
 
 ---
 
-## 8. IP Version Support (IPv4 only in 1.0)
+## 8. Pool Address & Free-IP Inspector
+
+Administrators can inspect every IPv4 address across a pool's usable range (`first_usable` through `last_usable`) via `GET /api/admin/ip-pools/{ipPool}/addresses` and the **PoolDetailModal** in the Admin UI (**Networking & IPAM** — accessible via the Eye button, clickable pool name, or `Free: N` badge on any pool card).
+
+### Query Parameters & Filtering
+- **`state`:** Filters addresses by effective state:
+  - `all` *(default)* — entire usable range in numeric IPv4 order
+  - `free` — available addresses ready for assignment
+  - `allocated` — currently assigned to an instance
+  - `cooling` — quarantined in cooldown after release
+  - `excluded` — excluded from allocation (including the pool gateway)
+- **`search`:** Optional IPv4 prefix filter (max 32 characters, e.g. `10.0.1.`).
+- **`page` & `per_page`:** 1-based page number and page size (`1`–`100`, default `50`), returning canonical `meta` pagination alongside `pool` and `data`.
+
+### State & Performance Semantics
+- **Gateway Tagging (`is_gateway`):** Addresses matching `pool.gateway` include `is_gateway: true` so operators can distinguish the gateway from manual `excluded_ips` entries.
+- **Expired Cooling Rows Match `utilization.free`:** Cooling allocations whose cooldown has elapsed (`cooldown_remaining_seconds === 0`, awaiting scheduled `ipam:prune-cooling` cleanup) are treated and counted as `free`, keeping the inspector aligned with `utilization.free`.
+- **`O(page)` Gap-Jumping for `/16` Pools:** When paginating unsearched `all` or `free` views, the service skips over gaps between occupied/excluded addresses in `O(page)` rather than enumerating all host addresses in memory, keeping large `/16` subnets (65,534 usable hosts) responsive.
+
+---
+
+## 9. IP Version Support (IPv4 only in 1.0)
 
 Ognivo 1.0 allocates and tracks **IPv4 addresses only**.
 
