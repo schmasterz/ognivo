@@ -15,12 +15,14 @@ import {
   Edit2,
   AlertTriangle,
   ShieldCheck,
+  Eye,
 } from "lucide-react";
 import { IpAllocation, IpPool } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
 import { PaginationBar } from "@/components/ui/PaginationBar";
 import { EditIpPoolModal } from "./EditIpPoolModal";
 import { PreflightModal } from "./PreflightModal";
+import { PoolDetailModal } from "./PoolDetailModal";
 
 interface IpTableProps {
   ips: IpAllocation[];
@@ -105,6 +107,7 @@ export function IpTable({
   const [copiedIp, setCopiedIp] = useState<string | null>(null);
   const [editingPool, setEditingPool] = useState<IpPool | null>(null);
   const [preflightTarget, setPreflightTarget] = useState<IpPool | null>(null);
+  const [inspectingPool, setInspectingPool] = useState<IpPool | null>(null);
 
   const handleCopy = (address: string) => {
     navigator.clipboard.writeText(address);
@@ -180,7 +183,14 @@ export function IpTable({
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <div className="flex items-center space-x-2">
-                        <span className="font-semibold text-gray-900 dark:text-white text-sm">{p.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => setInspectingPool(p)}
+                          title={t("viewPoolIps")}
+                          className="font-semibold text-gray-900 dark:text-white text-sm cursor-pointer hover:underline text-left"
+                        >
+                          {p.name}
+                        </button>
                         {p.network_mode === "manual" ? (
                           <span
                             title={t("manualWarning")}
@@ -209,6 +219,14 @@ export function IpTable({
                       </div>
 
                       <div className="flex items-center space-x-1">
+                        <button
+                          type="button"
+                          onClick={() => setInspectingPool(p)}
+                          title={t("viewPoolIps")}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-teal-600 dark:hover:text-teal-400 hover:bg-teal-500/10 transition"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
                         <button
                           onClick={() => setPreflightTarget(p)}
                           title={t("preflight")}
@@ -288,7 +306,14 @@ export function IpTable({
                       />
                     </div>
                     <div className="flex items-center justify-between mt-1 text-[10px] text-gray-400">
-                      <span>{t("poolFreeCount", { count: util.free })}</span>
+                      <button
+                        type="button"
+                        onClick={() => setInspectingPool(p)}
+                        title={t("viewPoolIps")}
+                        className="cursor-pointer hover:underline hover:text-teal-600 dark:hover:text-teal-400 transition"
+                      >
+                        {t("poolFreeCount", { count: util.free })}
+                      </button>
                       {util.cooling > 0 && <span>{t("poolCoolingCount", { count: util.cooling })}</span>}
                     </div>
                   </div>
@@ -485,6 +510,13 @@ export function IpTable({
         <PreflightModal
           pool={preflightTarget}
           onClose={() => setPreflightTarget(null)}
+        />
+      )}
+
+      {inspectingPool && (
+        <PoolDetailModal
+          pool={inspectingPool}
+          onClose={() => setInspectingPool(null)}
         />
       )}
     </div>

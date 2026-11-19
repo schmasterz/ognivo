@@ -1,5 +1,11 @@
 import { request } from "./client";
-import { IpAllocation, IpPool, MetaPaginatedResponse } from "./types";
+import {
+  IpAllocation,
+  IpPool,
+  IpPoolAddressesResponse,
+  IpPoolAddressState,
+  MetaPaginatedResponse,
+} from "./types";
 
 /**
  * IPAM, Ranged Subnet Pools, and Allocation API Methods.
@@ -141,6 +147,27 @@ export const networkingApi = {
       checks: Array<{ name: string; ok: boolean; hint: string }>;
     }>(`/admin/ip-pools/${poolId}/preflight`, {
       method: "POST",
+    });
+  },
+
+  async adminGetIpPoolAddresses(
+    poolId: number,
+    params?: {
+      state?: "all" | IpPoolAddressState;
+      search?: string | null;
+      page?: number;
+      per_page?: number;
+    },
+    options?: { signal?: AbortSignal }
+  ): Promise<IpPoolAddressesResponse> {
+    const queryParams = new URLSearchParams();
+    if (params?.state) queryParams.set("state", params.state);
+    if (params?.search) queryParams.set("search", params.search);
+    if (params?.page) queryParams.set("page", String(params.page));
+    if (params?.per_page) queryParams.set("per_page", String(params.per_page));
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : "";
+    return request<IpPoolAddressesResponse>(`/admin/ip-pools/${poolId}/addresses${query}`, {
+      signal: options?.signal,
     });
   },
 };
