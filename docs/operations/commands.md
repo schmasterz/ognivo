@@ -146,7 +146,7 @@ The `scheduler` container runs `php artisan schedule:work` and triggers these ta
 | :--- | :--- | :--- |
 | `vm:reconcile` | Every 5 minutes | Drift detection |
 | `vm:sweep-stale-provisioning` | Every 5 minutes | No overlapping runs |
-| IP cooldown cleanup (`ipam:prune-cooling`) | Every minute | Returns expired `cooling` IPs to the pool |
+| IP cooldown cleanup (`ipam:prune-cooling`) | Every minute | Returns expired `cooling` IPs to the pool; the only mechanism that deletes expired cooling IPs (read endpoints do not) |
 | `audit:seal` | Every minute | No overlapping runs |
 | `audit:verify` | Hourly | Emails active admins when verification fails |
 | `hosts:sync-resources` | Hourly | No overlapping runs |
