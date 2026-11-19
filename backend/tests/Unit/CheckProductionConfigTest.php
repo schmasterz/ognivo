@@ -32,6 +32,8 @@ final class CheckProductionConfigTest extends TestCase
     private const TRACKED_ENV_VARS = [
         'APP_KEY',
         'APP_DEBUG',
+        'APP_URL',
+        'ALLOW_FAKE_DRIVER',
         'RUN_SEEDERS',
         'DB_PASSWORD',
         'DB_ROOT_PASSWORD',
@@ -45,11 +47,15 @@ final class CheckProductionConfigTest extends TestCase
         'AUDIT_HMAC_KEY',
         'AUDIT_HMAC_KEY_ID',
         'AUDIT_PSEUDONYM_SALT',
+        'AUDIT_STRICT_GRANTS',
+        'SESSION_SECURE_COOKIE',
     ];
 
     private const TRACKED_CONFIGS = [
         'app.key',
         'app.debug',
+        'app.url',
+        'app.allow_fake_driver',
         'app.run_seeders',
         'database.connections.mysql.password',
         'database.connections.mysql.root_password',
@@ -65,6 +71,8 @@ final class CheckProductionConfigTest extends TestCase
         'audit.hmac.current_key',
         'audit.hmac.keys.v1',
         'audit.pseudonym_salt',
+        'audit.strict_grants',
+        'session.secure',
     ];
 
     protected function setUp(): void
@@ -137,6 +145,8 @@ final class CheckProductionConfigTest extends TestCase
         config([
             'app.key' => $validKey,
             'app.debug' => false,
+            'app.url' => 'https://panel.example.com',
+            'app.allow_fake_driver' => false,
             'app.run_seeders' => false,
             'database.connections.mysql.password' => 'super_secure_random_db_pass_1234',
             'database.connections.mysql.root_password' => 'super_secure_random_root_pass_5678',
@@ -152,10 +162,14 @@ final class CheckProductionConfigTest extends TestCase
             'audit.hmac.current_key' => 'super_secure_audit_hmac_key_3456',
             'audit.hmac.keys.v1' => 'super_secure_audit_hmac_key_3456',
             'audit.pseudonym_salt' => 'super_secure_audit_salt_7890',
+            'audit.strict_grants' => true,
+            'session.secure' => true,
         ]);
 
         $this->setEnv('APP_KEY', $validKey);
         $this->setEnv('APP_DEBUG', 'false');
+        $this->setEnv('APP_URL', 'https://panel.example.com');
+        $this->setEnv('ALLOW_FAKE_DRIVER', 'false');
         $this->setEnv('RUN_SEEDERS', 'false');
         $this->setEnv('DB_PASSWORD', 'super_secure_random_db_pass_1234');
         $this->setEnv('DB_ROOT_PASSWORD', 'super_secure_random_root_pass_5678');
@@ -169,6 +183,8 @@ final class CheckProductionConfigTest extends TestCase
         $this->setEnv('AUDIT_HMAC_KEY', 'super_secure_audit_hmac_key_3456');
         $this->setEnv('AUDIT_HMAC_KEY_ID', 'v1');
         $this->setEnv('AUDIT_PSEUDONYM_SALT', 'super_secure_audit_salt_7890');
+        $this->setEnv('AUDIT_STRICT_GRANTS', 'true');
+        $this->setEnv('SESSION_SECURE_COOKIE', 'true');
     }
 
     public function test_valid_configuration_passes(): void
@@ -515,6 +531,84 @@ final class CheckProductionConfigTest extends TestCase
 
         $this->artisan('app:check-production-config')
             ->expectsOutputToContain("AUDIT_PSEUDONYM_SALT is set to an unsafe default ('CHANGE_ME')")
+            ->assertExitCode(1);
+    }
+
+    public function test_rejects_allow_fake_driver_true(): void
+    {
+        $this->setValidProductionConfig();
+        config(['app.allow_fake_driver' => true]);
+        $this->setEnv('ALLOW_FAKE_DRIVER', 'true');
+
+        $this->artisan('app:check-production-config')
+            ->expectsOutputToContain('ALLOW_FAKE_DRIVER is enabled')
+            ->assertExitCode(1);
+    }
+
+    public function test_rejects_audit_strict_grants_false(): void
+    {
+        $this->setValidProductionConfig();
+        config(['audit.strict_grants' => false]);
+        $this->setEnv('AUDIT_STRICT_GRANTS', 'false');
+
+        $this->artisan('app:check-production-config')
+            ->expectsOutputToContain('AUDIT_STRICT_GRANTS is disabled')
+            ->assertExitCode(1);
+    }
+
+    public function test_rejects_session_secure_cookie_false(): void
+    {
+        $this->setValidProductionConfig();
+        config(['session.secure' => false]);
+        $this->setEnv('SESSION_SECURE_COOKIE', 'false');
+
+        $this->artisan('app:check-production-config')
+            ->expectsOutputToContain('SESSION_SECURE_COOKIE is disabled or unset')
+            ->assertExitCode(1);
+    }
+
+    public function test_rejects_session_secure_cookie_unset(): void
+    {
+        $this->setValidProductionConfig();
+        config(['session.secure' => null]);
+        putenv('SESSION_SECURE_COOKIE');
+        unset($_ENV['SESSION_SECURE_COOKIE'], $_SERVER['SESSION_SECURE_COOKIE']);
+
+        $this->artisan('app:check-production-config')
+            ->expectsOutputToContain('SESSION_SECURE_COOKIE is disabled or unset')
+            ->assertExitCode(1);
+    }
+
+    public function test_rejects_app_url_with_http_scheme(): void
+    {
+        $this->setValidProductionConfig();
+        config(['app.url' => 'http://panel.example.com']);
+        $this->setEnv('APP_URL', 'http://panel.example.com');
+
+        $this->artisan('app:check-production-config')
+            ->expectsOutputToContain('APP_URL must use HTTPS in production')
+            ->assertExitCode(1);
+    }
+
+    public function test_rejects_app_url_with_localhost(): void
+    {
+        $this->setValidProductionConfig();
+        config(['app.url' => 'https://localhost']);
+        $this->setEnv('APP_URL', 'https://localhost');
+
+        $this->artisan('app:check-production-config')
+            ->expectsOutputToContain('APP_URL points to a local/loopback address')
+            ->assertExitCode(1);
+    }
+
+    public function test_rejects_app_url_with_loopback_ip(): void
+    {
+        $this->setValidProductionConfig();
+        config(['app.url' => 'https://127.0.0.1']);
+        $this->setEnv('APP_URL', 'https://127.0.0.1');
+
+        $this->artisan('app:check-production-config')
+            ->expectsOutputToContain('APP_URL points to a local/loopback address')
             ->assertExitCode(1);
     }
 }
