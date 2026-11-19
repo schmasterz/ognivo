@@ -1,4 +1,4 @@
-.PHONY: help secrets build-dev build-prod build-all up-dev up-prod down-dev down-prod logs-dev logs-prod ps migrate migrate-dev seed seed-dev reset-dev
+.PHONY: help secrets build-dev build-prod build-all up-dev up-prod down-dev down-prod logs-dev logs-prod ps migrate migrate-dev seed seed-dev reset-dev openapi
 
 COMPOSE_DEV_FILES := -f docker-compose.dev.yml $(if $(wildcard docker-compose.dev.override.yml),-f docker-compose.dev.override.yml)
 COMPOSE_PROD_FILES := -f docker-compose.prod.yml $(if $(wildcard docker-compose.prod.override.yml),-f docker-compose.prod.override.yml)
@@ -22,6 +22,7 @@ help:
 	@echo "  make logs-dev    - Tail logs from development containers"
 	@echo "  make logs-prod   - Tail logs from production containers"
 	@echo "  make ps          - List status of all project containers"
+	@echo "  make openapi     - Analyze API routes and export OpenAPI v3 JSON spec to backend/api.json"
 
 # Secrets generation target
 secrets:
@@ -112,3 +113,8 @@ logs-prod:
 ps:
 	@echo "=== Project Containers Status ==="
 	@docker ps -a --filter "name=ognivo-"
+
+openapi: .env.development
+	@echo "Analyzing API routes and exporting OpenAPI specification to backend/api.json..."
+	@docker exec -i ognivo-backend-dev php artisan scramble:analyze
+	@docker exec -i ognivo-backend-dev php artisan scramble:export --path=api.json

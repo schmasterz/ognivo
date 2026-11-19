@@ -52,6 +52,18 @@ jobs:
       - name: Static analysis (Psalm)
         run: vendor/bin/psalm --no-progress
 
+      - name: OpenAPI specification analysis & export (Scramble)
+        run: |
+          php artisan scramble:analyze
+          php artisan scramble:export --path=api.json
+
+      - name: Upload OpenAPI specification artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-spec
+          path: backend/api.json
+          retention-days: 30
+
   backend-unit:
     name: Backend Unit & Feature Tests (SQLite)
     runs-on: ubuntu-latest
