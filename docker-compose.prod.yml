@@ -354,10 +354,14 @@ services:
       - ALL
     environment:
       PORT: 8085
+      NODE_ENV: production
+      ALLOW_FAKE_DRIVER: ${ALLOW_FAKE_DRIVER:-false}
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       REDIS_PREFIX: ${REDIS_PREFIX:-ognivo-database-}
+      APP_KEY: ${APP_KEY:-}
+      APP_PREVIOUS_KEYS: ${APP_PREVIOUS_KEYS:-}
     depends_on:
       redis:
         condition: service_healthy

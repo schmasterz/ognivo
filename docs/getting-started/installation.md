@@ -199,7 +199,7 @@ make ps
 On first start:
 
 1. `cert-init` creates a self-signed certificate in `./docker/certs/` if `server.crt` and `server.key` are not there yet.
-2. The backend runs `php artisan app:check-production-config` and **refuses to start** if it finds a placeholder secret, `APP_DEBUG=true`, `RUN_SEEDERS=true` or a wildcard origin.
+2. The backend runs `php artisan app:check-production-config` and **refuses to start** if it finds a placeholder secret, `APP_DEBUG=true`, `RUN_SEEDERS=true`, a wildcard origin, a non-HTTPS or `localhost` `APP_URL`, `ALLOW_FAKE_DRIVER=true`, `AUDIT_STRICT_GRANTS=false`, or `SESSION_SECURE_COOKIE=false`.
 3. Migrations and strict audit grants are applied. Seeders are disabled.
 4. Nginx starts on `80` (redirects to HTTPS) and `443`.
 

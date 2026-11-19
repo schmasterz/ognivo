@@ -150,6 +150,53 @@ final class CheckProductionConfigCommand extends Command
             $violations[] = "AUDIT_PSEUDONYM_SALT is set to an unsafe default ('{$auditPseudonymSalt}').";
         }
 
+        // 15. ALLOW_FAKE_DRIVER check: must be disabled in production
+        $envAllowFakeDriver = Env::get('ALLOW_FAKE_DRIVER', false);
+        if (
+            config('app.allow_fake_driver') === true
+            || filter_var($envAllowFakeDriver, FILTER_VALIDATE_BOOLEAN) === true
+            || $envAllowFakeDriver === 'true'
+            || $envAllowFakeDriver === '1'
+        ) {
+            $violations[] = 'ALLOW_FAKE_DRIVER is enabled. The fake hypervisor driver must be disabled in production.';
+        }
+
+        // 16. AUDIT_STRICT_GRANTS check: must be enabled in production
+        $strictGrants = config('audit.strict_grants');
+        $envStrictGrants = Env::get('AUDIT_STRICT_GRANTS');
+        if ($strictGrants !== true || $envStrictGrants === 'false' || $envStrictGrants === '0') {
+            $violations[] = 'AUDIT_STRICT_GRANTS is disabled. Strict audit database privilege separation must be enabled in production.';
+        }
+
+        // 17. SESSION_SECURE_COOKIE check: must be enabled in production
+        $sessionSecure = config('session.secure');
+        $envSessionSecure = Env::get('SESSION_SECURE_COOKIE');
+        if (
+            filter_var($sessionSecure ?? $envSessionSecure, FILTER_VALIDATE_BOOLEAN) !== true
+            || $envSessionSecure === 'false'
+            || $envSessionSecure === '0'
+        ) {
+            $violations[] = 'SESSION_SECURE_COOKIE is disabled or unset. Session cookies must be restricted to HTTPS in production.';
+        }
+
+        // 18. APP_URL check: must be a valid HTTPS URL pointing to a public hostname
+        $appUrl = trim(Cast::string(config('app.url') ?? Env::get('APP_URL', '')));
+        $parsedUrl = parse_url($appUrl);
+        $scheme = is_array($parsedUrl) ? strtolower(Cast::string($parsedUrl['scheme'] ?? '')) : '';
+        $host = is_array($parsedUrl) ? strtolower(trim(Cast::string($parsedUrl['host'] ?? ''), '[]')) : '';
+
+        if ($appUrl === '' || $parsedUrl === false || $scheme === '' || $host === '') {
+            $violations[] = "APP_URL is empty or invalid ('{$appUrl}'). A valid HTTPS production URL is required.";
+        } else {
+            if ($scheme !== 'https') {
+                $violations[] = "APP_URL must use HTTPS in production ('{$appUrl}').";
+            }
+
+            if (in_array($host, ['localhost', '127.0.0.1', '::1'], true)) {
+                $violations[] = "APP_URL points to a local/loopback address ('{$appUrl}'). A public production hostname is required.";
+            }
+        }
+
         if (! empty($violations)) {
             $this->error('================================================================');
             $this->error(' PRODUCTION CONFIGURATION CHECK FAILED: UNSAFE DEFAULTS DETECTED');

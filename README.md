@@ -10,7 +10,7 @@
 [![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?logo=next.js&logoColor=white)](https://nextjs.org/)
 
 > [!WARNING]
-> **Status: alpha (`1.0.0-alpha.1`).** Ognivo is not production-ready yet. APIs, configuration keys and the database schema may change without migration paths until 1.0. Keep external backups of anything you care about. See [Upgrading](docs/operations/upgrading.md).
+> **Status: alpha (`1.0.0-alpha.1`).** Ognivo is not production-ready yet. APIs, configuration keys and the database schema may change without migration paths until 1.0. Keep external backups of anything you care about. See [Upgrading and backups](#upgrading-and-backups).
 
 
 Ognivo lets you offer VPS-style hosting on your own **Incus** hypervisors. Customers get a self-service dashboard. Administrators get node, image, network and quota management. Everything is built around tenant isolation and a tamper-evident audit trail.
@@ -224,7 +224,7 @@ docker exec ognivo-nginx nginx -s reload
 ```
 
 > [!IMPORTANT]
-> Back up `.env.production`, especially `APP_KEY` and `AUDIT_HMAC_KEY`. Losing `APP_KEY` makes encrypted data (panel certificate key, node tokens, SMTP password) unreadable. See [Backup and restore](docs/operations/backup-restore.md).
+> Back up `.env.production`, especially `APP_KEY` and `AUDIT_HMAC_KEY`. Losing `APP_KEY` makes encrypted data (panel certificate key, node tokens, SMTP password) unreadable. See [Upgrading and backups](#upgrading-and-backups).
 
 Firewall: expose only `80` and `443` to the internet. The panel host must be able to reach each Incus node on port `8443`.
 
@@ -292,12 +292,10 @@ Alternative flow with a pre-trusted certificate and full details: [Host Onboardi
 |:------------------------- |:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Getting started           | [Installation](docs/getting-started/installation.md), [Quickstart](docs/getting-started/quickstart.md), [Development environment](docs/getting-started/development.md)                                                                                                                                                                                                   |
 | Architecture and security | [System architecture](docs/architecture/overview.md), [Security and audit log](docs/architecture/security-and-audit.md)                                                                                                                                                                                                                                                  |
-| Features                  | [Host onboarding & mTLS](docs/features/host-onboarding.md), [Images](docs/features/images.md), [Networking & IPAM](docs/features/networking.md), [Web terminal](docs/features/terminal.md), [Snapshots](docs/features/snapshots.md)                                                                                                                                      |
-| Operations                | [Production deployment](docs/operations/production.md), [Upgrading](docs/operations/upgrading.md), [Backup and restore](docs/operations/backup-restore.md), [Scheduled tasks](docs/operations/scheduler.md), [Configuration reference](docs/operations/configuration.md), [Commands](docs/operations/commands.md), [Troubleshooting](docs/operations/troubleshooting.md) |
-| Reference                 | [API](docs/reference/api.md) (interactive OpenAPI at `/docs/api` on a running panel)                                                                                                                                                                                                                                                                                     |
+| Features                  | [Host onboarding & mTLS](docs/features/host-onboarding.md), [Images](docs/features/images.md), [Networking & IPAM](docs/features/networking.md), [Web terminal](docs/features/console.md), [Snapshots](docs/features/snapshots.md)                                                                                                                                      |
+| Operations                | [Production deployment](docs/operations/production.md), [Configuration reference](docs/operations/configuration.md), [Commands](docs/operations/commands.md), [Scheduled tasks](docs/operations/commands.md#34-scheduled-tasks), [Troubleshooting](docs/operations/troubleshooting.md) |
+| Reference                 | [API surface](docs/architecture/overview.md#4-api-surface-overview) (interactive OpenAPI at `/docs/api` on a running panel)                                                                                                                                                                                                                                                                                     |
 | Testing                   | [Automated testing](docs/testing/automated-testing.md), [Manual QA & API scenarios](docs/testing/manual-qa.md)                                                                                                                                                                                                                                                           |
-
-<!-- NOTE: Images, Upgrading, Backup and restore, Scheduled tasks, Web terminal and API pages do not exist yet. Create them or remove these links before publishing. -->
 
 ## Known limitations
 
@@ -312,7 +310,7 @@ Planned work is tracked [`CHANGELOG.md`](CHANGELOG.md). Current priorities: fini
 
 ## Upgrading and backups
 
-- **Alpha releases:** versions before the first beta may need a fresh install. Each release's notes in [`CHANGELOG.md`](CHANGELOG.md) say whether an in-place upgrade is supported. See [Upgrading](docs/operations/upgrading.md).
+- **Alpha releases:** versions before the first beta may need a fresh install. Each release's notes in [`CHANGELOG.md`](CHANGELOG.md) say whether an in-place upgrade is supported. See [Installation — Update](docs/getting-started/installation.md#update).
 
 - **Typical upgrade of an existing install** (when supported):
   
@@ -325,7 +323,7 @@ Planned work is tracked [`CHANGELOG.md`](CHANGELOG.md). Current priorities: fini
 
 - **MySQL grants:** the users `ognivo_user`, `audit_writer` and `audit_maintenance` are created at first install and not modified on upgrade. When a release changes privileges, re-apply them with `php artisan audit:grants --force`.
 
-- **What to back up:** the MySQL volume, `.env.production`, `docker/certs/`. Details in [Backup and restore](docs/operations/backup-restore.md).
+- **What to back up:** the MySQL volume, `.env.production`, `docker/certs/`. Details in [Installation — Back up your secrets](docs/getting-started/installation.md#back-up-your-secrets).
 
 ## Security
 

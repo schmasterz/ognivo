@@ -4,7 +4,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('http');
 const { WebSocket } = require('ws');
-const { server, redis, redeemTicket, extractTicket, TICKET_REGEX, PinnedHttpsAgent, handleIncusSession, handleFakeSession } = require('../server.js');
+const { server, redis, redeemTicket, extractTicket, TICKET_REGEX, PinnedHttpsAgent, handleIncusSession, handleFakeSession, touchRedisSession, isFakeDriverAllowed, encryptTicketPayload, decryptTicketPayload } = require('../server.js');
 const https = require('https');
 const crypto = require('crypto');
 const { execSync } = require('child_process');
@@ -952,6 +952,592 @@ test('handleFakeSession differentiates exec shell vs console login prompt', asyn
 
   execClient.emit('close');
   consoleClient.emit('close');
+});
+
+function stubRedis(overrides) {
+  const keys = ['status', 'call', 'eval', 'hget', 'hset', 'expire', 'hdel'];
+  const saved = new Map();
+  for (const key of keys) {
+    saved.set(key, Object.getOwnPropertyDescriptor(redis, key));
+  }
+  for (const [key, value] of Object.entries(overrides)) {
+    redis[key] = value;
+  }
+  return () => {
+    for (const [key, desc] of saved.entries()) {
+      if (desc === undefined) {
+        delete redis[key];
+      } else {
+        Object.defineProperty(redis, key, desc);
+      }
+    }
+  };
+}
+
+test('touchRedisSession returns false for incomplete payload or when Redis is not ready', async () => {
+  const restoreNotReady = stubRedis({ status: 'wait' });
+  try {
+    assert.strictEqual(await touchRedisSession(null, true), false);
+    assert.strictEqual(await touchRedisSession({ session_id: 's1' }, true), false);
+    assert.strictEqual(await touchRedisSession({ virtual_machine_id: 1 }, true), false);
+    assert.strictEqual(
+      await touchRedisSession({ session_id: 's1', virtual_machine_id: 1 }, true),
+      false
+    );
+  } finally {
+    restoreNotReady();
+  }
+});
+
+test('touchRedisSession updates last_activity_at, sets redeemed_at when markRedeemed=true, and extends TTL via Lua eval', async () => {
+  const evalCalls = [];
+  const targetKey = 'laravel-database-console:vm_sessions:42';
+  const sessionStore = new Map([
+    [
+      targetKey,
+      new Map([
+        ['sess-lua-1', JSON.stringify({ session_id: 'sess-lua-1', last_activity_at: 1000, redeemed_at: null })],
+      ]),
+    ],
+  ]);
+
+  const restore = stubRedis({
+    status: 'ready',
+    eval: async (script, numKeys, key, sid, nowStr, markFlag, ttlStr) => {
+      evalCalls.push({ script, numKeys, key, sid, nowStr, markFlag, ttlStr });
+      const vmHash = sessionStore.get(key);
+      if (!vmHash || !vmHash.has(sid)) return 0;
+      const data = JSON.parse(vmHash.get(sid));
+      const now = Number(nowStr);
+      data.last_activity_at = now;
+      if (markFlag === '1' && (data.redeemed_at === undefined || data.redeemed_at === null)) {
+        data.redeemed_at = now;
+      }
+      vmHash.set(sid, JSON.stringify(data));
+      return 1;
+    },
+  });
+
+  try {
+    const beforeSec = Date.now() / 1000;
+    const ok = await touchRedisSession(
+      { session_id: 'sess-lua-1', virtual_machine_id: 42, idle_timeout_seconds: 900 },
+      true
+    );
+    const afterSec = Date.now() / 1000;
+
+    assert.strictEqual(ok, true);
+    assert.ok(evalCalls.length >= 1);
+    const matchedCall = evalCalls[evalCalls.length - 1];
+    assert.strictEqual(matchedCall.key, targetKey);
+    assert.strictEqual(matchedCall.numKeys, 1);
+    assert.strictEqual(matchedCall.sid, 'sess-lua-1');
+    assert.strictEqual(matchedCall.markFlag, '1');
+    assert.strictEqual(matchedCall.ttlStr, '960');
+
+    const stored = JSON.parse(sessionStore.get(targetKey).get('sess-lua-1'));
+    assert.ok(stored.last_activity_at >= beforeSec && stored.last_activity_at <= afterSec);
+    assert.strictEqual(stored.redeemed_at, stored.last_activity_at);
+  } finally {
+    restore();
+  }
+});
+
+test('touchRedisSession falls back to hget/hset/expire when redis.eval fails and preserves existing redeemed_at', async () => {
+  const targetKey = 'console:vm_sessions:77';
+  const vmHash = new Map([
+    ['sess-fb-1', JSON.stringify({ session_id: 'sess-fb-1', last_activity_at: 500, redeemed_at: null })],
+  ]);
+  const expireCalls = [];
+
+  const restore = stubRedis({
+    status: 'ready',
+    eval: async () => {
+      throw new Error('ERR unknown command or missing cjson');
+    },
+    hget: async (key, field) => (key === targetKey ? (vmHash.get(field) || null) : null),
+    hset: async (key, field, value) => {
+      if (key === targetKey) vmHash.set(field, value);
+      return 0;
+    },
+    expire: async (key, ttl) => {
+      expireCalls.push({ key, ttl });
+      return 1;
+    },
+  });
+
+  try {
+    const firstOk = await touchRedisSession(
+      { session_id: 'sess-fb-1', virtual_machine_id: 77, idle_timeout_seconds: 300 },
+      true
+    );
+    assert.strictEqual(firstOk, true);
+
+    const afterRedeem = JSON.parse(vmHash.get('sess-fb-1'));
+    assert.ok(typeof afterRedeem.redeemed_at === 'number' && afterRedeem.redeemed_at > 500);
+    assert.strictEqual(afterRedeem.last_activity_at, afterRedeem.redeemed_at);
+    assert.deepStrictEqual(expireCalls[0], { key: targetKey, ttl: 360 });
+
+    const originalRedeemedAt = afterRedeem.redeemed_at;
+    await new Promise((resolve) => setTimeout(resolve, 15));
+
+    const secondOk = await touchRedisSession(
+      { session_id: 'sess-fb-1', virtual_machine_id: 77, idle_timeout_seconds: 300 },
+      false
+    );
+    assert.strictEqual(secondOk, true);
+
+    const afterRefresh = JSON.parse(vmHash.get('sess-fb-1'));
+    assert.strictEqual(afterRefresh.redeemed_at, originalRedeemedAt, 'redeemed_at must remain unchanged');
+    assert.ok(afterRefresh.last_activity_at > originalRedeemedAt, 'last_activity_at should advance');
+    assert.deepStrictEqual(expireCalls[1], { key: targetKey, ttl: 360 });
+  } finally {
+    restore();
+  }
+});
+
+test('handleFakeSession marks session redeemed on open and throttles last_activity_at refreshes', async () => {
+  const EventEmitter = require('events');
+  const vmKey = 'console:vm_sessions:91';
+  const sid = 'sess-fake-throttle-1';
+  const vmHash = new Map([
+    [sid, JSON.stringify({ session_id: sid, last_activity_at: 100, redeemed_at: null })],
+  ]);
+  const writeHistory = [];
+
+  const restore = stubRedis({
+    status: 'ready',
+    eval: async () => {
+      throw new Error('use fallback');
+    },
+    hget: async (key, field) => (key === vmKey ? (vmHash.get(field) || null) : null),
+    hset: async (key, field, value) => {
+      if (key === vmKey) {
+        vmHash.set(field, value);
+        writeHistory.push(JSON.parse(value));
+      }
+      return 0;
+    },
+    expire: async () => 1,
+    hdel: async () => 1,
+  });
+
+  try {
+    const fakeClient = new EventEmitter();
+    fakeClient.readyState = WebSocket.OPEN;
+    fakeClient.send = () => {};
+    fakeClient.close = () => {
+      fakeClient.readyState = WebSocket.CLOSED;
+      fakeClient.emit('close');
+    };
+
+    handleFakeSession(fakeClient, {
+      virtual_machine_id: 91,
+      session_id: sid,
+      driver: 'exec',
+      instance_type: 'container',
+      host_driver: 'fake',
+      idle_timeout_seconds: 600,
+      activity_refresh_interval_ms: 20,
+    });
+
+    // Wait for initial touchRedisSession(payload, true)
+    await new Promise((resolve) => {
+      const check = () => (writeHistory.length >= 1 ? resolve() : setTimeout(check, 5));
+      check();
+    });
+
+    assert.strictEqual(writeHistory.length, 1);
+    const initialRecord = writeHistory[0];
+    assert.ok(typeof initialRecord.redeemed_at === 'number' && initialRecord.redeemed_at > 100);
+    assert.strictEqual(initialRecord.last_activity_at, initialRecord.redeemed_at);
+
+    // Messages sent within the 20ms throttle window should NOT trigger extra Redis writes
+    fakeClient.emit('message', 'a', false);
+    fakeClient.emit('message', 'b', false);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.strictEqual(writeHistory.length, 1, 'Messages inside throttle window must not spam Redis');
+
+    // Wait past the 20ms throttle interval, then send traffic
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    fakeClient.emit('message', 'c', false);
+
+    await new Promise((resolve) => {
+      const check = () => (writeHistory.length >= 2 ? resolve() : setTimeout(check, 5));
+      check();
+    });
+
+    assert.strictEqual(writeHistory.length, 2);
+    assert.strictEqual(writeHistory[1].redeemed_at, initialRecord.redeemed_at);
+    assert.ok(writeHistory[1].last_activity_at > initialRecord.last_activity_at);
+
+    // Close session and ensure no further touches happen afterwards
+    fakeClient.close();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    fakeClient.emit('message', 'after-close', false);
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    assert.strictEqual(writeHistory.length, 2, 'Should never touch Redis after cleanup');
+  } finally {
+    restore();
+  }
+});
+
+test('handleIncusSession marks session redeemed on open, throttles activity refreshes, and stops after teardown', async () => {
+  const EventEmitter = require('events');
+  const fixture = createTestTlsServer();
+  const vmKey = 'console:vm_sessions:92';
+  const sid = 'sess-incus-throttle-1';
+  const vmHash = new Map([
+    [sid, JSON.stringify({ session_id: sid, last_activity_at: 200, redeemed_at: null })],
+  ]);
+  const writeHistory = [];
+
+  const restore = stubRedis({
+    status: 'ready',
+    eval: async () => {
+      throw new Error('use fallback');
+    },
+    hget: async (key, field) => (key === vmKey ? (vmHash.get(field) || null) : null),
+    hset: async (key, field, value) => {
+      if (key === vmKey) {
+        vmHash.set(field, value);
+        writeHistory.push(JSON.parse(value));
+      }
+      return 0;
+    },
+    expire: async () => 1,
+    hdel: async () => 1,
+  });
+
+  try {
+    await new Promise((resolve) => fixture.tlsServer.listen(0, '127.0.0.1', resolve));
+    const tlsPort = fixture.tlsServer.address().port;
+
+    let serverDataWs = null;
+    const upstreamReady = new Promise((resolve) => {
+      fixture.testWss.once('connection', (ws) => {
+        serverDataWs = ws;
+        resolve();
+      });
+    });
+
+    const mockClientWs = new EventEmitter();
+    mockClientWs.readyState = WebSocket.OPEN;
+    mockClientWs.send = () => {};
+    mockClientWs.close = () => {
+      mockClientWs.readyState = WebSocket.CLOSED;
+      mockClientWs.emit('close');
+    };
+
+    handleIncusSession(mockClientWs, {
+      host_endpoint: `https://127.0.0.1:${tlsPort}`,
+      websocket_path: '/1.0/operations/op-throttle/websocket',
+      virtual_machine_id: 92,
+      session_id: sid,
+      idle_timeout_seconds: 900,
+      activity_refresh_interval_ms: 20,
+      server_public_key_pin: fixture.validPin,
+    });
+
+    await upstreamReady;
+
+    // Wait for initial touchRedisSession(payload, true)
+    await new Promise((resolve) => {
+      const check = () => (writeHistory.length >= 1 ? resolve() : setTimeout(check, 5));
+      check();
+    });
+
+    assert.strictEqual(writeHistory.length, 1);
+    const initialRecord = writeHistory[0];
+    assert.ok(typeof initialRecord.redeemed_at === 'number' && initialRecord.redeemed_at > 200);
+
+    // Send traffic within the 20ms throttle window -> no extra Redis write
+    mockClientWs.emit('message', 'x', false);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.strictEqual(writeHistory.length, 1);
+
+    // Wait past 20ms throttle window and send traffic
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    mockClientWs.emit('message', 'y', false);
+
+    await new Promise((resolve) => {
+      const check = () => (writeHistory.length >= 2 ? resolve() : setTimeout(check, 5));
+      check();
+    });
+
+    assert.strictEqual(writeHistory.length, 2);
+    assert.strictEqual(writeHistory[1].redeemed_at, initialRecord.redeemed_at);
+    assert.ok(writeHistory[1].last_activity_at > initialRecord.last_activity_at);
+
+    const closedPromise = new Promise((resolve) => serverDataWs.on('close', resolve));
+    mockClientWs.close();
+    await closedPromise;
+
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    mockClientWs.emit('message', 'late', false);
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    assert.strictEqual(writeHistory.length, 2, 'Should never touch Redis after teardown');
+  } finally {
+    restore();
+    fixture.cleanup();
+  }
+});
+
+test('isFakeDriverAllowed enforces ALLOW_FAKE_DRIVER and NODE_ENV defaults', () => {
+  const savedNodeEnv = process.env.NODE_ENV;
+  const savedAllowFake = process.env.ALLOW_FAKE_DRIVER;
+
+  try {
+    delete process.env.ALLOW_FAKE_DRIVER;
+    delete process.env.NODE_ENV;
+    assert.strictEqual(isFakeDriverAllowed(), true);
+
+    process.env.NODE_ENV = 'development';
+    assert.strictEqual(isFakeDriverAllowed(), true);
+
+    process.env.NODE_ENV = 'production';
+    assert.strictEqual(isFakeDriverAllowed(), false);
+
+    process.env.ALLOW_FAKE_DRIVER = 'false';
+    assert.strictEqual(isFakeDriverAllowed(), false);
+
+    process.env.ALLOW_FAKE_DRIVER = '0';
+    assert.strictEqual(isFakeDriverAllowed(), false);
+
+    process.env.ALLOW_FAKE_DRIVER = 'true';
+    assert.strictEqual(isFakeDriverAllowed(), true);
+
+    process.env.ALLOW_FAKE_DRIVER = '1';
+    assert.strictEqual(isFakeDriverAllowed(), true);
+  } finally {
+    if (savedNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = savedNodeEnv;
+    }
+    if (savedAllowFake === undefined) {
+      delete process.env.ALLOW_FAKE_DRIVER;
+    } else {
+      process.env.ALLOW_FAKE_DRIVER = savedAllowFake;
+    }
+  }
+});
+
+test('WebSocket connection to /console with host_driver=fake closes with 1008 when disabled in production', async () => {
+  const savedNodeEnv = process.env.NODE_ENV;
+  const savedAllowFake = process.env.ALLOW_FAKE_DRIVER;
+  const savedAppKey = process.env.APP_KEY;
+  const ticket = 'fake-driver-guard-ticket-123456';
+  const payload = {
+    session_id: 'sess-fake-guard-1',
+    virtual_machine_id: 99,
+    host_driver: 'fake',
+    driver: 'exec',
+    instance_type: 'container',
+  };
+
+  process.env.APP_KEY = 'base64:' + Buffer.alloc(32, 7).toString('base64');
+  const encryptedPayload = encryptTicketPayload(payload, ticket);
+
+  const hdelCalls = [];
+  const restoreRedis = stubRedis({
+    status: 'ready',
+    call: async (cmd, key) => {
+      if (cmd === 'GETDEL' && key.endsWith(`console:ticket:${ticket}`)) {
+        return encryptedPayload;
+      }
+      return null;
+    },
+    hdel: async (key, field) => {
+      hdelCalls.push({ key, field });
+      return 1;
+    },
+  });
+
+  try {
+    process.env.NODE_ENV = 'production';
+    process.env.ALLOW_FAKE_DRIVER = 'false';
+
+    const address = server.address();
+    const port = address.port;
+    const receivedMessages = [];
+
+    const closeEvent = await new Promise((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${port}/console?ticket=${ticket}`);
+      ws.on('message', (data) => {
+        receivedMessages.push(data.toString('utf8'));
+      });
+      ws.on('close', (code, reason) => {
+        resolve({ code, reason: reason.toString('utf8') });
+      });
+      ws.on('error', reject);
+    });
+
+    assert.strictEqual(closeEvent.code, 1008);
+    assert.strictEqual(closeEvent.reason, 'Fake hypervisor driver is disabled');
+    assert.strictEqual(receivedMessages.length, 0, 'Should not emit fake terminal prompt when disabled');
+    assert.ok(hdelCalls.some((c) => c.field === payload.session_id), 'Should clean up Redis session record');
+  } finally {
+    restoreRedis();
+    if (savedNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = savedNodeEnv;
+    }
+    if (savedAllowFake === undefined) {
+      delete process.env.ALLOW_FAKE_DRIVER;
+    } else {
+      process.env.ALLOW_FAKE_DRIVER = savedAllowFake;
+    }
+    if (savedAppKey === undefined) {
+      delete process.env.APP_KEY;
+    } else {
+      process.env.APP_KEY = savedAppKey;
+    }
+  }
+});
+
+test('encryptTicketPayload and decryptTicketPayload round-trip AES-256-GCM with ticket AAD and APP_PREVIOUS_KEYS rotation', () => {
+  const savedAppKey = process.env.APP_KEY;
+  const savedPreviousKeys = process.env.APP_PREVIOUS_KEYS;
+
+  try {
+    const oldKey = 'base64:' + Buffer.alloc(32, 11).toString('base64');
+    const newKey = 'base64:' + Buffer.alloc(32, 22).toString('base64');
+    const ticket = 'roundtrip-aad-ticket-1234567890';
+    const samplePayload = {
+      session_id: 'sess-enc-1',
+      virtual_machine_id: 42,
+      client_private_key: 'SECRET-PEM-PRIVATE-KEY-CONTENT',
+    };
+
+    process.env.APP_KEY = oldKey;
+    delete process.env.APP_PREVIOUS_KEYS;
+
+    const rawEnvelope = encryptTicketPayload(samplePayload, ticket);
+    assert.ok(!rawEnvelope.includes('SECRET-PEM-PRIVATE-KEY-CONTENT'), 'Ciphertext must not leak plaintext secret');
+
+    const parsedEnvelope = JSON.parse(rawEnvelope);
+    assert.strictEqual(parsedEnvelope.v, 1);
+    assert.strictEqual(parsedEnvelope.alg, 'AES-256-GCM');
+    assert.strictEqual(typeof parsedEnvelope.iv, 'string');
+    assert.strictEqual(typeof parsedEnvelope.tag, 'string');
+    assert.strictEqual(typeof parsedEnvelope.ct, 'string');
+
+    // Decryption succeeds with matching APP_KEY and ticket
+    assert.deepStrictEqual(decryptTicketPayload(rawEnvelope, ticket), samplePayload);
+
+    // Key rotation: old key moved to APP_PREVIOUS_KEYS, new key active in APP_KEY
+    process.env.APP_KEY = newKey;
+    process.env.APP_PREVIOUS_KEYS = oldKey;
+    assert.deepStrictEqual(decryptTicketPayload(rawEnvelope, ticket), samplePayload);
+
+    // Mismatched ticket AAD throws
+    assert.throws(
+      () => decryptTicketPayload(rawEnvelope, 'different-ticket-1234567890'),
+      /Failed to decrypt or authenticate/
+    );
+
+    // Tampered ciphertext throws
+    const ctBuf = Buffer.from(parsedEnvelope.ct, 'base64');
+    ctBuf[0] ^= 0xff;
+    const tamperedCt = JSON.stringify({ ...parsedEnvelope, ct: ctBuf.toString('base64') });
+    assert.throws(() => decryptTicketPayload(tamperedCt, ticket), /Failed to decrypt or authenticate/);
+
+    // Tampered auth tag throws
+    const tagBuf = Buffer.from(parsedEnvelope.tag, 'base64');
+    tagBuf[0] ^= 0xff;
+    const tamperedTag = JSON.stringify({ ...parsedEnvelope, tag: tagBuf.toString('base64') });
+    assert.throws(() => decryptTicketPayload(tamperedTag, ticket), /Failed to decrypt or authenticate/);
+
+    // Plaintext JSON envelope throws
+    assert.throws(
+      () => decryptTicketPayload(JSON.stringify(samplePayload), ticket),
+      /Unencrypted or invalid ticket envelope/
+    );
+  } finally {
+    if (savedAppKey === undefined) {
+      delete process.env.APP_KEY;
+    } else {
+      process.env.APP_KEY = savedAppKey;
+    }
+    if (savedPreviousKeys === undefined) {
+      delete process.env.APP_PREVIOUS_KEYS;
+    } else {
+      process.env.APP_PREVIOUS_KEYS = savedPreviousKeys;
+    }
+  }
+});
+
+test('WebSocket upgrade to /console returns 403 Forbidden when ticket payload is unencrypted or tampered', async () => {
+  const savedAppKey = process.env.APP_KEY;
+  const savedPreviousKeys = process.env.APP_PREVIOUS_KEYS;
+
+  try {
+    process.env.APP_KEY = 'base64:' + Buffer.alloc(32, 33).toString('base64');
+    delete process.env.APP_PREVIOUS_KEYS;
+
+    const plaintextTicket = 'plaintext-ticket-value-123456';
+    const tamperedTicket = 'tampered-ticket-value-1234567';
+
+    const validEnvelope = JSON.parse(
+      encryptTicketPayload({ session_id: 's-tamper', virtual_machine_id: 5 }, tamperedTicket)
+    );
+    const ctBuf = Buffer.from(validEnvelope.ct, 'base64');
+    ctBuf[0] ^= 0xff;
+    const tamperedEnvelope = JSON.stringify({ ...validEnvelope, ct: ctBuf.toString('base64') });
+
+    const restoreRedis = stubRedis({
+      status: 'ready',
+      call: async (cmd, key) => {
+        if (cmd === 'GETDEL' && key.endsWith(`console:ticket:${plaintextTicket}`)) {
+          return JSON.stringify({ session_id: 's-plain', virtual_machine_id: 4 });
+        }
+        if (cmd === 'GETDEL' && key.endsWith(`console:ticket:${tamperedTicket}`)) {
+          return tamperedEnvelope;
+        }
+        return null;
+      },
+    });
+
+    try {
+      const port = server.address().port;
+
+      for (const ticket of [plaintextTicket, tamperedTicket]) {
+        await new Promise((resolve) => {
+          const ws = new WebSocket(`ws://127.0.0.1:${port}/console?ticket=${ticket}`);
+          ws.on('unexpected-response', (_req, res) => {
+            assert.strictEqual(res.statusCode, 403);
+            res.resume();
+            resolve();
+          });
+          ws.on('error', (err) => {
+            assert.ok(
+              err.message.includes('403') || err.message.includes('Unexpected server response'),
+              `Expected 403 error, got: ${err.message}`
+            );
+            resolve();
+          });
+          ws.on('open', () => {
+            assert.fail(`Should not allow WebSocket upgrade for invalid ticket ${ticket}`);
+          });
+        });
+      }
+    } finally {
+      restoreRedis();
+    }
+  } finally {
+    if (savedAppKey === undefined) {
+      delete process.env.APP_KEY;
+    } else {
+      process.env.APP_KEY = savedAppKey;
+    }
+    if (savedPreviousKeys === undefined) {
+      delete process.env.APP_PREVIOUS_KEYS;
+    } else {
+      process.env.APP_PREVIOUS_KEYS = savedPreviousKeys;
+    }
+  }
 });
 
 after(() => {

@@ -64,7 +64,7 @@ The development example (`.env.development.example`) differs from the production
 | `APP_KEY` | *(none)* | generated | Primary AES-256-CBC key encrypting mTLS keys, host tokens, and the stored SMTP password |
 | `APP_PREVIOUS_KEYS` | *(none)* | commented out | Comma-separated previous `APP_KEY` values (full value including the `base64:` prefix) used during key rotation |
 | `APP_DEBUG` | `false` | `false` | Must be `false` in production (enforced on boot) |
-| `APP_URL` | `http://localhost` | `https://localhost` | Canonical public URL of the panel. Also the default for `REVERB_ALLOWED_ORIGINS` |
+| `APP_URL` | `http://localhost` | `https://panel.example.com` | Canonical public URL of the panel. Also the default for `REVERB_ALLOWED_ORIGINS` |
 | `APP_LOCALE` | `en` | commented out (`en`) | Default locale (`en` or `bg`) for code running outside an HTTP request: queue workers (e.g. queued emails) and console commands. API responses choose the locale per request (`?lang=`, `X-Locale`, then `Accept-Language`) and fall back to `en`, independent of this value |
 | `APP_FALLBACK_LOCALE` | `en` | commented out (`en`) | Laravel fallback locale for missing translation keys |
 | `LOG_LEVEL` | `debug` | `warning` | Minimum log level. Use `warning` or `info` in production |
@@ -95,7 +95,7 @@ The development example (`.env.development.example`) differs from the production
 | `SESSION_SAME_SITE` | `lax` | not in file | `SameSite` attribute of the session cookie |
 | `SESSION_DOMAIN` | *(unset)* | not in file | Cookie domain |
 | `SANCTUM_EXPIRATION` | `1440` | `1440` | API token lifetime in minutes (24 hours) |
-| `SANCTUM_STATEFUL_DOMAINS` | `localhost,localhost:3000,127.0.0.1,127.0.0.1:8000,::1` plus the host from `APP_URL` | `localhost` | Hostnames (without scheme, `host[:port]`) treated as stateful SPA origins. In production set it to the panel's hostname(s), matching `APP_URL`; otherwise localhost and loopback origins stay trusted |
+| `SANCTUM_STATEFUL_DOMAINS` | `localhost,localhost:3000,127.0.0.1,127.0.0.1:8000,::1` plus the host from `APP_URL` | `panel.example.com` | Hostnames (without scheme, `host[:port]`) treated as stateful SPA origins. In production set it to the panel's hostname(s), matching `APP_URL`; otherwise localhost and loopback origins stay trusted |
 | `SANCTUM_TOKEN_PREFIX` | *(empty)* | not in file | Optional prefix for newly issued API tokens |
 
 ### Broadcasting & Frontend
@@ -108,7 +108,7 @@ The development example (`.env.development.example`) differs from the production
 | `REVERB_HOST` | *(none)* | `reverb` | Internal Reverb hostname used by the backend and queue workers to broadcast |
 | `REVERB_PORT` | `443` | `8080` | Internal Reverb port |
 | `REVERB_SCHEME` | `https` | `http` | Internal Reverb scheme. The code default is `https`, but the internal Docker link is plain `http`, so keep the example values |
-| `REVERB_ALLOWED_ORIGINS` | `APP_URL` | `https://localhost` | Allowed WebSocket `Origin` headers, comma-separated (no `*` in prod) |
+| `REVERB_ALLOWED_ORIGINS` | `APP_URL` | `https://panel.example.com` | Allowed WebSocket `Origin` headers, comma-separated (no `*` in prod) |
 | `NEXT_PUBLIC_API_URL` | `/api` (compose fallback) | `/api` | Base URL for frontend API requests (baked in at build) |
 | `NEXT_PUBLIC_REVERB_APP_KEY` | *(none)* | generated, equals `REVERB_APP_KEY` | Baked into the Next.js client bundle during build; the build fails if it is empty |
 | `NEXT_PUBLIC_REVERB_PORT` | `443` (compose fallback) | `443` | Browser WebSocket port override for HTTPS pages (see note below) |
@@ -164,7 +164,7 @@ Mail is used for email verification, password reset, the hourly `audit:verify` f
 | Variable | Code default | In `.env.production.example` | Description |
 | :--- | :--- | :--- | :--- |
 | `HYPERVISOR_ALLOW_PRIVATE_ENDPOINTS` | `false` | `false` | When `false`, fetching the TLS peer certificate of a compute node (done when adding a node) rejects private-range and loopback addresses as an SSRF mitigation. **Set to `true` when Incus compute nodes are on private RFC 1918 / LAN or loopback addresses**, which is the common case. The development example sets it to `true` |
-| `ALLOW_FAKE_DRIVER` | `false` | `false` | Permits creating hosts with the `fake` driver outside `local` / `testing`. Placement still excludes `fake` hosts outside those environments. Keep `false` in production. This is not covered by `app:check-production-config` |
+| `ALLOW_FAKE_DRIVER` | `false` | `false` | Permits creating hosts with the `fake` driver outside `local` / `testing` and enables emulated terminal sessions in `console-proxy`. Placement still excludes `fake` hosts outside `local` / `testing`. Keep `false` in production (enforced by `app:check-production-config`) |
 
 The panel can only manage a node that listens on the network. On the Incus host, run once:
 
@@ -186,22 +186,23 @@ Read from `config/hypervisor.php` by the backend. Each value is copied into the 
 | `TERMINAL_MAX_MESSAGE_BYTES` | `65536` | `65536` | Largest accepted WebSocket message in bytes (minimum `1024`) |
 
 > [!NOTE]
-> The `console-proxy` container does not read `.env.production`. Compose passes it only `PORT`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` and `REDIS_PREFIX`. Its own defaults for `MAX_MESSAGE_BYTES` and `IDLE_TIMEOUT_SECONDS` (`65536` / `900`) are used only when a ticket does not carry the value, which the backend always provides. To change them, edit the `console-proxy` service in the Compose file.
+> The `console-proxy` container does not read `.env.production`. Compose passes it only `PORT`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_PREFIX`, `APP_KEY`, `APP_PREVIOUS_KEYS`, `NODE_ENV` and `ALLOW_FAKE_DRIVER`. Its own defaults for `MAX_MESSAGE_BYTES` and `IDLE_TIMEOUT_SECONDS` (`65536` / `900`) are used only when a ticket does not carry the value, which the backend always provides. To change them, edit the `console-proxy` service in the Compose file.
 
 ### Development vs production examples
 
 | Variable | `.env.development.example` | `.env.production.example` |
 | :--- | :--- | :--- |
-| `APP_ENV` / `APP_DEBUG` / `APP_URL` | `local` / `true` / `http://localhost` | `production` / `false` / `https://localhost` |
+| `APP_ENV` / `APP_DEBUG` / `APP_URL` | `local` / `true` / `http://localhost` | `production` / `false` / `https://panel.example.com` |
 | `APP_NAME` | `"Ognivo (Dev)"` | `"Ognivo"` |
 | `LOG_LEVEL` | `debug` | `warning` |
 | `REDIS_PASSWORD` | `null` (replaced by a generated value by `make secrets`) | generated |
-| `REVERB_ALLOWED_ORIGINS` | `*` | `https://localhost` (replace with your domain) |
+| `REVERB_ALLOWED_ORIGINS` | `*` | `https://panel.example.com` (replace with your domain) |
 | `NEXT_PUBLIC_REVERB_PORT` | `8080` | `443` |
 | `RUN_SEEDERS` | `true` | `false` |
 | `SESSION_SECURE_COOKIE` | `false` | `true` |
-| `SANCTUM_STATEFUL_DOMAINS` | `localhost,localhost:3000,127.0.0.1,127.0.0.1:8000,::1` | `localhost` (replace with your domain) |
+| `SANCTUM_STATEFUL_DOMAINS` | `localhost,localhost:3000,127.0.0.1,127.0.0.1:8000,::1` | `panel.example.com` (replace with your domain) |
 | `HYPERVISOR_ALLOW_PRIVATE_ENDPOINTS` | `true` | `false` |
+| `ALLOW_FAKE_DRIVER` | `true` | `false` |
 | `PROVISION_HOST_*_RESERVE_*` | `0` / `0` / `0` | `1` core / `2048` MB / `20` GB |
 | `AUDIT_STRICT_GRANTS` | `false` | `true` |
 | `MAIL_FROM_ADDRESS` | `hello@ognivo.local` | `noreply@example.com` |
@@ -241,10 +242,14 @@ When `APP_ENV=production`, `backend/docker-entrypoint.sh` runs `php artisan app:
 12. `DB_MIGRATION_PASSWORD` empty, `null`, `secret_password`, or `CHANGE_ME`.
 13. `AUDIT_HMAC_KEY` empty, `null`, `CHANGE_ME`, or `secret_password`.
 14. `AUDIT_PSEUDONYM_SALT` empty, `null`, `CHANGE_ME`, or `secret_password`.
+15. `ALLOW_FAKE_DRIVER=true` (or `1`).
+16. `AUDIT_STRICT_GRANTS=false` (or `0` / disabled).
+17. `SESSION_SECURE_COOKIE=false` (or `0` / unset).
+18. `APP_URL` empty, not using `https://`, or pointing to a local/loopback host (`localhost`, `127.0.0.1`, `::1`).
 
 Run `make secrets` to generate valid values for all secret entries above.
 
-The check does **not** validate every security-relevant setting. Review these yourself before going live: `APP_URL` and `SANCTUM_STATEFUL_DOMAINS` (your real domain), `SESSION_SECURE_COOKIE=true`, `ALLOW_FAKE_DRIVER=false`, `HYPERVISOR_ALLOW_PRIVATE_ENDPOINTS` (only `true` if your nodes are on private addresses), and `TRUSTED_PROXIES` if Nginx is not on a private Docker network.
+The check does **not** validate every security-relevant setting. Review these yourself before going live: `APP_URL` (must match your real domain rather than the example `https://panel.example.com`), `SANCTUM_STATEFUL_DOMAINS` (your real domain), `HYPERVISOR_ALLOW_PRIVATE_ENDPOINTS` (only `true` if your nodes are on private addresses), and `TRUSTED_PROXIES` if Nginx is not on a private Docker network.
 
 ---
 

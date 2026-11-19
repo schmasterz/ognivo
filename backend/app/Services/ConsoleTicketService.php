@@ -29,6 +29,10 @@ use Throwable;
 
 final class ConsoleTicketService
 {
+    public const TICKET_HKDF_INFO = 'ognivo-console-ticket-v1';
+
+    public const TICKET_CIPHER = 'aes-256-gcm';
+
     public function __construct(
         protected readonly HypervisorManager $hypervisorManager,
         protected readonly ?AuditLogger $auditLogger = null,
@@ -174,8 +178,19 @@ final class ConsoleTicketService
                 continue;
             }
 
-            $lastActivity = Cast::float($entry['last_activity_at'] ?? $entry['opened_at'] ?? 0);
-            if ($now - $lastActivity >= $idleTimeout) {
+            $openedAt = Cast::float($entry['opened_at'] ?? 0);
+            $lastActivity = Cast::float($entry['last_activity_at'] ?? $openedAt);
+            $ticketExpiresAt = isset($entry['ticket_expires_at']) ? Cast::float($entry['ticket_expires_at']) : null;
+            $isRedeemed = ! empty($entry['redeemed_at']) || ($openedAt > 0 && $lastActivity > $openedAt);
+
+            $pruneReason = null;
+            if (! $isRedeemed && $ticketExpiresAt !== null && $now >= $ticketExpiresAt) {
+                $pruneReason = 'ticket_expired';
+            } elseif ($now - $lastActivity >= $idleTimeout) {
+                $pruneReason = 'idle_timeout';
+            }
+
+            if ($pruneReason !== null) {
                 $deleted = 0;
                 try {
                     $deleted = Cast::int(Redis::hdel($vmSessionsKey, Cast::string($sid)));
@@ -183,7 +198,7 @@ final class ConsoleTicketService
                 } catch (Throwable) {
                 }
                 if ($deleted > 0) {
-                    $this->closeSessionInternal($vm, Cast::string($sid), $entry, 'idle_timeout');
+                    $this->closeSessionInternal($vm, Cast::string($sid), $entry, $pruneReason);
                 }
 
                 continue;
@@ -264,6 +279,8 @@ final class ConsoleTicketService
             'operation_id' => $session['operation_id'],
             'opened_at' => $now,
             'last_activity_at' => $now,
+            'ticket_expires_at' => $now + (float) $ticketTtl,
+            'redeemed_at' => null,
             'close_token' => $closeToken,
         ];
 
@@ -301,7 +318,7 @@ final class ConsoleTicketService
         ];
 
         $key = sprintf('console:ticket:%s', $ticket);
-        Redis::setex($key, $ticketTtl, json_encode($payload, JSON_THROW_ON_ERROR));
+        Redis::setex($key, $ticketTtl, $this->encryptTicketPayload($payload, $ticket));
 
         $this->logger()->record(new AuditEntry(
             action: AuditAction::ConsoleTicketIssued,
@@ -368,12 +385,8 @@ final class ConsoleTicketService
             $raw = Redis::command('getdel', [$key]);
         } catch (Throwable) {
             $lua = "local v = redis.call('get', KEYS[1]); if v then redis.call('del', KEYS[1]); end; return v";
-            /**
-             * @psalm-suppress InvalidArgument
-             *
-             * @var mixed $raw
-             */
-            $raw = Redis::eval($lua, 1, $key);
+            /** @var mixed $raw */
+            $raw = Redis::command('eval', [$lua, 1, $key]);
         }
 
         if (! is_string($raw) || $raw === '') {
@@ -381,13 +394,193 @@ final class ConsoleTicketService
         }
 
         try {
-            /** @var array<string, mixed>|null $data */
-            $data = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+            $data = $this->decryptTicketPayload($raw, $ticket);
+            if (! is_array($data)) {
+                return null;
+            }
 
-            return is_array($data) ? $data : null;
+            if (! empty($data['virtual_machine_id']) && ! empty($data['session_id'])) {
+                try {
+                    $vmSessionsKey = sprintf('console:vm_sessions:%d', Cast::int($data['virtual_machine_id']));
+                    $sessionId = Cast::string($data['session_id']);
+                    /** @var mixed $rawRecord */
+                    $rawRecord = Redis::hget($vmSessionsKey, $sessionId);
+                    if (is_string($rawRecord) && $rawRecord !== '') {
+                        /** @var mixed $record */
+                        $record = json_decode($rawRecord, true, 512, JSON_THROW_ON_ERROR);
+                        if (is_array($record)) {
+                            $redeemedAt = microtime(true);
+                            $record['redeemed_at'] = $redeemedAt;
+                            $record['last_activity_at'] = $redeemedAt;
+                            Redis::hset($vmSessionsKey, $sessionId, json_encode($record, JSON_THROW_ON_ERROR));
+                        }
+                    }
+                } catch (Throwable) {
+                }
+            }
+
+            return $data;
         } catch (Throwable) {
             return null;
         }
+    }
+
+    /**
+     * Encrypt a console ticket payload with AES-256-GCM bound to the ticket ID as AAD.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function encryptTicketPayload(array $payload, string $ticket): string
+    {
+        $keys = $this->resolveTicketKeys();
+        $plaintext = json_encode($payload, JSON_THROW_ON_ERROR);
+
+        $iv = random_bytes(12);
+        $tag = '';
+        $ciphertext = openssl_encrypt(
+            $plaintext,
+            self::TICKET_CIPHER,
+            $keys[0],
+            OPENSSL_RAW_DATA,
+            $iv,
+            $tag,
+            $ticket,
+            16,
+        );
+
+        if ($ciphertext === false || strlen($tag) !== 16) {
+            throw new \RuntimeException('Failed to encrypt console ticket payload.');
+        }
+
+        return json_encode([
+            'v' => 1,
+            'alg' => 'AES-256-GCM',
+            'iv' => base64_encode($iv),
+            'tag' => base64_encode($tag),
+            'ct' => base64_encode($ciphertext),
+        ], JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * Decrypt a console ticket payload encrypted with AES-256-GCM.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function decryptTicketPayload(string $raw, string $ticket): ?array
+    {
+        try {
+            /** @var mixed $envelope */
+            $envelope = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+        } catch (Throwable) {
+            return null;
+        }
+
+        if (! is_array($envelope)) {
+            return null;
+        }
+
+        $ivB64 = $envelope['iv'] ?? null;
+        $tagB64 = $envelope['tag'] ?? null;
+        $ctB64 = $envelope['ct'] ?? null;
+
+        if (($envelope['v'] ?? null) !== 1 || ! is_string($ivB64) || ! is_string($tagB64) || ! is_string($ctB64)) {
+            return null;
+        }
+
+        $iv = base64_decode($ivB64, true);
+        $tag = base64_decode($tagB64, true);
+        $ct = base64_decode($ctB64, true);
+
+        if ($iv === false || $tag === false || $ct === false) {
+            return null;
+        }
+
+        if (strlen($iv) !== 12 || strlen($tag) !== 16 || $ct === '') {
+            return null;
+        }
+
+        foreach ($this->resolveTicketKeys() as $derivedKey) {
+            $decrypted = openssl_decrypt(
+                $ct,
+                self::TICKET_CIPHER,
+                $derivedKey,
+                OPENSSL_RAW_DATA,
+                $iv,
+                $tag,
+                $ticket,
+            );
+
+            if ($decrypted !== false) {
+                try {
+                    /** @var mixed $payload */
+                    $payload = json_decode($decrypted, true, 512, JSON_THROW_ON_ERROR);
+                } catch (Throwable) {
+                    return null;
+                }
+
+                if (! is_array($payload)) {
+                    return null;
+                }
+
+                /** @var array<string, mixed> $payload */
+                return $payload;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Derive 32-byte encryption keys from APP_KEY and APP_PREVIOUS_KEYS via HKDF-SHA256.
+     *
+     * @return non-empty-list<string>
+     */
+    private function resolveTicketKeys(): array
+    {
+        $rawCandidates = [];
+
+        /** @var mixed $primary */
+        $primary = config('app.key');
+        if (is_string($primary) && $primary !== '') {
+            $rawCandidates[] = $primary;
+        }
+
+        /** @var mixed $previous */
+        $previous = config('app.previous_keys', []);
+        if (is_string($previous) && $previous !== '') {
+            foreach (explode(',', $previous) as $item) {
+                $trimmed = trim($item);
+                if ($trimmed !== '') {
+                    $rawCandidates[] = $trimmed;
+                }
+            }
+        } elseif (is_array($previous)) {
+            foreach ($previous as $item) {
+                if (is_string($item) && $item !== '') {
+                    $rawCandidates[] = $item;
+                }
+            }
+        }
+
+        $keys = [];
+        foreach ($rawCandidates as $keyStr) {
+            if (str_starts_with($keyStr, 'base64:')) {
+                $raw = base64_decode(substr($keyStr, 7), true);
+                if ($raw === false || $raw === '') {
+                    continue;
+                }
+            } else {
+                $raw = $keyStr;
+            }
+
+            $keys[] = hash_hkdf('sha256', $raw, 32, self::TICKET_HKDF_INFO);
+        }
+
+        if ($keys === []) {
+            throw new \RuntimeException('APP_KEY is not configured for console ticket encryption.');
+        }
+
+        return $keys;
     }
 
     /**

@@ -285,10 +285,14 @@ services:
     restart: always
     environment:
       PORT: 8085
+      NODE_ENV: development
+      ALLOW_FAKE_DRIVER: ${ALLOW_FAKE_DRIVER:-true}
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       REDIS_PREFIX: ${REDIS_PREFIX:-ognivo-database-}
+      APP_KEY: ${APP_KEY:-}
+      APP_PREVIOUS_KEYS: ${APP_PREVIOUS_KEYS:-}
     volumes:
       - ./console-proxy:/app
       - /app/node_modules

@@ -17,8 +17,91 @@ const CLIENT_CERT_PATH = process.env.CLIENT_CERT_PATH || null;
 const CLIENT_KEY_PATH = process.env.CLIENT_KEY_PATH || null;
 const DEFAULT_MAX_PAYLOAD = parseInt(process.env.MAX_MESSAGE_BYTES || '65536', 10);
 const DEFAULT_IDLE_TIMEOUT_SECONDS = parseInt(process.env.IDLE_TIMEOUT_SECONDS || '900', 10);
+const DEFAULT_ACTIVITY_REFRESH_INTERVAL_MS = parseInt(process.env.ACTIVITY_REFRESH_INTERVAL_MS || '30000', 10);
 
 const TICKET_REGEX = /^[A-Za-z0-9_-]{16,128}$/;
+const TICKET_HKDF_INFO = 'ognivo-console-ticket-v1';
+
+function resolveTicketKeys() {
+  const candidates = [
+    process.env.APP_KEY || '',
+    ...(process.env.APP_PREVIOUS_KEYS || '').split(','),
+  ];
+  const keys = [];
+  for (const raw of candidates) {
+    const keyStr = raw.trim();
+    if (!keyStr) continue;
+    const rawKeyBuf = keyStr.startsWith('base64:')
+      ? Buffer.from(keyStr.slice(7), 'base64')
+      : Buffer.from(keyStr, 'utf8');
+    if (rawKeyBuf.length === 0) continue;
+    const derived = Buffer.from(
+      crypto.hkdfSync('sha256', rawKeyBuf, Buffer.alloc(0), Buffer.from(TICKET_HKDF_INFO, 'utf8'), 32)
+    );
+    keys.push(derived);
+  }
+  return keys;
+}
+
+function encryptTicketPayload(payload, ticket) {
+  const keys = resolveTicketKeys();
+  if (keys.length === 0) {
+    throw new Error('APP_KEY is not configured for ticket encryption');
+  }
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', keys[0], iv, { authTagLength: 16 });
+  cipher.setAAD(Buffer.from(String(ticket), 'utf8'));
+  const ct = Buffer.concat([cipher.update(JSON.stringify(payload), 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return JSON.stringify({
+    v: 1,
+    alg: 'AES-256-GCM',
+    iv: iv.toString('base64'),
+    tag: tag.toString('base64'),
+    ct: ct.toString('base64'),
+  });
+}
+
+function decryptTicketPayload(rawPayload, ticket) {
+  const parsed = JSON.parse(rawPayload);
+  if (
+    !parsed ||
+    typeof parsed !== 'object' ||
+    parsed.v !== 1 ||
+    typeof parsed.iv !== 'string' ||
+    typeof parsed.tag !== 'string' ||
+    typeof parsed.ct !== 'string'
+  ) {
+    throw new Error('Unencrypted or invalid ticket envelope');
+  }
+
+  const iv = Buffer.from(parsed.iv, 'base64');
+  const tag = Buffer.from(parsed.tag, 'base64');
+  const ct = Buffer.from(parsed.ct, 'base64');
+
+  if (iv.length !== 12 || tag.length !== 16 || ct.length === 0) {
+    throw new Error('Invalid ticket envelope parameters');
+  }
+
+  const keys = resolveTicketKeys();
+  if (keys.length === 0) {
+    throw new Error('APP_KEY is not configured for ticket decryption');
+  }
+
+  for (const derivedKey of keys) {
+    try {
+      const decipher = crypto.createDecipheriv('aes-256-gcm', derivedKey, iv, { authTagLength: 16 });
+      decipher.setAuthTag(tag);
+      decipher.setAAD(Buffer.from(String(ticket), 'utf8'));
+      const plaintext = Buffer.concat([decipher.update(ct), decipher.final()]).toString('utf8');
+      return JSON.parse(plaintext);
+    } catch {
+      // Try next key in case of APP_PREVIOUS_KEYS rotation
+    }
+  }
+
+  throw new Error('Failed to decrypt or authenticate console ticket payload');
+}
 
 const redis = new Redis({
   host: REDIS_HOST,
@@ -138,6 +221,104 @@ async function redeemTicket(ticket) {
   return null;
 }
 
+function getRedisPrefixes() {
+  const prefixes = [
+    REDIS_PREFIX,
+    'ognivo-database-',
+    'ognivo-dev-database-',
+    'laravel-database-',
+    '',
+  ].filter((p) => p !== null && p !== undefined);
+
+  return [...new Set(prefixes)];
+}
+
+const TOUCH_SESSION_LUA = `
+local raw = redis.call('HGET', KEYS[1], ARGV[1])
+if not raw then return 0 end
+local ok, data = pcall(cjson.decode, raw)
+if not ok or type(data) ~= 'table' then return 0 end
+local now = tonumber(ARGV[2])
+data['last_activity_at'] = now
+if ARGV[3] == '1' and (not data['redeemed_at'] or data['redeemed_at'] == cjson.null) then
+  data['redeemed_at'] = now
+end
+redis.call('HSET', KEYS[1], ARGV[1], cjson.encode(data))
+local ttl = tonumber(ARGV[4])
+if ttl and ttl > 0 then
+  redis.call('EXPIRE', KEYS[1], ttl)
+end
+return 1
+`.trim();
+
+/**
+ * Update last_activity_at (and optionally redeemed_at) for an active session in Redis
+ * and refresh the VM session hash TTL.
+ */
+async function touchRedisSession(payload, markRedeemed = false) {
+  if (!payload || !payload.session_id || !payload.virtual_machine_id) {
+    return false;
+  }
+
+  if (redis.status && redis.status !== 'ready') {
+    return false;
+  }
+
+  const sid = String(payload.session_id);
+  const vmId = String(payload.virtual_machine_id);
+  const nowSec = Date.now() / 1000;
+  const idleTimeoutSec = parseInt(payload.idle_timeout_seconds, 10) || DEFAULT_IDLE_TIMEOUT_SECONDS;
+  const ttlSec = idleTimeoutSec + 60;
+  const uniquePrefixes = getRedisPrefixes();
+
+  for (const prefix of uniquePrefixes) {
+    const vmKey = `${prefix}console:vm_sessions:${vmId}`;
+    if (typeof redis.eval === 'function') {
+      try {
+        const res = await redis.eval(
+          TOUCH_SESSION_LUA,
+          1,
+          vmKey,
+          sid,
+          String(nowSec),
+          markRedeemed ? '1' : '0',
+          String(ttlSec)
+        );
+        if (res === 1 || res === '1') {
+          return true;
+        }
+        continue;
+      } catch {
+        // Fallback when redis.eval fails or Lua cjson is unavailable
+      }
+    }
+
+    try {
+      const raw = await redis.hget(vmKey, sid);
+      if (!raw) {
+        continue;
+      }
+      const data = JSON.parse(raw);
+      if (!data || typeof data !== 'object' || Array.isArray(data)) {
+        continue;
+      }
+      data.last_activity_at = nowSec;
+      if (markRedeemed && (data.redeemed_at === undefined || data.redeemed_at === null)) {
+        data.redeemed_at = nowSec;
+      }
+      await redis.hset(vmKey, sid, JSON.stringify(data));
+      if (ttlSec > 0) {
+        await redis.expire(vmKey, ttlSec);
+      }
+      return true;
+    } catch {
+      // Ignore errors so proxy never crashes
+    }
+  }
+
+  return false;
+}
+
 function cleanupRedisSession(payload) {
   if (!payload || !payload.session_id || !payload.virtual_machine_id) {
     return;
@@ -149,16 +330,7 @@ function cleanupRedisSession(payload) {
 
   const sid = String(payload.session_id);
   const vmId = String(payload.virtual_machine_id);
-
-  const prefixes = [
-    REDIS_PREFIX,
-    'ognivo-database-',
-    'ognivo-dev-database-',
-    'laravel-database-',
-    '',
-  ].filter((p) => p !== null && p !== undefined);
-
-  const uniquePrefixes = [...new Set(prefixes)];
+  const uniquePrefixes = getRedisPrefixes();
 
   for (const prefix of uniquePrefixes) {
     const vmKey = `${prefix}console:vm_sessions:${vmId}`;
@@ -243,7 +415,15 @@ server.on('upgrade', async (req, socket, head) => {
       return;
     }
 
-    const payload = JSON.parse(rawPayload);
+    let payload;
+    try {
+      payload = decryptTicketPayload(rawPayload, ticket);
+    } catch (decryptErr) {
+      console.error(`[console-proxy] Ticket decryption failed: ${decryptErr.message}`);
+      socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+      socket.destroy();
+      return;
+    }
 
     wss.handleUpgrade(req, socket, head, (clientWs) => {
       wss.emit('connection', clientWs, req, payload);
@@ -255,9 +435,30 @@ server.on('upgrade', async (req, socket, head) => {
   }
 });
 
+function isFakeDriverAllowed() {
+  const allowFake = (process.env.ALLOW_FAKE_DRIVER || '').toLowerCase();
+  if (allowFake === 'true' || allowFake === '1') {
+    return true;
+  }
+  if (allowFake === 'false' || allowFake === '0') {
+    return false;
+  }
+  return (process.env.NODE_ENV || 'development').toLowerCase() !== 'production';
+}
+
 wss.on('connection', (clientWs, req, payload) => {
-  // If hypervisor driver is fake, provide interactive mock terminal
+  // If hypervisor driver is fake, provide interactive mock terminal when allowed
   if (payload.host_driver === 'fake') {
+    if (!isFakeDriverAllowed()) {
+      console.error('[console-proxy] Rejected fake hypervisor session: fake driver is disabled in production.');
+      cleanupRedisSession(payload);
+      if (clientWs.readyState === WebSocket.OPEN) {
+        try {
+          clientWs.close(1008, 'Fake hypervisor driver is disabled');
+        } catch {}
+      }
+      return;
+    }
     handleFakeSession(clientWs, payload);
     return;
   }
@@ -271,10 +472,42 @@ function handleFakeSession(clientWs, payload) {
   const idleTimeoutMs = parseInt(payload.idle_timeout_ms, 10) ||
     ((parseInt(payload.idle_timeout_seconds, 10) || DEFAULT_IDLE_TIMEOUT_SECONDS) * 1000);
   const maxBytes = parseInt(payload.max_message_bytes, 10) || DEFAULT_MAX_PAYLOAD;
+  const activityRefreshIntervalMs = parseInt(payload.activity_refresh_interval_ms, 10) || DEFAULT_ACTIVITY_REFRESH_INTERVAL_MS;
 
+  let cleanedUp = false;
   let idleTimer = null;
-  function resetIdleTimer() {
-    if (idleTimer) clearTimeout(idleTimer);
+  let lastActivityTouchMs = Date.now();
+
+  touchRedisSession(payload, true).catch(() => {});
+
+  function teardownFakeSession() {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+      idleTimer = null;
+    }
+    cleanupRedisSession(payload);
+  }
+
+  function recordActivity() {
+    if (cleanedUp) return;
+    const nowMs = Date.now();
+    if (nowMs - lastActivityTouchMs >= activityRefreshIntervalMs) {
+      lastActivityTouchMs = nowMs;
+      touchRedisSession(payload, false).catch(() => {});
+    }
+  }
+
+  function resetIdleTimer(isActivity = false) {
+    if (cleanedUp) return;
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+      idleTimer = null;
+    }
+    if (isActivity) {
+      recordActivity();
+    }
     if (idleTimeoutMs > 0) {
       idleTimer = setTimeout(() => {
         if (clientWs.readyState === WebSocket.OPEN) {
@@ -289,7 +522,7 @@ function handleFakeSession(clientWs, payload) {
       if (typeof idleTimer.unref === 'function') idleTimer.unref();
     }
   }
-  resetIdleTimer();
+  resetIdleTimer(false);
 
   if (isExec) {
     clientWs.send(
@@ -308,7 +541,7 @@ function handleFakeSession(clientWs, payload) {
 
   let buffer = '';
   clientWs.on('message', (data, isBinary) => {
-    resetIdleTimer();
+    if (cleanedUp) return;
 
     const byteLength = Buffer.isBuffer(data)
       ? data.length
@@ -317,10 +550,11 @@ function handleFakeSession(clientWs, payload) {
       if (clientWs.readyState === WebSocket.OPEN) {
         try { clientWs.close(1009, 'Message too big'); } catch {}
       }
-      if (idleTimer) clearTimeout(idleTimer);
-      cleanupRedisSession(payload);
+      teardownFakeSession();
       return;
     }
+
+    resetIdleTimer(true);
 
     if (isBinary) {
       clientWs.send(data, { binary: true });
@@ -366,8 +600,7 @@ function handleFakeSession(clientWs, payload) {
   });
 
   clientWs.on('close', () => {
-    if (idleTimer) clearTimeout(idleTimer);
-    cleanupRedisSession(payload);
+    teardownFakeSession();
   });
 
   clientWs.on('error', (err) => {
@@ -473,10 +706,14 @@ function handleIncusSession(clientWs, payload) {
   const maxBytes = parseInt(payload.max_message_bytes, 10) || DEFAULT_MAX_PAYLOAD;
   const idleTimeoutMs = parseInt(payload.idle_timeout_ms, 10) ||
     ((parseInt(payload.idle_timeout_seconds, 10) || DEFAULT_IDLE_TIMEOUT_SECONDS) * 1000);
+  const activityRefreshIntervalMs = parseInt(payload.activity_refresh_interval_ms, 10) || DEFAULT_ACTIVITY_REFRESH_INTERVAL_MS;
 
   let cleanedUp = false;
   let idleTimer = null;
+  let lastActivityTouchMs = Date.now();
   const pendingClientMessages = [];
+
+  touchRedisSession(payload, true).catch(() => {});
 
   function teardownSession(terminateRemoteProcess = false) {
     if (cleanedUp) return;
@@ -510,10 +747,23 @@ function handleIncusSession(clientWs, payload) {
     cleanupRedisSession(payload);
   }
 
-  function resetIdleTimer() {
+  function recordActivity() {
+    if (cleanedUp) return;
+    const nowMs = Date.now();
+    if (nowMs - lastActivityTouchMs >= activityRefreshIntervalMs) {
+      lastActivityTouchMs = nowMs;
+      touchRedisSession(payload, false).catch(() => {});
+    }
+  }
+
+  function resetIdleTimer(isActivity = false) {
+    if (cleanedUp) return;
     if (idleTimer) {
       clearTimeout(idleTimer);
       idleTimer = null;
+    }
+    if (isActivity) {
+      recordActivity();
     }
     if (idleTimeoutMs > 0 && !cleanedUp) {
       idleTimer = setTimeout(() => {
@@ -531,7 +781,7 @@ function handleIncusSession(clientWs, payload) {
     }
   }
 
-  resetIdleTimer();
+  resetIdleTimer(false);
 
   if (
     typeof payload.control_path === 'string' &&
@@ -566,7 +816,7 @@ function handleIncusSession(clientWs, payload) {
   });
 
   clientWs.on('message', (msg, isBinary) => {
-    resetIdleTimer();
+    if (cleanedUp) return;
 
     const byteLength = Buffer.isBuffer(msg)
       ? msg.length
@@ -580,6 +830,8 @@ function handleIncusSession(clientWs, payload) {
       teardownSession(true);
       return;
     }
+
+    resetIdleTimer(true);
 
     // Check if this is a resize control message from client
     if (!isBinary) {
@@ -616,7 +868,8 @@ function handleIncusSession(clientWs, payload) {
   });
 
   incusWs.on('message', (msg, isBinary) => {
-    resetIdleTimer();
+    if (cleanedUp) return;
+    resetIdleTimer(true);
     if (clientWs.readyState === WebSocket.OPEN) {
       clientWs.send(msg, { binary: isBinary });
     }
@@ -660,4 +913,9 @@ module.exports = {
   PinnedHttpsAgent,
   handleIncusSession,
   handleFakeSession,
+  touchRedisSession,
+  isFakeDriverAllowed,
+  resolveTicketKeys,
+  encryptTicketPayload,
+  decryptTicketPayload,
 };
