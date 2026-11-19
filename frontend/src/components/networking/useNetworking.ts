@@ -4,6 +4,7 @@ import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { api, IpAllocation, IpPool } from "@/lib/api";
 import { useCachedFetch } from "@/lib/hooks/useCachedFetch";
 import { nextCoolingRefreshDelayMs } from "./coolingRefresh";
+import { normalizeIpStatusFilter } from "./ipStatusFilter";
 
 export interface UseNetworkingParams {
   sessionUserId?: number | null;
@@ -26,6 +27,7 @@ export function useNetworking({
   enabled = true,
   isAdmin = false,
 }: UseNetworkingParams = {}) {
+  const normalizedStatus = normalizeIpStatusFilter(status);
   const [ipsPage, setIpsPage] = useState<number>(1);
   const [poolsPage, setPoolsPage] = useState<number>(1);
   const [poolsPerPage, setPoolsPerPageState] = useState<number>(perPage);
@@ -41,14 +43,14 @@ export function useNetworking({
       setIpsPage(1);
       setPoolsPage(1);
     });
-  }, [sessionUserId, userId, hostId, status, search]);
+  }, [sessionUserId, userId, hostId, normalizedStatus, search]);
 
   const poolsEnabled = enabled && isAdmin;
 
   const ipsCacheKey = useMemo(() => {
     if (!enabled) return null;
-    return `uSession:${sessionUserId ?? "anon"}:ips:u${userId ?? ""}:h${hostId ?? ""}:s${status ?? ""}:q${search ?? ""}:p${ipsPage}:pp${perPage}`;
-  }, [enabled, sessionUserId, userId, hostId, status, search, ipsPage, perPage]);
+    return `uSession:${sessionUserId ?? "anon"}:ips:u${userId ?? ""}:h${hostId ?? ""}:s${normalizedStatus ?? ""}:q${search ?? ""}:p${ipsPage}:pp${perPage}`;
+  }, [enabled, sessionUserId, userId, hostId, normalizedStatus, search, ipsPage, perPage]);
 
   const poolsCacheKey = useMemo(() => {
     if (!poolsEnabled) return null;
@@ -61,14 +63,14 @@ export function useNetworking({
         {
           user_id: userId,
           host_id: hostId,
-          status: status || null,
+          status: normalizedStatus,
           search: search?.trim() || null,
           page: ipsPage,
           per_page: perPage,
         },
         { signal }
       ),
-    [userId, hostId, status, search, ipsPage, perPage]
+    [userId, hostId, normalizedStatus, search, ipsPage, perPage]
   );
 
   const poolsFetcher = useCallback(
