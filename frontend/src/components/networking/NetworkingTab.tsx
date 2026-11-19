@@ -60,7 +60,7 @@ export function NetworkingTab({
               {t("networkingTitle")}
             </h2>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Routed L3 Networking and IPAM Allocations
+              {t("networkingSubtitle")}
             </p>
           </div>
         </div>

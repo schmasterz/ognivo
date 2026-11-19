@@ -190,8 +190,20 @@ export function IpTable({
                             <span>{t("manualBadge")}</span>
                           </span>
                         ) : (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
-                            {t("routedBadge")}
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-mono border ${
+                              p.network_mode === "bridged"
+                                ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20"
+                                : p.network_mode === "macvlan"
+                                  ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20"
+                                  : "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20"
+                            }`}
+                          >
+                            {p.network_mode === "bridged"
+                              ? t("bridgedBadge")
+                              : p.network_mode === "macvlan"
+                                ? t("macvlanBadge")
+                                : t("routedBadge")}
                           </span>
                         )}
                       </div>
