@@ -26,11 +26,14 @@ final class PanelCertificateController extends Controller
     public function show(): JsonResponse
     {
         $active = $this->certService->getActiveCertificate();
+        if ($active === null) {
+            $active = $this->certService->generate();
+        }
         $retiring = $this->certService->getRetiringCertificate();
         $pendingHostsCount = Host::where('needs_retrust', true)->count();
 
         return response()->json([
-            'certificate' => $active !== null ? [
+            'certificate' => [
                 'id' => $active->id,
                 'fingerprint' => $active->fingerprint,
                 'not_before' => $active->not_before->toISOString(),
@@ -39,7 +42,7 @@ final class PanelCertificateController extends Controller
                 'is_expired' => $active->isExpired(),
                 'is_expiring_soon' => $active->isExpiringSoon(30),
                 'days_until_expiration' => now()->diffInDays($active->not_after, false),
-            ] : null,
+            ],
             'retiring_certificate' => $retiring !== null ? [
                 'id' => $retiring->id,
                 'fingerprint' => $retiring->fingerprint,

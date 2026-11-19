@@ -35,7 +35,9 @@ Open the development panel at **`http://localhost`**.
 4. In the Create/Edit User modal, verify that individual quota inputs are locked while a preset Quota Group is selected, and unlock only when **No Group (Custom)** is chosen.
 
 ### Scenario F: Multi-Region Host Nodes & Ranged IPAM Pools
-1. Open **Compute Nodes** from the Admin sidebar to inspect or onboard nodes (`eu-west-1`, `us-east-1`, `bg-sofia-1`).
+1. Open **Compute Nodes** (`/nodes`) from the Admin sidebar to inspect or onboard nodes (`eu-west-1`, `us-east-1`, `bg-sofia-1`):
+   - Verify the **mTLS Panel Client Certificate** card (**Download .crt**, **Rotate**, and **Revoke Old Certificate** during rotation).
+   - Filter the **Compute Nodes** table by keyword search (name, region, endpoint URL, fingerprint), connection/trust status, active state, and driver.
 2. Navigate to **Networking & IPAM** (`/networking`) and click **Create Subnet Pool**:
    - Assign the pool to a specific host node or leave global.
    - Choose `routed` or `manual` mode and run the **Preflight Check** to verify hypervisor reachability and parent NIC existence.
@@ -93,6 +95,10 @@ curl -s -X PUT http://localhost/api/admin/quota-groups/1 \
 # List active compute nodes
 curl -s http://localhost/api/hosts \
   -H "Authorization: Bearer <USER_TOKEN>"
+
+# Filter compute nodes as admin (search, status, is_active, driver)
+curl -s "http://localhost/api/admin/hosts?search=Frankfurt&status=ok&is_active=true&driver=fake" \
+  -H "Authorization: Bearer <ADMIN_TOKEN>"
 
 # Filter virtual machines by host node
 curl -s "http://localhost/api/vms?host_id=1" \

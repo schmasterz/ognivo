@@ -18,6 +18,8 @@ import {
   Activity,
   Fingerprint,
   Clock,
+  Search,
+  X,
 } from "lucide-react";
 import { HostNode } from "@/lib/api";
 import { PaginationBar } from "@/components/ui/PaginationBar";
@@ -35,6 +37,8 @@ export interface NodesTableProps {
   onEditNode: (host: HostNode) => void;
   onDeleteNode: (hostId: number, hostName: string) => void;
   onAddNode: () => void;
+  hasActiveFilters?: boolean;
+  onClearFilters?: () => void;
   pagination?: {
     currentPage: number;
     lastPage: number;
@@ -57,6 +61,8 @@ export function NodesTable({
   onEditNode,
   onDeleteNode,
   onAddNode,
+  hasActiveFilters = false,
+  onClearFilters,
   pagination,
 }: NodesTableProps) {
   const { t } = useI18n();
@@ -155,25 +161,49 @@ export function NodesTable({
           </span>
         </div>
       ) : hosts.length === 0 ? (
-        <div className="p-12 text-center">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto mb-4">
-            <Server className="w-6 h-6" />
+        hasActiveFilters ? (
+          <div className="p-12 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto mb-4">
+              <Search className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1">
+              No compute nodes match your filters
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-5 max-w-sm mx-auto">
+              Try adjusting or clearing your search query, status, or driver filters.
+            </p>
+            {onClearFilters && (
+              <button
+                type="button"
+                onClick={onClearFilters}
+                className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 text-xs font-semibold transition"
+              >
+                <X className="w-4 h-4" />
+                <span>Clear Filters</span>
+              </button>
+            )}
           </div>
-          <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1">
-            No compute nodes configured
-          </h3>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-5 max-w-sm mx-auto">
-            Add your first Incus compute node via trust token or public certificate to begin deploying workloads.
-          </p>
-          <button
-            type="button"
-            onClick={onAddNode}
-            className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-500/20 transition"
-          >
-            <Plus className="w-4 h-4" />
-            <span>{t("createNode")}</span>
-          </button>
-        </div>
+        ) : (
+          <div className="p-12 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto mb-4">
+              <Server className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1">
+              No compute nodes configured
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-5 max-w-sm mx-auto">
+              Add your first Incus compute node via trust token or public certificate to begin deploying workloads.
+            </p>
+            <button
+              type="button"
+              onClick={onAddNode}
+              className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-500/20 transition"
+            >
+              <Plus className="w-4 h-4" />
+              <span>{t("createNode")}</span>
+            </button>
+          </div>
+        )
       ) : (
         <div className="overflow-x-auto relative">
           <table className="w-full text-left text-sm text-gray-600 dark:text-gray-300">

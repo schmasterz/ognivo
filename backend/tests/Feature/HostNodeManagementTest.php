@@ -6,6 +6,7 @@ namespace Tests\Feature;
 
 use App\Models\Host;
 use App\Models\IpPool;
+use App\Models\PanelCertificate;
 use App\Models\QuotaGroup;
 use App\Models\User;
 use App\Models\UserQuota;
@@ -563,5 +564,77 @@ final class HostNodeManagementTest extends TestCase
         $testRes->assertJsonPath('success', true);
         $testRes->assertJsonPath('is_trusted', true);
         $testRes->assertJsonPath('server', 'incus');
+    }
+
+    public function test_admin_can_filter_hosts_by_search_status_active_and_driver(): void
+    {
+        Host::create([
+            'name' => 'ap-northeast-1',
+            'region' => 'Asia Pacific (Tokyo)',
+            'endpoint_url' => 'https://ap-northeast-1.lxd.local:8443',
+            'driver' => 'lxd',
+            'is_active' => false,
+            'status' => 'unreachable',
+            'needs_retrust' => true,
+            'server_fingerprint' => 'abcdef1234567890',
+            'total_cpu_cores' => 32,
+            'total_ram_mb' => 131072,
+            'total_storage_gb' => 2000,
+        ]);
+
+        // Search by region
+        $searchRegionRes = $this->actingAs($this->admin)->getJson('/api/admin/hosts?search=Frankfurt');
+        $searchRegionRes->assertOk();
+        $searchRegionRes->assertJsonCount(1, 'data');
+        $searchRegionRes->assertJsonPath('data.0.name', 'eu-west-1');
+
+        // Search by server_fingerprint
+        $searchFpRes = $this->actingAs($this->admin)->getJson('/api/admin/hosts?search=abcdef1234567890');
+        $searchFpRes->assertOk();
+        $searchFpRes->assertJsonCount(1, 'data');
+        $searchFpRes->assertJsonPath('data.0.name', 'ap-northeast-1');
+
+        // Filter by status=unreachable
+        $statusUnreachableRes = $this->actingAs($this->admin)->getJson('/api/admin/hosts?status=unreachable');
+        $statusUnreachableRes->assertOk();
+        $statusUnreachableRes->assertJsonCount(1, 'data');
+        $statusUnreachableRes->assertJsonPath('data.0.name', 'ap-northeast-1');
+
+        // Filter by status=needs_retrust
+        $statusRetrustRes = $this->actingAs($this->admin)->getJson('/api/admin/hosts?status=needs_retrust');
+        $statusRetrustRes->assertOk();
+        $statusRetrustRes->assertJsonCount(1, 'data');
+        $statusRetrustRes->assertJsonPath('data.0.name', 'ap-northeast-1');
+
+        // Filter by is_active=false and is_active=true
+        $inactiveRes = $this->actingAs($this->admin)->getJson('/api/admin/hosts?is_active=false');
+        $inactiveRes->assertOk();
+        $inactiveRes->assertJsonCount(1, 'data');
+        $inactiveRes->assertJsonPath('data.0.name', 'ap-northeast-1');
+
+        $activeRes = $this->actingAs($this->admin)->getJson('/api/admin/hosts?is_active=true');
+        $activeRes->assertOk();
+        $activeRes->assertJsonCount(3, 'data');
+        $activeRes->assertJsonMissing(['name' => 'ap-northeast-1']);
+
+        // Filter by driver=lxd
+        $driverRes = $this->actingAs($this->admin)->getJson('/api/admin/hosts?driver=lxd');
+        $driverRes->assertOk();
+        $driverRes->assertJsonCount(1, 'data');
+        $driverRes->assertJsonPath('data.0.name', 'ap-northeast-1');
+    }
+
+    public function test_admin_certificate_show_auto_generates_active_certificate_when_none_exists(): void
+    {
+        PanelCertificate::query()->delete();
+
+        $response = $this->actingAs($this->admin)->getJson('/api/admin/incus/certificate');
+
+        $response->assertOk();
+        $response->assertJsonPath('certificate.status', 'active');
+
+        $fingerprint = $response->json('certificate.fingerprint');
+        $this->assertIsString($fingerprint);
+        $this->assertNotSame('', $fingerprint);
     }
 }
