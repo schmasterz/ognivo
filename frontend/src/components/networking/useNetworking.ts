@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { api, IpAllocation, IpPool } from "@/lib/api";
 import { useCachedFetch } from "@/lib/hooks/useCachedFetch";
+import { nextCoolingRefreshDelayMs } from "./coolingRefresh";
 
 export interface UseNetworkingParams {
   sessionUserId?: number | null;
@@ -128,24 +129,75 @@ export function useNetworking({
     await Promise.all([refetchIps(), refetchPools()]);
   }, [clearIpsCache, clearPoolsCache, refetchIps, refetchPools]);
 
-  // Periodic polling when any IP is actively in cooling state
-  const hasCoolingIps = useMemo(() => {
-    return ips.some(
-      (ip) =>
-        ip.status === "cooling" &&
-        (ip.cooldown_remaining_seconds ?? 0) > 0
-    );
-  }, [ips]);
+  const deadlineRef = useRef<number | null>(null);
 
+  // Schedule a single refetch when the earliest cooling IP expires (paused when tab is hidden)
   useEffect(() => {
-    if (!hasCoolingIps || !enabled) return;
+    if (!enabled) {
+      deadlineRef.current = null;
+      return;
+    }
 
-    const interval = setInterval(() => {
-      refetchAll();
-    }, 5000);
+    const delay = nextCoolingRefreshDelayMs(ips);
+    if (delay === null) {
+      deadlineRef.current = null;
+      return;
+    }
 
-    return () => clearInterval(interval);
-  }, [hasCoolingIps, enabled, refetchAll]);
+    deadlineRef.current = Date.now() + delay;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const clearPendingTimeout = () => {
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
+
+    const scheduleTimeout = (waitMs: number) => {
+      clearPendingTimeout();
+      timeoutId = setTimeout(() => {
+        timeoutId = null;
+        deadlineRef.current = null;
+        void refetchAll();
+      }, waitMs);
+    };
+
+    if (typeof document === "undefined" || document.visibilityState !== "hidden") {
+      scheduleTimeout(delay);
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        clearPendingTimeout();
+        return;
+      }
+      if (document.visibilityState === "visible") {
+        const deadline = deadlineRef.current;
+        if (deadline === null) return;
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) {
+          clearPendingTimeout();
+          deadlineRef.current = null;
+          void refetchAll();
+        } else {
+          scheduleTimeout(remaining);
+        }
+      }
+    };
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+    }
+
+    return () => {
+      clearPendingTimeout();
+      deadlineRef.current = null;
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+      }
+    };
+  }, [ips, enabled, refetchAll]);
 
   const updatePool = useCallback(
     async (

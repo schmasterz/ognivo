@@ -16,7 +16,6 @@ export interface NetworkingTabProps {
   onRequestRelease: (ip: IpAllocation) => void;
   onRequestDeletePool: (poolId: number, poolName: string) => void;
   onPoolUpdated?: (pool: IpPool) => void;
-  onRefresh?: () => void;
   ipsPagination: {
     currentPage: number;
     lastPage: number;
@@ -45,7 +44,6 @@ export function NetworkingTab({
   onRequestRelease,
   onRequestDeletePool,
   onPoolUpdated,
-  onRefresh,
   ipsPagination,
   poolsPagination,
 }: NetworkingTabProps) {
@@ -81,7 +79,6 @@ export function NetworkingTab({
         onAddPool={onAddPool}
         onRequestDeletePool={onRequestDeletePool}
         onPoolUpdated={onPoolUpdated}
-        onRefresh={onRefresh}
         pagination={{
           currentPage: ipsPagination.currentPage,
           lastPage: ipsPagination.lastPage,

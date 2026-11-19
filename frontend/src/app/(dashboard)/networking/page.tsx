@@ -20,7 +20,6 @@ export default function NetworkingPage() {
     setPoolsPage,
     setPoolsPerPage,
     refetchPools,
-    refetchNetworking,
     handlePerPageChange,
     modals,
     handleRequestReleaseIp,
@@ -38,7 +37,6 @@ export default function NetworkingPage() {
       onAddPool={() => modals.setCreatePoolModalOpen(true)}
       onRequestDeletePool={handleRequestDeletePool}
       onPoolUpdated={refetchPools}
-      onRefresh={refetchNetworking}
       ipsPagination={{
         currentPage: ipsMeta.current_page,
         lastPage: ipsMeta.last_page,
