@@ -170,6 +170,7 @@ final class AdminUserAndPoolManagementTest extends TestCase
                 'host_id' => $this->host->id,
                 'cidr' => '198.51.100.0/29', // 6 usable IPs (.1 to .6)
                 'gateway' => '198.51.100.1',
+                'parent_interface' => 'eth0',
                 'dns_servers' => ['8.8.8.8', '1.1.1.1'],
                 'ip_version' => 4,
                 'is_public' => true,

@@ -33,7 +33,7 @@ final class CreateIpPoolRequest extends FormRequest
             'subnet' => ['required_without:cidr', 'nullable', 'string', 'max:64'],
             'first_usable' => ['nullable', 'ip'],
             'last_usable' => ['nullable', 'ip'],
-            'parent_interface' => ['nullable', 'string', 'max:32'],
+            'parent_interface' => ['required_unless:network_mode,manual', 'nullable', 'string', 'max:32'],
             'network_mode' => ['nullable', 'string', Rule::in(['routed', 'bridged', 'macvlan', 'manual'])],
             'gateway' => ['nullable', 'ip'],
             'dns_servers' => ['nullable', 'array'],

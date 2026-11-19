@@ -73,6 +73,16 @@ final class UpdateIpPoolRequest extends FormRequest
                 }
             }
 
+            $inputMode = $this->input('network_mode');
+            $resultingMode = is_string($inputMode) ? $inputMode : $pool->network_mode;
+            $resultingInterface = $this->exists('parent_interface')
+                ? $this->input('parent_interface')
+                : $pool->parent_interface;
+
+            if ($resultingMode !== 'manual' && trim(is_string($resultingInterface) ? $resultingInterface : '') === '') {
+                $v->errors()->add('parent_interface', 'Parent interface is required when network mode is not manual.');
+            }
+
             $cidr = (string) ($this->input('cidr') ?: $pool->cidr);
             $parsed = CidrHelper::parse($cidr);
             if ($parsed === null) {
