@@ -5,7 +5,7 @@ import {
   setCachedFetchEntry,
   getCachedFetchEntry,
   getValidCachedEntry,
-} from "../useCachedFetch.ts";
+} from "../../../src/lib/hooks/useCachedFetch.ts";
 
 describe("useCachedFetch Cache Store & Session Isolation Tests", () => {
   beforeEach(() => {

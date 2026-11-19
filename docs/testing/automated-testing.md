@@ -93,10 +93,10 @@ Run from `frontend/` (or via `docker exec ognivo-frontend-dev <cmd>`):
 npx next typegen && npx tsc --noEmit -p . --incremental false
 
 # 2. Run ESLint (0 errors required)
-npx eslint src
+npm run lint
 
-# 3. Run frontend unit tests via native Node test runner
-node --test src/lib/hooks/__tests__/useConfirmDialog.test.ts src/lib/hooks/__tests__/useCachedFetch.test.ts src/components/audit/__tests__/audit.test.ts
+# 3. Run frontend unit tests via native Node test runner (all tests/**/*.test.ts files)
+npm test
 
 # 4. Verify production Next.js Turbopack build
 npm run build

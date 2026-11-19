@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { normalizeIpStatusFilter } from "./ipStatusFilter.ts";
+import { normalizeIpStatusFilter } from "../../../src/components/networking/ipStatusFilter.ts";
 
 describe("normalizeIpStatusFilter", () => {
   it("passes through allowed IP statuses", () => {

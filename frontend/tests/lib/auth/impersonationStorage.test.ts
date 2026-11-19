@@ -9,8 +9,8 @@ import {
   stopImpersonationStorage,
   clearAllAuthStorage,
   getImpersonatedUserMetadata,
-} from "../impersonationStorage.ts";
-import type { StorageLike, ImpersonatedUserInfo } from "../impersonationStorage.ts";
+} from "../../../src/lib/auth/impersonationStorage.ts";
+import type { StorageLike, ImpersonatedUserInfo } from "../../../src/lib/auth/impersonationStorage.ts";
 
 function createMockStorage(initialData: Record<string, string> = {}): StorageLike & {
   data: Record<string, string>;

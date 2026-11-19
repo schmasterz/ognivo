@@ -4,7 +4,7 @@ import {
   type ConfirmDialogState,
   INITIAL_CONFIRM_DIALOG_STATE,
   executeConfirmAction,
-} from "../useConfirmDialog.ts";
+} from "../../../src/lib/hooks/useConfirmDialog.ts";
 
 describe("useConfirmDialog & executeConfirmAction Tests", () => {
   it("transitions isLoading -> closes dialog on successful action", async () => {
