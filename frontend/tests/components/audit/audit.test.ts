@@ -33,9 +33,9 @@ import {
   parseFiltersFromUrl,
   syncFiltersToUrl,
   computeCursorPaginationMeta,
-} from "../auditUrl.ts";
-import type { AuditEntry, AdminAuditEntry, AuditFilters } from "../../../lib/api/types.ts";
-import { dictionaries } from "../../../lib/i18n/dictionaries.ts";
+} from "../../../src/components/audit/auditUrl.ts";
+import type { AuditEntry, AdminAuditEntry, AuditFilters } from "../../../src/lib/api/types.ts";
+import { dictionaries } from "../../../src/lib/i18n/dictionaries.ts";
 
 describe("Audit Frontend Unit & Integration Tests", () => {
   describe("1. Filter-to-URL Synchronization & Recovery", () => {

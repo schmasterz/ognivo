@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { nextCoolingDeadlineMs, nextCoolingRefreshDelayMs } from "./coolingRefresh.ts";
+import { nextCoolingDeadlineMs, nextCoolingRefreshDelayMs } from "../../../src/components/networking/coolingRefresh.ts";
 
 describe("nextCoolingRefreshDelayMs", () => {
   it("returns null for an empty list", () => {
