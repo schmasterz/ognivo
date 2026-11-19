@@ -93,7 +93,7 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
     setError(null);
 
     const trimmedParentInterface = parentInterface.trim();
-    if (!hasAllocations && networkMode !== "manual" && !trimmedParentInterface) {
+    if (networkMode !== "manual" && !trimmedParentInterface) {
       setError(t("parentInterfaceRequired"));
       return;
     }
@@ -122,11 +122,11 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
         gateway: gateway.trim() || null,
         first_usable: firstUsable.trim() || undefined,
         last_usable: lastUsable.trim() || undefined,
+        ...(networkMode !== "manual" ? { parent_interface: trimmedParentInterface } : {}),
         ...(hasAllocations
           ? {}
           : {
               network_mode: networkMode,
-              ...(networkMode !== "manual" ? { parent_interface: trimmedParentInterface } : {}),
             }),
       });
 
@@ -230,7 +230,6 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
                   {discoveringHost && <Loader2 className="w-3 h-3 animate-spin text-teal-500" />}
                 </label>
                 <select
-                  disabled={hasAllocations}
                   required
                   value={isCustomInterface ? "__custom__" : parentInterface}
                   onChange={(e) => {
@@ -241,7 +240,7 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
                       setParentInterface(e.target.value);
                     }
                   }}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono disabled:opacity-60"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono"
                 >
                   {discoveringHost && discoveredNetworks.length === 0 ? (
                     <option value="" disabled>Detecting host interfaces...</option>
@@ -267,10 +266,10 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
                         {parentInterface} (Current)
                       </option>
                     )}
-                  {!hasAllocations && <option value="__custom__">Custom interface...</option>}
+                  <option value="__custom__">Custom interface...</option>
                 </select>
 
-                {!hasAllocations && isCustomInterface && (
+                {isCustomInterface && (
                   <div className="mt-2">
                     <input
                       type="text"
@@ -284,7 +283,7 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
                   </div>
                 )}
                 {hasAllocations ? (
-                  <span className="text-[11px] text-amber-500 mt-1 block">Parent interface cannot be modified while IPs are allocated</span>
+                  <span className="text-[11px] text-amber-500 mt-1 block">{t("parentInterfaceAllocationsHint")}</span>
                 ) : (
                   <span className="text-[11px] text-gray-400 mt-1 block">Host NIC or bridge on target node</span>
                 )}

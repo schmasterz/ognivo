@@ -16,7 +16,7 @@ import {
   AlertTriangle,
   ShieldCheck,
 } from "lucide-react";
-import { IpAllocation, IpPool, VirtualMachine } from "@/lib/api";
+import { IpAllocation, IpPool } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
 import { PaginationBar } from "@/components/ui/PaginationBar";
 import { EditIpPoolModal } from "./EditIpPoolModal";
@@ -24,14 +24,11 @@ import { PreflightModal } from "./PreflightModal";
 
 interface IpTableProps {
   ips: IpAllocation[];
-  vms: VirtualMachine[];
   pools?: IpPool[];
   loading: boolean;
   isAdmin?: boolean;
-  onRelease?: (ip: IpAllocation) => Promise<void>;
   onRequestRelease?: (ip: IpAllocation) => void;
   onAddPool?: () => void;
-  onDeletePool?: (poolId: number, poolName: string) => void;
   onRequestDeletePool?: (poolId: number, poolName: string) => void;
   onPoolUpdated?: (pool: IpPool) => void;
   pagination?: {
@@ -57,6 +54,7 @@ interface CoolingBadgeProps {
 }
 
 function CoolingBadge({ ip }: CoolingBadgeProps) {
+  const { t } = useI18n();
   const initial = ip.cooldown_remaining_seconds ?? 0;
   const [remaining, setRemaining] = useState<number>(initial);
 
@@ -78,7 +76,7 @@ function CoolingBadge({ ip }: CoolingBadgeProps) {
     return (
       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
         <Check className="w-3 h-3 mr-1 text-blue-500" />
-        Released
+        {t("statusReleased")}
       </span>
     );
   }
@@ -86,7 +84,7 @@ function CoolingBadge({ ip }: CoolingBadgeProps) {
   return (
     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
       <Clock className="w-3 h-3 mr-1 text-amber-500 animate-spin" />
-      Cooling ({remaining}s)
+      {t("statusCooling", { seconds: remaining })}
     </span>
   );
 }
@@ -98,7 +96,6 @@ export function IpTable({
   pools = [],
   onRequestRelease,
   onAddPool,
-  onDeletePool,
   onRequestDeletePool,
   onPoolUpdated,
   pagination,
@@ -120,7 +117,7 @@ export function IpTable({
       return (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 mr-1.5" />
-          Allocated
+          {t("statusFloating")}
         </span>
       );
     }
@@ -148,7 +145,7 @@ export function IpTable({
                 <span>{t("ipPools")}</span>
               </h3>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                Ranged L3 Routed Subnet Pools
+                {t("ipPoolsRangedSubtitle")}
               </p>
             </div>
 
@@ -194,7 +191,7 @@ export function IpTable({
                           </span>
                         ) : (
                           <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
-                            routed
+                            {t("routedBadge")}
                           </span>
                         )}
                       </div>
@@ -214,15 +211,9 @@ export function IpTable({
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
-                        {(onRequestDeletePool || onDeletePool) && (
+                        {onRequestDeletePool && (
                           <button
-                            onClick={() => {
-                              if (onRequestDeletePool) {
-                                onRequestDeletePool(p.id, p.name);
-                              } else if (onDeletePool) {
-                                onDeletePool(p.id, p.name);
-                              }
-                            }}
+                            onClick={() => onRequestDeletePool(p.id, p.name)}
                             title={t("deletePool")}
                             className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-500/10 transition"
                           >
@@ -247,17 +238,17 @@ export function IpTable({
                       ) : (
                         <div className="flex items-center space-x-1.5 text-gray-500 dark:text-gray-400">
                           <Globe className="w-3 h-3 flex-shrink-0" />
-                          <span>Global Node</span>
+                          <span>{t("globalNode")}</span>
                         </div>
                       )}
                       {p.gateway && (
                         <div>
-                          Gateway: <span className="font-mono text-gray-700 dark:text-gray-300">{p.gateway}</span>
+                          {t("poolGateway")}: <span className="font-mono text-gray-700 dark:text-gray-300">{p.gateway}</span>
                         </div>
                       )}
                       {p.first_usable && p.last_usable && (
                         <div className="font-mono text-[10px] text-gray-400">
-                          Range: {p.first_usable} - {p.last_usable}
+                          {t("poolRange", { first: p.first_usable, last: p.last_usable })}
                         </div>
                       )}
                       {p.description && <div className="italic pt-0.5">{p.description}</div>}
@@ -267,7 +258,7 @@ export function IpTable({
                   {/* Utilization Progress Bar */}
                   <div className="mt-3 pt-2.5 border-t border-gray-100 dark:border-gray-800">
                     <div className="flex items-center justify-between text-[11px] mb-1">
-                      <span className="text-gray-500 dark:text-gray-400 font-medium">Capacity</span>
+                      <span className="text-gray-500 dark:text-gray-400 font-medium">{t("poolCapacity")}</span>
                       <span className="font-mono font-semibold text-gray-900 dark:text-white">
                         {occupied} / {util.total} ({percent}%)
                       </span>
@@ -285,8 +276,8 @@ export function IpTable({
                       />
                     </div>
                     <div className="flex items-center justify-between mt-1 text-[10px] text-gray-400">
-                      <span>Free: {util.free}</span>
-                      {util.cooling > 0 && <span>Cooling: {util.cooling}</span>}
+                      <span>{t("poolFreeCount", { count: util.free })}</span>
+                      {util.cooling > 0 && <span>{t("poolCoolingCount", { count: util.cooling })}</span>}
                     </div>
                   </div>
                 </div>
@@ -319,9 +310,9 @@ export function IpTable({
           <div className="w-12 h-12 rounded-2xl bg-gray-100 dark:bg-gray-800/80 text-gray-500 dark:text-gray-400 flex items-center justify-center mx-auto mb-4">
             <Globe className="w-6 h-6" />
           </div>
-          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-200">No active IP allocations</h3>
+          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-200">{t("noActiveIpAllocations")}</h3>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-sm mx-auto">
-            IP addresses are automatically assigned from routed pools when instances are provisioned.
+            {t("noActiveIpAllocationsDesc")}
           </p>
         </div>
       ) : (
@@ -330,10 +321,10 @@ export function IpTable({
             <table className="w-full text-left text-sm text-gray-600 dark:text-gray-300">
               <thead className="bg-gray-50 dark:bg-gray-950/60 text-xs uppercase text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-800 font-semibold tracking-wider">
                 <tr>
-                  <th scope="col" className="px-4 sm:px-6 py-3.5">IP & MAC Address</th>
+                  <th scope="col" className="px-4 sm:px-6 py-3.5">{t("colIpMac")}</th>
                   {isAdmin && <th scope="col" className="px-4 sm:px-6 py-3.5">{t("colOwner")}</th>}
-                  <th scope="col" className="px-4 sm:px-6 py-3.5">Status</th>
-                  {isAdmin && <th scope="col" className="px-4 sm:px-6 py-3.5">Pool Subnet</th>}
+                  <th scope="col" className="px-4 sm:px-6 py-3.5">{t("colStatus")}</th>
+                  {isAdmin && <th scope="col" className="px-4 sm:px-6 py-3.5">{t("colPoolSubnet")}</th>}
                   <th scope="col" className="px-4 sm:px-6 py-3.5">{t("colAttachedVm")}</th>
                   {isAdmin && (
                     <th scope="col" className="sticky right-0 z-20 px-4 sm:px-6 py-3.5 text-right bg-gray-50 dark:bg-gray-950 border-l border-gray-200 dark:border-gray-800 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)]">
@@ -357,7 +348,7 @@ export function IpTable({
                           </span>
                           <button
                             onClick={() => handleCopy(ip.address || ip.ip_string || "")}
-                            title="Copy IP"
+                            title={t("copyIp")}
                             className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"
                           >
                             {isCopied ? (
@@ -384,7 +375,7 @@ export function IpTable({
                               <div className="text-gray-400 text-[11px]">{ip.user.email}</div>
                             </div>
                           ) : (
-                            <span className="text-gray-400 italic">Unassigned</span>
+                            <span className="text-gray-400 italic">{t("unassignedOwner")}</span>
                           )}
                         </td>
                       )}
@@ -431,7 +422,7 @@ export function IpTable({
                           </div>
                         ) : (
                           <span className="text-gray-400 italic text-xs">
-                            No instance attached
+                            {t("noInstanceAttached")}
                           </span>
                         )}
                       </td>
@@ -441,7 +432,7 @@ export function IpTable({
                         <td className="sticky right-0 z-10 px-4 sm:px-6 py-3.5 text-right bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800 border-l border-gray-200/80 dark:border-gray-800/80 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)] transition-colors">
                           <button
                             onClick={() => onRequestRelease?.(ip)}
-                            title={ip.status === "allocated" ? "Force Release Allocation" : "Dismiss Cooled IP"}
+                            title={ip.status === "allocated" ? t("forceReleaseAllocation") : t("dismissCooledIp")}
                             className="p-1.5 rounded-lg bg-gray-100 hover:bg-red-500/20 dark:bg-gray-800 dark:hover:bg-red-500/20 text-gray-600 dark:text-gray-300 hover:text-red-500 transition"
                           >
                             <Trash2 className="w-4 h-4" />

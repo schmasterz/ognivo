@@ -2,13 +2,12 @@
 
 import React from "react";
 import { Globe } from "lucide-react";
-import { IpAllocation, IpPool, VirtualMachine } from "@/lib/api";
+import { IpAllocation, IpPool } from "@/lib/api";
 import { IpTable } from "./IpTable";
 import { useI18n } from "@/lib/i18n/I18nContext";
 
 export interface NetworkingTabProps {
   ips: IpAllocation[];
-  vms: VirtualMachine[];
   pools: IpPool[];
   loading: boolean;
   isAdmin: boolean;
@@ -36,7 +35,6 @@ export interface NetworkingTabProps {
 
 export function NetworkingTab({
   ips,
-  vms,
   pools,
   loading,
   isAdmin,
@@ -71,7 +69,6 @@ export function NetworkingTab({
       {/* Main IPAM & Pool Routing Table */}
       <IpTable
         ips={ips}
-        vms={vms}
         pools={pools}
         loading={loading}
         isAdmin={isAdmin}
