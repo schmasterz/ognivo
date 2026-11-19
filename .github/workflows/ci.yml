@@ -52,6 +52,60 @@ jobs:
       - name: Static analysis (Psalm)
         run: vendor/bin/psalm --no-progress
 
+  backend-openapi:
+    name: Backend OpenAPI Specification
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      APP_ENV: testing
+      DB_CONNECTION: sqlite
+      DB_DATABASE: database/database.sqlite
+      CACHE_STORE: array
+      SESSION_DRIVER: array
+      QUEUE_CONNECTION: sync
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: mbstring, xml, ctype, iconv, intl, pdo, pdo_sqlite
+          coverage: none
+          ini-values: memory_limit=1G
+
+      - name: Get Composer Cache Directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('backend/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: OpenAPI specification analysis & export (Scramble)
+        run: |
+          touch database/database.sqlite
+          php artisan migrate --force
+          php artisan scramble:analyze
+          php artisan scramble:export --path=api.json
+
+      - name: Upload OpenAPI specification artifact
+        if: ${{ !env.ACT }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-spec
+          path: backend/api.json
+          retention-days: 30
+
   backend-unit:
     name: Backend Unit & Feature Tests (SQLite)
     runs-on: ubuntu-latest

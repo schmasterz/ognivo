@@ -28,6 +28,7 @@ The root [`Makefile`](../../Makefile) manages secret initialization, prevents de
 | `make logs-dev` | Stream real-time logs from all development containers |
 | `make logs-prod` | Stream real-time logs from all production containers |
 | `make ps` | List status and health of all `ognivo-*` containers |
+| `make openapi` | Analyze API routes and export the OpenAPI 3.1 JSON specification to `backend/api.json` |
 
 > [!CAUTION]
 > `make reset-dev` permanently deletes the development database, including any data you created in the demo environment. Check what it will remove first with `docker volume ls -q | grep -E '_db_data_dev$'`.
@@ -85,6 +86,9 @@ docker exec -it ognivo-backend php artisan <command> [arguments] [options]
 | `app:reencrypt-secrets` | Re-encrypt all encrypted database attributes and the SMTP password with the current `APP_KEY`. Used during [key rotation](configuration.md#6-app_key-rotation-procedure) |
 | `migrate --force` | Run database migrations (done automatically when `RUN_MIGRATIONS=true`) |
 | `optimize:clear`, `optimize` | Clear and rebuild Laravel caches (production) |
+| `scramble:analyze` | Analyze API routes and surface any OpenAPI documentation generation issues |
+| `scramble:export [--path=api.json]` | Export the OpenAPI 3.1 specification to a JSON file |
+| `scramble:cache`, `scramble:clear` | Warm or invalidate the cached OpenAPI specification |
 
 ```bash
 docker exec -it ognivo-backend php artisan admin:create admin@yourdomain.com --name="Super Admin"
@@ -92,6 +96,9 @@ docker exec -it ognivo-backend php artisan admin:create admin@yourdomain.com --n
 docker exec -it ognivo-backend php artisan app:check-production-config
 docker exec -it ognivo-backend php artisan app:reencrypt-secrets
 docker exec -it ognivo-backend php artisan optimize:clear && docker exec -it ognivo-backend php artisan optimize
+docker exec -it ognivo-backend php artisan scramble:analyze
+docker exec -it ognivo-backend php artisan scramble:export --path=api.json
+docker exec -it ognivo-backend php artisan scramble:cache && docker exec -it ognivo-backend php artisan scramble:clear
 ```
 
 ### 3.2 Hypervisors (Incus / LXD)
