@@ -17,6 +17,7 @@ const CLIENT_CERT_PATH = process.env.CLIENT_CERT_PATH || null;
 const CLIENT_KEY_PATH = process.env.CLIENT_KEY_PATH || null;
 const DEFAULT_MAX_PAYLOAD = parseInt(process.env.MAX_MESSAGE_BYTES || '65536', 10);
 const DEFAULT_IDLE_TIMEOUT_SECONDS = parseInt(process.env.IDLE_TIMEOUT_SECONDS || '900', 10);
+const DEFAULT_ACTIVITY_REFRESH_INTERVAL_MS = parseInt(process.env.ACTIVITY_REFRESH_INTERVAL_MS || '30000', 10);
 
 const TICKET_REGEX = /^[A-Za-z0-9_-]{16,128}$/;
 
@@ -138,6 +139,104 @@ async function redeemTicket(ticket) {
   return null;
 }
 
+function getRedisPrefixes() {
+  const prefixes = [
+    REDIS_PREFIX,
+    'ognivo-database-',
+    'ognivo-dev-database-',
+    'laravel-database-',
+    '',
+  ].filter((p) => p !== null && p !== undefined);
+
+  return [...new Set(prefixes)];
+}
+
+const TOUCH_SESSION_LUA = `
+local raw = redis.call('HGET', KEYS[1], ARGV[1])
+if not raw then return 0 end
+local ok, data = pcall(cjson.decode, raw)
+if not ok or type(data) ~= 'table' then return 0 end
+local now = tonumber(ARGV[2])
+data['last_activity_at'] = now
+if ARGV[3] == '1' and (not data['redeemed_at'] or data['redeemed_at'] == cjson.null) then
+  data['redeemed_at'] = now
+end
+redis.call('HSET', KEYS[1], ARGV[1], cjson.encode(data))
+local ttl = tonumber(ARGV[4])
+if ttl and ttl > 0 then
+  redis.call('EXPIRE', KEYS[1], ttl)
+end
+return 1
+`.trim();
+
+/**
+ * Update last_activity_at (and optionally redeemed_at) for an active session in Redis
+ * and refresh the VM session hash TTL.
+ */
+async function touchRedisSession(payload, markRedeemed = false) {
+  if (!payload || !payload.session_id || !payload.virtual_machine_id) {
+    return false;
+  }
+
+  if (redis.status && redis.status !== 'ready') {
+    return false;
+  }
+
+  const sid = String(payload.session_id);
+  const vmId = String(payload.virtual_machine_id);
+  const nowSec = Date.now() / 1000;
+  const idleTimeoutSec = parseInt(payload.idle_timeout_seconds, 10) || DEFAULT_IDLE_TIMEOUT_SECONDS;
+  const ttlSec = idleTimeoutSec + 60;
+  const uniquePrefixes = getRedisPrefixes();
+
+  for (const prefix of uniquePrefixes) {
+    const vmKey = `${prefix}console:vm_sessions:${vmId}`;
+    if (typeof redis.eval === 'function') {
+      try {
+        const res = await redis.eval(
+          TOUCH_SESSION_LUA,
+          1,
+          vmKey,
+          sid,
+          String(nowSec),
+          markRedeemed ? '1' : '0',
+          String(ttlSec)
+        );
+        if (res === 1 || res === '1') {
+          return true;
+        }
+        continue;
+      } catch {
+        // Fallback when redis.eval fails or Lua cjson is unavailable
+      }
+    }
+
+    try {
+      const raw = await redis.hget(vmKey, sid);
+      if (!raw) {
+        continue;
+      }
+      const data = JSON.parse(raw);
+      if (!data || typeof data !== 'object' || Array.isArray(data)) {
+        continue;
+      }
+      data.last_activity_at = nowSec;
+      if (markRedeemed && (data.redeemed_at === undefined || data.redeemed_at === null)) {
+        data.redeemed_at = nowSec;
+      }
+      await redis.hset(vmKey, sid, JSON.stringify(data));
+      if (ttlSec > 0) {
+        await redis.expire(vmKey, ttlSec);
+      }
+      return true;
+    } catch {
+      // Ignore errors so proxy never crashes
+    }
+  }
+
+  return false;
+}
+
 function cleanupRedisSession(payload) {
   if (!payload || !payload.session_id || !payload.virtual_machine_id) {
     return;
@@ -149,16 +248,7 @@ function cleanupRedisSession(payload) {
 
   const sid = String(payload.session_id);
   const vmId = String(payload.virtual_machine_id);
-
-  const prefixes = [
-    REDIS_PREFIX,
-    'ognivo-database-',
-    'ognivo-dev-database-',
-    'laravel-database-',
-    '',
-  ].filter((p) => p !== null && p !== undefined);
-
-  const uniquePrefixes = [...new Set(prefixes)];
+  const uniquePrefixes = getRedisPrefixes();
 
   for (const prefix of uniquePrefixes) {
     const vmKey = `${prefix}console:vm_sessions:${vmId}`;
@@ -271,10 +361,42 @@ function handleFakeSession(clientWs, payload) {
   const idleTimeoutMs = parseInt(payload.idle_timeout_ms, 10) ||
     ((parseInt(payload.idle_timeout_seconds, 10) || DEFAULT_IDLE_TIMEOUT_SECONDS) * 1000);
   const maxBytes = parseInt(payload.max_message_bytes, 10) || DEFAULT_MAX_PAYLOAD;
+  const activityRefreshIntervalMs = parseInt(payload.activity_refresh_interval_ms, 10) || DEFAULT_ACTIVITY_REFRESH_INTERVAL_MS;
 
+  let cleanedUp = false;
   let idleTimer = null;
-  function resetIdleTimer() {
-    if (idleTimer) clearTimeout(idleTimer);
+  let lastActivityTouchMs = Date.now();
+
+  touchRedisSession(payload, true).catch(() => {});
+
+  function teardownFakeSession() {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+      idleTimer = null;
+    }
+    cleanupRedisSession(payload);
+  }
+
+  function recordActivity() {
+    if (cleanedUp) return;
+    const nowMs = Date.now();
+    if (nowMs - lastActivityTouchMs >= activityRefreshIntervalMs) {
+      lastActivityTouchMs = nowMs;
+      touchRedisSession(payload, false).catch(() => {});
+    }
+  }
+
+  function resetIdleTimer(isActivity = false) {
+    if (cleanedUp) return;
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+      idleTimer = null;
+    }
+    if (isActivity) {
+      recordActivity();
+    }
     if (idleTimeoutMs > 0) {
       idleTimer = setTimeout(() => {
         if (clientWs.readyState === WebSocket.OPEN) {
@@ -289,7 +411,7 @@ function handleFakeSession(clientWs, payload) {
       if (typeof idleTimer.unref === 'function') idleTimer.unref();
     }
   }
-  resetIdleTimer();
+  resetIdleTimer(false);
 
   if (isExec) {
     clientWs.send(
@@ -308,7 +430,7 @@ function handleFakeSession(clientWs, payload) {
 
   let buffer = '';
   clientWs.on('message', (data, isBinary) => {
-    resetIdleTimer();
+    if (cleanedUp) return;
 
     const byteLength = Buffer.isBuffer(data)
       ? data.length
@@ -317,10 +439,11 @@ function handleFakeSession(clientWs, payload) {
       if (clientWs.readyState === WebSocket.OPEN) {
         try { clientWs.close(1009, 'Message too big'); } catch {}
       }
-      if (idleTimer) clearTimeout(idleTimer);
-      cleanupRedisSession(payload);
+      teardownFakeSession();
       return;
     }
+
+    resetIdleTimer(true);
 
     if (isBinary) {
       clientWs.send(data, { binary: true });
@@ -366,8 +489,7 @@ function handleFakeSession(clientWs, payload) {
   });
 
   clientWs.on('close', () => {
-    if (idleTimer) clearTimeout(idleTimer);
-    cleanupRedisSession(payload);
+    teardownFakeSession();
   });
 
   clientWs.on('error', (err) => {
@@ -473,10 +595,14 @@ function handleIncusSession(clientWs, payload) {
   const maxBytes = parseInt(payload.max_message_bytes, 10) || DEFAULT_MAX_PAYLOAD;
   const idleTimeoutMs = parseInt(payload.idle_timeout_ms, 10) ||
     ((parseInt(payload.idle_timeout_seconds, 10) || DEFAULT_IDLE_TIMEOUT_SECONDS) * 1000);
+  const activityRefreshIntervalMs = parseInt(payload.activity_refresh_interval_ms, 10) || DEFAULT_ACTIVITY_REFRESH_INTERVAL_MS;
 
   let cleanedUp = false;
   let idleTimer = null;
+  let lastActivityTouchMs = Date.now();
   const pendingClientMessages = [];
+
+  touchRedisSession(payload, true).catch(() => {});
 
   function teardownSession(terminateRemoteProcess = false) {
     if (cleanedUp) return;
@@ -510,10 +636,23 @@ function handleIncusSession(clientWs, payload) {
     cleanupRedisSession(payload);
   }
 
-  function resetIdleTimer() {
+  function recordActivity() {
+    if (cleanedUp) return;
+    const nowMs = Date.now();
+    if (nowMs - lastActivityTouchMs >= activityRefreshIntervalMs) {
+      lastActivityTouchMs = nowMs;
+      touchRedisSession(payload, false).catch(() => {});
+    }
+  }
+
+  function resetIdleTimer(isActivity = false) {
+    if (cleanedUp) return;
     if (idleTimer) {
       clearTimeout(idleTimer);
       idleTimer = null;
+    }
+    if (isActivity) {
+      recordActivity();
     }
     if (idleTimeoutMs > 0 && !cleanedUp) {
       idleTimer = setTimeout(() => {
@@ -531,7 +670,7 @@ function handleIncusSession(clientWs, payload) {
     }
   }
 
-  resetIdleTimer();
+  resetIdleTimer(false);
 
   if (
     typeof payload.control_path === 'string' &&
@@ -566,7 +705,7 @@ function handleIncusSession(clientWs, payload) {
   });
 
   clientWs.on('message', (msg, isBinary) => {
-    resetIdleTimer();
+    if (cleanedUp) return;
 
     const byteLength = Buffer.isBuffer(msg)
       ? msg.length
@@ -580,6 +719,8 @@ function handleIncusSession(clientWs, payload) {
       teardownSession(true);
       return;
     }
+
+    resetIdleTimer(true);
 
     // Check if this is a resize control message from client
     if (!isBinary) {
@@ -616,7 +757,8 @@ function handleIncusSession(clientWs, payload) {
   });
 
   incusWs.on('message', (msg, isBinary) => {
-    resetIdleTimer();
+    if (cleanedUp) return;
+    resetIdleTimer(true);
     if (clientWs.readyState === WebSocket.OPEN) {
       clientWs.send(msg, { binary: isBinary });
     }
@@ -660,4 +802,5 @@ module.exports = {
   PinnedHttpsAgent,
   handleIncusSession,
   handleFakeSession,
+  touchRedisSession,
 };

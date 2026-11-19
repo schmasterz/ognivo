@@ -149,8 +149,8 @@ Values are clamped to sane minimums (ticket TTL at least 10 s, idle timeout at l
 
 The idle timeout and message limit are copied into the ticket, so they apply to that session even if the proxy's own defaults differ.
 
-> [!WARNING]
-> **Known limitation: session bookkeeping uses the open time, not real activity.** The idle timeout inside the `console-proxy` follows actual traffic, but the Redis record that `ConsoleTicketService` uses to count active sessions stores `last_activity_at` once, when the session opens, and is not refreshed afterwards. When a *new* ticket is requested for the same instance, any recorded session older than the idle timeout is treated as idle, removed from the count, and its Incus operation is cancelled, **even if the user is still typing in it**. Practical effect: a terminal that has been open for more than `TERMINAL_IDLE_TIMEOUT_SECONDS` (15 minutes by default) can be closed when the same user opens another terminal on that instance. Fixing this needs the proxy (or a heartbeat endpoint) to refresh `last_activity_at`.
+> [!NOTE]
+> **Activity tracking and unredeemed tickets.** When the browser opens the WebSocket connection, `console-proxy` marks the session as redeemed (`redeemed_at`) in Redis and refreshes `last_activity_at` (along with the Redis key TTL) approximately every 30 seconds while traffic flows. Active sessions therefore retain their concurrency slot as long as the terminal is in use, and unredeemed tickets automatically release their concurrency slot once `TERMINAL_TICKET_TTL_SECONDS` expires.
 
 ### Closing a session
 
@@ -177,7 +177,7 @@ This policy protects tenants from the panel's staff. It does not protect them fr
 | :--- | :--- |
 | `console.ticket.issued` | A ticket is issued (context: `console_type`, `driver`, `session_id`) |
 | `terminal.session.opened` | A session is recorded (adds `fallback_reason`) |
-| `terminal.session.closed` | A session is closed (adds `duration_seconds` and `reason`, for example `client_disconnect`, `client_closed`, `reconnect`, `modal_closed`, `idle_timeout`) |
+| `terminal.session.closed` | A session is closed (adds `duration_seconds` and `reason`, for example `client_disconnect`, `client_closed`, `reconnect`, `modal_closed`, `idle_timeout`, `ticket_expired`) |
 | `vm.action.denied` | Impersonation or policy denial (`action: console.ticket`, `reason: forbidden_while_impersonating` or `policy_denial`) |
 | `vm.action.requested` | Boot log viewed (`action: console_log.viewed`, `bytes_returned`) |
 
@@ -322,5 +322,4 @@ When the host driver is `fake` (the seeded demo nodes), the proxy does not conta
 | Socket fails with HTTP `403` | Ticket expired (over 60 s between the POST and the WebSocket), already used, or the proxy uses a different Redis or prefix | Request a new ticket; check `REDIS_*` and `REDIS_PREFIX` on `console-proxy` |
 | Socket closes with `1011` | The proxy cannot reach Incus, or the SPKI pin does not match | Check the node status and the host's stored pin (`hosts:backfill-pins`); see [Host Onboarding](host-onboarding.md) |
 | Terminal closes after 15 minutes of silence | Idle timeout (`4000`) | Raise `TERMINAL_IDLE_TIMEOUT_SECONDS` |
-| Terminal drops when a second terminal is opened on the same instance after 15+ minutes | Known limitation in session bookkeeping (see [Sessions](#4-sessions-limits-and-idle-timeout)) | Raise the idle timeout, or avoid opening a second terminal |
 | Admin cannot open a tenant's terminal | By design | Ask the tenant, or use the hypervisor directly |
