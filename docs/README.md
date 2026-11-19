@@ -29,6 +29,7 @@ Welcome to the **Ognivo** technical documentation. All guides are organized into
 ## 5. Testing & Quality Assurance (`docs/testing/`)
 - **[Automated Testing & Static Analysis](testing/automated-testing.md)** - Running SQLite unit tests, MySQL 8.4 + Redis 7 integration tests, PHPStan Level 10, Psalm ErrorLevel 1, and frontend checks.
 - **[Manual QA & API Verification](testing/manual-qa.md)** - End-to-end browser verification scenarios and ready-to-use `curl` API commands.
+- **[Manual Incus Network Tests](testing/manual-incus-network-tests.md)** - Hands-on runbook for testing routed, bridged, macvlan, and manual IP pools against a real Incus host.
 
 ---
 

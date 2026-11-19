@@ -6,7 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- **Manual Incus Network Test Guide:** Added [`docs/testing/manual-incus-network-tests.md`](docs/testing/manual-incus-network-tests.md) with host preparation, per-mode (`routed`, `bridged`, `macvlan`, `manual`) provisioning and guest checks, negative/validation cases, and a copyable results checklist.
+- **`GET /ips` Query Parameter Validation:** Added `ListIpAllocationsRequest` validating `user_id`, `host_id`, `pool_id`, `status` (`allocated` or `cooling`), `search`, `per_page`, and `page`.
+- **Operator-Managed Badge for Manual-Pool VMs:** Displayed an **Operator-managed** badge and tooltip in `VmTable` and `VmOverviewTab` for instances in `manual` pools whose network status is not `observed`.
+
 ### Changed
+- **Bridged & Macvlan Modes Documented and Hardened:** Documented `bridged` and `macvlan` networking in [`docs/features/networking.md`](docs/features/networking.md) and hardened L2 pool validation and provisioning: no silent interface fallback, mandatory `gateway` and `/16`–`/30` prefix for L2 modes, and preflight checks verifying `Gateway configured` and `Parent interface type matches mode`.
+- **Translated Pool Mode Descriptions:** Added localized English and Bulgarian descriptions (`modeRoutedDesc`, `modeBridgedDesc`, `modeMacvlanDesc`) in the IP pool modals.
 - **IPAM Pool Utilization & Numeric Ordering:** Pool utilization is now computed via SQL aggregates instead of loading allocations in application code, IP allocation listings are ordered by pool and then numerically by IPv4 address, and `ip_allocations` adds composite indexes `idx_ip_alloc_pool_status` and `idx_ip_alloc_user_status`.
 - **UI Cooling IP Refresh:** Cooling IP entries in the UI now use a single scheduled refresh when the cooldown expires instead of polling every 5 seconds.
 - **Strict `parent_interface` Validation:** `parent_interface` no longer silently defaults to `eth0`; it is required for all non-manual pools (`routed`, `bridged`, `macvlan`), while `manual` pools store an empty string and return `null` in API responses.
@@ -15,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 - **Side-Effect-Free `GET /ips`:** `GET /ips` no longer deletes expired `cooling` allocation rows on read; expired rows are removed exclusively by the scheduled `ipam:prune-cooling` command and are reported as `released` with `cooldown_remaining_seconds` `0` until pruned.
+- **Networking Tab Status Filter Normalization:** Updated the Networking tab (`useNetworking` / `normalizeIpStatusFilter`) to ignore unsupported `status` filters rather than forwarding invalid values to `GET /api/ips`.
 
 ## [1.0.0-alpha.1] - 2026-11-14
 
