@@ -132,8 +132,19 @@ final class ConsoleTicketServiceTest extends TestCase
 
         $rawPayload = $this->fakeRedis->get('console:ticket:'.$dto->ticket);
         $this->assertNotNull($rawPayload);
-        /** @var array<string, mixed> $data */
-        $data = json_decode($rawPayload, true);
+        $this->assertStringNotContainsString('BEGIN PRIVATE KEY', $rawPayload);
+        $this->assertStringNotContainsString('client_private_key', $rawPayload);
+
+        /** @var array<string, mixed> $envelope */
+        $envelope = json_decode($rawPayload, true);
+        $this->assertSame(1, $envelope['v'] ?? null);
+        $this->assertSame('AES-256-GCM', $envelope['alg'] ?? null);
+        $this->assertIsString($envelope['iv'] ?? null);
+        $this->assertIsString($envelope['tag'] ?? null);
+        $this->assertIsString($envelope['ct'] ?? null);
+
+        $data = $this->service->decryptTicketPayload($rawPayload, $dto->ticket);
+        $this->assertIsArray($data);
         $this->assertSame($this->owner->id, $data['user_id']);
         $this->assertSame($this->vm->id, $data['virtual_machine_id']);
         $this->assertSame('console', $data['console_type']);
@@ -161,8 +172,19 @@ final class ConsoleTicketServiceTest extends TestCase
 
         $rawPayload = $this->fakeRedis->get('console:ticket:'.$dto->ticket);
         $this->assertNotNull($rawPayload);
-        /** @var array<string, mixed> $data */
-        $data = json_decode($rawPayload, true);
+        $this->assertStringNotContainsString('BEGIN PRIVATE KEY', $rawPayload);
+        $this->assertStringNotContainsString('client_private_key', $rawPayload);
+
+        /** @var array<string, mixed> $envelope */
+        $envelope = json_decode($rawPayload, true);
+        $this->assertSame(1, $envelope['v'] ?? null);
+        $this->assertSame('AES-256-GCM', $envelope['alg'] ?? null);
+        $this->assertIsString($envelope['iv'] ?? null);
+        $this->assertIsString($envelope['tag'] ?? null);
+        $this->assertIsString($envelope['ct'] ?? null);
+
+        $data = $this->service->decryptTicketPayload($rawPayload, $dto->ticket);
+        $this->assertIsArray($data);
         $this->assertSame($this->owner->id, $data['user_id']);
         $this->assertSame($this->vm->id, $data['virtual_machine_id']);
         $this->assertSame('console', $data['console_type']);
@@ -496,7 +518,7 @@ final class ConsoleTicketServiceTest extends TestCase
             'session_id' => $sessionId,
         ];
 
-        $this->fakeRedis->setex('console:ticket:'.$ticket, 60, (string) json_encode($payload));
+        $this->fakeRedis->setex('console:ticket:'.$ticket, 60, $this->service->encryptTicketPayload($payload, $ticket));
 
         $result = $this->service->redeemTicket($ticket);
         $this->assertNotNull($result);
@@ -522,6 +544,84 @@ final class ConsoleTicketServiceTest extends TestCase
         $this->assertNull($this->service->redeemTicket('?'));
         $this->assertNull($this->service->redeemTicket('short'));
         $this->assertNull($this->service->redeemTicket('invalid*glob?ticket-123456'));
+    }
+
+    public function test_decrypt_ticket_payload_rejects_tampered_ciphertext_or_mismatched_ticket_aad(): void
+    {
+        $ticket = 'valid-ticket-aad-0123456789abcdef';
+        $otherTicket = 'other-ticket-aad-0123456789abcdef';
+        $payload = [
+            'user_id' => $this->owner->id,
+            'virtual_machine_id' => $this->vm->id,
+            'session_id' => 'session-aad-check-1',
+        ];
+
+        $encrypted = $this->service->encryptTicketPayload($payload, $ticket);
+        /** @var array<string, mixed> $envelope */
+        $envelope = json_decode($encrypted, true, 512, JSON_THROW_ON_ERROR);
+
+        // Tamper with ciphertext
+        $ctRaw = base64_decode((string) $envelope['ct'], true);
+        $this->assertIsString($ctRaw);
+        $tamperedCtEnvelope = $envelope;
+        $tamperedCtEnvelope['ct'] = base64_encode($ctRaw ^ str_repeat("\x01", strlen($ctRaw)));
+        $tamperedCtJson = json_encode($tamperedCtEnvelope, JSON_THROW_ON_ERROR);
+        $this->assertNull($this->service->decryptTicketPayload($tamperedCtJson, $ticket));
+        $this->fakeRedis->setex('console:ticket:'.$ticket, 60, $tamperedCtJson);
+        $this->assertNull($this->service->redeemTicket($ticket));
+
+        // Tamper with authentication tag
+        $tagRaw = base64_decode((string) $envelope['tag'], true);
+        $this->assertIsString($tagRaw);
+        $tamperedTagEnvelope = $envelope;
+        $tamperedTagEnvelope['tag'] = base64_encode($tagRaw ^ str_repeat("\x01", strlen($tagRaw)));
+        $tamperedTagJson = json_encode($tamperedTagEnvelope, JSON_THROW_ON_ERROR);
+        $this->assertNull($this->service->decryptTicketPayload($tamperedTagJson, $ticket));
+        $this->fakeRedis->setex('console:ticket:'.$ticket, 60, $tamperedTagJson);
+        $this->assertNull($this->service->redeemTicket($ticket));
+
+        // Mismatched ticket AAD
+        $this->assertNull($this->service->decryptTicketPayload($encrypted, $otherTicket));
+        $this->fakeRedis->setex('console:ticket:'.$otherTicket, 60, $encrypted);
+        $this->assertNull($this->service->redeemTicket($otherTicket));
+
+        // Unencrypted JSON payload must be rejected (no plaintext fallback)
+        $plaintextJson = json_encode($payload, JSON_THROW_ON_ERROR);
+        $this->assertNull($this->service->decryptTicketPayload($plaintextJson, $ticket));
+        $this->fakeRedis->setex('console:ticket:'.$ticket, 60, $plaintextJson);
+        $this->assertNull($this->service->redeemTicket($ticket));
+    }
+
+    public function test_decrypt_ticket_payload_supports_app_previous_keys_rotation(): void
+    {
+        $keyA = 'base64:'.base64_encode(random_bytes(32));
+        $keyB = 'base64:'.base64_encode(random_bytes(32));
+        $ticket = 'rotated-key-ticket-0123456789abcdef';
+        $payload = [
+            'user_id' => $this->owner->id,
+            'virtual_machine_id' => $this->vm->id,
+            'console_type' => 'console',
+            'session_id' => 'rotated-session-1',
+        ];
+
+        config([
+            'app.key' => $keyA,
+            'app.previous_keys' => [],
+        ]);
+
+        $encrypted = $this->service->encryptTicketPayload($payload, $ticket);
+        $this->fakeRedis->setex('console:ticket:'.$ticket, 60, $encrypted);
+
+        config([
+            'app.key' => $keyB,
+            'app.previous_keys' => [$keyA],
+        ]);
+
+        $redeemed = $this->service->redeemTicket($ticket);
+        $this->assertIsArray($redeemed);
+        $this->assertSame($this->owner->id, $redeemed['user_id']);
+        $this->assertSame($this->vm->id, $redeemed['virtual_machine_id']);
+        $this->assertSame('rotated-session-1', $redeemed['session_id']);
     }
 
     public function test_issue_ticket_fails_if_vm_is_not_running(): void
