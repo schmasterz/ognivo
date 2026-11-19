@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\Host;
+use App\Models\IpAllocation;
 use App\Models\IpPool;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -241,5 +242,121 @@ final class AdminIpPoolValidationTest extends TestCase
 
         $pool->refresh();
         $this->assertSame('eno1', $pool->parent_interface);
+    }
+
+    public function test_updating_pool_with_allocations_accepts_new_parent_interface(): void
+    {
+        Sanctum::actingAs($this->admin);
+
+        $pool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Allocated Routed Pool',
+            'cidr' => '10.196.0.0/24',
+            'first_usable' => '10.196.0.10',
+            'last_usable' => '10.196.0.100',
+            'gateway' => '10.196.0.1',
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+        ]);
+
+        IpAllocation::create([
+            'pool_id' => $pool->id,
+            'user_id' => $this->admin->id,
+            'address' => inet_pton('10.196.0.10'),
+            'ip_string' => '10.196.0.10',
+            'status' => 'allocated',
+            'allocated_at' => now(),
+        ]);
+
+        $response = $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+            'parent_interface' => 'eno2',
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('pool.parent_interface', 'eno2');
+
+        $pool->refresh();
+        $this->assertSame('eno2', $pool->parent_interface);
+    }
+
+    public function test_updating_pool_with_allocations_still_rejects_changed_cidr_host_or_network_mode(): void
+    {
+        Sanctum::actingAs($this->admin);
+
+        $otherHost = Host::create([
+            'name' => 'pool-val-other-host',
+            'endpoint_url' => 'https://127.0.0.1:8444',
+            'driver' => 'fake',
+            'is_active' => true,
+        ]);
+
+        $pool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Immutable Fields Pool',
+            'cidr' => '10.197.0.0/24',
+            'first_usable' => '10.197.0.10',
+            'last_usable' => '10.197.0.100',
+            'gateway' => '10.197.0.1',
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+        ]);
+
+        IpAllocation::create([
+            'pool_id' => $pool->id,
+            'user_id' => $this->admin->id,
+            'address' => inet_pton('10.197.0.10'),
+            'ip_string' => '10.197.0.10',
+            'status' => 'allocated',
+            'allocated_at' => now(),
+        ]);
+
+        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+            'cidr' => '10.198.0.0/24',
+        ])->assertStatus(422)->assertJsonValidationErrors(['cidr']);
+
+        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+            'host_id' => $otherHost->id,
+        ])->assertStatus(422)->assertJsonValidationErrors(['host_id']);
+
+        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+            'network_mode' => 'bridged',
+        ])->assertStatus(422)->assertJsonValidationErrors(['network_mode']);
+
+        $pool->refresh();
+        $this->assertSame('10.197.0.0/24', $pool->cidr);
+        $this->assertSame($this->host->id, $pool->host_id);
+        $this->assertSame('routed', $pool->network_mode);
+    }
+
+    public function test_updating_routed_pool_with_allocations_to_empty_parent_interface_returns_422(): void
+    {
+        Sanctum::actingAs($this->admin);
+
+        $pool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Allocated Routed Validation Pool',
+            'cidr' => '10.199.0.0/24',
+            'first_usable' => '10.199.0.10',
+            'last_usable' => '10.199.0.100',
+            'gateway' => '10.199.0.1',
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+        ]);
+
+        IpAllocation::create([
+            'pool_id' => $pool->id,
+            'user_id' => $this->admin->id,
+            'address' => inet_pton('10.199.0.10'),
+            'ip_string' => '10.199.0.10',
+            'status' => 'allocated',
+            'allocated_at' => now(),
+        ]);
+
+        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+            'parent_interface' => '',
+        ])->assertStatus(422)->assertJsonValidationErrors(['parent_interface']);
+
+        $pool->refresh();
+        $this->assertSame('eth0', $pool->parent_interface);
     }
 }

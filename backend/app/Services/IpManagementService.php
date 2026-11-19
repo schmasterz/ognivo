@@ -17,8 +17,10 @@ use App\Models\VirtualMachine;
 use App\Services\Hypervisor\HypervisorGateway;
 use App\Services\Network\CidrHelper;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Connection;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -351,21 +353,65 @@ final class IpManagementService
             $query->where('status', $filters['status']);
         }
 
-        if (isset($filters['search']) && $filters['search'] !== '') {
-            $search = $filters['search'];
-            $query->where(function (Builder $q) use ($search): void {
-                $q->where('ip_string', 'like', "%{$search}%")
-                    ->orWhere('mac_address', 'like', "%{$search}%")
-                    ->orWhereHas('virtualMachine', fn (Builder $sub): Builder => $sub->where('name', 'like', "%{$search}%"))
-                    ->orWhereHas('pool', fn (Builder $sub): Builder => $sub->where('name', 'like', "%{$search}%"))
-                    ->orWhereHas('user', function (Builder $uq) use ($search): void {
-                        $uq->where('name', 'like', "%{$search}%")
-                            ->orWhere('email', 'like', "%{$search}%");
-                    });
-            });
+        $rawSearch = $filters['search'] ?? null;
+        $search = is_string($rawSearch) ? trim($rawSearch) : '';
+
+        if ($search !== '') {
+            $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search);
+
+            if (preg_match('/^\d{1,3}(\.\d{1,3}){0,3}\.?$/', $search) === 1) {
+                $this->applyEscapedLike($query, 'ip_string', "{$escaped}%");
+            } elseif (str_contains($search, ':') && preg_match('/^[0-9a-fA-F:]+$/', $search) === 1) {
+                $this->applyEscapedLike($query, 'mac_address', strtolower($escaped).'%');
+            } else {
+                $contains = "%{$escaped}%";
+                $query->where(function (Builder $q) use ($contains): void {
+                    $q->whereHas('virtualMachine', function (Builder $sub) use ($contains): void {
+                        $this->applyEscapedLike($sub, 'name', $contains);
+                    })
+                        ->orWhereHas('pool', function (Builder $sub) use ($contains): void {
+                            $this->applyEscapedLike($sub, 'name', $contains);
+                        })
+                        ->orWhereHas('user', function (Builder $uq) use ($contains): void {
+                            $this->applyEscapedLike($uq, 'name', $contains);
+                            $this->applyEscapedLike($uq, 'email', $contains, true);
+                        });
+                });
+            }
         }
 
         return $query->orderBy('pool_id')->orderBy('address');
+    }
+
+    /**
+     * Apply a LIKE filter with wildcard escaping compatible with both MySQL and SQLite.
+     *
+     * @template TModel of Model
+     *
+     * @param  Builder<TModel>  $query
+     * @param  literal-string  $column
+     */
+    private function applyEscapedLike(Builder $query, string $column, string $pattern, bool $booleanOr = false): void
+    {
+        $connection = $query->getConnection();
+        $isSqlite = $connection instanceof Connection && $connection->getDriverName() === 'sqlite';
+
+        if ($isSqlite) {
+            $sql = "{$column} LIKE ? ESCAPE '\\'";
+            if ($booleanOr) {
+                $query->orWhereRaw($sql, [$pattern]);
+            } else {
+                $query->whereRaw($sql, [$pattern]);
+            }
+
+            return;
+        }
+
+        if ($booleanOr) {
+            $query->getQuery()->orWhere($column, 'like', $pattern);
+        } else {
+            $query->getQuery()->where($column, 'like', $pattern);
+        }
     }
 
     /**
@@ -795,9 +841,10 @@ final class IpManagementService
                 if (isset($data['network_mode'])) {
                     $fieldsToUpdate['network_mode'] = $data['network_mode'];
                 }
-                if (array_key_exists('parent_interface', $data)) {
-                    $fieldsToUpdate['parent_interface'] = is_string($data['parent_interface']) ? $data['parent_interface'] : '';
-                }
+            }
+
+            if (array_key_exists('parent_interface', $data)) {
+                $fieldsToUpdate['parent_interface'] = is_string($data['parent_interface']) ? $data['parent_interface'] : '';
             }
 
             $pool->update($fieldsToUpdate);

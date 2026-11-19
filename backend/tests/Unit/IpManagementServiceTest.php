@@ -729,4 +729,88 @@ final class IpManagementServiceTest extends TestCase
         $this->assertTrue(Schema::hasIndex('ip_allocations', 'idx_ip_alloc_pool_status'));
         $this->assertTrue(Schema::hasIndex('ip_allocations', 'idx_ip_alloc_user_status'));
     }
+
+    public function test_allocations_search_classifies_ip_prefix_mac_prefix_and_escaped_text(): void
+    {
+        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+        $admin = User::factory()->create(['name' => 'Admin Searcher', 'email' => 'search-admin@test.local']);
+        $admin->assignRole('admin');
+
+        $alice = User::factory()->create(['name' => 'Alice Example', 'email' => 'alice@example.com']);
+        $literalWildcardUser = User::factory()->create(['name' => 'user_a_b%c', 'email' => 'literal@example.com']);
+        $nonMatchingSimilarUser = User::factory()->create(['name' => 'user_axbyc', 'email' => 'similar@example.com']);
+
+        $poolMain = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Primary Search Pool',
+            'cidr' => '10.0.0.0/16',
+            'first_usable' => '10.0.0.1',
+            'last_usable' => '10.0.255.254',
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+        ]);
+
+        $poolOther = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Secondary Search Pool',
+            'cidr' => '110.0.0.0/24',
+            'first_usable' => '110.0.0.1',
+            'last_usable' => '110.0.0.254',
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+        ]);
+
+        $vmLiteral = $this->createVm('vm\\backslash');
+
+        $records = [
+            [$poolMain->id, $alice->id, null, '10.0.0.1', '02:54:ab:00:00:01'],
+            [$poolMain->id, $alice->id, null, '10.0.0.10', '02:54:ab:00:00:02'],
+            [$poolMain->id, $alice->id, null, '10.0.0.100', '02:54:99:02:54:ab'],
+            [$poolMain->id, $literalWildcardUser->id, $vmLiteral->id, '10.0.1.1', '02:54:cc:00:00:01'],
+            [$poolOther->id, $nonMatchingSimilarUser->id, null, '110.0.0.1', '02:54:dd:00:00:01'],
+        ];
+
+        foreach ($records as [$poolId, $userId, $vmId, $ip, $mac]) {
+            IpAllocation::create([
+                'pool_id' => $poolId,
+                'user_id' => $userId,
+                'virtual_machine_id' => $vmId,
+                'address' => inet_pton($ip),
+                'ip_string' => $ip,
+                'mac_address' => $mac,
+                'status' => 'allocated',
+                'allocated_at' => now(),
+            ]);
+        }
+
+        // 1. IP prefix '10.0.0.1' (with whitespace) matches 10.0.0.1, 10.0.0.10, 10.0.0.100 only
+        $ipExactPrefix = $this->service->listForUser($admin, ['search' => ' 10.0.0.1 ']);
+        $this->assertSame(['10.0.0.1', '10.0.0.10', '10.0.0.100'], $ipExactPrefix->pluck('ip_string')->all());
+
+        // 2. IP prefix '10.0' matches 10.0.x.x only, not 110.0.0.1
+        $ipPartialPrefix = $this->service->listForUser($admin, ['search' => '10.0']);
+        $this->assertSame(['10.0.0.1', '10.0.0.10', '10.0.0.100', '10.0.1.1'], $ipPartialPrefix->pluck('ip_string')->all());
+
+        // 3. MAC prefix '02:54:ab' and uppercase '02:54:AB' match prefix only (not 02:54:99:02:54:ab)
+        $macLower = $this->service->listForUser($admin, ['search' => '02:54:ab']);
+        $this->assertSame(['10.0.0.1', '10.0.0.10'], $macLower->pluck('ip_string')->all());
+
+        $macUpper = $this->service->listForUser($admin, ['search' => '02:54:AB']);
+        $this->assertSame(['10.0.0.1', '10.0.0.10'], $macUpper->pluck('ip_string')->all());
+
+        // 4. LIKE wildcard characters (_, %, \) are escaped
+        $escapedWildcards = $this->service->listForUser($admin, ['search' => 'a_b%']);
+        $this->assertSame(['10.0.1.1'], $escapedWildcards->pluck('ip_string')->all());
+
+        $escapedBackslash = $this->service->listForUser($admin, ['search' => 'vm\\back']);
+        $this->assertSame(['10.0.1.1'], $escapedBackslash->pluck('ip_string')->all());
+
+        // 5. User name search still works
+        $userSearch = $this->service->listForUser($admin, ['search' => 'Alice']);
+        $this->assertSame(['10.0.0.1', '10.0.0.10', '10.0.0.100'], $userSearch->pluck('ip_string')->all());
+
+        // 6. Empty and whitespace-only searches return all allocations
+        $this->assertCount(5, $this->service->listForUser($admin, ['search' => '']));
+        $this->assertCount(5, $this->service->listForUser($admin, ['search' => '   ']));
+    }
 }
