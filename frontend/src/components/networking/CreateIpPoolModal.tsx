@@ -59,7 +59,7 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
   const [cidr, setCidr] = useState("");
   const [firstUsable, setFirstUsable] = useState("");
   const [lastUsable, setLastUsable] = useState("");
-  const [parentInterface, setParentInterface] = useState("eth0");
+  const [parentInterface, setParentInterface] = useState("");
   const [isCustomInterface, setIsCustomInterface] = useState(false);
   const [networkMode, setNetworkMode] = useState<"routed" | "bridged" | "macvlan" | "manual">("routed");
   const [gateway, setGateway] = useState("");
@@ -116,7 +116,7 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
           const currentMode = networkModeRef.current;
           const currentIface = parentInterfaceRef.current;
           const preferred = nets.find((n) => n.recommended_modes.includes(currentMode)) || nets[0];
-          if (preferred && (currentIface === "eth0" || !nets.some((n) => n.name === currentIface))) {
+          if (preferred && (currentIface === "" || !nets.some((n) => n.name === currentIface))) {
             setParentInterface(preferred.name);
             setIsCustomInterface(false);
           }
@@ -169,6 +169,12 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
       return;
     }
 
+    const trimmedParentInterface = parentInterface.trim();
+    if (networkMode !== "manual" && !trimmedParentInterface) {
+      setError(t("parentInterfaceRequired"));
+      return;
+    }
+
     try {
       setLoading(true);
 
@@ -188,7 +194,7 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
         cidr: cidr.trim(),
         first_usable: firstUsable.trim() || undefined,
         last_usable: lastUsable.trim() || undefined,
-        parent_interface: parentInterface.trim() || "eth0",
+        ...(networkMode !== "manual" ? { parent_interface: trimmedParentInterface } : {}),
         network_mode: networkMode,
         gateway: gateway.trim() || undefined,
         dns_servers: parsedDns.length > 0 ? parsedDns : undefined,
@@ -318,66 +324,71 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5 flex items-center justify-between">
-                <span>Host Parent Interface</span>
-                {discoveringHost && <Loader2 className="w-3 h-3 animate-spin text-teal-500" />}
-              </label>
-              <select
-                required
-                value={isCustomInterface ? "__custom__" : parentInterface}
-                onChange={(e) => {
-                  if (e.target.value === "__custom__") {
-                    setIsCustomInterface(true);
-                  } else {
-                    setIsCustomInterface(false);
-                    setParentInterface(e.target.value);
-                  }
-                }}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono"
-              >
-                {discoveringHost && discoveredNetworks.length === 0 && (
-                  <option value="" disabled>Detecting host interfaces...</option>
-                )}
-                {discoveredNetworks.length === 0 && !discoveringHost && (
-                  <>
-                    <option value="eth0">eth0 (Default)</option>
-                    <option value="eno1">eno1</option>
-                    <option value="incusbr0">incusbr0</option>
-                    <option value="lxdbr0">lxdbr0</option>
-                  </>
-                )}
-                {discoveredNetworks.map((net) => (
-                  <option key={net.name} value={net.name}>
-                    {net.name} ({net.type}{net.addresses && net.addresses.length > 0 ? `: ${net.addresses.join(", ")}` : ""})
-                  </option>
-                ))}
-                {parentInterface &&
-                  !isCustomInterface &&
-                  !discoveredNetworks.some((n) => n.name === parentInterface) &&
-                  parentInterface !== "eth0" && (
-                    <option value={parentInterface}>
-                      {parentInterface} (Current)
-                    </option>
+            {networkMode !== "manual" && (
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5 flex items-center justify-between">
+                  <span>Host Parent Interface</span>
+                  {discoveringHost && <Loader2 className="w-3 h-3 animate-spin text-teal-500" />}
+                </label>
+                <select
+                  required
+                  value={isCustomInterface ? "__custom__" : parentInterface}
+                  onChange={(e) => {
+                    if (e.target.value === "__custom__") {
+                      setIsCustomInterface(true);
+                    } else {
+                      setIsCustomInterface(false);
+                      setParentInterface(e.target.value);
+                    }
+                  }}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono"
+                >
+                  {discoveringHost && discoveredNetworks.length === 0 ? (
+                    <option value="" disabled>Detecting host interfaces...</option>
+                  ) : (
+                    <option value="" disabled>Select host interface...</option>
                   )}
-                <option value="__custom__">Custom interface...</option>
-              </select>
+                  {discoveredNetworks.length === 0 && !discoveringHost && (
+                    <>
+                      <option value="eno1">eno1</option>
+                      <option value="incusbr0">incusbr0</option>
+                      <option value="lxdbr0">lxdbr0</option>
+                    </>
+                  )}
+                  {discoveredNetworks.map((net) => (
+                    <option key={net.name} value={net.name}>
+                      {net.name} ({net.type}{net.addresses && net.addresses.length > 0 ? `: ${net.addresses.join(", ")}` : ""})
+                    </option>
+                  ))}
+                  {parentInterface &&
+                    !isCustomInterface &&
+                    !discoveredNetworks.some((n) => n.name === parentInterface) &&
+                    (discoveredNetworks.length > 0 ||
+                      discoveringHost ||
+                      !["eno1", "incusbr0", "lxdbr0"].includes(parentInterface)) && (
+                      <option value={parentInterface}>
+                        {parentInterface} (Current)
+                      </option>
+                    )}
+                  <option value="__custom__">Custom interface...</option>
+                </select>
 
-              {isCustomInterface && (
-                <div className="mt-2">
-                  <input
-                    type="text"
-                    required
-                    value={parentInterface}
-                    onChange={(e) => setParentInterface(e.target.value)}
-                    placeholder="e.g. eth0, eno1, incusbr0"
-                    className="w-full px-3.5 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono"
-                    autoFocus
-                  />
-                </div>
-              )}
-              <span className="text-[11px] text-gray-400 mt-1 block">Host NIC or bridge on target node</span>
-            </div>
+                {isCustomInterface && (
+                  <div className="mt-2">
+                    <input
+                      type="text"
+                      required
+                      value={parentInterface}
+                      onChange={(e) => setParentInterface(e.target.value)}
+                      placeholder="e.g. eth0, eno1, incusbr0"
+                      className="w-full px-3.5 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono"
+                      autoFocus
+                    />
+                  </div>
+                )}
+                <span className="text-[11px] text-gray-400 mt-1 block">Host NIC or bridge on target node</span>
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">

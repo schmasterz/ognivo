@@ -34,7 +34,6 @@ interface IpTableProps {
   onDeletePool?: (poolId: number, poolName: string) => void;
   onRequestDeletePool?: (poolId: number, poolName: string) => void;
   onPoolUpdated?: (pool: IpPool) => void;
-  onRefresh?: () => void;
   pagination?: {
     currentPage: number;
     lastPage: number;
@@ -55,10 +54,9 @@ interface IpTableProps {
 
 interface CoolingBadgeProps {
   ip: IpAllocation;
-  onExpire?: () => void;
 }
 
-function CoolingBadge({ ip, onExpire }: CoolingBadgeProps) {
+function CoolingBadge({ ip }: CoolingBadgeProps) {
   const initial = ip.cooldown_remaining_seconds ?? 0;
   const [remaining, setRemaining] = useState<number>(initial);
 
@@ -69,21 +67,12 @@ function CoolingBadge({ ip, onExpire }: CoolingBadgeProps) {
   }, [ip.cooldown_remaining_seconds]);
 
   useEffect(() => {
-    if (remaining <= 0) return;
-
     const timer = setInterval(() => {
-      setRemaining((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          onExpire?.();
-          return 0;
-        }
-        return prev - 1;
-      });
+      setRemaining((prev) => (prev > 1 ? prev - 1 : 0));
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [remaining, onExpire]);
+  }, []);
 
   if (remaining <= 0 || ip.status === "released") {
     return (
@@ -112,7 +101,6 @@ export function IpTable({
   onDeletePool,
   onRequestDeletePool,
   onPoolUpdated,
-  onRefresh,
   pagination,
   poolsPagination,
 }: IpTableProps) {
@@ -138,17 +126,7 @@ export function IpTable({
     }
 
     if (ip.status === "cooling" || ip.status === "released") {
-      return (
-        <CoolingBadge
-          ip={ip}
-          onExpire={() => {
-            onRefresh?.();
-            if (ip.pool) {
-              onPoolUpdated?.(ip.pool);
-            }
-          }}
-        />
-      );
+      return <CoolingBadge ip={ip} />;
     }
 
     return (
@@ -263,7 +241,7 @@ export function IpTable({
                         <div className="flex items-center space-x-1.5 text-indigo-600 dark:text-indigo-400 font-medium">
                           <Server className="w-3 h-3 flex-shrink-0" />
                           <span>
-                            {p.host.name} ({p.parent_interface || "eth0"})
+                            {p.parent_interface ? `${p.host.name} (${p.parent_interface})` : p.host.name}
                           </span>
                         </div>
                       ) : (
@@ -426,7 +404,9 @@ export function IpTable({
                             <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium flex items-center space-x-1 mt-0.5">
                               <Server className="w-2.5 h-2.5 flex-shrink-0" />
                               <span>
-                                {ip.pool.host.name} ({ip.pool.parent_interface || "eth0"})
+                                {ip.pool.parent_interface
+                                  ? `${ip.pool.host.name} (${ip.pool.parent_interface})`
+                                  : ip.pool.host.name}
                               </span>
                             </div>
                           )}

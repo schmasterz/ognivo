@@ -18,7 +18,7 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
   const [name, setName] = useState(pool.name);
   const [description, setDescription] = useState(pool.description || "");
   const [networkMode, setNetworkMode] = useState<string>(pool.network_mode || "routed");
-  const [parentInterface, setParentInterface] = useState<string>(pool.parent_interface || "eth0");
+  const [parentInterface, setParentInterface] = useState<string>(pool.parent_interface ?? "");
   const [isCustomInterface, setIsCustomInterface] = useState(false);
   const [discoveredNetworks, setDiscoveredNetworks] = useState<HostDiscoveredNetwork[]>([]);
   const [discoveringHost, setDiscoveringHost] = useState(false);
@@ -47,7 +47,7 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
       setName(pool.name);
       setDescription(pool.description || "");
       setNetworkMode(pool.network_mode || "routed");
-      setParentInterface(pool.parent_interface || "eth0");
+      setParentInterface(pool.parent_interface ?? "");
       setIsCustomInterface(false);
       setDnsServers(pool.dns_servers && pool.dns_servers.length > 0 ? pool.dns_servers.join(", ") : "1.1.1.1, 8.8.8.8");
       setExcludedIps(pool.excluded_ips && pool.excluded_ips.length > 0 ? pool.excluded_ips.join(", ") : "");
@@ -92,6 +92,12 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
     e.preventDefault();
     setError(null);
 
+    const trimmedParentInterface = parentInterface.trim();
+    if (!hasAllocations && networkMode !== "manual" && !trimmedParentInterface) {
+      setError(t("parentInterfaceRequired"));
+      return;
+    }
+
     try {
       setLoading(true);
 
@@ -120,7 +126,7 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
           ? {}
           : {
               network_mode: networkMode,
-              parent_interface: parentInterface.trim() || "eth0",
+              ...(networkMode !== "manual" ? { parent_interface: trimmedParentInterface } : {}),
             }),
       });
 
@@ -217,70 +223,73 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
               </select>
             </div>
 
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5 flex items-center justify-between">
-                <span>Host Parent Interface</span>
-                {discoveringHost && <Loader2 className="w-3 h-3 animate-spin text-teal-500" />}
-              </label>
-              <select
-                disabled={hasAllocations}
-                required
-                value={isCustomInterface ? "__custom__" : parentInterface}
-                onChange={(e) => {
-                  if (e.target.value === "__custom__") {
-                    setIsCustomInterface(true);
-                  } else {
-                    setIsCustomInterface(false);
-                    setParentInterface(e.target.value);
-                  }
-                }}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono disabled:opacity-60"
-              >
-                {discoveringHost && discoveredNetworks.length === 0 && (
-                  <option value="" disabled>Detecting host interfaces...</option>
-                )}
-                {discoveredNetworks.length === 0 && !discoveringHost && (
-                  <>
-                    <option value="eth0">eth0</option>
-                    <option value="eno1">eno1</option>
-                    <option value="incusbr0">incusbr0</option>
-                    <option value="lxdbr0">lxdbr0</option>
-                  </>
-                )}
-                {discoveredNetworks.map((net) => (
-                  <option key={net.name} value={net.name}>
-                    {net.name} ({net.type}{net.addresses && net.addresses.length > 0 ? `: ${net.addresses.join(", ")}` : ""})
-                  </option>
-                ))}
-                {parentInterface &&
-                  !isCustomInterface &&
-                  !discoveredNetworks.some((n) => n.name === parentInterface) && (
-                    <option value={parentInterface}>
-                      {parentInterface} (Current)
-                    </option>
+            {networkMode !== "manual" && (
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5 flex items-center justify-between">
+                  <span>Host Parent Interface</span>
+                  {discoveringHost && <Loader2 className="w-3 h-3 animate-spin text-teal-500" />}
+                </label>
+                <select
+                  disabled={hasAllocations}
+                  required
+                  value={isCustomInterface ? "__custom__" : parentInterface}
+                  onChange={(e) => {
+                    if (e.target.value === "__custom__") {
+                      setIsCustomInterface(true);
+                    } else {
+                      setIsCustomInterface(false);
+                      setParentInterface(e.target.value);
+                    }
+                  }}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono disabled:opacity-60"
+                >
+                  {discoveringHost && discoveredNetworks.length === 0 ? (
+                    <option value="" disabled>Detecting host interfaces...</option>
+                  ) : (
+                    <option value="" disabled>Select host interface...</option>
                   )}
-                {!hasAllocations && <option value="__custom__">Custom interface...</option>}
-              </select>
+                  {discoveredNetworks.length === 0 && !discoveringHost && (
+                    <>
+                      <option value="eno1">eno1</option>
+                      <option value="incusbr0">incusbr0</option>
+                      <option value="lxdbr0">lxdbr0</option>
+                    </>
+                  )}
+                  {discoveredNetworks.map((net) => (
+                    <option key={net.name} value={net.name}>
+                      {net.name} ({net.type}{net.addresses && net.addresses.length > 0 ? `: ${net.addresses.join(", ")}` : ""})
+                    </option>
+                  ))}
+                  {parentInterface &&
+                    !isCustomInterface &&
+                    !discoveredNetworks.some((n) => n.name === parentInterface) && (
+                      <option value={parentInterface}>
+                        {parentInterface} (Current)
+                      </option>
+                    )}
+                  {!hasAllocations && <option value="__custom__">Custom interface...</option>}
+                </select>
 
-              {!hasAllocations && isCustomInterface && (
-                <div className="mt-2">
-                  <input
-                    type="text"
-                    required
-                    value={parentInterface}
-                    onChange={(e) => setParentInterface(e.target.value)}
-                    placeholder="e.g. eth0, eno1, incusbr0"
-                    className="w-full px-3.5 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono"
-                    autoFocus
-                  />
-                </div>
-              )}
-              {hasAllocations ? (
-                <span className="text-[11px] text-amber-500 mt-1 block">Parent interface cannot be modified while IPs are allocated</span>
-              ) : (
-                <span className="text-[11px] text-gray-400 mt-1 block">Host NIC or bridge on target node</span>
-              )}
-            </div>
+                {!hasAllocations && isCustomInterface && (
+                  <div className="mt-2">
+                    <input
+                      type="text"
+                      required
+                      value={parentInterface}
+                      onChange={(e) => setParentInterface(e.target.value)}
+                      placeholder="e.g. eth0, eno1, incusbr0"
+                      className="w-full px-3.5 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono"
+                      autoFocus
+                    />
+                  </div>
+                )}
+                {hasAllocations ? (
+                  <span className="text-[11px] text-amber-500 mt-1 block">Parent interface cannot be modified while IPs are allocated</span>
+                ) : (
+                  <span className="text-[11px] text-gray-400 mt-1 block">Host NIC or bridge on target node</span>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -239,6 +239,7 @@ export const dictionaries = {
     editPoolSubtitle: "Update pool properties and usable IP range boundaries",
     editPoolAction: "Save Changes",
     poolUpdated: "IP pool updated successfully.",
+    parentInterfaceRequired: "Parent interface is required for non-manual network modes.",
 
     // Compute Nodes & Clusters Management
     nodes: "Compute Nodes",
@@ -927,6 +928,7 @@ export const dictionaries = {
     editPoolSubtitle: "Промяна на параметри на пула и диапазона от адреси",
     editPoolAction: "Запази промените",
     poolUpdated: "IP пулът бе обновен успешно.",
+    parentInterfaceRequired: "Родителският интерфейс е задължителен за избрания мрежов режим.",
 
     // Compute Nodes & Clusters Management
     nodes: "Compute Нодове",
