@@ -81,6 +81,20 @@ src/
     ├── theme/                        # Dark/Light/System theme provider
     ├── toast/                        # Toast notifications (useToast())
     └── echo.ts                       # Laravel Echo / Reverb client setup
+
+tests/
+├── components/
+│   ├── audit/audit.test.ts
+│   └── networking/
+│       ├── coolingRefresh.test.ts
+│       └── ipStatusFilter.test.ts
+└── lib/
+    ├── auth/impersonationStorage.test.ts
+    ├── hooks/
+    │   ├── useCachedFetch.test.ts
+    │   ├── useConfirmDialog.test.ts
+    │   └── useModalEscape.test.ts
+    └── images/imageSelection.test.ts
 ```
 
 ---
@@ -99,7 +113,7 @@ src/
    - Domain hooks using `useCachedFetch` must include `sessionUserId` (`user?.id`) in their cache key.
    - Explicit `refetch()` calls bypass TTL cache (`force: true`). Session transitions (login, logout, impersonation) must call `clearAllCachedFetchEntries()`.
 6. **Unit Test Compatibility (`node --test`):**
-   - Pure logic and state helpers tested by `src/**/*.test.ts` files (for example under `__tests__/` folders or next to the module) are executed directly by Node's native TypeScript runner (`node --test`). Avoid TypeScript parameter properties (`constructor(public x: number)`) and path aliases (`@/`) inside files imported directly by `.test.ts` files, and use `import { type Foo }` for type-only imports.
+   - Pure logic and state helpers tested by `tests/**/*.test.ts` files (placed under `frontend/tests/` mirroring the `src/` directory structure) are executed directly by Node's native TypeScript runner (`node --test`). Avoid TypeScript parameter properties (`constructor(public x: number)`) and path aliases (`@/`) inside files imported directly by `.test.ts` files, and use `import { type Foo }` for type-only imports.
 7. **Web Terminal:**
    - The terminal WebSocket (`XtermViewer`) connects to the `websocket_path` returned by `POST /api/vms/{id}/console` and passes the single-use ticket through the subprotocols `["ognivo-terminal", "ticket.<ticket>"]`. Never put the ticket in a URL or log it.
    - Close the session with `DELETE /api/vms/{id}/console/{sessionId}` when the terminal is closed or reconnects.
@@ -119,7 +133,7 @@ npx next typegen && npx tsc --noEmit -p . --incremental false
 # 2. Run ESLint (must report 0 errors)
 npm run lint
 
-# 3. Run unit tests via the native Node test runner (all src/**/*.test.ts files)
+# 3. Run unit tests via the native Node test runner (all tests/**/*.test.ts files)
 npm test
 
 # 4. Verify production build
