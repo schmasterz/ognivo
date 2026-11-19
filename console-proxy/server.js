@@ -20,6 +20,88 @@ const DEFAULT_IDLE_TIMEOUT_SECONDS = parseInt(process.env.IDLE_TIMEOUT_SECONDS |
 const DEFAULT_ACTIVITY_REFRESH_INTERVAL_MS = parseInt(process.env.ACTIVITY_REFRESH_INTERVAL_MS || '30000', 10);
 
 const TICKET_REGEX = /^[A-Za-z0-9_-]{16,128}$/;
+const TICKET_HKDF_INFO = 'ognivo-console-ticket-v1';
+
+function resolveTicketKeys() {
+  const candidates = [
+    process.env.APP_KEY || '',
+    ...(process.env.APP_PREVIOUS_KEYS || '').split(','),
+  ];
+  const keys = [];
+  for (const raw of candidates) {
+    const keyStr = raw.trim();
+    if (!keyStr) continue;
+    const rawKeyBuf = keyStr.startsWith('base64:')
+      ? Buffer.from(keyStr.slice(7), 'base64')
+      : Buffer.from(keyStr, 'utf8');
+    if (rawKeyBuf.length === 0) continue;
+    const derived = Buffer.from(
+      crypto.hkdfSync('sha256', rawKeyBuf, Buffer.alloc(0), Buffer.from(TICKET_HKDF_INFO, 'utf8'), 32)
+    );
+    keys.push(derived);
+  }
+  return keys;
+}
+
+function encryptTicketPayload(payload, ticket) {
+  const keys = resolveTicketKeys();
+  if (keys.length === 0) {
+    throw new Error('APP_KEY is not configured for ticket encryption');
+  }
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', keys[0], iv, { authTagLength: 16 });
+  cipher.setAAD(Buffer.from(String(ticket), 'utf8'));
+  const ct = Buffer.concat([cipher.update(JSON.stringify(payload), 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return JSON.stringify({
+    v: 1,
+    alg: 'AES-256-GCM',
+    iv: iv.toString('base64'),
+    tag: tag.toString('base64'),
+    ct: ct.toString('base64'),
+  });
+}
+
+function decryptTicketPayload(rawPayload, ticket) {
+  const parsed = JSON.parse(rawPayload);
+  if (
+    !parsed ||
+    typeof parsed !== 'object' ||
+    parsed.v !== 1 ||
+    typeof parsed.iv !== 'string' ||
+    typeof parsed.tag !== 'string' ||
+    typeof parsed.ct !== 'string'
+  ) {
+    throw new Error('Unencrypted or invalid ticket envelope');
+  }
+
+  const iv = Buffer.from(parsed.iv, 'base64');
+  const tag = Buffer.from(parsed.tag, 'base64');
+  const ct = Buffer.from(parsed.ct, 'base64');
+
+  if (iv.length !== 12 || tag.length !== 16 || ct.length === 0) {
+    throw new Error('Invalid ticket envelope parameters');
+  }
+
+  const keys = resolveTicketKeys();
+  if (keys.length === 0) {
+    throw new Error('APP_KEY is not configured for ticket decryption');
+  }
+
+  for (const derivedKey of keys) {
+    try {
+      const decipher = crypto.createDecipheriv('aes-256-gcm', derivedKey, iv, { authTagLength: 16 });
+      decipher.setAuthTag(tag);
+      decipher.setAAD(Buffer.from(String(ticket), 'utf8'));
+      const plaintext = Buffer.concat([decipher.update(ct), decipher.final()]).toString('utf8');
+      return JSON.parse(plaintext);
+    } catch {
+      // Try next key in case of APP_PREVIOUS_KEYS rotation
+    }
+  }
+
+  throw new Error('Failed to decrypt or authenticate console ticket payload');
+}
 
 const redis = new Redis({
   host: REDIS_HOST,
@@ -333,7 +415,15 @@ server.on('upgrade', async (req, socket, head) => {
       return;
     }
 
-    const payload = JSON.parse(rawPayload);
+    let payload;
+    try {
+      payload = decryptTicketPayload(rawPayload, ticket);
+    } catch (decryptErr) {
+      console.error(`[console-proxy] Ticket decryption failed: ${decryptErr.message}`);
+      socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+      socket.destroy();
+      return;
+    }
 
     wss.handleUpgrade(req, socket, head, (clientWs) => {
       wss.emit('connection', clientWs, req, payload);
@@ -345,9 +435,30 @@ server.on('upgrade', async (req, socket, head) => {
   }
 });
 
+function isFakeDriverAllowed() {
+  const allowFake = (process.env.ALLOW_FAKE_DRIVER || '').toLowerCase();
+  if (allowFake === 'true' || allowFake === '1') {
+    return true;
+  }
+  if (allowFake === 'false' || allowFake === '0') {
+    return false;
+  }
+  return (process.env.NODE_ENV || 'development').toLowerCase() !== 'production';
+}
+
 wss.on('connection', (clientWs, req, payload) => {
-  // If hypervisor driver is fake, provide interactive mock terminal
+  // If hypervisor driver is fake, provide interactive mock terminal when allowed
   if (payload.host_driver === 'fake') {
+    if (!isFakeDriverAllowed()) {
+      console.error('[console-proxy] Rejected fake hypervisor session: fake driver is disabled in production.');
+      cleanupRedisSession(payload);
+      if (clientWs.readyState === WebSocket.OPEN) {
+        try {
+          clientWs.close(1008, 'Fake hypervisor driver is disabled');
+        } catch {}
+      }
+      return;
+    }
     handleFakeSession(clientWs, payload);
     return;
   }
@@ -803,4 +914,8 @@ module.exports = {
   handleIncusSession,
   handleFakeSession,
   touchRedisSession,
+  isFakeDriverAllowed,
+  resolveTicketKeys,
+  encryptTicketPayload,
+  decryptTicketPayload,
 };

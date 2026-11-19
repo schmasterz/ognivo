@@ -4,7 +4,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('http');
 const { WebSocket } = require('ws');
-const { server, redis, redeemTicket, extractTicket, TICKET_REGEX, PinnedHttpsAgent, handleIncusSession, handleFakeSession, touchRedisSession } = require('../server.js');
+const { server, redis, redeemTicket, extractTicket, TICKET_REGEX, PinnedHttpsAgent, handleIncusSession, handleFakeSession, touchRedisSession, isFakeDriverAllowed, encryptTicketPayload, decryptTicketPayload } = require('../server.js');
 const https = require('https');
 const crypto = require('crypto');
 const { execSync } = require('child_process');
@@ -955,7 +955,7 @@ test('handleFakeSession differentiates exec shell vs console login prompt', asyn
 });
 
 function stubRedis(overrides) {
-  const keys = ['status', 'eval', 'hget', 'hset', 'expire', 'hdel'];
+  const keys = ['status', 'call', 'eval', 'hget', 'hset', 'expire', 'hdel'];
   const saved = new Map();
   for (const key of keys) {
     saved.set(key, Object.getOwnPropertyDescriptor(redis, key));
@@ -1280,6 +1280,263 @@ test('handleIncusSession marks session redeemed on open, throttles activity refr
   } finally {
     restore();
     fixture.cleanup();
+  }
+});
+
+test('isFakeDriverAllowed enforces ALLOW_FAKE_DRIVER and NODE_ENV defaults', () => {
+  const savedNodeEnv = process.env.NODE_ENV;
+  const savedAllowFake = process.env.ALLOW_FAKE_DRIVER;
+
+  try {
+    delete process.env.ALLOW_FAKE_DRIVER;
+    delete process.env.NODE_ENV;
+    assert.strictEqual(isFakeDriverAllowed(), true);
+
+    process.env.NODE_ENV = 'development';
+    assert.strictEqual(isFakeDriverAllowed(), true);
+
+    process.env.NODE_ENV = 'production';
+    assert.strictEqual(isFakeDriverAllowed(), false);
+
+    process.env.ALLOW_FAKE_DRIVER = 'false';
+    assert.strictEqual(isFakeDriverAllowed(), false);
+
+    process.env.ALLOW_FAKE_DRIVER = '0';
+    assert.strictEqual(isFakeDriverAllowed(), false);
+
+    process.env.ALLOW_FAKE_DRIVER = 'true';
+    assert.strictEqual(isFakeDriverAllowed(), true);
+
+    process.env.ALLOW_FAKE_DRIVER = '1';
+    assert.strictEqual(isFakeDriverAllowed(), true);
+  } finally {
+    if (savedNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = savedNodeEnv;
+    }
+    if (savedAllowFake === undefined) {
+      delete process.env.ALLOW_FAKE_DRIVER;
+    } else {
+      process.env.ALLOW_FAKE_DRIVER = savedAllowFake;
+    }
+  }
+});
+
+test('WebSocket connection to /console with host_driver=fake closes with 1008 when disabled in production', async () => {
+  const savedNodeEnv = process.env.NODE_ENV;
+  const savedAllowFake = process.env.ALLOW_FAKE_DRIVER;
+  const savedAppKey = process.env.APP_KEY;
+  const ticket = 'fake-driver-guard-ticket-123456';
+  const payload = {
+    session_id: 'sess-fake-guard-1',
+    virtual_machine_id: 99,
+    host_driver: 'fake',
+    driver: 'exec',
+    instance_type: 'container',
+  };
+
+  process.env.APP_KEY = 'base64:' + Buffer.alloc(32, 7).toString('base64');
+  const encryptedPayload = encryptTicketPayload(payload, ticket);
+
+  const hdelCalls = [];
+  const restoreRedis = stubRedis({
+    status: 'ready',
+    call: async (cmd, key) => {
+      if (cmd === 'GETDEL' && key.endsWith(`console:ticket:${ticket}`)) {
+        return encryptedPayload;
+      }
+      return null;
+    },
+    hdel: async (key, field) => {
+      hdelCalls.push({ key, field });
+      return 1;
+    },
+  });
+
+  try {
+    process.env.NODE_ENV = 'production';
+    process.env.ALLOW_FAKE_DRIVER = 'false';
+
+    const address = server.address();
+    const port = address.port;
+    const receivedMessages = [];
+
+    const closeEvent = await new Promise((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${port}/console?ticket=${ticket}`);
+      ws.on('message', (data) => {
+        receivedMessages.push(data.toString('utf8'));
+      });
+      ws.on('close', (code, reason) => {
+        resolve({ code, reason: reason.toString('utf8') });
+      });
+      ws.on('error', reject);
+    });
+
+    assert.strictEqual(closeEvent.code, 1008);
+    assert.strictEqual(closeEvent.reason, 'Fake hypervisor driver is disabled');
+    assert.strictEqual(receivedMessages.length, 0, 'Should not emit fake terminal prompt when disabled');
+    assert.ok(hdelCalls.some((c) => c.field === payload.session_id), 'Should clean up Redis session record');
+  } finally {
+    restoreRedis();
+    if (savedNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = savedNodeEnv;
+    }
+    if (savedAllowFake === undefined) {
+      delete process.env.ALLOW_FAKE_DRIVER;
+    } else {
+      process.env.ALLOW_FAKE_DRIVER = savedAllowFake;
+    }
+    if (savedAppKey === undefined) {
+      delete process.env.APP_KEY;
+    } else {
+      process.env.APP_KEY = savedAppKey;
+    }
+  }
+});
+
+test('encryptTicketPayload and decryptTicketPayload round-trip AES-256-GCM with ticket AAD and APP_PREVIOUS_KEYS rotation', () => {
+  const savedAppKey = process.env.APP_KEY;
+  const savedPreviousKeys = process.env.APP_PREVIOUS_KEYS;
+
+  try {
+    const oldKey = 'base64:' + Buffer.alloc(32, 11).toString('base64');
+    const newKey = 'base64:' + Buffer.alloc(32, 22).toString('base64');
+    const ticket = 'roundtrip-aad-ticket-1234567890';
+    const samplePayload = {
+      session_id: 'sess-enc-1',
+      virtual_machine_id: 42,
+      client_private_key: 'SECRET-PEM-PRIVATE-KEY-CONTENT',
+    };
+
+    process.env.APP_KEY = oldKey;
+    delete process.env.APP_PREVIOUS_KEYS;
+
+    const rawEnvelope = encryptTicketPayload(samplePayload, ticket);
+    assert.ok(!rawEnvelope.includes('SECRET-PEM-PRIVATE-KEY-CONTENT'), 'Ciphertext must not leak plaintext secret');
+
+    const parsedEnvelope = JSON.parse(rawEnvelope);
+    assert.strictEqual(parsedEnvelope.v, 1);
+    assert.strictEqual(parsedEnvelope.alg, 'AES-256-GCM');
+    assert.strictEqual(typeof parsedEnvelope.iv, 'string');
+    assert.strictEqual(typeof parsedEnvelope.tag, 'string');
+    assert.strictEqual(typeof parsedEnvelope.ct, 'string');
+
+    // Decryption succeeds with matching APP_KEY and ticket
+    assert.deepStrictEqual(decryptTicketPayload(rawEnvelope, ticket), samplePayload);
+
+    // Key rotation: old key moved to APP_PREVIOUS_KEYS, new key active in APP_KEY
+    process.env.APP_KEY = newKey;
+    process.env.APP_PREVIOUS_KEYS = oldKey;
+    assert.deepStrictEqual(decryptTicketPayload(rawEnvelope, ticket), samplePayload);
+
+    // Mismatched ticket AAD throws
+    assert.throws(
+      () => decryptTicketPayload(rawEnvelope, 'different-ticket-1234567890'),
+      /Failed to decrypt or authenticate/
+    );
+
+    // Tampered ciphertext throws
+    const ctBuf = Buffer.from(parsedEnvelope.ct, 'base64');
+    ctBuf[0] ^= 0xff;
+    const tamperedCt = JSON.stringify({ ...parsedEnvelope, ct: ctBuf.toString('base64') });
+    assert.throws(() => decryptTicketPayload(tamperedCt, ticket), /Failed to decrypt or authenticate/);
+
+    // Tampered auth tag throws
+    const tagBuf = Buffer.from(parsedEnvelope.tag, 'base64');
+    tagBuf[0] ^= 0xff;
+    const tamperedTag = JSON.stringify({ ...parsedEnvelope, tag: tagBuf.toString('base64') });
+    assert.throws(() => decryptTicketPayload(tamperedTag, ticket), /Failed to decrypt or authenticate/);
+
+    // Plaintext JSON envelope throws
+    assert.throws(
+      () => decryptTicketPayload(JSON.stringify(samplePayload), ticket),
+      /Unencrypted or invalid ticket envelope/
+    );
+  } finally {
+    if (savedAppKey === undefined) {
+      delete process.env.APP_KEY;
+    } else {
+      process.env.APP_KEY = savedAppKey;
+    }
+    if (savedPreviousKeys === undefined) {
+      delete process.env.APP_PREVIOUS_KEYS;
+    } else {
+      process.env.APP_PREVIOUS_KEYS = savedPreviousKeys;
+    }
+  }
+});
+
+test('WebSocket upgrade to /console returns 403 Forbidden when ticket payload is unencrypted or tampered', async () => {
+  const savedAppKey = process.env.APP_KEY;
+  const savedPreviousKeys = process.env.APP_PREVIOUS_KEYS;
+
+  try {
+    process.env.APP_KEY = 'base64:' + Buffer.alloc(32, 33).toString('base64');
+    delete process.env.APP_PREVIOUS_KEYS;
+
+    const plaintextTicket = 'plaintext-ticket-value-123456';
+    const tamperedTicket = 'tampered-ticket-value-1234567';
+
+    const validEnvelope = JSON.parse(
+      encryptTicketPayload({ session_id: 's-tamper', virtual_machine_id: 5 }, tamperedTicket)
+    );
+    const ctBuf = Buffer.from(validEnvelope.ct, 'base64');
+    ctBuf[0] ^= 0xff;
+    const tamperedEnvelope = JSON.stringify({ ...validEnvelope, ct: ctBuf.toString('base64') });
+
+    const restoreRedis = stubRedis({
+      status: 'ready',
+      call: async (cmd, key) => {
+        if (cmd === 'GETDEL' && key.endsWith(`console:ticket:${plaintextTicket}`)) {
+          return JSON.stringify({ session_id: 's-plain', virtual_machine_id: 4 });
+        }
+        if (cmd === 'GETDEL' && key.endsWith(`console:ticket:${tamperedTicket}`)) {
+          return tamperedEnvelope;
+        }
+        return null;
+      },
+    });
+
+    try {
+      const port = server.address().port;
+
+      for (const ticket of [plaintextTicket, tamperedTicket]) {
+        await new Promise((resolve) => {
+          const ws = new WebSocket(`ws://127.0.0.1:${port}/console?ticket=${ticket}`);
+          ws.on('unexpected-response', (_req, res) => {
+            assert.strictEqual(res.statusCode, 403);
+            res.resume();
+            resolve();
+          });
+          ws.on('error', (err) => {
+            assert.ok(
+              err.message.includes('403') || err.message.includes('Unexpected server response'),
+              `Expected 403 error, got: ${err.message}`
+            );
+            resolve();
+          });
+          ws.on('open', () => {
+            assert.fail(`Should not allow WebSocket upgrade for invalid ticket ${ticket}`);
+          });
+        });
+      }
+    } finally {
+      restoreRedis();
+    }
+  } finally {
+    if (savedAppKey === undefined) {
+      delete process.env.APP_KEY;
+    } else {
+      process.env.APP_KEY = savedAppKey;
+    }
+    if (savedPreviousKeys === undefined) {
+      delete process.env.APP_PREVIOUS_KEYS;
+    } else {
+      process.env.APP_PREVIOUS_KEYS = savedPreviousKeys;
+    }
   }
 });
 
