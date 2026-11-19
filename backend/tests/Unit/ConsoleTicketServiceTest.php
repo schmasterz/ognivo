@@ -299,6 +299,7 @@ final class ConsoleTicketServiceTest extends TestCase
         $expiredOpId = 'op-upstream-idle-123';
         $vmSessionsKey = sprintf('console:vm_sessions:%d', $this->vm->id);
 
+        $now = microtime(true);
         $expiredRecord = [
             'session_id' => $expiredSessionId,
             'virtual_machine_id' => $this->vm->id,
@@ -306,8 +307,8 @@ final class ConsoleTicketServiceTest extends TestCase
             'driver' => 'console',
             'console_type' => 'console',
             'operation_id' => $expiredOpId,
-            'opened_at' => microtime(true) - 1000,
-            'last_activity_at' => microtime(true) - 800,
+            'opened_at' => $now - 1000,
+            'last_activity_at' => $now - 800,
             'close_token' => 'dummy-close-token',
         ];
 
@@ -349,6 +350,7 @@ final class ConsoleTicketServiceTest extends TestCase
         $expiredOpId = 'op-unredeemed-123';
         $vmSessionsKey = sprintf('console:vm_sessions:%d', $this->vm->id);
 
+        $now = microtime(true);
         $expiredRecord = [
             'session_id' => $expiredSessionId,
             'virtual_machine_id' => $this->vm->id,
@@ -356,9 +358,9 @@ final class ConsoleTicketServiceTest extends TestCase
             'driver' => 'console',
             'console_type' => 'console',
             'operation_id' => $expiredOpId,
-            'opened_at' => microtime(true) - 70,
-            'last_activity_at' => microtime(true) - 70,
-            'ticket_expires_at' => microtime(true) - 10,
+            'opened_at' => $now - 70,
+            'last_activity_at' => $now - 70,
+            'ticket_expires_at' => $now - 10,
             'redeemed_at' => null,
             'close_token' => 'dummy-close-token',
         ];
@@ -389,6 +391,7 @@ final class ConsoleTicketServiceTest extends TestCase
         $activeSessionId = 'active-refreshed-session-uuid-1';
         $vmSessionsKey = sprintf('console:vm_sessions:%d', $this->vm->id);
 
+        $now = microtime(true);
         $activeRecord = [
             'session_id' => $activeSessionId,
             'virtual_machine_id' => $this->vm->id,
@@ -396,9 +399,9 @@ final class ConsoleTicketServiceTest extends TestCase
             'driver' => 'console',
             'console_type' => 'console',
             'operation_id' => 'op-active-123',
-            'opened_at' => microtime(true) - 1000,
-            'last_activity_at' => microtime(true) - 20,
-            'redeemed_at' => microtime(true) - 995,
+            'opened_at' => $now - 1000,
+            'last_activity_at' => $now - 20,
+            'redeemed_at' => $now - 995,
             'close_token' => 'dummy-close-token',
         ];
 
