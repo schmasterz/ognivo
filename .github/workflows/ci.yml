@@ -58,6 +58,8 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    env:
+      DB_CONNECTION: sqlite
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -86,6 +88,8 @@ jobs:
 
       - name: OpenAPI specification analysis & export (Scramble)
         run: |
+          touch database/database.sqlite
+          php artisan migrate --force
           php artisan scramble:analyze
           php artisan scramble:export --path=api.json
 
