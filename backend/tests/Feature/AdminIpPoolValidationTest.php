@@ -359,4 +359,192 @@ final class AdminIpPoolValidationTest extends TestCase
         $pool->refresh();
         $this->assertSame('eth0', $pool->parent_interface);
     }
+
+    public function test_creating_bridged_or_macvlan_pool_without_gateway_returns_422(): void
+    {
+        Sanctum::actingAs($this->admin);
+
+        $this->postJson('/api/admin/ip-pools', [
+            'name' => 'Bridged Missing Gateway',
+            'host_id' => $this->host->id,
+            'cidr' => '198.51.110.0/24',
+            'network_mode' => 'bridged',
+            'parent_interface' => 'incusbr0',
+        ])->assertStatus(422)->assertJsonValidationErrors(['gateway']);
+
+        $this->postJson('/api/admin/ip-pools', [
+            'name' => 'Macvlan Missing Gateway',
+            'host_id' => $this->host->id,
+            'cidr' => '198.51.111.0/24',
+            'network_mode' => 'macvlan',
+            'parent_interface' => 'eno1',
+        ])->assertStatus(422)->assertJsonValidationErrors(['gateway']);
+    }
+
+    public function test_creating_l2_pool_with_slash_31_or_32_returns_422_on_cidr(): void
+    {
+        Sanctum::actingAs($this->admin);
+
+        $this->postJson('/api/admin/ip-pools', [
+            'name' => 'Macvlan Slash 32',
+            'host_id' => $this->host->id,
+            'cidr' => '198.51.112.10/32',
+            'gateway' => '198.51.112.10',
+            'network_mode' => 'macvlan',
+            'parent_interface' => 'eno1',
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors(['cidr'])
+            ->assertJsonPath('errors.cidr.0', 'Layer-2 pool modes require a prefix between /16 and /30.');
+
+        $this->postJson('/api/admin/ip-pools', [
+            'name' => 'Bridged Slash 31',
+            'host_id' => $this->host->id,
+            'cidr' => '198.51.112.12/31',
+            'gateway' => '198.51.112.12',
+            'network_mode' => 'bridged',
+            'parent_interface' => 'incusbr0',
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors(['cidr'])
+            ->assertJsonPath('errors.cidr.0', 'Layer-2 pool modes require a prefix between /16 and /30.');
+    }
+
+    public function test_creating_bridged_pool_with_invalid_gateway_returns_422(): void
+    {
+        Sanctum::actingAs($this->admin);
+
+        // Gateway outside CIDR
+        $this->postJson('/api/admin/ip-pools', [
+            'name' => 'Bridged Outside Gateway',
+            'host_id' => $this->host->id,
+            'cidr' => '198.51.113.0/24',
+            'gateway' => '198.51.114.1',
+            'network_mode' => 'bridged',
+            'parent_interface' => 'incusbr0',
+        ])->assertStatus(422)->assertJsonValidationErrors(['gateway']);
+
+        // Gateway equals network address
+        $this->postJson('/api/admin/ip-pools', [
+            'name' => 'Bridged Network Gateway',
+            'host_id' => $this->host->id,
+            'cidr' => '198.51.113.0/24',
+            'gateway' => '198.51.113.0',
+            'network_mode' => 'bridged',
+            'parent_interface' => 'incusbr0',
+        ])->assertStatus(422)->assertJsonValidationErrors(['gateway']);
+
+        // Gateway equals broadcast address
+        $this->postJson('/api/admin/ip-pools', [
+            'name' => 'Bridged Broadcast Gateway',
+            'host_id' => $this->host->id,
+            'cidr' => '198.51.113.0/24',
+            'gateway' => '198.51.113.255',
+            'network_mode' => 'bridged',
+            'parent_interface' => 'incusbr0',
+        ])->assertStatus(422)->assertJsonValidationErrors(['gateway']);
+
+        // IPv6 gateway rejected
+        $this->postJson('/api/admin/ip-pools', [
+            'name' => 'Bridged IPv6 Gateway',
+            'host_id' => $this->host->id,
+            'cidr' => '198.51.113.0/24',
+            'gateway' => '2001:db8::1',
+            'network_mode' => 'bridged',
+            'parent_interface' => 'incusbr0',
+        ])->assertStatus(422)->assertJsonValidationErrors(['gateway']);
+    }
+
+    public function test_creating_valid_bridged_pool_returns_201_and_routed_24_behaviour_unchanged(): void
+    {
+        Sanctum::actingAs($this->admin);
+
+        $bridgedResponse = $this->postJson('/api/admin/ip-pools', [
+            'name' => 'Valid Bridged Pool',
+            'host_id' => $this->host->id,
+            'cidr' => '198.51.115.0/24',
+            'gateway' => '198.51.115.1',
+            'network_mode' => 'bridged',
+            'parent_interface' => 'incusbr0',
+        ]);
+
+        $bridgedResponse->assertCreated();
+        $bridgedResponse->assertJsonPath('pool.network_mode', 'bridged');
+        $bridgedResponse->assertJsonPath('pool.gateway', '198.51.115.1');
+
+        // Routed /24 without gateway still 422; routed /24 with gateway 201; routed /32 without gateway 201
+        $this->postJson('/api/admin/ip-pools', [
+            'name' => 'Routed 24 Missing Gateway',
+            'host_id' => $this->host->id,
+            'cidr' => '198.51.116.0/24',
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+        ])->assertStatus(422)->assertJsonValidationErrors(['gateway']);
+
+        $this->postJson('/api/admin/ip-pools', [
+            'name' => 'Routed 24 Valid',
+            'host_id' => $this->host->id,
+            'cidr' => '198.51.116.0/24',
+            'gateway' => '198.51.116.1',
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+        ])->assertCreated();
+
+        $this->postJson('/api/admin/ip-pools', [
+            'name' => 'Routed 32 Without Gateway',
+            'host_id' => $this->host->id,
+            'cidr' => '198.51.117.10/32',
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+        ])->assertCreated();
+    }
+
+    public function test_updating_routed_pool_without_allocations_to_macvlan_without_gateway_returns_422(): void
+    {
+        Sanctum::actingAs($this->admin);
+
+        $routedPoolWithoutGateway = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Routed No Gateway',
+            'cidr' => '10.200.0.0/24',
+            'first_usable' => '10.200.0.10',
+            'last_usable' => '10.200.0.100',
+            'gateway' => null,
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+        ]);
+
+        $this->putJson(sprintf('/api/admin/ip-pools/%d', $routedPoolWithoutGateway->id), [
+            'network_mode' => 'macvlan',
+            'parent_interface' => 'eno1',
+        ])->assertStatus(422)->assertJsonValidationErrors(['gateway']);
+
+        $routedPoolWithoutGateway->refresh();
+        $this->assertSame('routed', $routedPoolWithoutGateway->network_mode);
+    }
+
+    public function test_updating_bridged_pool_clearing_gateway_returns_422(): void
+    {
+        Sanctum::actingAs($this->admin);
+
+        $bridgedPool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Bridged Pool',
+            'cidr' => '10.201.0.0/24',
+            'first_usable' => '10.201.0.10',
+            'last_usable' => '10.201.0.100',
+            'gateway' => '10.201.0.1',
+            'network_mode' => 'bridged',
+            'parent_interface' => 'incusbr0',
+        ]);
+
+        $this->putJson(sprintf('/api/admin/ip-pools/%d', $bridgedPool->id), [
+            'gateway' => null,
+        ])->assertStatus(422)->assertJsonValidationErrors(['gateway']);
+
+        $this->putJson(sprintf('/api/admin/ip-pools/%d', $bridgedPool->id), [
+            'gateway' => '',
+        ])->assertStatus(422)->assertJsonValidationErrors(['gateway']);
+
+        $bridgedPool->refresh();
+        $this->assertSame('10.201.0.1', $bridgedPool->gateway);
+    }
 }

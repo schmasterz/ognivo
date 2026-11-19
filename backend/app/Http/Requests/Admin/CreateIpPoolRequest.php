@@ -84,6 +84,14 @@ final class CreateIpPoolRequest extends FormRequest
                 return;
             }
 
+            $rawMode = $this->input('network_mode');
+            $networkMode = is_string($rawMode) && $rawMode !== '' ? $rawMode : 'routed';
+            $isL2Mode = in_array($networkMode, ['bridged', 'macvlan'], true);
+
+            if ($isL2Mode && $prefix > 30) {
+                $v->errors()->add('cidr', 'Layer-2 pool modes require a prefix between /16 and /30.');
+            }
+
             $range = CidrHelper::subnetRange($cidr);
             if ($range === null) {
                 $v->errors()->add('cidr', 'Invalid CIDR subnet range.');
@@ -127,14 +135,29 @@ final class CreateIpPoolRequest extends FormRequest
             }
 
             $gateway = $this->input('gateway');
-            if ($prefix <= 30 && (empty($gateway) || ! is_string($gateway))) {
-                $v->errors()->add('gateway', 'Gateway is required for subnets /16 to /30.');
-            }
+            if ($isL2Mode) {
+                if (! is_string($gateway) || trim($gateway) === '') {
+                    $v->errors()->add('gateway', 'Gateway is required for bridged and macvlan pool modes.');
+                } elseif (filter_var($gateway, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false) {
+                    $v->errors()->add('gateway', 'Gateway must be a valid IPv4 address.');
+                } else {
+                    $gwLong = CidrHelper::ipToUnsigned($gateway);
+                    if ($gwLong === null || $gwLong < $network || $gwLong > $broadcast) {
+                        $v->errors()->add('gateway', 'Gateway IP is outside the CIDR subnet.');
+                    } elseif ($prefix <= 30 && ($gwLong === $network || $gwLong === $broadcast)) {
+                        $v->errors()->add('gateway', 'Gateway IP cannot be the network or broadcast address.');
+                    }
+                }
+            } else {
+                if ($prefix <= 30 && (empty($gateway) || ! is_string($gateway))) {
+                    $v->errors()->add('gateway', 'Gateway is required for subnets /16 to /30.');
+                }
 
-            if ($gateway && is_string($gateway)) {
-                $gwLong = CidrHelper::ipToUnsigned($gateway);
-                if ($gwLong === null || $gwLong < $network || $gwLong > $broadcast) {
-                    $v->errors()->add('gateway', 'Gateway IP is outside the CIDR subnet.');
+                if ($gateway && is_string($gateway)) {
+                    $gwLong = CidrHelper::ipToUnsigned($gateway);
+                    if ($gwLong === null || $gwLong < $network || $gwLong > $broadcast) {
+                        $v->errors()->add('gateway', 'Gateway IP is outside the CIDR subnet.');
+                    }
                 }
             }
 
