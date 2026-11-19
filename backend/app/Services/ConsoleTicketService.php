@@ -174,8 +174,19 @@ final class ConsoleTicketService
                 continue;
             }
 
-            $lastActivity = Cast::float($entry['last_activity_at'] ?? $entry['opened_at'] ?? 0);
-            if ($now - $lastActivity >= $idleTimeout) {
+            $openedAt = Cast::float($entry['opened_at'] ?? 0);
+            $lastActivity = Cast::float($entry['last_activity_at'] ?? $openedAt);
+            $ticketExpiresAt = isset($entry['ticket_expires_at']) ? Cast::float($entry['ticket_expires_at']) : null;
+            $isRedeemed = ! empty($entry['redeemed_at']) || ($openedAt > 0 && $lastActivity > $openedAt);
+
+            $pruneReason = null;
+            if (! $isRedeemed && $ticketExpiresAt !== null && $now >= $ticketExpiresAt) {
+                $pruneReason = 'ticket_expired';
+            } elseif ($now - $lastActivity >= $idleTimeout) {
+                $pruneReason = 'idle_timeout';
+            }
+
+            if ($pruneReason !== null) {
                 $deleted = 0;
                 try {
                     $deleted = Cast::int(Redis::hdel($vmSessionsKey, Cast::string($sid)));
@@ -183,7 +194,7 @@ final class ConsoleTicketService
                 } catch (Throwable) {
                 }
                 if ($deleted > 0) {
-                    $this->closeSessionInternal($vm, Cast::string($sid), $entry, 'idle_timeout');
+                    $this->closeSessionInternal($vm, Cast::string($sid), $entry, $pruneReason);
                 }
 
                 continue;
@@ -264,6 +275,8 @@ final class ConsoleTicketService
             'operation_id' => $session['operation_id'],
             'opened_at' => $now,
             'last_activity_at' => $now,
+            'ticket_expires_at' => $now + $ticketTtl,
+            'redeemed_at' => null,
             'close_token' => $closeToken,
         ];
 
@@ -373,6 +386,7 @@ final class ConsoleTicketService
              *
              * @var mixed $raw
              */
+            // @phpstan-ignore argument.type, argument.type
             $raw = Redis::eval($lua, 1, $key);
         }
 
@@ -383,8 +397,31 @@ final class ConsoleTicketService
         try {
             /** @var array<string, mixed>|null $data */
             $data = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+            if (! is_array($data)) {
+                return null;
+            }
 
-            return is_array($data) ? $data : null;
+            if (! empty($data['virtual_machine_id']) && ! empty($data['session_id'])) {
+                try {
+                    $vmSessionsKey = sprintf('console:vm_sessions:%d', Cast::int($data['virtual_machine_id']));
+                    $sessionId = Cast::string($data['session_id']);
+                    /** @var mixed $rawRecord */
+                    $rawRecord = Redis::hget($vmSessionsKey, $sessionId);
+                    if (is_string($rawRecord) && $rawRecord !== '') {
+                        /** @var mixed $record */
+                        $record = json_decode($rawRecord, true, 512, JSON_THROW_ON_ERROR);
+                        if (is_array($record)) {
+                            $redeemedAt = microtime(true);
+                            $record['redeemed_at'] = $redeemedAt;
+                            $record['last_activity_at'] = $redeemedAt;
+                            Redis::hset($vmSessionsKey, $sessionId, json_encode($record, JSON_THROW_ON_ERROR));
+                        }
+                    }
+                } catch (Throwable) {
+                }
+            }
+
+            return $data;
         } catch (Throwable) {
             return null;
         }

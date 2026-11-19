@@ -313,6 +313,87 @@ final class ConsoleTicketServiceTest extends TestCase
         $this->assertGreaterThan(0, $prunedLog->context['duration_seconds'] ?? 0);
     }
 
+    public function test_unredeemed_expired_ticket_is_pruned_after_ticket_ttl_and_releases_console_slot(): void
+    {
+        config([
+            'hypervisor.terminal.ticket_ttl_seconds' => 60,
+            'hypervisor.terminal.idle_timeout_seconds' => 900,
+        ]);
+
+        $fakeDriver = new FakeHypervisorDriver;
+        HypervisorManager::fake($fakeDriver);
+
+        $expiredSessionId = 'unredeemed-expired-session-uuid-1';
+        $expiredOpId = 'op-unredeemed-123';
+        $vmSessionsKey = sprintf('console:vm_sessions:%d', $this->vm->id);
+
+        $expiredRecord = [
+            'session_id' => $expiredSessionId,
+            'virtual_machine_id' => $this->vm->id,
+            'user_id' => $this->owner->id,
+            'driver' => 'console',
+            'console_type' => 'console',
+            'operation_id' => $expiredOpId,
+            'opened_at' => microtime(true) - 70,
+            'last_activity_at' => microtime(true) - 70,
+            'ticket_expires_at' => microtime(true) - 10,
+            'redeemed_at' => null,
+            'close_token' => 'dummy-close-token',
+        ];
+
+        Redis::hset($vmSessionsKey, $expiredSessionId, json_encode($expiredRecord, JSON_THROW_ON_ERROR));
+        Redis::hset('console:session_index', $expiredSessionId, (string) $this->vm->id);
+
+        $newDto = $this->service->issueTicket($this->vm, $this->owner, 'console', preferredDriver: 'console');
+
+        $this->assertSame('console', $newDto->driver);
+        $this->assertContains($expiredOpId, $fakeDriver->cancelledOperations);
+        $this->assertNull(Redis::hget($vmSessionsKey, $expiredSessionId));
+        $this->assertNull(Redis::hget('console:session_index', $expiredSessionId));
+
+        $prunedLog = AuditLog::where('action', AuditAction::TerminalSessionClosed->value)
+            ->where('context->session_id', $expiredSessionId)
+            ->first();
+
+        $this->assertNotNull($prunedLog);
+        $this->assertSame('ticket_expired', $prunedLog->context['reason'] ?? null);
+        $this->assertSame('console', $prunedLog->context['driver'] ?? null);
+    }
+
+    public function test_active_session_with_refreshed_last_activity_at_is_not_pruned_past_initial_idle_timeout(): void
+    {
+        config(['hypervisor.terminal.idle_timeout_seconds' => 300]);
+
+        $activeSessionId = 'active-refreshed-session-uuid-1';
+        $vmSessionsKey = sprintf('console:vm_sessions:%d', $this->vm->id);
+
+        $activeRecord = [
+            'session_id' => $activeSessionId,
+            'virtual_machine_id' => $this->vm->id,
+            'user_id' => $this->owner->id,
+            'driver' => 'console',
+            'console_type' => 'console',
+            'operation_id' => 'op-active-123',
+            'opened_at' => microtime(true) - 1000,
+            'last_activity_at' => microtime(true) - 20,
+            'redeemed_at' => microtime(true) - 995,
+            'close_token' => 'dummy-close-token',
+        ];
+
+        Redis::hset($vmSessionsKey, $activeSessionId, json_encode($activeRecord, JSON_THROW_ON_ERROR));
+        Redis::hset('console:session_index', $activeSessionId, (string) $this->vm->id);
+
+        try {
+            $this->service->issueTicket($this->vm, $this->owner, 'console', preferredDriver: 'console');
+            $this->fail('Expected HttpException(409) when active serial console session has recent activity');
+        } catch (HttpException $e) {
+            $this->assertSame(409, $e->getStatusCode());
+            $this->assertSame('A serial console session is already active for this instance.', $e->getMessage());
+        }
+
+        $this->assertNotNull(Redis::hget($vmSessionsKey, $activeSessionId));
+    }
+
     public function test_close_session_removes_from_redis_cancels_operation_and_records_audit(): void
     {
         $fakeDriver = new FakeHypervisorDriver;
@@ -389,10 +470,30 @@ final class ConsoleTicketServiceTest extends TestCase
     public function test_single_use_ticket_redemption(): void
     {
         $ticket = 'test-ticket-single-use-12345';
+        $sessionId = 'single-use-session-uuid-1';
+        $initialTime = microtime(true) - 5.0;
+        $vmSessionsKey = sprintf('console:vm_sessions:%d', $this->vm->id);
+
+        $sessionRecord = [
+            'session_id' => $sessionId,
+            'virtual_machine_id' => $this->vm->id,
+            'user_id' => $this->owner->id,
+            'driver' => 'exec',
+            'console_type' => 'console',
+            'operation_id' => 'op-single-use-1',
+            'opened_at' => $initialTime,
+            'last_activity_at' => $initialTime,
+            'ticket_expires_at' => $initialTime + 60.0,
+            'redeemed_at' => null,
+            'close_token' => 'dummy-close-token',
+        ];
+        Redis::hset($vmSessionsKey, $sessionId, json_encode($sessionRecord, JSON_THROW_ON_ERROR));
+
         $payload = [
             'user_id' => $this->owner->id,
             'virtual_machine_id' => $this->vm->id,
             'console_type' => 'console',
+            'session_id' => $sessionId,
         ];
 
         $this->fakeRedis->setex('console:ticket:'.$ticket, 60, (string) json_encode($payload));
@@ -400,6 +501,15 @@ final class ConsoleTicketServiceTest extends TestCase
         $result = $this->service->redeemTicket($ticket);
         $this->assertNotNull($result);
         $this->assertSame($this->owner->id, $result['user_id']);
+
+        $rawUpdated = Redis::hget($vmSessionsKey, $sessionId);
+        $this->assertIsString($rawUpdated);
+        /** @var array<string, mixed> $updatedRecord */
+        $updatedRecord = json_decode($rawUpdated, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertNotNull($updatedRecord['redeemed_at'] ?? null);
+        $this->assertGreaterThan($initialTime, $updatedRecord['redeemed_at']);
+        $this->assertNotNull($updatedRecord['last_activity_at'] ?? null);
+        $this->assertGreaterThan($initialTime, $updatedRecord['last_activity_at']);
 
         // Subsequent redemption returns null
         $secondResult = $this->service->redeemTicket($ticket);
