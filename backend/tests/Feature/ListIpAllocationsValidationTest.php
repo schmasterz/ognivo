@@ -105,15 +105,15 @@ test('GET /api/ips preserves default pagination and response shape', function ()
         ->assertJsonStructure([
             'data',
             'meta' => ['current_page', 'last_page', 'per_page', 'total', 'from', 'to'],
-            'current_page',
-            'last_page',
-            'per_page',
-            'total',
         ])
+        ->assertJsonPath('meta.current_page', 1)
+        ->assertJsonPath('meta.last_page', 1)
         ->assertJsonPath('meta.per_page', 10)
-        ->assertJsonPath('per_page', 10)
         ->assertJsonPath('meta.total', 3)
-        ->assertJsonPath('total', 3);
+        ->assertJsonMissingPath('current_page')
+        ->assertJsonMissingPath('last_page')
+        ->assertJsonMissingPath('per_page')
+        ->assertJsonMissingPath('total');
 });
 
 test('GET /api/ips works with each valid filter', function (): void {
@@ -162,10 +162,12 @@ test('GET /api/ips works with each valid filter', function (): void {
         ->assertOk()
         ->assertJsonCount(1, 'data')
         ->assertJsonPath('meta.per_page', 1)
-        ->assertJsonPath('per_page', 1)
         ->assertJsonPath('meta.current_page', 2)
-        ->assertJsonPath('current_page', 2)
-        ->assertJsonPath('meta.total', 3);
+        ->assertJsonPath('meta.total', 3)
+        ->assertJsonMissingPath('current_page')
+        ->assertJsonMissingPath('last_page')
+        ->assertJsonMissingPath('per_page')
+        ->assertJsonMissingPath('total');
 
     $this->getJson('/api/ips?per_page=100')
         ->assertOk()

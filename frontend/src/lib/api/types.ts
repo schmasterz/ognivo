@@ -301,6 +301,11 @@ export interface PaginatedResponse<T> {
   total: number;
 }
 
+export interface MetaPaginatedResponse<T> {
+  data: T[];
+  meta: PaginationMeta;
+}
+
 export interface TenantIpPool {
   id: number;
   name: string;

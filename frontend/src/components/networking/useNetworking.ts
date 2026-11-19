@@ -111,17 +111,17 @@ export function useNetworking({
 
   const ipsMeta = useMemo(() => {
     return {
-      current_page: ipsRes?.meta?.current_page ?? ipsRes?.current_page ?? ipsPage,
-      last_page: ipsRes?.meta?.last_page ?? ipsRes?.last_page ?? 1,
-      total: ipsRes?.meta?.total ?? ipsRes?.total ?? ips.length,
+      current_page: ipsRes?.meta?.current_page ?? ipsPage,
+      last_page: ipsRes?.meta?.last_page ?? 1,
+      total: ipsRes?.meta?.total ?? ips.length,
     };
   }, [ipsRes, ipsPage, ips.length]);
 
   const poolsMeta = useMemo(() => {
     return {
-      current_page: poolsRes?.meta?.current_page ?? poolsRes?.current_page ?? poolsPage,
-      last_page: poolsRes?.meta?.last_page ?? poolsRes?.last_page ?? 1,
-      total: poolsRes?.meta?.total ?? poolsRes?.total ?? pools.length,
+      current_page: poolsRes?.meta?.current_page ?? poolsPage,
+      last_page: poolsRes?.meta?.last_page ?? 1,
+      total: poolsRes?.meta?.total ?? pools.length,
     };
   }, [poolsRes, poolsPage, pools.length]);
 

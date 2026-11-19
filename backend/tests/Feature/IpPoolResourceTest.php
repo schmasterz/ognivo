@@ -147,4 +147,52 @@ final class IpPoolResourceTest extends TestCase
         $this->assertNull($emptyArray['parent_interface']);
         $this->assertSame('eno1', $setArray['parent_interface']);
     }
+
+    public function test_ip_pool_endpoints_return_only_meta_pagination_without_duplicate_root_keys(): void
+    {
+        IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Paginated Pool A',
+            'cidr' => '10.202.0.0/24',
+            'first_usable' => '10.202.0.10',
+            'last_usable' => '10.202.0.50',
+            'gateway' => '10.202.0.1',
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+            'active' => true,
+        ]);
+
+        IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Paginated Pool B',
+            'cidr' => '10.203.0.0/24',
+            'first_usable' => '10.203.0.10',
+            'last_usable' => '10.203.0.50',
+            'gateway' => '10.203.0.1',
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+            'active' => true,
+        ]);
+
+        Sanctum::actingAs($this->admin);
+
+        foreach (['/api/admin/ip-pools?per_page=1&page=1', '/api/ip-pools?per_page=1&page=1'] as $endpoint) {
+            $response = $this->getJson($endpoint);
+
+            $response->assertOk()
+                ->assertJsonCount(1, 'data')
+                ->assertJsonStructure([
+                    'data',
+                    'meta' => ['current_page', 'last_page', 'per_page', 'total', 'from', 'to'],
+                ])
+                ->assertJsonPath('meta.current_page', 1)
+                ->assertJsonPath('meta.last_page', 2)
+                ->assertJsonPath('meta.per_page', 1)
+                ->assertJsonPath('meta.total', 2)
+                ->assertJsonMissingPath('current_page')
+                ->assertJsonMissingPath('last_page')
+                ->assertJsonMissingPath('per_page')
+                ->assertJsonMissingPath('total');
+        }
+    }
 }
