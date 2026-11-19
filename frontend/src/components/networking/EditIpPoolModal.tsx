@@ -12,6 +12,14 @@ interface EditIpPoolModalProps {
   onSuccess: (updatedPool: IpPool) => void;
 }
 
+function parseCidrPrefix(cidr: string): number | null {
+  const parts = cidr.trim().split("/");
+  if (parts.length !== 2 || !/^\d+$/.test(parts[1])) return null;
+  const prefix = parseInt(parts[1], 10);
+  if (isNaN(prefix) || prefix < 0 || prefix > 32) return null;
+  return prefix;
+}
+
 export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalProps) {
   const { t } = useI18n();
 
@@ -95,6 +103,18 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
     const trimmedParentInterface = parentInterface.trim();
     if (networkMode !== "manual" && !trimmedParentInterface) {
       setError(t("parentInterfaceRequired"));
+      return;
+    }
+
+    const isL2Mode = networkMode === "bridged" || networkMode === "macvlan";
+    const cidrPrefix = parseCidrPrefix(pool.cidr || pool.subnet || "");
+    if (isL2Mode && (cidrPrefix === 31 || cidrPrefix === 32)) {
+      setError(t("l2ModePrefixUnsupported"));
+      return;
+    }
+
+    if (isL2Mode && !gateway.trim()) {
+      setError(t("gatewayRequiredForL2Modes"));
       return;
     }
 
@@ -216,9 +236,9 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
                 onChange={(e) => setNetworkMode(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 disabled:opacity-60"
               >
-                <option value="routed">{t("modeRouted")} (L3 /32 Link-Local)</option>
-                <option value="bridged">Bridged (L2 Bridge / NAT Bridge)</option>
-                <option value="macvlan">Macvlan (L2 Direct Physical NIC)</option>
+                <option value="routed">{t("modeRoutedOption")}</option>
+                <option value="bridged">{t("modeBridgedOption")}</option>
+                <option value="macvlan">{t("modeMacvlanOption")}</option>
                 <option value="manual">{t("modeManual")}</option>
               </select>
             </div>
@@ -303,10 +323,14 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
 
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                Gateway IP
+                {t("gatewayIpLabel")}{" "}
+                {(networkMode === "bridged" || networkMode === "macvlan") && (
+                  <span className="text-red-500">*</span>
+                )}
               </label>
               <input
                 type="text"
+                required={networkMode === "bridged" || networkMode === "macvlan"}
                 value={gateway}
                 onChange={(e) => setGateway(e.target.value)}
                 placeholder="203.0.113.1"
