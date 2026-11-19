@@ -12,6 +12,7 @@ use App\Models\IpPool;
 use App\Services\IpManagementService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Spatie\RouteAttributes\Attributes\Delete;
 use Spatie\RouteAttributes\Attributes\Get;
 use Spatie\RouteAttributes\Attributes\Middleware;
@@ -107,5 +108,35 @@ final class AdminIpPoolController extends Controller
         $result = $this->ipService->preflightPool($ipPool);
 
         return response()->json($result);
+    }
+
+    /**
+     * Get pool details with paginated IP addresses and their states.
+     */
+    #[Get('{ipPool}/addresses', name: 'admin.ip-pools.addresses')]
+    public function addresses(Request $request, IpPool $ipPool): JsonResponse
+    {
+        $request->validate([
+            'state' => ['nullable', 'string', Rule::in(['all', 'free', 'allocated', 'cooling', 'excluded'])],
+            'search' => ['nullable', 'string', 'max:32'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+
+        $state = $request->filled('state') ? $request->string('state')->value() : 'all';
+        $search = $request->filled('search') ? trim($request->string('search')->value()) : null;
+        if ($search === '') {
+            $search = null;
+        }
+        $page = $request->filled('page') ? $request->integer('page') : 1;
+        $perPage = $request->filled('per_page') ? $request->integer('per_page') : 50;
+
+        $result = $this->ipService->paginatePoolAddresses($ipPool, $state, $search, $page, $perPage);
+
+        return response()->json([
+            'pool' => new IpPoolResource($ipPool),
+            'data' => $result['data'],
+            'meta' => $result['meta'],
+        ]);
     }
 }

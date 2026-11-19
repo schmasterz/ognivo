@@ -575,6 +575,541 @@ final class IpManagementService
     }
 
     /**
+     * Paginate addresses within an IP pool including free, allocated, cooling, and excluded entries.
+     *
+     * @return array{
+     *     data: list<array{
+     *         ip: string,
+     *         state: 'free'|'allocated'|'cooling'|'excluded',
+     *         is_gateway: bool,
+     *         cooldown_remaining_seconds: int,
+     *         allocation: array{
+     *             id: int,
+     *             mac_address: string|null,
+     *             status: string,
+     *             allocated_at: string|null,
+     *             released_at: string|null,
+     *             virtual_machine: array{id: int, name: string, status: string}|null,
+     *             user: array{id: int, name: string, email: string}|null,
+     *         }|null,
+     *     }>,
+     *     meta: array{
+     *         current_page: int,
+     *         last_page: int,
+     *         per_page: int,
+     *         total: int,
+     *         from: int|null,
+     *         to: int|null,
+     *     },
+     * }
+     */
+    public function paginatePoolAddresses(
+        IpPool $pool,
+        string $state = 'all',
+        ?string $search = null,
+        int $page = 1,
+        int $perPage = 50,
+    ): array {
+        $pool->loadMissing('host');
+        $this->attachUtilizationToPools([$pool]);
+
+        $page = max(1, $page);
+        $perPage = max(1, min(100, $perPage));
+        $normalizedSearch = $search !== null ? trim($search) : '';
+
+        $firstLong = CidrHelper::ipToUnsigned($pool->first_usable);
+        $lastLong = CidrHelper::ipToUnsigned($pool->last_usable);
+
+        if ($firstLong === null || $lastLong === null || $lastLong < $firstLong) {
+            return [
+                'data' => [],
+                'meta' => $this->buildPoolAddressPaginationMeta(0, $page, $perPage, 0),
+            ];
+        }
+
+        $nonFreeMap = $this->buildNonFreePoolAddressMap($pool, $firstLong, $lastLong);
+        $offset = ($page - 1) * $perPage;
+
+        if ($normalizedSearch === '') {
+            if ($state === 'all') {
+                $total = ($lastLong - $firstLong) + 1;
+                $items = $this->sliceAllPoolAddresses($firstLong, $lastLong, $nonFreeMap, $offset, $perPage);
+            } elseif ($state === 'free') {
+                $nonFreeLongs = array_keys($nonFreeMap);
+                $total = max(0, (($lastLong - $firstLong) + 1) - count($nonFreeLongs));
+                $items = $this->sliceFreePoolAddresses($firstLong, $lastLong, $nonFreeLongs, $total, $offset, $perPage);
+            } else {
+                $filtered = array_values(array_filter(
+                    $nonFreeMap,
+                    static fn (array $entry): bool => $entry['state'] === $state,
+                ));
+                $total = count($filtered);
+                $items = array_slice($filtered, $offset, $perPage);
+            }
+
+            return [
+                'data' => $items,
+                'meta' => $this->buildPoolAddressPaginationMeta($total, $page, $perPage, count($items)),
+            ];
+        }
+
+        if ($state === 'allocated' || $state === 'cooling' || $state === 'excluded') {
+            $filtered = array_values(array_filter(
+                $nonFreeMap,
+                static fn (array $entry): bool => $entry['state'] === $state && str_starts_with($entry['ip'], $normalizedSearch),
+            ));
+            $total = count($filtered);
+            $items = array_slice($filtered, $offset, $perPage);
+
+            return [
+                'data' => $items,
+                'meta' => $this->buildPoolAddressPaginationMeta($total, $page, $perPage, count($items)),
+            ];
+        }
+
+        [$scanFirst, $scanLast] = $this->narrowPrefixSearchRange($normalizedSearch, $firstLong, $lastLong);
+        $total = 0;
+        $items = [];
+
+        if ($scanFirst <= $scanLast) {
+            for ($ipLong = $scanFirst; $ipLong <= $scanLast; $ipLong++) {
+                if ($state === 'free' && isset($nonFreeMap[$ipLong])) {
+                    continue;
+                }
+
+                $ip = long2ip($ipLong);
+                if (! str_starts_with($ip, $normalizedSearch)) {
+                    continue;
+                }
+
+                if ($total >= $offset && count($items) < $perPage) {
+                    $items[] = $nonFreeMap[$ipLong] ?? $this->makePoolAddressEntry($ip, 'free', false, 0, null);
+                }
+                $total++;
+            }
+        }
+
+        return [
+            'data' => $items,
+            'meta' => $this->buildPoolAddressPaginationMeta($total, $page, $perPage, count($items)),
+        ];
+    }
+
+    /**
+     * Build a sorted map of all non-free (allocated, actively cooling, or excluded) addresses in the pool range.
+     *
+     * @return array<int, array{
+     *     ip: string,
+     *     state: 'free'|'allocated'|'cooling'|'excluded',
+     *     is_gateway: bool,
+     *     cooldown_remaining_seconds: int,
+     *     allocation: array{
+     *         id: int,
+     *         mac_address: string|null,
+     *         status: string,
+     *         allocated_at: string|null,
+     *         released_at: string|null,
+     *         virtual_machine: array{id: int, name: string, status: string}|null,
+     *         user: array{id: int, name: string, email: string}|null,
+     *     }|null,
+     * }>
+     */
+    private function buildNonFreePoolAddressMap(IpPool $pool, int $firstLong, int $lastLong): array
+    {
+        $now = now();
+        $gatewayLong = ($pool->gateway !== null && $pool->gateway !== '')
+            ? CidrHelper::ipToUnsigned($pool->gateway)
+            : null;
+
+        /** @var array<int, true> $excludedSet */
+        $excludedSet = [];
+        if ($gatewayLong !== null && $gatewayLong >= $firstLong && $gatewayLong <= $lastLong) {
+            $excludedSet[$gatewayLong] = true;
+        }
+        if (is_array($pool->excluded_ips)) {
+            foreach ($pool->excluded_ips as $excludedIp) {
+                if ($excludedIp === '') {
+                    continue;
+                }
+                $exLong = CidrHelper::ipToUnsigned($excludedIp);
+                if ($exLong !== null && $exLong >= $firstLong && $exLong <= $lastLong) {
+                    $excludedSet[$exLong] = true;
+                }
+            }
+        }
+
+        $allocations = $pool->allocations()
+            ->with(['virtualMachine:id,name,status', 'user:id,name,email'])
+            ->get();
+
+        /** @var array<string, IpAllocation> $allocationsByIp */
+        $allocationsByIp = [];
+        foreach ($allocations as $allocation) {
+            $allocationsByIp[$allocation->ip_string] = $allocation;
+        }
+
+        $nonFreeMap = [];
+
+        foreach ($allocationsByIp as $ipString => $allocation) {
+            $ipLong = CidrHelper::ipToUnsigned($ipString);
+            if ($ipLong === null || $ipLong < $firstLong || $ipLong > $lastLong) {
+                continue;
+            }
+
+            $isGateway = $gatewayLong !== null && $ipLong === $gatewayLong;
+
+            if ($allocation->status === 'allocated') {
+                $nonFreeMap[$ipLong] = $this->makePoolAddressEntry(
+                    $ipString,
+                    'allocated',
+                    $isGateway,
+                    0,
+                    $this->formatPoolAllocation($allocation),
+                );
+            } elseif ($allocation->status === 'cooling' && $allocation->released_at !== null) {
+                $coolingUntil = $allocation->released_at->copy()->addSeconds($pool->cooldown_seconds);
+                if ($coolingUntil->greaterThan($now)) {
+                    $diff = max(1, (int) ceil($now->diffInSeconds($coolingUntil, false)));
+                    $nonFreeMap[$ipLong] = $this->makePoolAddressEntry(
+                        $ipString,
+                        'cooling',
+                        $isGateway,
+                        $diff,
+                        $this->formatPoolAllocation($allocation),
+                    );
+                }
+            }
+        }
+
+        foreach (array_keys($excludedSet) as $excludedLong) {
+            if (isset($nonFreeMap[$excludedLong])) {
+                continue;
+            }
+
+            $isGateway = $gatewayLong !== null && $excludedLong === $gatewayLong;
+            $nonFreeMap[$excludedLong] = $this->makePoolAddressEntry(
+                long2ip($excludedLong),
+                'excluded',
+                $isGateway,
+                0,
+                null,
+            );
+        }
+
+        ksort($nonFreeMap, SORT_NUMERIC);
+
+        return $nonFreeMap;
+    }
+
+    /**
+     * Slice a page of addresses across the full pool usable range without materializing all IPs.
+     *
+     * @param  array<int, array{
+     *     ip: string,
+     *     state: 'free'|'allocated'|'cooling'|'excluded',
+     *     is_gateway: bool,
+     *     cooldown_remaining_seconds: int,
+     *     allocation: array{
+     *         id: int,
+     *         mac_address: string|null,
+     *         status: string,
+     *         allocated_at: string|null,
+     *         released_at: string|null,
+     *         virtual_machine: array{id: int, name: string, status: string}|null,
+     *         user: array{id: int, name: string, email: string}|null,
+     *     }|null,
+     * }>  $nonFreeMap
+     * @return list<array{
+     *     ip: string,
+     *     state: 'free'|'allocated'|'cooling'|'excluded',
+     *     is_gateway: bool,
+     *     cooldown_remaining_seconds: int,
+     *     allocation: array{
+     *         id: int,
+     *         mac_address: string|null,
+     *         status: string,
+     *         allocated_at: string|null,
+     *         released_at: string|null,
+     *         virtual_machine: array{id: int, name: string, status: string}|null,
+     *         user: array{id: int, name: string, email: string}|null,
+     *     }|null,
+     * }>
+     */
+    private function sliceAllPoolAddresses(
+        int $firstLong,
+        int $lastLong,
+        array $nonFreeMap,
+        int $offset,
+        int $perPage,
+    ): array {
+        $total = ($lastLong - $firstLong) + 1;
+        if ($offset >= $total) {
+            return [];
+        }
+
+        $startLong = $firstLong + $offset;
+        $endLong = min($lastLong, $startLong + $perPage - 1);
+        $items = [];
+
+        for ($ipLong = $startLong; $ipLong <= $endLong; $ipLong++) {
+            $items[] = $nonFreeMap[$ipLong] ?? $this->makePoolAddressEntry(long2ip($ipLong), 'free', false, 0, null);
+        }
+
+        return $items;
+    }
+
+    /**
+     * Slice a page of free addresses using gap-jumping over sorted non-free unsigned IPs.
+     *
+     * @param  list<int>  $nonFreeLongs
+     * @return list<array{
+     *     ip: string,
+     *     state: 'free'|'allocated'|'cooling'|'excluded',
+     *     is_gateway: bool,
+     *     cooldown_remaining_seconds: int,
+     *     allocation: array{
+     *         id: int,
+     *         mac_address: string|null,
+     *         status: string,
+     *         allocated_at: string|null,
+     *         released_at: string|null,
+     *         virtual_machine: array{id: int, name: string, status: string}|null,
+     *         user: array{id: int, name: string, email: string}|null,
+     *     }|null,
+     * }>
+     */
+    private function sliceFreePoolAddresses(
+        int $firstLong,
+        int $lastLong,
+        array $nonFreeLongs,
+        int $totalFree,
+        int $offset,
+        int $perPage,
+    ): array {
+        if ($offset >= $totalFree) {
+            return [];
+        }
+
+        $items = [];
+        $cursor = $firstLong;
+        $skip = $offset;
+        $needed = min($perPage, $totalFree - $offset);
+        $nonFreeIdx = 0;
+        $nonFreeCount = count($nonFreeLongs);
+
+        while ($cursor <= $lastLong && $skip > 0) {
+            if ($nonFreeIdx >= $nonFreeCount) {
+                $cursor += $skip;
+                $skip = 0;
+                break;
+            }
+
+            $blocked = $nonFreeLongs[$nonFreeIdx];
+            if ($blocked < $cursor) {
+                $nonFreeIdx++;
+
+                continue;
+            }
+            if ($blocked === $cursor) {
+                $cursor++;
+                $nonFreeIdx++;
+
+                continue;
+            }
+
+            $gapSize = $blocked - $cursor;
+            if ($skip < $gapSize) {
+                $cursor += $skip;
+                $skip = 0;
+                break;
+            }
+
+            $skip -= $gapSize;
+            $cursor = $blocked + 1;
+            $nonFreeIdx++;
+        }
+
+        while ($cursor <= $lastLong && count($items) < $needed) {
+            if ($nonFreeIdx < $nonFreeCount) {
+                $blocked = $nonFreeLongs[$nonFreeIdx];
+                if ($blocked < $cursor) {
+                    $nonFreeIdx++;
+
+                    continue;
+                }
+                if ($blocked === $cursor) {
+                    $cursor++;
+                    $nonFreeIdx++;
+
+                    continue;
+                }
+                $runEnd = min($lastLong, $blocked - 1);
+            } else {
+                $runEnd = $lastLong;
+            }
+
+            $take = min($needed - count($items), ($runEnd - $cursor) + 1);
+            for ($i = 0; $i < $take; $i++) {
+                $items[] = $this->makePoolAddressEntry(long2ip($cursor + $i), 'free', false, 0, null);
+            }
+            $cursor += $take;
+        }
+
+        return $items;
+    }
+
+    /**
+     * Narrow a usable unsigned IP range using complete leading IPv4 octets from a prefix search.
+     *
+     * @return array{0: int, 1: int}
+     */
+    private function narrowPrefixSearchRange(string $search, int $firstLong, int $lastLong): array
+    {
+        if (preg_match('/^[0-9.]+$/', $search) !== 1) {
+            return [1, 0];
+        }
+
+        $parts = explode('.', $search);
+        if (count($parts) > 4) {
+            return [1, 0];
+        }
+
+        $completeSegments = array_slice($parts, 0, -1);
+        $completeCount = count($completeSegments);
+        $base = 0;
+
+        foreach ($completeSegments as $index => $segment) {
+            if ($segment === '' || ! ctype_digit($segment) || (strlen($segment) > 1 && $segment[0] === '0')) {
+                return [1, 0];
+            }
+
+            $octet = (int) $segment;
+            if ($octet > 255) {
+                return [1, 0];
+            }
+
+            $base |= ($octet << (24 - ($index * 8)));
+        }
+
+        $lastSegment = end($parts);
+        if ($lastSegment !== '') {
+            if (! ctype_digit($lastSegment) || (strlen($lastSegment) > 1 && $lastSegment[0] === '0') || (int) $lastSegment > 255) {
+                return [1, 0];
+            }
+        }
+
+        $remainingBits = 32 - ($completeCount * 8);
+        $suffixMask = $remainingBits === 32 ? 0xFFFFFFFF : ((1 << $remainingBits) - 1);
+
+        return [max($firstLong, $base), min($lastLong, $base | $suffixMask)];
+    }
+
+    /**
+     * Format an IpAllocation record for the pool addresses endpoint.
+     *
+     * @return array{
+     *     id: int,
+     *     mac_address: string|null,
+     *     status: string,
+     *     allocated_at: string|null,
+     *     released_at: string|null,
+     *     virtual_machine: array{id: int, name: string, status: string}|null,
+     *     user: array{id: int, name: string, email: string}|null,
+     * }
+     */
+    private function formatPoolAllocation(IpAllocation $allocation): array
+    {
+        return [
+            'id' => $allocation->id,
+            'mac_address' => $allocation->mac_address,
+            'status' => $allocation->status,
+            'allocated_at' => $allocation->allocated_at->toISOString(),
+            'released_at' => $allocation->released_at?->toISOString(),
+            'virtual_machine' => $allocation->virtualMachine !== null ? [
+                'id' => $allocation->virtualMachine->id,
+                'name' => $allocation->virtualMachine->name,
+                'status' => (string) $allocation->virtualMachine->status,
+            ] : null,
+            'user' => [
+                'id' => $allocation->user->id,
+                'name' => $allocation->user->name,
+                'email' => $allocation->user->email,
+            ],
+        ];
+    }
+
+    /**
+     * Build a single pool address item entry.
+     *
+     * @param  'free'|'allocated'|'cooling'|'excluded'  $state
+     * @param  array{
+     *     id: int,
+     *     mac_address: string|null,
+     *     status: string,
+     *     allocated_at: string|null,
+     *     released_at: string|null,
+     *     virtual_machine: array{id: int, name: string, status: string}|null,
+     *     user: array{id: int, name: string, email: string}|null,
+     * }|null  $allocation
+     * @return array{
+     *     ip: string,
+     *     state: 'free'|'allocated'|'cooling'|'excluded',
+     *     is_gateway: bool,
+     *     cooldown_remaining_seconds: int,
+     *     allocation: array{
+     *         id: int,
+     *         mac_address: string|null,
+     *         status: string,
+     *         allocated_at: string|null,
+     *         released_at: string|null,
+     *         virtual_machine: array{id: int, name: string, status: string}|null,
+     *         user: array{id: int, name: string, email: string}|null,
+     *     }|null,
+     * }
+     */
+    private function makePoolAddressEntry(
+        string $ip,
+        string $state,
+        bool $isGateway,
+        int $cooldownRemainingSeconds,
+        ?array $allocation,
+    ): array {
+        return [
+            'ip' => $ip,
+            'state' => $state,
+            'is_gateway' => $isGateway,
+            'cooldown_remaining_seconds' => $cooldownRemainingSeconds,
+            'allocation' => $allocation,
+        ];
+    }
+
+    /**
+     * Build pagination metadata matching standard Laravel paginator responses.
+     *
+     * @return array{
+     *     current_page: int,
+     *     last_page: int,
+     *     per_page: int,
+     *     total: int,
+     *     from: int|null,
+     *     to: int|null,
+     * }
+     */
+    private function buildPoolAddressPaginationMeta(int $total, int $page, int $perPage, int $countOnPage): array
+    {
+        $offset = ($page - 1) * $perPage;
+
+        return [
+            'current_page' => $page,
+            'last_page' => max(1, (int) ceil($total / $perPage)),
+            'per_page' => $perPage,
+            'total' => $total,
+            'from' => $countOnPage > 0 ? $offset + 1 : null,
+            'to' => $countOnPage > 0 ? $offset + $countOnPage : null,
+        ];
+    }
+
+    /**
      * Emergency admin release of an IP allocation.
      */
     public function emergencyReleaseAllocation(IpAllocation $allocation, bool $forceDelete = false): void
