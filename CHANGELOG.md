@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **IPAM Pool Utilization & Numeric Ordering:** Pool utilization is now computed via SQL aggregates instead of loading allocations in application code, IP allocation listings are ordered by pool and then numerically by IPv4 address, and `ip_allocations` adds composite indexes `idx_ip_alloc_pool_status` and `idx_ip_alloc_user_status`.
 - **UI Cooling IP Refresh:** Cooling IP entries in the UI now use a single scheduled refresh when the cooldown expires instead of polling every 5 seconds.
 - **Strict `parent_interface` Validation:** `parent_interface` no longer silently defaults to `eth0`; it is required for all non-manual pools (`routed`, `bridged`, `macvlan`), while `manual` pools store an empty string and return `null` in API responses.
+- **Mutable `parent_interface` on Allocated Pools:** `parent_interface` can now be changed on IP pools that already have allocations (applies only to newly created or rebuilt instances, not already running ones); `cidr`, `host_id`, and `network_mode` remain immutable while allocations exist.
+- **Classified IP Allocations Search:** The allocations `search` filter now matches IPv4 terms and MAC addresses by prefix (`term%`) and non-IP/non-MAC text (user name/email, VM name, pool name) by substring (`%term%`) with escaped `LIKE` wildcards.
 
 ### Fixed
 - **Side-Effect-Free `GET /ips`:** `GET /ips` no longer deletes expired `cooling` allocation rows on read; expired rows are removed exclusively by the scheduled `ipam:prune-cooling` command and are reported as `released` with `cooldown_remaining_seconds` `0` until pruned.

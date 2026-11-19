@@ -12,7 +12,7 @@ Ognivo provides ranged **IPv4** subnet management (**IPAM**) with two operationa
 In `routed` mode, instances communicate using point-to-point Layer 3 routing over a designated parent interface on the hypervisor host (e.g., `eth0` or `bond0`).
 
 ### Instance Specification
-- **Parent Interface (`parent_interface`):** Required for every non-manual pool (`routed`, `bridged`, `macvlan`), with no default value.
+- **Parent Interface (`parent_interface`):** Required for every non-manual pool (`routed`, `bridged`, `macvlan`), with no default value. `parent_interface` can be updated even on pools that already have active or cooling allocations (non-empty validation still applies to non-manual modes); the updated interface applies only to newly created or rebuilt instances, not already running ones. `cidr`, `host_id`, and `network_mode` remain immutable while allocations exist.
 - **NIC Device:** Incus `routed` NIC (`type: nic`, `nictype: routed`, `parent: <parent_interface>`, `ipv4.address: <assigned_ip>`).
 - **Default Route:** Cloud-Init provisions a Netplan v2 configuration inside virtual machines with an on-link link-local default gateway:
   ```yaml
@@ -61,6 +61,7 @@ In `manual` mode, guest networking is managed externally by the infrastructure o
 - **IP Cooling Period:** Released IP allocations enter a `cooling` state (`released_at`) for a pool-configured duration (`cooldown_seconds`) before returning to general circulation. During this quarantine window, the address cannot be immediately reassigned, preventing network disruption and traffic leakage from previous instances.
 - **Expiration & Cleanup:** `GET /api/ips` no longer deletes rows. Expired `cooling` rows are removed only by the scheduled `ipam:prune-cooling` command (every minute); until pruned, an expired row is shown with status `'released'` and `cooldown_remaining_seconds` `0`, and `allocateIp` already treats it as reusable.
 - **Allocation Ordering:** The allocations list is ordered by pool, then numerically by IPv4 address.
+- **Allocation Search:** The allocations `search` filter trims whitespace and classifies the query: IPv4 terms (e.g. `10.0.0.1`, `10.0`) match `ip_string` by prefix (`term%`), MAC prefixes containing `:` (e.g. `02:54:ab`) match `mac_address` by case-insensitive prefix (`term%`), and other text matches user `name`/`email` (as well as VM and pool names) by substring (`%term%`) with SQL `LIKE` wildcards (`%`, `_`, `\`) escaped.
 
 ---
 
