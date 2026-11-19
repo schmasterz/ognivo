@@ -8,12 +8,14 @@ use App\Events\AdminVirtualMachineStatusUpdated;
 use App\Events\VirtualMachineStatusUpdated;
 use App\Jobs\ProvisionVmJob;
 use App\Models\Host;
+use App\Models\Image;
 use App\Models\IpPool;
 use App\Models\User;
 use App\Models\UserQuota;
 use App\Models\VirtualMachine;
 use App\Services\Hypervisor\Drivers\FakeHypervisorDriver;
 use App\Services\Hypervisor\HypervisorManager;
+use App\Services\Hypervisor\InstanceSpecBuilder;
 use App\Services\IpManagementService;
 use App\States\Vm\Failed;
 use App\States\Vm\Running;
@@ -321,5 +323,64 @@ final class ProvisionVmJobTest extends TestCase
         Event::assertDispatched(AdminVirtualMachineStatusUpdated::class, function (AdminVirtualMachineStatusUpdated $event) use ($vm) {
             return $event->vm['id'] === $vm->id && ($event->vm['network_status'] ?? null) === 'observed';
         });
+    }
+
+    public function test_spec_builder_domain_exception_marks_vm_failed_immediately_with_readable_reason(): void
+    {
+        Image::firstOrCreate(
+            ['name' => 'ubuntu/24.04'],
+            [
+                'source' => 'https://images.linuxcontainers.org',
+                'protocol' => 'simplestreams',
+                'os_type' => 'linux',
+                'enabled' => true,
+            ]
+        );
+
+        $badPool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Empty Interface Pool',
+            'cidr' => '10.60.0.0/24',
+            'first_usable' => '10.60.0.10',
+            'last_usable' => '10.60.0.50',
+            'network_mode' => 'bridged',
+            'parent_interface' => '',
+            'active' => true,
+            'is_public' => true,
+        ]);
+
+        $vm = VirtualMachine::create([
+            'user_id' => $this->user->id,
+            'host_id' => $this->host->id,
+            'name' => 'vm-bad-spec-'.uniqid(),
+            'incus_project' => 'default',
+            'instance_type' => 'virtual-machine',
+            'status' => 'provisioning',
+            'cpu_cores' => 1,
+            'ram_mb' => 1024,
+            'disk_gb' => 10,
+            'os_image' => 'ubuntu/24.04',
+        ]);
+
+        $allocation = app(IpManagementService::class)->allocateIp($badPool, $vm, $this->user);
+
+        $this->driver->setInstanceStatus($vm, 'Unknown');
+        $this->driver->setActionCallback('createInstance', function (VirtualMachine $targetVm): bool {
+            app(InstanceSpecBuilder::class)->build($targetVm);
+
+            return true;
+        });
+
+        $job = new ProvisionVmJob($vm, $allocation->id);
+        $job->handle($this->manager);
+
+        $vm->refresh();
+        $this->assertTrue($vm->status->equals(Failed::class));
+        $this->assertSame('unassigned', $vm->network_status);
+        $this->assertIsArray($vm->metadata);
+        $this->assertStringContainsString('parent_interface', (string) ($vm->metadata['raw_failure_reason'] ?? ''));
+
+        $allocation->refresh();
+        $this->assertSame('cooling', $allocation->status);
     }
 }

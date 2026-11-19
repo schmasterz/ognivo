@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\DTO\Cast;
+use App\Http\Requests\Ip\ListIpAllocationsRequest;
 use App\Http\Resources\IpAllocationResource;
 use App\Http\Resources\IpPoolResource;
 use App\Http\Resources\TenantIpPoolResource;
@@ -29,21 +31,24 @@ final class IpAllocationController extends Controller
      * List IP allocations accessible by the user with optional filters.
      */
     #[Get('ips', name: 'ips.index', middleware: ['auth:sanctum', 'active'])]
-    public function index(Request $request): JsonResponse
+    public function index(ListIpAllocationsRequest $request): JsonResponse
     {
         /** @var User $user */
         $user = $request->user();
 
+        /** @var array<string, mixed> $validated */
+        $validated = $request->validated();
+
         /** @var array{user_id?: int|null, host_id?: int|null, pool_id?: int|null, status?: string|null, search?: string|null} $filters */
         $filters = [
-            'user_id' => $request->filled('user_id') ? $request->integer('user_id') : null,
-            'host_id' => $request->filled('host_id') ? $request->integer('host_id') : null,
-            'pool_id' => $request->filled('pool_id') ? $request->integer('pool_id') : null,
-            'status' => $request->filled('status') ? $request->string('status')->value() : null,
-            'search' => $request->filled('search') ? $request->string('search')->value() : null,
+            'user_id' => Cast::intOrNull($validated['user_id'] ?? null),
+            'host_id' => Cast::intOrNull($validated['host_id'] ?? null),
+            'pool_id' => Cast::intOrNull($validated['pool_id'] ?? null),
+            'status' => Cast::stringOrNull($validated['status'] ?? null),
+            'search' => Cast::stringOrNull($validated['search'] ?? null),
         ];
 
-        $perPage = max(1, min(100, $request->integer('per_page', 10)));
+        $perPage = Cast::int($validated['per_page'] ?? null, 10);
         $paginator = $this->ipService->paginateForUser($user, $filters, $perPage);
 
         return response()->json([
@@ -56,10 +61,6 @@ final class IpAllocationController extends Controller
                 'from' => $paginator->firstItem(),
                 'to' => $paginator->lastItem(),
             ],
-            'current_page' => $paginator->currentPage(),
-            'last_page' => $paginator->lastPage(),
-            'per_page' => $paginator->perPage(),
-            'total' => $paginator->total(),
         ]);
     }
 
@@ -107,10 +108,6 @@ final class IpAllocationController extends Controller
                 'from' => $paginator->firstItem(),
                 'to' => $paginator->lastItem(),
             ],
-            'current_page' => $paginator->currentPage(),
-            'last_page' => $paginator->lastPage(),
-            'per_page' => $paginator->perPage(),
-            'total' => $paginator->total(),
         ]);
     }
 }

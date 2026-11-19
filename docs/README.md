@@ -16,7 +16,7 @@ Welcome to the **Ognivo** technical documentation. All guides are organized into
 ## 3. Features & Subsystems (`docs/features/`)
 - **[Host Onboarding & mTLS Certificates](features/host-onboarding.md)** - Preparing the Incus/LXD host, panel X.509 client certificate lifecycle, single-use trust tokens, pre-trusted certificate setup, certificate and public-key pinning, and connection verification states.
 - **[OS Images](features/images.md)** - The image catalog (allowlist), image fields and Incus aliases, per-node image selection and auto-attach, impact preview before detaching, and what happens to existing instances when images change.
-- **[Network Modes & Host IPAM](features/networking.md)** - Routed (`routed`) vs. Manual (`manual`) IPv4 subnet pools, required hypervisor `sysctl` / Proxy ARP configuration, preflight pool verification, and IP version support.
+- **[Network Modes & Host IPAM](features/networking.md)** - Routed (`routed`), Bridged (`bridged`), Macvlan (`macvlan`), and Manual (`manual`) IPv4 subnet pools, pool address/free-IP inspection, required hypervisor `sysctl` / Proxy ARP and bridge/NIC requirements, preflight pool verification, and IP version support.
 - **[Interactive Web Terminal](features/console.md)** - `xterm.js` terminals through the `console-proxy`, the `exec` and serial `console` drivers, single-use Redis tickets, session limits and idle timeout, the read-only boot log, and strict tenant privacy isolation.
 - **[Virtual Machine Snapshots](features/snapshots.md)** - Point-in-time VM/container snapshots, state machine, concurrency locks, quota enforcement, REST API, and `BackupTargetInterface` extension points.
 
@@ -29,6 +29,7 @@ Welcome to the **Ognivo** technical documentation. All guides are organized into
 ## 5. Testing & Quality Assurance (`docs/testing/`)
 - **[Automated Testing & Static Analysis](testing/automated-testing.md)** - Running SQLite unit tests, MySQL 8.4 + Redis 7 integration tests, PHPStan Level 10, Psalm ErrorLevel 1, and frontend checks.
 - **[Manual QA & API Verification](testing/manual-qa.md)** - End-to-end browser verification scenarios and ready-to-use `curl` API commands.
+- **[Manual Incus Network Tests](testing/manual-incus-network-tests.md)** - Hands-on runbook for testing routed, bridged, macvlan, and manual IP pools against a real Incus host.
 
 ---
 

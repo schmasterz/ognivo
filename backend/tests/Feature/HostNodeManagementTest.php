@@ -234,6 +234,7 @@ final class HostNodeManagementTest extends TestCase
             'name' => 'Frankfurt Public Subnet',
             'subnet' => '195.20.10.0/29',
             'gateway' => '195.20.10.1',
+            'parent_interface' => 'eth0',
             'ip_version' => 4,
             'dns_servers' => ['8.8.8.8', '1.1.1.1'],
             'host_id' => $this->frankfurtHost->id,

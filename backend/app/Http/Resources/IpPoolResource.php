@@ -46,7 +46,7 @@ final class IpPoolResource extends JsonResource
             'subnet' => $pool->subnet ?? $pool->cidr,
             'first_usable' => $pool->first_usable,
             'last_usable' => $pool->last_usable,
-            'parent_interface' => $pool->parent_interface ?? 'eth0',
+            'parent_interface' => $pool->parent_interface !== '' ? $pool->parent_interface : null,
             'network_mode' => $pool->network_mode ?? 'routed',
             'gateway' => $pool->gateway,
             'dns_servers' => $pool->dns_servers,

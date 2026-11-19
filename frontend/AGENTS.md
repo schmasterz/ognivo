@@ -59,7 +59,7 @@ src/
 │   ├── auth/                         # AuthView (login, register, forgot password), ProfileModal, ResetPasswordView, VerifyEmailView
 │   ├── vms/                          # VM table, CreateVmModal, VmDetailsModal, ConsoleModal + XtermViewer (web terminal), per-VM snapshots, useVms hook
 │   ├── snapshots/                    # Global SnapshotsTab
-│   ├── networking/                   # IP allocations, IP pools, preflight modal, useNetworking hook
+│   ├── networking/                   # IP allocations, IP pools, PoolDetailModal, PreflightModal, coolingRefresh.ts, ipStatusFilter.ts, useNetworking hook
 │   ├── users/                        # Admin user management table, modals, useUsers hook
 │   ├── quotas/                       # QuotaOverview, DashboardQuotaSection, QuotaLimitsFormSection, quota group modals
 │   ├── hosts/                        # Compute node tab & table (NodesTab, NodesTable, CreateHostModal, EditHostModal) and per-node image selection (HostImagesSection, ImageSelectionDrawer)

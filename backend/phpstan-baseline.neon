@@ -259,12 +259,6 @@ parameters:
 			path: app/Services/Hypervisor/InstanceSpecBuilder.php
 
 		-
-			message: '#^Using nullsafe property access "\?\-\>parent_interface" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
-			path: app/Services/Hypervisor/InstanceSpecBuilder.php
-
-		-
 			message: '#^Parameter \#1 \$attributes of static method Illuminate\\Database\\Eloquent\\Builder\<App\\Models\\Host\>\:\:create\(\) expects array\<model property of App\\Models\\Host, mixed\>, array\<string, mixed\> given\.$#'
 			identifier: argument.type
 			count: 2
@@ -285,19 +279,13 @@ parameters:
 		-
 			message: '#^Cannot cast mixed to int\.$#'
 			identifier: cast.int
-			count: 6
+			count: 4
 			path: app/Services/IpManagementService.php
 
 		-
 			message: '#^Cannot cast mixed to string\.$#'
 			identifier: cast.string
 			count: 3
-			path: app/Services/IpManagementService.php
-
-		-
-			message: '#^Parameter \#1 \$time of static method Carbon\\Carbon\:\:parse\(\) expects Carbon\\Month\|Carbon\\WeekDay\|DateTimeInterface\|float\|int\|string\|null, mixed given\.$#'
-			identifier: argument.type
-			count: 1
 			path: app/Services/IpManagementService.php
 
 		-

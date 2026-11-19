@@ -73,6 +73,17 @@ final class UpdateIpPoolRequest extends FormRequest
                 }
             }
 
+            $inputMode = $this->input('network_mode');
+            $resultingMode = is_string($inputMode) && $inputMode !== '' ? $inputMode : $pool->network_mode;
+            $isL2Mode = in_array($resultingMode, ['bridged', 'macvlan'], true);
+            $resultingInterface = $this->exists('parent_interface')
+                ? $this->input('parent_interface')
+                : $pool->parent_interface;
+
+            if ($resultingMode !== 'manual' && trim(is_string($resultingInterface) ? $resultingInterface : '') === '') {
+                $v->errors()->add('parent_interface', 'Parent interface is required when network mode is not manual.');
+            }
+
             $cidr = (string) ($this->input('cidr') ?: $pool->cidr);
             $parsed = CidrHelper::parse($cidr);
             if ($parsed === null) {
@@ -87,6 +98,10 @@ final class UpdateIpPoolRequest extends FormRequest
                 $v->errors()->add('cidr', 'CIDR prefix length must be between 16 and 32.');
 
                 return;
+            }
+
+            if ($isL2Mode && $prefix > 30) {
+                $v->errors()->add('cidr', 'Layer-2 pool modes require a prefix between /16 and /30.');
             }
 
             $range = CidrHelper::subnetRange($cidr);
@@ -146,15 +161,30 @@ final class UpdateIpPoolRequest extends FormRequest
             }
 
             // Gateway check
-            $gateway = $this->has('gateway') ? $this->input('gateway') : $pool->gateway;
-            if ($prefix <= 30 && (empty($gateway) || ! is_string($gateway))) {
-                $v->errors()->add('gateway', 'Gateway is required for subnets /16 to /30.');
-            }
+            $gateway = $this->exists('gateway') ? $this->input('gateway') : $pool->gateway;
+            if ($isL2Mode) {
+                if (! is_string($gateway) || trim($gateway) === '') {
+                    $v->errors()->add('gateway', 'Gateway is required for bridged and macvlan pool modes.');
+                } elseif (filter_var($gateway, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false) {
+                    $v->errors()->add('gateway', 'Gateway must be a valid IPv4 address.');
+                } else {
+                    $gwLong = CidrHelper::ipToUnsigned($gateway);
+                    if ($gwLong === null || $gwLong < $network || $gwLong > $broadcast) {
+                        $v->errors()->add('gateway', 'Gateway IP is outside the CIDR subnet.');
+                    } elseif ($prefix <= 30 && ($gwLong === $network || $gwLong === $broadcast)) {
+                        $v->errors()->add('gateway', 'Gateway IP cannot be the network or broadcast address.');
+                    }
+                }
+            } else {
+                if ($prefix <= 30 && (empty($gateway) || ! is_string($gateway))) {
+                    $v->errors()->add('gateway', 'Gateway is required for subnets /16 to /30.');
+                }
 
-            if ($gateway && is_string($gateway)) {
-                $gwLong = CidrHelper::ipToUnsigned($gateway);
-                if ($gwLong === null || $gwLong < $network || $gwLong > $broadcast) {
-                    $v->errors()->add('gateway', 'Gateway IP is outside the CIDR subnet.');
+                if ($gateway && is_string($gateway)) {
+                    $gwLong = CidrHelper::ipToUnsigned($gateway);
+                    if ($gwLong === null || $gwLong < $network || $gwLong > $broadcast) {
+                        $v->errors()->add('gateway', 'Gateway IP is outside the CIDR subnet.');
+                    }
                 }
             }
 

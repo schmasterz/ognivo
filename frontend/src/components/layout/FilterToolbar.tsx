@@ -43,6 +43,45 @@ export function FilterToolbar({
 }: FilterToolbarProps) {
   const { t } = useI18n();
 
+  const statusSelectValue =
+    activeTab === "networking" &&
+    selectedStatus !== "allocated" &&
+    selectedStatus !== "cooling"
+      ? ""
+      : selectedStatus;
+
+  const renderStatusOptions = () => {
+    if (activeTab === "users") {
+      return (
+        <>
+          <option value="active">{t("statusActive")}</option>
+          <option value="pending">{t("statusPending")}</option>
+          <option value="suspended">{t("statusSuspended")}</option>
+          <option value="inactive">{t("statusInactive")}</option>
+        </>
+      );
+    }
+
+    if (activeTab === "networking") {
+      return (
+        <>
+          <option value="allocated">{t("statusAllocatedFilter")}</option>
+          <option value="cooling">{t("statusCoolingFilter")}</option>
+        </>
+      );
+    }
+
+    return (
+      <>
+        <option value="running">Running</option>
+        <option value="stopped">Stopped</option>
+        <option value="provisioning">Provisioning</option>
+        <option value="suspended">Suspended</option>
+        <option value="failed">Failed</option>
+      </>
+    );
+  };
+
   return (
     <>
       {/* Admin Oversight Header & Cluster Overview Filter Bar */}
@@ -99,27 +138,12 @@ export function FilterToolbar({
             <div className="relative">
               <Filter className="w-4 h-4 text-gray-400 absolute left-3 top-3 pointer-events-none" />
               <select
-                value={selectedStatus}
+                value={statusSelectValue}
                 onChange={(e) => onSelectStatus(e.target.value)}
                 className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl px-3.5 py-2 pl-9 text-xs text-gray-800 dark:text-gray-200 focus:outline-none focus:border-blue-500 transition appearance-none cursor-pointer"
               >
                 <option value="">{t("allStatuses")}</option>
-                {activeTab === "users" ? (
-                  <>
-                    <option value="active">{t("statusActive")}</option>
-                    <option value="pending">{t("statusPending")}</option>
-                    <option value="suspended">{t("statusSuspended")}</option>
-                    <option value="inactive">{t("statusInactive")}</option>
-                  </>
-                ) : (
-                  <>
-                    <option value="running">Running</option>
-                    <option value="stopped">Stopped</option>
-                    <option value="provisioning">Provisioning</option>
-                    <option value="suspended">Suspended</option>
-                    <option value="failed">Failed</option>
-                  </>
-                )}
+                {renderStatusOptions()}
               </select>
             </div>
 
@@ -188,16 +212,12 @@ export function FilterToolbar({
             <div className="relative">
               <Filter className="w-4 h-4 text-gray-400 absolute left-3 top-3 pointer-events-none" />
               <select
-                value={selectedStatus}
+                value={statusSelectValue}
                 onChange={(e) => onSelectStatus(e.target.value)}
                 className="w-full bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700/60 rounded-xl px-3.5 py-2 pl-9 text-xs text-gray-800 dark:text-gray-200 focus:outline-none focus:border-blue-500 transition appearance-none cursor-pointer"
               >
                 <option value="">{t("allStatuses")}</option>
-                <option value="running">Running</option>
-                <option value="stopped">Stopped</option>
-                <option value="provisioning">Provisioning</option>
-                <option value="suspended">Suspended</option>
-                <option value="failed">Failed</option>
+                {renderStatusOptions()}
               </select>
             </div>
 

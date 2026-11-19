@@ -17,8 +17,10 @@ use App\Models\VirtualMachine;
 use App\Services\Hypervisor\HypervisorGateway;
 use App\Services\Network\CidrHelper;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Connection;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -340,7 +342,7 @@ final class IpManagementService
 
         if (isset($filters['host_id'])) {
             $hostId = $filters['host_id'];
-            $query->whereHas('pool', fn (Builder $sub): Builder => $sub->where('host_id', $hostId));
+            $query->whereIn('pool_id', IpPool::query()->where('host_id', $hostId)->select('id'));
         }
 
         if (isset($filters['pool_id'])) {
@@ -351,21 +353,65 @@ final class IpManagementService
             $query->where('status', $filters['status']);
         }
 
-        if (isset($filters['search']) && $filters['search'] !== '') {
-            $search = $filters['search'];
-            $query->where(function (Builder $q) use ($search): void {
-                $q->where('ip_string', 'like', "%{$search}%")
-                    ->orWhere('mac_address', 'like', "%{$search}%")
-                    ->orWhereHas('virtualMachine', fn (Builder $sub): Builder => $sub->where('name', 'like', "%{$search}%"))
-                    ->orWhereHas('pool', fn (Builder $sub): Builder => $sub->where('name', 'like', "%{$search}%"))
-                    ->orWhereHas('user', function (Builder $uq) use ($search): void {
-                        $uq->where('name', 'like', "%{$search}%")
-                            ->orWhere('email', 'like', "%{$search}%");
-                    });
-            });
+        $rawSearch = $filters['search'] ?? null;
+        $search = is_string($rawSearch) ? trim($rawSearch) : '';
+
+        if ($search !== '') {
+            $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search);
+
+            if (preg_match('/^\d{1,3}(\.\d{1,3}){0,3}\.?$/', $search) === 1) {
+                $this->applyEscapedLike($query, 'ip_string', "{$escaped}%");
+            } elseif (str_contains($search, ':') && preg_match('/^[0-9a-fA-F:]+$/', $search) === 1) {
+                $this->applyEscapedLike($query, 'mac_address', strtolower($escaped).'%');
+            } else {
+                $contains = "%{$escaped}%";
+                $query->where(function (Builder $q) use ($contains): void {
+                    $q->whereHas('virtualMachine', function (Builder $sub) use ($contains): void {
+                        $this->applyEscapedLike($sub, 'name', $contains);
+                    })
+                        ->orWhereHas('pool', function (Builder $sub) use ($contains): void {
+                            $this->applyEscapedLike($sub, 'name', $contains);
+                        })
+                        ->orWhereHas('user', function (Builder $uq) use ($contains): void {
+                            $this->applyEscapedLike($uq, 'name', $contains);
+                            $this->applyEscapedLike($uq, 'email', $contains, true);
+                        });
+                });
+            }
         }
 
-        return $query->orderBy('ip_string');
+        return $query->orderBy('pool_id')->orderBy('address');
+    }
+
+    /**
+     * Apply a LIKE filter with wildcard escaping compatible with both MySQL and SQLite.
+     *
+     * @template TModel of Model
+     *
+     * @param  Builder<TModel>  $query
+     * @param  literal-string  $column
+     */
+    private function applyEscapedLike(Builder $query, string $column, string $pattern, bool $booleanOr = false): void
+    {
+        $connection = $query->getConnection();
+        $isSqlite = $connection instanceof Connection && $connection->getDriverName() === 'sqlite';
+
+        if ($isSqlite) {
+            $sql = "{$column} LIKE ? ESCAPE '\\'";
+            if ($booleanOr) {
+                $query->orWhereRaw($sql, [$pattern]);
+            } else {
+                $query->whereRaw($sql, [$pattern]);
+            }
+
+            return;
+        }
+
+        if ($booleanOr) {
+            $query->getQuery()->orWhere($column, 'like', $pattern);
+        } else {
+            $query->getQuery()->where($column, 'like', $pattern);
+        }
     }
 
     /**
@@ -373,35 +419,31 @@ final class IpManagementService
      */
     public function pruneExpiredCoolingAllocations(?int $poolId = null): int
     {
-        $query = IpAllocation::query()
-            ->where('status', 'cooling')
-            ->whereNotNull('released_at')
-            ->with('pool');
+        $poolsQuery = DB::table('ip_pools')->select(['id', 'cooldown_seconds']);
 
         if ($poolId !== null) {
-            $query->where('pool_id', $poolId);
+            $poolsQuery->where('id', $poolId);
         }
 
+        $pools = $poolsQuery->get();
         $now = now();
-        $expiredIds = [];
+        $deletedTotal = 0;
 
-        /** @var Collection<int, IpAllocation> $coolingAllocations */
-        $coolingAllocations = $query->get();
-        foreach ($coolingAllocations as $allocation) {
-            $cooldownSeconds = $allocation->pool->cooldown_seconds;
-            if ($allocation->released_at !== null && $allocation->released_at->copy()->addSeconds($cooldownSeconds)->lessThanOrEqualTo($now)) {
-                $expiredIds[] = $allocation->id;
-            }
+        foreach ($pools as $pool) {
+            $cooldownSeconds = is_numeric($pool->cooldown_seconds) ? max(0, (int) $pool->cooldown_seconds) : 0;
+            $cutoff = $now->copy()->subSeconds($cooldownSeconds);
+
+            $deleted = DB::table('ip_allocations')
+                ->where('pool_id', is_numeric($pool->id) ? (int) $pool->id : 0)
+                ->where('status', 'cooling')
+                ->whereNotNull('released_at')
+                ->where('released_at', '<=', $cutoff)
+                ->delete();
+
+            $deletedTotal += $deleted;
         }
 
-        if (! empty($expiredIds)) {
-            /** @var int $deletedCount */
-            $deletedCount = IpAllocation::whereIn('id', $expiredIds)->delete();
-
-            return $deletedCount;
-        }
-
-        return 0;
+        return $deletedTotal;
     }
 
     /**
@@ -412,8 +454,6 @@ final class IpManagementService
      */
     public function listForUser(User $user, array $filters = []): Collection
     {
-        $this->pruneExpiredCoolingAllocations();
-
         return $this->buildAllocationsQuery($user, $filters)->get();
     }
 
@@ -425,13 +465,11 @@ final class IpManagementService
      */
     public function paginateForUser(User $user, array $filters = [], int $perPage = 10): LengthAwarePaginator
     {
-        $this->pruneExpiredCoolingAllocations();
-
         return $this->buildAllocationsQuery($user, $filters)->paginate($perPage);
     }
 
     /**
-     * Pre-compute live utilization metrics for a collection of pools in a single batch query (avoiding N+1).
+     * Pre-compute live utilization metrics for a collection of pools in batch queries (avoiding N+1).
      *
      * @param  iterable<IpPool>  $pools
      */
@@ -442,31 +480,50 @@ final class IpManagementService
             return;
         }
 
-        $poolIds = array_filter(array_map(fn (IpPool $p) => $p->id, $poolList));
-        if (empty($poolIds)) {
+        $poolIds = array_values(array_unique(array_filter(array_map(static fn (IpPool $p): int => $p->id, $poolList))));
+        if ($poolIds === []) {
             return;
         }
 
-        $allocations = DB::table('ip_allocations')
-            ->join('ip_pools', 'ip_pools.id', '=', 'ip_allocations.pool_id')
-            ->whereIn('ip_allocations.pool_id', $poolIds)
-            ->whereIn('ip_allocations.status', ['allocated', 'cooling'])
-            ->select('ip_allocations.pool_id', 'ip_allocations.status', 'ip_allocations.released_at', 'ip_pools.cooldown_seconds')
+        /** @var array<int, int> $poolCooldowns */
+        $poolCooldowns = [];
+        foreach ($poolList as $pool) {
+            $poolCooldowns[$pool->id] = $pool->cooldown_seconds;
+        }
+
+        /** @var array<int, int> $allocatedCounts */
+        $allocatedCounts = [];
+        $allocatedRows = DB::table('ip_allocations')
+            ->select('pool_id')
+            ->selectRaw('COUNT(*) as aggregate_count')
+            ->whereIn('pool_id', $poolIds)
+            ->where('status', 'allocated')
+            ->groupBy('pool_id')
             ->get();
 
-        $allocatedCounts = [];
-        $coolingCounts = [];
+        foreach ($allocatedRows as $row) {
+            $pid = is_numeric($row->pool_id) ? (int) $row->pool_id : 0;
+            $allocatedCounts[$pid] = is_numeric($row->aggregate_count) ? (int) $row->aggregate_count : 0;
+        }
 
-        foreach ($allocations as $alloc) {
-            $pid = (int) $alloc->pool_id;
-            if ($alloc->status === 'allocated') {
-                $allocatedCounts[$pid] = ($allocatedCounts[$pid] ?? 0) + 1;
-            } elseif ($alloc->status === 'cooling') {
-                $releasedAt = $alloc->released_at ? Carbon::parse($alloc->released_at) : null;
-                $cooldownSeconds = (int) $alloc->cooldown_seconds;
-                if ($releasedAt !== null && $releasedAt->copy()->addSeconds($cooldownSeconds)->isFuture()) {
-                    $coolingCounts[$pid] = ($coolingCounts[$pid] ?? 0) + 1;
-                }
+        /** @var array<int, int> $coolingCounts */
+        $coolingCounts = [];
+        $coolingRows = DB::table('ip_allocations')
+            ->whereIn('pool_id', $poolIds)
+            ->where('status', 'cooling')
+            ->whereNotNull('released_at')
+            ->get(['pool_id', 'released_at']);
+
+        $now = now();
+        foreach ($coolingRows as $row) {
+            $pid = is_numeric($row->pool_id) ? (int) $row->pool_id : 0;
+            if (! is_string($row->released_at) || $row->released_at === '' || ! array_key_exists($pid, $poolCooldowns)) {
+                continue;
+            }
+            $cooldownSeconds = $poolCooldowns[$pid];
+            $releasedAt = Carbon::parse($row->released_at);
+            if ($releasedAt->copy()->addSeconds($cooldownSeconds)->greaterThan($now)) {
+                $coolingCounts[$pid] = ($coolingCounts[$pid] ?? 0) + 1;
             }
         }
 
@@ -515,6 +572,541 @@ final class IpManagementService
         $this->attachUtilizationToPools($paginator->items());
 
         return $paginator;
+    }
+
+    /**
+     * Paginate addresses within an IP pool including free, allocated, cooling, and excluded entries.
+     *
+     * @return array{
+     *     data: list<array{
+     *         ip: string,
+     *         state: 'free'|'allocated'|'cooling'|'excluded',
+     *         is_gateway: bool,
+     *         cooldown_remaining_seconds: int,
+     *         allocation: array{
+     *             id: int,
+     *             mac_address: string|null,
+     *             status: string,
+     *             allocated_at: string|null,
+     *             released_at: string|null,
+     *             virtual_machine: array{id: int, name: string, status: string}|null,
+     *             user: array{id: int, name: string, email: string}|null,
+     *         }|null,
+     *     }>,
+     *     meta: array{
+     *         current_page: int,
+     *         last_page: int,
+     *         per_page: int,
+     *         total: int,
+     *         from: int|null,
+     *         to: int|null,
+     *     },
+     * }
+     */
+    public function paginatePoolAddresses(
+        IpPool $pool,
+        string $state = 'all',
+        ?string $search = null,
+        int $page = 1,
+        int $perPage = 50,
+    ): array {
+        $pool->loadMissing('host');
+        $this->attachUtilizationToPools([$pool]);
+
+        $page = max(1, $page);
+        $perPage = max(1, min(100, $perPage));
+        $normalizedSearch = $search !== null ? trim($search) : '';
+
+        $firstLong = CidrHelper::ipToUnsigned($pool->first_usable);
+        $lastLong = CidrHelper::ipToUnsigned($pool->last_usable);
+
+        if ($firstLong === null || $lastLong === null || $lastLong < $firstLong) {
+            return [
+                'data' => [],
+                'meta' => $this->buildPoolAddressPaginationMeta(0, $page, $perPage, 0),
+            ];
+        }
+
+        $nonFreeMap = $this->buildNonFreePoolAddressMap($pool, $firstLong, $lastLong);
+        $offset = ($page - 1) * $perPage;
+
+        if ($normalizedSearch === '') {
+            if ($state === 'all') {
+                $total = ($lastLong - $firstLong) + 1;
+                $items = $this->sliceAllPoolAddresses($firstLong, $lastLong, $nonFreeMap, $offset, $perPage);
+            } elseif ($state === 'free') {
+                $nonFreeLongs = array_keys($nonFreeMap);
+                $total = max(0, (($lastLong - $firstLong) + 1) - count($nonFreeLongs));
+                $items = $this->sliceFreePoolAddresses($firstLong, $lastLong, $nonFreeLongs, $total, $offset, $perPage);
+            } else {
+                $filtered = array_values(array_filter(
+                    $nonFreeMap,
+                    static fn (array $entry): bool => $entry['state'] === $state,
+                ));
+                $total = count($filtered);
+                $items = array_slice($filtered, $offset, $perPage);
+            }
+
+            return [
+                'data' => $items,
+                'meta' => $this->buildPoolAddressPaginationMeta($total, $page, $perPage, count($items)),
+            ];
+        }
+
+        if ($state === 'allocated' || $state === 'cooling' || $state === 'excluded') {
+            $filtered = array_values(array_filter(
+                $nonFreeMap,
+                static fn (array $entry): bool => $entry['state'] === $state && str_starts_with($entry['ip'], $normalizedSearch),
+            ));
+            $total = count($filtered);
+            $items = array_slice($filtered, $offset, $perPage);
+
+            return [
+                'data' => $items,
+                'meta' => $this->buildPoolAddressPaginationMeta($total, $page, $perPage, count($items)),
+            ];
+        }
+
+        [$scanFirst, $scanLast] = $this->narrowPrefixSearchRange($normalizedSearch, $firstLong, $lastLong);
+        $total = 0;
+        $items = [];
+
+        if ($scanFirst <= $scanLast) {
+            for ($ipLong = $scanFirst; $ipLong <= $scanLast; $ipLong++) {
+                if ($state === 'free' && isset($nonFreeMap[$ipLong])) {
+                    continue;
+                }
+
+                $ip = long2ip($ipLong);
+                if (! str_starts_with($ip, $normalizedSearch)) {
+                    continue;
+                }
+
+                if ($total >= $offset && count($items) < $perPage) {
+                    $items[] = $nonFreeMap[$ipLong] ?? $this->makePoolAddressEntry($ip, 'free', false, 0, null);
+                }
+                $total++;
+            }
+        }
+
+        return [
+            'data' => $items,
+            'meta' => $this->buildPoolAddressPaginationMeta($total, $page, $perPage, count($items)),
+        ];
+    }
+
+    /**
+     * Build a sorted map of all non-free (allocated, actively cooling, or excluded) addresses in the pool range.
+     *
+     * @return array<int, array{
+     *     ip: string,
+     *     state: 'free'|'allocated'|'cooling'|'excluded',
+     *     is_gateway: bool,
+     *     cooldown_remaining_seconds: int,
+     *     allocation: array{
+     *         id: int,
+     *         mac_address: string|null,
+     *         status: string,
+     *         allocated_at: string|null,
+     *         released_at: string|null,
+     *         virtual_machine: array{id: int, name: string, status: string}|null,
+     *         user: array{id: int, name: string, email: string}|null,
+     *     }|null,
+     * }>
+     */
+    private function buildNonFreePoolAddressMap(IpPool $pool, int $firstLong, int $lastLong): array
+    {
+        $now = now();
+        $gatewayLong = ($pool->gateway !== null && $pool->gateway !== '')
+            ? CidrHelper::ipToUnsigned($pool->gateway)
+            : null;
+
+        /** @var array<int, true> $excludedSet */
+        $excludedSet = [];
+        if ($gatewayLong !== null && $gatewayLong >= $firstLong && $gatewayLong <= $lastLong) {
+            $excludedSet[$gatewayLong] = true;
+        }
+        if (is_array($pool->excluded_ips)) {
+            foreach ($pool->excluded_ips as $excludedIp) {
+                if ($excludedIp === '') {
+                    continue;
+                }
+                $exLong = CidrHelper::ipToUnsigned($excludedIp);
+                if ($exLong !== null && $exLong >= $firstLong && $exLong <= $lastLong) {
+                    $excludedSet[$exLong] = true;
+                }
+            }
+        }
+
+        $allocations = $pool->allocations()
+            ->with(['virtualMachine:id,name,status', 'user:id,name,email'])
+            ->get();
+
+        /** @var array<string, IpAllocation> $allocationsByIp */
+        $allocationsByIp = [];
+        foreach ($allocations as $allocation) {
+            $allocationsByIp[$allocation->ip_string] = $allocation;
+        }
+
+        $nonFreeMap = [];
+
+        foreach ($allocationsByIp as $ipString => $allocation) {
+            $ipLong = CidrHelper::ipToUnsigned($ipString);
+            if ($ipLong === null || $ipLong < $firstLong || $ipLong > $lastLong) {
+                continue;
+            }
+
+            $isGateway = $gatewayLong !== null && $ipLong === $gatewayLong;
+
+            if ($allocation->status === 'allocated') {
+                $nonFreeMap[$ipLong] = $this->makePoolAddressEntry(
+                    $ipString,
+                    'allocated',
+                    $isGateway,
+                    0,
+                    $this->formatPoolAllocation($allocation),
+                );
+            } elseif ($allocation->status === 'cooling' && $allocation->released_at !== null) {
+                $coolingUntil = $allocation->released_at->copy()->addSeconds($pool->cooldown_seconds);
+                if ($coolingUntil->greaterThan($now)) {
+                    $diff = max(1, (int) ceil($now->diffInSeconds($coolingUntil, false)));
+                    $nonFreeMap[$ipLong] = $this->makePoolAddressEntry(
+                        $ipString,
+                        'cooling',
+                        $isGateway,
+                        $diff,
+                        $this->formatPoolAllocation($allocation),
+                    );
+                }
+            }
+        }
+
+        foreach (array_keys($excludedSet) as $excludedLong) {
+            if (isset($nonFreeMap[$excludedLong])) {
+                continue;
+            }
+
+            $isGateway = $gatewayLong !== null && $excludedLong === $gatewayLong;
+            $nonFreeMap[$excludedLong] = $this->makePoolAddressEntry(
+                long2ip($excludedLong),
+                'excluded',
+                $isGateway,
+                0,
+                null,
+            );
+        }
+
+        ksort($nonFreeMap, SORT_NUMERIC);
+
+        return $nonFreeMap;
+    }
+
+    /**
+     * Slice a page of addresses across the full pool usable range without materializing all IPs.
+     *
+     * @param  array<int, array{
+     *     ip: string,
+     *     state: 'free'|'allocated'|'cooling'|'excluded',
+     *     is_gateway: bool,
+     *     cooldown_remaining_seconds: int,
+     *     allocation: array{
+     *         id: int,
+     *         mac_address: string|null,
+     *         status: string,
+     *         allocated_at: string|null,
+     *         released_at: string|null,
+     *         virtual_machine: array{id: int, name: string, status: string}|null,
+     *         user: array{id: int, name: string, email: string}|null,
+     *     }|null,
+     * }>  $nonFreeMap
+     * @return list<array{
+     *     ip: string,
+     *     state: 'free'|'allocated'|'cooling'|'excluded',
+     *     is_gateway: bool,
+     *     cooldown_remaining_seconds: int,
+     *     allocation: array{
+     *         id: int,
+     *         mac_address: string|null,
+     *         status: string,
+     *         allocated_at: string|null,
+     *         released_at: string|null,
+     *         virtual_machine: array{id: int, name: string, status: string}|null,
+     *         user: array{id: int, name: string, email: string}|null,
+     *     }|null,
+     * }>
+     */
+    private function sliceAllPoolAddresses(
+        int $firstLong,
+        int $lastLong,
+        array $nonFreeMap,
+        int $offset,
+        int $perPage,
+    ): array {
+        $total = ($lastLong - $firstLong) + 1;
+        if ($offset >= $total) {
+            return [];
+        }
+
+        $startLong = $firstLong + $offset;
+        $endLong = min($lastLong, $startLong + $perPage - 1);
+        $items = [];
+
+        for ($ipLong = $startLong; $ipLong <= $endLong; $ipLong++) {
+            $items[] = $nonFreeMap[$ipLong] ?? $this->makePoolAddressEntry(long2ip($ipLong), 'free', false, 0, null);
+        }
+
+        return $items;
+    }
+
+    /**
+     * Slice a page of free addresses using gap-jumping over sorted non-free unsigned IPs.
+     *
+     * @param  list<int>  $nonFreeLongs
+     * @return list<array{
+     *     ip: string,
+     *     state: 'free'|'allocated'|'cooling'|'excluded',
+     *     is_gateway: bool,
+     *     cooldown_remaining_seconds: int,
+     *     allocation: array{
+     *         id: int,
+     *         mac_address: string|null,
+     *         status: string,
+     *         allocated_at: string|null,
+     *         released_at: string|null,
+     *         virtual_machine: array{id: int, name: string, status: string}|null,
+     *         user: array{id: int, name: string, email: string}|null,
+     *     }|null,
+     * }>
+     */
+    private function sliceFreePoolAddresses(
+        int $firstLong,
+        int $lastLong,
+        array $nonFreeLongs,
+        int $totalFree,
+        int $offset,
+        int $perPage,
+    ): array {
+        if ($offset >= $totalFree) {
+            return [];
+        }
+
+        $items = [];
+        $cursor = $firstLong;
+        $skip = $offset;
+        $needed = min($perPage, $totalFree - $offset);
+        $nonFreeIdx = 0;
+        $nonFreeCount = count($nonFreeLongs);
+
+        while ($cursor <= $lastLong && $skip > 0) {
+            if ($nonFreeIdx >= $nonFreeCount) {
+                $cursor += $skip;
+                $skip = 0;
+                break;
+            }
+
+            $blocked = $nonFreeLongs[$nonFreeIdx];
+            if ($blocked < $cursor) {
+                $nonFreeIdx++;
+
+                continue;
+            }
+            if ($blocked === $cursor) {
+                $cursor++;
+                $nonFreeIdx++;
+
+                continue;
+            }
+
+            $gapSize = $blocked - $cursor;
+            if ($skip < $gapSize) {
+                $cursor += $skip;
+                $skip = 0;
+                break;
+            }
+
+            $skip -= $gapSize;
+            $cursor = $blocked + 1;
+            $nonFreeIdx++;
+        }
+
+        while ($cursor <= $lastLong && count($items) < $needed) {
+            if ($nonFreeIdx < $nonFreeCount) {
+                $blocked = $nonFreeLongs[$nonFreeIdx];
+                if ($blocked < $cursor) {
+                    $nonFreeIdx++;
+
+                    continue;
+                }
+                if ($blocked === $cursor) {
+                    $cursor++;
+                    $nonFreeIdx++;
+
+                    continue;
+                }
+                $runEnd = min($lastLong, $blocked - 1);
+            } else {
+                $runEnd = $lastLong;
+            }
+
+            $take = min($needed - count($items), ($runEnd - $cursor) + 1);
+            for ($i = 0; $i < $take; $i++) {
+                $items[] = $this->makePoolAddressEntry(long2ip($cursor + $i), 'free', false, 0, null);
+            }
+            $cursor += $take;
+        }
+
+        return $items;
+    }
+
+    /**
+     * Narrow a usable unsigned IP range using complete leading IPv4 octets from a prefix search.
+     *
+     * @return array{0: int, 1: int}
+     */
+    private function narrowPrefixSearchRange(string $search, int $firstLong, int $lastLong): array
+    {
+        if (preg_match('/^[0-9.]+$/', $search) !== 1) {
+            return [1, 0];
+        }
+
+        $parts = explode('.', $search);
+        if (count($parts) > 4) {
+            return [1, 0];
+        }
+
+        $completeSegments = array_slice($parts, 0, -1);
+        $completeCount = count($completeSegments);
+        $base = 0;
+
+        foreach ($completeSegments as $index => $segment) {
+            if ($segment === '' || ! ctype_digit($segment) || (strlen($segment) > 1 && $segment[0] === '0')) {
+                return [1, 0];
+            }
+
+            $octet = (int) $segment;
+            if ($octet > 255) {
+                return [1, 0];
+            }
+
+            $base |= ($octet << (24 - ($index * 8)));
+        }
+
+        $lastSegment = end($parts);
+        if ($lastSegment !== '') {
+            if (! ctype_digit($lastSegment) || (strlen($lastSegment) > 1 && $lastSegment[0] === '0') || (int) $lastSegment > 255) {
+                return [1, 0];
+            }
+        }
+
+        $remainingBits = 32 - ($completeCount * 8);
+        $suffixMask = $remainingBits === 32 ? 0xFFFFFFFF : ((1 << $remainingBits) - 1);
+
+        return [max($firstLong, $base), min($lastLong, $base | $suffixMask)];
+    }
+
+    /**
+     * Format an IpAllocation record for the pool addresses endpoint.
+     *
+     * @return array{
+     *     id: int,
+     *     mac_address: string|null,
+     *     status: string,
+     *     allocated_at: string|null,
+     *     released_at: string|null,
+     *     virtual_machine: array{id: int, name: string, status: string}|null,
+     *     user: array{id: int, name: string, email: string}|null,
+     * }
+     */
+    private function formatPoolAllocation(IpAllocation $allocation): array
+    {
+        return [
+            'id' => $allocation->id,
+            'mac_address' => $allocation->mac_address,
+            'status' => $allocation->status,
+            'allocated_at' => $allocation->allocated_at->toISOString(),
+            'released_at' => $allocation->released_at?->toISOString(),
+            'virtual_machine' => $allocation->virtualMachine !== null ? [
+                'id' => $allocation->virtualMachine->id,
+                'name' => $allocation->virtualMachine->name,
+                'status' => (string) $allocation->virtualMachine->status,
+            ] : null,
+            'user' => [
+                'id' => $allocation->user->id,
+                'name' => $allocation->user->name,
+                'email' => $allocation->user->email,
+            ],
+        ];
+    }
+
+    /**
+     * Build a single pool address item entry.
+     *
+     * @param  'free'|'allocated'|'cooling'|'excluded'  $state
+     * @param  array{
+     *     id: int,
+     *     mac_address: string|null,
+     *     status: string,
+     *     allocated_at: string|null,
+     *     released_at: string|null,
+     *     virtual_machine: array{id: int, name: string, status: string}|null,
+     *     user: array{id: int, name: string, email: string}|null,
+     * }|null  $allocation
+     * @return array{
+     *     ip: string,
+     *     state: 'free'|'allocated'|'cooling'|'excluded',
+     *     is_gateway: bool,
+     *     cooldown_remaining_seconds: int,
+     *     allocation: array{
+     *         id: int,
+     *         mac_address: string|null,
+     *         status: string,
+     *         allocated_at: string|null,
+     *         released_at: string|null,
+     *         virtual_machine: array{id: int, name: string, status: string}|null,
+     *         user: array{id: int, name: string, email: string}|null,
+     *     }|null,
+     * }
+     */
+    private function makePoolAddressEntry(
+        string $ip,
+        string $state,
+        bool $isGateway,
+        int $cooldownRemainingSeconds,
+        ?array $allocation,
+    ): array {
+        return [
+            'ip' => $ip,
+            'state' => $state,
+            'is_gateway' => $isGateway,
+            'cooldown_remaining_seconds' => $cooldownRemainingSeconds,
+            'allocation' => $allocation,
+        ];
+    }
+
+    /**
+     * Build pagination metadata matching standard Laravel paginator responses.
+     *
+     * @return array{
+     *     current_page: int,
+     *     last_page: int,
+     *     per_page: int,
+     *     total: int,
+     *     from: int|null,
+     *     to: int|null,
+     * }
+     */
+    private function buildPoolAddressPaginationMeta(int $total, int $page, int $perPage, int $countOnPage): array
+    {
+        $offset = ($page - 1) * $perPage;
+
+        return [
+            'current_page' => $page,
+            'last_page' => max(1, (int) ceil($total / $perPage)),
+            'per_page' => $perPage,
+            'total' => $total,
+            'from' => $countOnPage > 0 ? $offset + 1 : null,
+            'to' => $countOnPage > 0 ? $offset + $countOnPage : null,
+        ];
     }
 
     /**
@@ -784,9 +1376,10 @@ final class IpManagementService
                 if (isset($data['network_mode'])) {
                     $fieldsToUpdate['network_mode'] = $data['network_mode'];
                 }
-                if (isset($data['parent_interface'])) {
-                    $fieldsToUpdate['parent_interface'] = $data['parent_interface'];
-                }
+            }
+
+            if (array_key_exists('parent_interface', $data)) {
+                $fieldsToUpdate['parent_interface'] = is_string($data['parent_interface']) ? $data['parent_interface'] : '';
             }
 
             $pool->update($fieldsToUpdate);
@@ -808,11 +1401,12 @@ final class IpManagementService
 
         // 1. Host reachable via HypervisorGateway
         $hostReachable = false;
-        $networkNames = [];
+        /** @var array<string, array{type: string|null, managed: bool}> $networks */
+        $networks = [];
         try {
             $gateway = app(HypervisorGateway::class);
             $client = $gateway->client($pool->host);
-            $res = $client->get('/1.0/networks');
+            $res = $client->withQueryParameters(['recursion' => 1])->get('/1.0/networks');
 
             if ($res->successful()) {
                 $hostReachable = true;
@@ -820,9 +1414,18 @@ final class IpManagementService
                 if (is_array($metadata)) {
                     foreach ($metadata as $item) {
                         if (is_string($item)) {
-                            $networkNames[] = basename($item);
+                            $name = basename($item);
+                            if ($name !== '') {
+                                $networks[$name] = ['type' => null, 'managed' => false];
+                            }
                         } elseif (is_array($item) && isset($item['name']) && is_string($item['name'])) {
-                            $networkNames[] = $item['name'];
+                            $name = $item['name'];
+                            if ($name !== '') {
+                                $rawType = isset($item['type']) && is_string($item['type']) ? trim($item['type']) : '';
+                                $type = ($rawType !== '' && $rawType !== 'unknown') ? $rawType : null;
+                                $managed = isset($item['managed']) && (bool) $item['managed'];
+                                $networks[$name] = ['type' => $type, 'managed' => $managed];
+                            }
                         }
                     }
                 }
@@ -848,17 +1451,34 @@ final class IpManagementService
             ];
         }
 
+        $networkNames = array_keys($networks);
+        $networkMode = $pool->network_mode !== '' ? $pool->network_mode : 'routed';
+        $isManual = ($networkMode === 'manual');
+        $parentInterface = trim($pool->parent_interface);
+
         // 2. Parent interface existence on host
-        if (! $hostReachable) {
+        if ($isManual) {
+            $checks[] = [
+                'name' => 'Parent interface exists',
+                'ok' => true,
+                'hint' => 'Parent interface is not used in manual network mode.',
+            ];
+        } elseif ($parentInterface === '') {
             $overallOk = false;
             $checks[] = [
                 'name' => 'Parent interface exists',
                 'ok' => false,
-                'hint' => sprintf("Cannot verify parent interface '%s' because host is unreachable.", $pool->parent_interface),
+                'hint' => sprintf("Parent interface is required for '%s' network mode and is currently empty.", $networkMode),
+            ];
+        } elseif (! $hostReachable) {
+            $overallOk = false;
+            $checks[] = [
+                'name' => 'Parent interface exists',
+                'ok' => false,
+                'hint' => sprintf("Cannot verify parent interface '%s' because host is unreachable.", $parentInterface),
             ];
         } else {
-            $parentInterface = $pool->parent_interface ?: 'eth0';
-            if (in_array($parentInterface, $networkNames, true)) {
+            if (array_key_exists($parentInterface, $networks)) {
                 $checks[] = [
                     'name' => 'Parent interface exists',
                     'ok' => true,
@@ -874,7 +1494,21 @@ final class IpManagementService
             }
         }
 
-        // 3. Pool range consistent with CIDR and gateway
+        // 3. Parent interface type compatibility with network mode
+        $typeCheck = $this->evaluateParentInterfaceTypeCheck(
+            $networkMode,
+            $parentInterface,
+            $hostReachable,
+            $networks[$parentInterface] ?? null,
+        );
+        if (! $typeCheck['ok']) {
+            $overallOk = false;
+        }
+        $checks[] = $typeCheck;
+
+        // 4. Pool range consistent with CIDR (and gateway for non-bridged/macvlan modes)
+        $requiresGateway = in_array($networkMode, ['bridged', 'macvlan'], true);
+        $gatewayIp = $pool->gateway !== null ? trim($pool->gateway) : '';
         $rangeConsistent = true;
         $rangeHints = [];
         $range = CidrHelper::subnetRange($pool->cidr);
@@ -898,7 +1532,7 @@ final class IpManagementService
                 $rangeConsistent = false;
                 $rangeHints[] = sprintf("First usable IP '%s' is greater than last usable '%s'.", $pool->first_usable, $pool->last_usable);
             }
-            if (! empty($pool->gateway)) {
+            if (! $requiresGateway && ! empty($pool->gateway)) {
                 $gwLong = CidrHelper::ipToUnsigned($pool->gateway);
                 if ($gwLong === null || $gwLong < $network || $gwLong > $broadcast) {
                     $rangeConsistent = false;
@@ -911,7 +1545,9 @@ final class IpManagementService
             $checks[] = [
                 'name' => 'Pool range consistent',
                 'ok' => true,
-                'hint' => 'Usable IP range and gateway are consistent with CIDR block.',
+                'hint' => $requiresGateway
+                    ? 'Usable IP range is consistent with CIDR block.'
+                    : 'Usable IP range and gateway are consistent with CIDR block.',
             ];
         } else {
             $overallOk = false;
@@ -922,7 +1558,43 @@ final class IpManagementService
             ];
         }
 
-        // 4. Host kernel routing & proxy ARP hint
+        // 5. Gateway configured (required for bridged and macvlan modes)
+        if ($requiresGateway) {
+            if ($gatewayIp === '') {
+                $overallOk = false;
+                $checks[] = [
+                    'name' => 'Gateway configured',
+                    'ok' => false,
+                    'hint' => sprintf("A gateway IP is required for '%s' network mode so instances receive a default route.", $networkMode),
+                ];
+            } elseif ($range === null) {
+                $overallOk = false;
+                $checks[] = [
+                    'name' => 'Gateway configured',
+                    'ok' => false,
+                    'hint' => sprintf("Cannot validate gateway IP '%s' against invalid CIDR '%s'.", $gatewayIp, $pool->cidr),
+                ];
+            } else {
+                [$network, $broadcast] = $range;
+                $gwLong = CidrHelper::ipToUnsigned($gatewayIp);
+                if ($gwLong === null || $gwLong < $network || $gwLong > $broadcast) {
+                    $overallOk = false;
+                    $checks[] = [
+                        'name' => 'Gateway configured',
+                        'ok' => false,
+                        'hint' => sprintf("Gateway IP '%s' is outside CIDR %s.", $gatewayIp, $pool->cidr),
+                    ];
+                } else {
+                    $checks[] = [
+                        'name' => 'Gateway configured',
+                        'ok' => true,
+                        'hint' => sprintf("Gateway IP '%s' is configured and within CIDR %s.", $gatewayIp, $pool->cidr),
+                    ];
+                }
+            }
+        }
+
+        // 6. Host kernel routing & proxy ARP hint
         $checks[] = [
             'name' => 'Host sysctl & proxy ARP',
             'ok' => true,
@@ -949,6 +1621,118 @@ final class IpManagementService
         return [
             'ok' => $overallOk,
             'checks' => $checks,
+        ];
+    }
+
+    /**
+     * Evaluate whether the discovered host interface type matches the pool's network mode.
+     *
+     * @param  array{type: string|null, managed: bool}|null  $interfaceInfo
+     * @return array{name: string, ok: bool, hint: string}
+     */
+    private function evaluateParentInterfaceTypeCheck(
+        string $networkMode,
+        string $parentInterface,
+        bool $hostReachable,
+        ?array $interfaceInfo,
+    ): array {
+        $checkName = 'Parent interface type matches mode';
+
+        if ($networkMode === 'manual') {
+            return [
+                'name' => $checkName,
+                'ok' => true,
+                'hint' => 'Parent interface type check is not applicable in manual network mode.',
+            ];
+        }
+
+        if ($parentInterface === '') {
+            return [
+                'name' => $checkName,
+                'ok' => false,
+                'hint' => sprintf("Cannot verify parent interface type because parent_interface is empty for '%s' network mode.", $networkMode),
+            ];
+        }
+
+        if (! $hostReachable) {
+            return [
+                'name' => $checkName,
+                'ok' => false,
+                'hint' => sprintf("Cannot verify parent interface '%s' type because host is unreachable.", $parentInterface),
+            ];
+        }
+
+        if ($interfaceInfo === null) {
+            return [
+                'name' => $checkName,
+                'ok' => false,
+                'hint' => sprintf("Cannot verify interface type because parent interface '%s' was not found on the host.", $parentInterface),
+            ];
+        }
+
+        $type = $interfaceInfo['type'];
+        if ($type === null) {
+            return [
+                'name' => $checkName,
+                'ok' => true,
+                'hint' => sprintf("Interface type for '%s' could not be verified from hypervisor response; ensure it matches '%s' mode.", $parentInterface, $networkMode),
+            ];
+        }
+
+        if ($networkMode === 'bridged') {
+            if ($type === 'bridge') {
+                $bridgeKind = $interfaceInfo['managed'] ? 'an Incus managed bridge' : 'a Linux bridge';
+
+                return [
+                    'name' => $checkName,
+                    'ok' => true,
+                    'hint' => sprintf("Parent interface '%s' is %s (type 'bridge'), compatible with 'bridged' mode.", $parentInterface, $bridgeKind),
+                ];
+            }
+
+            $recommendation = in_array($type, ['physical', 'bond', 'vlan'], true)
+                ? sprintf("Use 'macvlan' or 'routed' mode for '%s' interfaces, or select a 'bridge' interface.", $type)
+                : "Select a 'bridge' interface for 'bridged' mode.";
+
+            return [
+                'name' => $checkName,
+                'ok' => false,
+                'hint' => sprintf("Parent interface '%s' has type '%s', which is incompatible with 'bridged' mode (requires 'bridge'). %s", $parentInterface, $type, $recommendation),
+            ];
+        }
+
+        if ($networkMode === 'macvlan') {
+            if (in_array($type, ['physical', 'bond', 'vlan'], true)) {
+                return [
+                    'name' => $checkName,
+                    'ok' => true,
+                    'hint' => sprintf("Parent interface '%s' has type '%s', compatible with 'macvlan' mode.", $parentInterface, $type),
+                ];
+            }
+
+            $recommendation = $type === 'bridge'
+                ? "Use 'bridged' or 'routed' mode for 'bridge' interfaces, or select a 'physical', 'bond', or 'vlan' interface."
+                : "Select a 'physical', 'bond', or 'vlan' interface for 'macvlan' mode.";
+
+            return [
+                'name' => $checkName,
+                'ok' => false,
+                'hint' => sprintf("Parent interface '%s' has type '%s', which is incompatible with 'macvlan' mode (requires 'physical', 'bond', or 'vlan'). %s", $parentInterface, $type, $recommendation),
+            ];
+        }
+
+        if (in_array($type, ['physical', 'bond', 'vlan', 'bridge'], true)) {
+            return [
+                'name' => $checkName,
+                'ok' => true,
+                'hint' => sprintf("Parent interface '%s' has type '%s', which is supported in 'routed' mode.", $parentInterface, $type),
+            ];
+        }
+
+        return [
+            'name' => $checkName,
+            'ok' => true,
+            'hint' => sprintf("Parent interface '%s' reports type '%s'. Routed mode typically uses 'physical', 'bond', 'vlan', or 'bridge' interfaces; verify host routing.", $parentInterface, $type),
         ];
     }
 

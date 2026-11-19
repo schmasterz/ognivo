@@ -12,13 +12,21 @@ interface EditIpPoolModalProps {
   onSuccess: (updatedPool: IpPool) => void;
 }
 
+function parseCidrPrefix(cidr: string): number | null {
+  const parts = cidr.trim().split("/");
+  if (parts.length !== 2 || !/^\d+$/.test(parts[1])) return null;
+  const prefix = parseInt(parts[1], 10);
+  if (isNaN(prefix) || prefix < 0 || prefix > 32) return null;
+  return prefix;
+}
+
 export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalProps) {
   const { t } = useI18n();
 
   const [name, setName] = useState(pool.name);
   const [description, setDescription] = useState(pool.description || "");
   const [networkMode, setNetworkMode] = useState<string>(pool.network_mode || "routed");
-  const [parentInterface, setParentInterface] = useState<string>(pool.parent_interface || "eth0");
+  const [parentInterface, setParentInterface] = useState<string>(pool.parent_interface ?? "");
   const [isCustomInterface, setIsCustomInterface] = useState(false);
   const [discoveredNetworks, setDiscoveredNetworks] = useState<HostDiscoveredNetwork[]>([]);
   const [discoveringHost, setDiscoveringHost] = useState(false);
@@ -47,7 +55,7 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
       setName(pool.name);
       setDescription(pool.description || "");
       setNetworkMode(pool.network_mode || "routed");
-      setParentInterface(pool.parent_interface || "eth0");
+      setParentInterface(pool.parent_interface ?? "");
       setIsCustomInterface(false);
       setDnsServers(pool.dns_servers && pool.dns_servers.length > 0 ? pool.dns_servers.join(", ") : "1.1.1.1, 8.8.8.8");
       setExcludedIps(pool.excluded_ips && pool.excluded_ips.length > 0 ? pool.excluded_ips.join(", ") : "");
@@ -92,6 +100,24 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
     e.preventDefault();
     setError(null);
 
+    const trimmedParentInterface = parentInterface.trim();
+    if (networkMode !== "manual" && !trimmedParentInterface) {
+      setError(t("parentInterfaceRequired"));
+      return;
+    }
+
+    const isL2Mode = networkMode === "bridged" || networkMode === "macvlan";
+    const cidrPrefix = parseCidrPrefix(pool.cidr || pool.subnet || "");
+    if (isL2Mode && (cidrPrefix === 31 || cidrPrefix === 32)) {
+      setError(t("l2ModePrefixUnsupported"));
+      return;
+    }
+
+    if (isL2Mode && !gateway.trim()) {
+      setError(t("gatewayRequiredForL2Modes"));
+      return;
+    }
+
     try {
       setLoading(true);
 
@@ -116,11 +142,11 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
         gateway: gateway.trim() || null,
         first_usable: firstUsable.trim() || undefined,
         last_usable: lastUsable.trim() || undefined,
+        ...(networkMode !== "manual" ? { parent_interface: trimmedParentInterface } : {}),
         ...(hasAllocations
           ? {}
           : {
               network_mode: networkMode,
-              parent_interface: parentInterface.trim() || "eth0",
             }),
       });
 
@@ -130,7 +156,7 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError("Failed to update IP pool.");
+        setError(t("failedToUpdatePool"));
       }
     } finally {
       setLoading(false);
@@ -168,7 +194,7 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
           <div className="mb-5 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-300 flex items-start space-x-2">
             <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <span>
-              This pool has active or cooling allocations. Network mode, host node, and CIDR cannot be modified, and usable range boundaries must encompass existing allocations.
+              {t("poolHasAllocationsWarning")}
             </span>
           </div>
         )}
@@ -191,10 +217,10 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5 flex items-center space-x-1.5">
                 <Server className="w-3.5 h-3.5 text-teal-500" />
-                <span>Host Node</span>
+                <span>{t("hostNodeLabel")}</span>
               </label>
               <div className="w-full px-3.5 py-2.5 rounded-xl bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm text-gray-500 dark:text-gray-400">
-                {pool.host?.name || "Global"}
+                {pool.host?.name || t("globalNode")}
               </div>
             </div>
           </div>
@@ -210,83 +236,94 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
                 onChange={(e) => setNetworkMode(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 disabled:opacity-60"
               >
-                <option value="routed">{t("modeRouted")} (L3 /32 Link-Local)</option>
-                <option value="bridged">Bridged (L2 Bridge / NAT Bridge)</option>
-                <option value="macvlan">Macvlan (L2 Direct Physical NIC)</option>
+                <option value="routed">{t("modeRoutedOption")}</option>
+                <option value="bridged">{t("modeBridgedOption")}</option>
+                <option value="macvlan">{t("modeMacvlanOption")}</option>
                 <option value="manual">{t("modeManual")}</option>
               </select>
+              <span className="text-[11px] text-gray-400 mt-1 block">
+                {networkMode === "manual"
+                  ? t("manualWarning")
+                  : networkMode === "bridged"
+                    ? t("modeBridgedDesc")
+                    : networkMode === "macvlan"
+                      ? t("modeMacvlanDesc")
+                      : t("modeRoutedDesc")}
+              </span>
             </div>
 
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5 flex items-center justify-between">
-                <span>Host Parent Interface</span>
-                {discoveringHost && <Loader2 className="w-3 h-3 animate-spin text-teal-500" />}
-              </label>
-              <select
-                disabled={hasAllocations}
-                required
-                value={isCustomInterface ? "__custom__" : parentInterface}
-                onChange={(e) => {
-                  if (e.target.value === "__custom__") {
-                    setIsCustomInterface(true);
-                  } else {
-                    setIsCustomInterface(false);
-                    setParentInterface(e.target.value);
-                  }
-                }}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono disabled:opacity-60"
-              >
-                {discoveringHost && discoveredNetworks.length === 0 && (
-                  <option value="" disabled>Detecting host interfaces...</option>
-                )}
-                {discoveredNetworks.length === 0 && !discoveringHost && (
-                  <>
-                    <option value="eth0">eth0</option>
-                    <option value="eno1">eno1</option>
-                    <option value="incusbr0">incusbr0</option>
-                    <option value="lxdbr0">lxdbr0</option>
-                  </>
-                )}
-                {discoveredNetworks.map((net) => (
-                  <option key={net.name} value={net.name}>
-                    {net.name} ({net.type}{net.addresses && net.addresses.length > 0 ? `: ${net.addresses.join(", ")}` : ""})
-                  </option>
-                ))}
-                {parentInterface &&
-                  !isCustomInterface &&
-                  !discoveredNetworks.some((n) => n.name === parentInterface) && (
-                    <option value={parentInterface}>
-                      {parentInterface} (Current)
-                    </option>
+            {networkMode !== "manual" && (
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5 flex items-center justify-between">
+                  <span>{t("hostParentInterface")}</span>
+                  {discoveringHost && <Loader2 className="w-3 h-3 animate-spin text-teal-500" />}
+                </label>
+                <select
+                  required
+                  value={isCustomInterface ? "__custom__" : parentInterface}
+                  onChange={(e) => {
+                    if (e.target.value === "__custom__") {
+                      setIsCustomInterface(true);
+                    } else {
+                      setIsCustomInterface(false);
+                      setParentInterface(e.target.value);
+                    }
+                  }}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono"
+                >
+                  {discoveringHost && discoveredNetworks.length === 0 ? (
+                    <option value="" disabled>{t("detectingHostInterfaces")}</option>
+                  ) : (
+                    <option value="" disabled>{t("selectHostInterface")}</option>
                   )}
-                {!hasAllocations && <option value="__custom__">Custom interface...</option>}
-              </select>
+                  {discoveredNetworks.length === 0 && !discoveringHost && (
+                    <>
+                      <option value="eno1">eno1</option>
+                      <option value="incusbr0">incusbr0</option>
+                      <option value="lxdbr0">lxdbr0</option>
+                    </>
+                  )}
+                  {discoveredNetworks.map((net) => (
+                    <option key={net.name} value={net.name}>
+                      {net.name} ({net.type}{net.addresses && net.addresses.length > 0 ? `: ${net.addresses.join(", ")}` : ""})
+                    </option>
+                  ))}
+                  {parentInterface &&
+                    !isCustomInterface &&
+                    !discoveredNetworks.some((n) => n.name === parentInterface) && (
+                      <option value={parentInterface}>
+                        {parentInterface} ({t("currentLabel")})
+                      </option>
+                    )}
+                  <option value="__custom__">{t("customInterfaceOption")}</option>
+                </select>
 
-              {!hasAllocations && isCustomInterface && (
-                <div className="mt-2">
-                  <input
-                    type="text"
-                    required
-                    value={parentInterface}
-                    onChange={(e) => setParentInterface(e.target.value)}
-                    placeholder="e.g. eth0, eno1, incusbr0"
-                    className="w-full px-3.5 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono"
-                    autoFocus
-                  />
-                </div>
-              )}
-              {hasAllocations ? (
-                <span className="text-[11px] text-amber-500 mt-1 block">Parent interface cannot be modified while IPs are allocated</span>
-              ) : (
-                <span className="text-[11px] text-gray-400 mt-1 block">Host NIC or bridge on target node</span>
-              )}
-            </div>
+                {isCustomInterface && (
+                  <div className="mt-2">
+                    <input
+                      type="text"
+                      required
+                      value={parentInterface}
+                      onChange={(e) => setParentInterface(e.target.value)}
+                      placeholder={t("customInterfacePlaceholder")}
+                      className="w-full px-3.5 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono"
+                      autoFocus
+                    />
+                  </div>
+                )}
+                {hasAllocations ? (
+                  <span className="text-[11px] text-amber-500 mt-1 block">{t("parentInterfaceAllocationsHint")}</span>
+                ) : (
+                  <span className="text-[11px] text-gray-400 mt-1 block">{t("hostParentInterfaceHint")}</span>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                CIDR Subnet (Immutable)
+                {t("cidrSubnetImmutable")}
               </label>
               <div className="w-full px-3.5 py-2.5 rounded-xl bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-mono text-gray-600 dark:text-gray-300">
                 {pool.cidr || pool.subnet}
@@ -295,10 +332,14 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
 
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                Gateway IP
+                {t("gatewayIpLabel")}{" "}
+                {(networkMode === "bridged" || networkMode === "macvlan") && (
+                  <span className="text-red-500">*</span>
+                )}
               </label>
               <input
                 type="text"
+                required={networkMode === "bridged" || networkMode === "macvlan"}
                 value={gateway}
                 onChange={(e) => setGateway(e.target.value)}
                 placeholder="203.0.113.1"
@@ -310,7 +351,7 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                First Usable IP
+                {t("firstUsableIp")}
               </label>
               <input
                 type="text"
@@ -322,7 +363,7 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
 
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                Last Usable IP
+                {t("lastUsableIp")}
               </label>
               <input
                 type="text"
@@ -336,7 +377,7 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                DNS Servers
+                {t("dnsServersLabel")}
               </label>
               <input
                 type="text"
@@ -349,7 +390,7 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
 
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                Cooldown Quarantine (Seconds)
+                {t("cooldownQuarantineSeconds")}
               </label>
               <input
                 type="number"
@@ -364,13 +405,13 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
 
           <div>
             <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-              Excluded Reserved IPs
+              {t("excludedReservedIps")}
             </label>
             <input
               type="text"
               value={excludedIps}
               onChange={(e) => setExcludedIps(e.target.value)}
-              placeholder="e.g. 203.0.113.1, 203.0.113.250"
+              placeholder={t("excludedIpsPlaceholder")}
               className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50"
             />
           </div>
@@ -408,7 +449,7 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
                   onChange={(e) => setActive(e.target.checked)}
                   className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
                 />
-                <span className="text-xs font-medium text-gray-800 dark:text-gray-200">Pool Enabled (Active)</span>
+                <span className="text-xs font-medium text-gray-800 dark:text-gray-200">{t("poolEnabledActive")}</span>
               </label>
             </div>
           </div>

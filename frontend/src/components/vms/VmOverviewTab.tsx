@@ -29,6 +29,8 @@ export function VmOverviewTab({ vm, isAdmin }: VmOverviewTabProps) {
   const primaryIp = vm.network?.primary?.address ?? vm.ipv4_address ?? "—";
   const macAddress = vm.network?.primary?.mac_address ?? vm.mac_address ?? "—";
   const netStatus = vm.network_status ?? vm.network?.primary?.status ?? "unverified";
+  const isManualNetwork = vm.network?.settings?.mode === "manual";
+  const showOperatorManaged = isManualNetwork && netStatus.toLowerCase() !== "observed";
   const gateway = vm.network?.settings?.gateway ?? "—";
   const dnsServers = vm.network?.settings?.dns?.length
     ? vm.network.settings.dns.join(", ")
@@ -36,6 +38,17 @@ export function VmOverviewTab({ vm, isAdmin }: VmOverviewTabProps) {
   const netMode = vm.network?.settings?.mode ?? "—";
 
   const getNetworkStatusBadge = (status: string) => {
+    if (isManualNetwork && status.toLowerCase() !== "observed") {
+      return (
+        <span
+          title={t("networkOperatorManagedHint")}
+          className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5" />
+          {t("networkOperatorManaged")}
+        </span>
+      );
+    }
     switch (status.toLowerCase()) {
       case "assigned":
         return (
@@ -188,8 +201,8 @@ export function VmOverviewTab({ vm, isAdmin }: VmOverviewTabProps) {
 
           <div>
             <div className="text-zinc-400 font-medium mb-1">{t("networkStatus")}</div>
-            <div className="font-medium text-zinc-800 dark:text-zinc-200 capitalize">
-              {netStatus}
+            <div className={showOperatorManaged ? "font-medium text-zinc-800 dark:text-zinc-200" : "font-medium text-zinc-800 dark:text-zinc-200 capitalize"}>
+              {showOperatorManaged ? t("networkOperatorManaged") : netStatus}
             </div>
           </div>
         </div>

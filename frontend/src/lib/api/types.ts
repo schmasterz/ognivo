@@ -301,6 +301,11 @@ export interface PaginatedResponse<T> {
   total: number;
 }
 
+export interface MetaPaginatedResponse<T> {
+  data: T[];
+  meta: PaginationMeta;
+}
+
 export interface TenantIpPool {
   id: number;
   name: string;
@@ -337,9 +342,36 @@ export interface IpPool {
     percent: number;
   };
   total_ips?: number;
+  total_usable?: number;
   free_ips?: number;
   allocated_ips?: number;
   cooling_ips?: number;
+}
+
+export type IpPoolAddressState = "free" | "allocated" | "cooling" | "excluded";
+
+export interface IpPoolAddressAllocation {
+  id: number;
+  mac_address: string | null;
+  status: string;
+  allocated_at: string | null;
+  released_at: string | null;
+  virtual_machine: { id: number; name: string; status: string } | null;
+  user: { id: number; name: string; email: string } | null;
+}
+
+export interface IpPoolAddressEntry {
+  ip: string;
+  state: IpPoolAddressState;
+  is_gateway: boolean;
+  cooldown_remaining_seconds: number;
+  allocation: IpPoolAddressAllocation | null;
+}
+
+export interface IpPoolAddressesResponse {
+  pool: IpPool;
+  data: IpPoolAddressEntry[];
+  meta: PaginationMeta;
 }
 
 export interface IpAllocation {

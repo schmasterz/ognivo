@@ -7,7 +7,7 @@ namespace App\Services\Hypervisor;
 use App\Models\Image;
 use App\Models\IpAllocation;
 use App\Models\VirtualMachine;
-use Illuminate\Support\Facades\Log;
+use DomainException;
 use RuntimeException;
 
 /**
@@ -78,7 +78,7 @@ class InstanceSpecBuilder
         ];
 
         if (! $isManual) {
-            $configuredParent = ($allocation?->pool?->parent_interface ?? 'eth0') ?: 'eth0';
+            $configuredParent = $this->requireConfiguredParentInterface($allocation, $networkMode);
             $parentInterface = $this->resolveParentInterface($configuredParent, $networkMode, $availableNetworks);
             $ipAddress = $allocation?->ip_string ?? $vm->ipv4_address;
             $macAddress = $allocation?->mac_address;
@@ -186,65 +186,30 @@ class InstanceSpecBuilder
     }
 
     /**
-     * Resolve the effective parent network interface on the target host.
-     * If the pool's configured interface exists on the host (or host networks were not queried),
-     * returns the configured interface. Otherwise, selects the best matching host interface.
+     * Validate the configured parent network interface against host networks.
+     *
+     * When host networks were not queried ($availableNetworks is null or empty),
+     * returns the configured value unchanged. When a non-empty list is provided
+     * and the configured parent interface is absent, throws a DomainException.
      *
      * @param  list<string>|null  $availableNetworks
      */
     public function resolveParentInterface(string $configuredParent, string $networkMode, ?array $availableNetworks = null): string
     {
-        if ($availableNetworks === null || empty($availableNetworks) || in_array($configuredParent, $availableNetworks, true)) {
+        if ($availableNetworks === null || $availableNetworks === []) {
             return $configuredParent;
         }
 
-        $candidates = array_values(array_filter(
-            $availableNetworks,
-            static fn (string $name): bool => $name !== 'lo'
-                && ! str_starts_with($name, 'docker')
-                && ! str_starts_with($name, 'tailscale')
-                && ! str_starts_with($name, 'veth')
-        ));
-
-        if (empty($candidates)) {
+        if (in_array($configuredParent, $availableNetworks, true)) {
             return $configuredParent;
         }
 
-        $selected = null;
-
-        if ($networkMode === 'bridged') {
-            foreach ($candidates as $cand) {
-                if (str_starts_with($cand, 'incusbr') || str_starts_with($cand, 'lxdbr') || str_starts_with($cand, 'br') || str_starts_with($cand, 'virbr')) {
-                    $selected = $cand;
-                    break;
-                }
-            }
-        } else {
-            foreach ($candidates as $cand) {
-                if (
-                    str_starts_with($cand, 'eno')
-                    || str_starts_with($cand, 'enp')
-                    || str_starts_with($cand, 'ens')
-                    || str_starts_with($cand, 'eth')
-                    || str_starts_with($cand, 'bond')
-                ) {
-                    $selected = $cand;
-                    break;
-                }
-            }
-        }
-
-        $selected ??= $candidates[0];
-
-        Log::warning(sprintf(
-            'Configured parent_interface "%s" not found on hypervisor (available: %s). Auto-resolved to "%s" for mode "%s".',
+        throw new DomainException(sprintf(
+            'Permanent network configuration error: Configured parent_interface "%s" for network mode "%s" was not found on the hypervisor host (available: %s).',
             $configuredParent,
-            implode(', ', $availableNetworks),
-            $selected,
-            $networkMode
+            $networkMode,
+            implode(', ', $availableNetworks)
         ));
-
-        return $selected;
     }
 
     /**
@@ -349,6 +314,27 @@ YAML;
         }
 
         return null;
+    }
+
+    /**
+     * Ensure a non-manual pool has a non-empty parent_interface configured.
+     */
+    protected function requireConfiguredParentInterface(?IpAllocation $allocation, string $networkMode): string
+    {
+        $configuredParent = $allocation !== null ? trim($allocation->pool->parent_interface) : '';
+        if ($configuredParent === '') {
+            $poolContext = $allocation !== null
+                ? sprintf("IP pool '%s' (#%d)", $allocation->pool->name, $allocation->pool->id)
+                : 'the target VM (no IP pool allocation)';
+
+            throw new DomainException(sprintf(
+                'Permanent network configuration error: %s uses network mode "%s" which requires a non-empty parent_interface.',
+                $poolContext,
+                $networkMode
+            ));
+        }
+
+        return $configuredParent;
     }
 
     /**

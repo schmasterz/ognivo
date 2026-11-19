@@ -2,13 +2,12 @@
 
 import React from "react";
 import { Globe } from "lucide-react";
-import { IpAllocation, IpPool, VirtualMachine } from "@/lib/api";
+import { IpAllocation, IpPool } from "@/lib/api";
 import { IpTable } from "./IpTable";
 import { useI18n } from "@/lib/i18n/I18nContext";
 
 export interface NetworkingTabProps {
   ips: IpAllocation[];
-  vms: VirtualMachine[];
   pools: IpPool[];
   loading: boolean;
   isAdmin: boolean;
@@ -16,7 +15,6 @@ export interface NetworkingTabProps {
   onRequestRelease: (ip: IpAllocation) => void;
   onRequestDeletePool: (poolId: number, poolName: string) => void;
   onPoolUpdated?: (pool: IpPool) => void;
-  onRefresh?: () => void;
   ipsPagination: {
     currentPage: number;
     lastPage: number;
@@ -37,7 +35,6 @@ export interface NetworkingTabProps {
 
 export function NetworkingTab({
   ips,
-  vms,
   pools,
   loading,
   isAdmin,
@@ -45,7 +42,6 @@ export function NetworkingTab({
   onRequestRelease,
   onRequestDeletePool,
   onPoolUpdated,
-  onRefresh,
   ipsPagination,
   poolsPagination,
 }: NetworkingTabProps) {
@@ -64,7 +60,7 @@ export function NetworkingTab({
               {t("networkingTitle")}
             </h2>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Routed L3 Networking and IPAM Allocations
+              {t("networkingSubtitle")}
             </p>
           </div>
         </div>
@@ -73,7 +69,6 @@ export function NetworkingTab({
       {/* Main IPAM & Pool Routing Table */}
       <IpTable
         ips={ips}
-        vms={vms}
         pools={pools}
         loading={loading}
         isAdmin={isAdmin}
@@ -81,7 +76,6 @@ export function NetworkingTab({
         onAddPool={onAddPool}
         onRequestDeletePool={onRequestDeletePool}
         onPoolUpdated={onPoolUpdated}
-        onRefresh={onRefresh}
         pagination={{
           currentPage: ipsPagination.currentPage,
           lastPage: ipsPagination.lastPage,

@@ -4,7 +4,28 @@ All notable changes to **Ognivo** are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
 
+### Added
+- **IP Pool Address Inspector (`GET /api/admin/ip-pools/{ipPool}/addresses` & `PoolDetailModal`):** Added paginated inspection of a pool's usable IPv4 range by state (`all`, `free`, `allocated`, `cooling`, `excluded` including gateway tag) and IPv4 prefix `search`, using O(page) gap-jumping over occupied/excluded addresses for `/16` pools, exposed in the Admin UI via `PoolDetailModal` (Eye button, clickable pool name, and `Free: N` badge).
+- **Manual Incus Network Test Guide:** Added [`docs/testing/manual-incus-network-tests.md`](docs/testing/manual-incus-network-tests.md) with host preparation, per-mode (`routed`, `bridged`, `macvlan`, `manual`) provisioning and guest checks, negative/validation cases, and a copyable results checklist.
+- **`GET /ips` Query Parameter Validation:** Added `ListIpAllocationsRequest` validating `user_id`, `host_id`, `pool_id`, `status` (`allocated` or `cooling`), `search`, `per_page`, and `page`.
+- **Operator-Managed Badge for Manual-Pool VMs:** Displayed an **Operator-managed** badge and tooltip in `VmTable` and `VmOverviewTab` for instances in `manual` pools whose network status is not `observed`.
+
+### Changed
+- **Canonical `meta` Pagination on IPAM Endpoints:** Removed duplicate root-level pagination keys (`current_page`, `last_page`, `per_page`, `total`) from `GET /api/ips`, `GET /api/ip-pools`, and `GET /api/admin/ip-pools` in favor of the `meta` pagination object (`MetaPaginatedResponse<T>`).
+- **Networking Tab Pool Mode Badges & Status Filters:** Added distinct pool card mode badges (`routed`, `bridged`, `macvlan`, `manual`) and dedicated `allocated` / `cooling` status filter options in `FilterToolbar` on the Networking tab.
+- **Bridged & Macvlan Modes Documented and Hardened:** Documented `bridged` and `macvlan` networking in [`docs/features/networking.md`](docs/features/networking.md) and hardened L2 pool validation and provisioning: no silent interface fallback, mandatory `gateway` and `/16`–`/30` prefix for L2 modes, and preflight checks verifying `Gateway configured` and `Parent interface type matches mode`.
+- **Translated Pool Mode Descriptions:** Added localized English and Bulgarian descriptions (`modeRoutedDesc`, `modeBridgedDesc`, `modeMacvlanDesc`) in the IP pool modals.
+- **IPAM Pool Utilization & Numeric Ordering:** Pool utilization is now computed via SQL aggregates instead of loading allocations in application code, IP allocation listings are ordered by pool and then numerically by IPv4 address, and `ip_allocations` adds composite indexes `idx_ip_alloc_pool_status` and `idx_ip_alloc_user_status`.
+- **UI Cooling IP Refresh:** Cooling IP entries in the UI now use a single scheduled refresh when the cooldown expires instead of polling every 5 seconds.
+- **Strict `parent_interface` Validation:** `parent_interface` no longer silently defaults to `eth0`; it is required for all non-manual pools (`routed`, `bridged`, `macvlan`), while `manual` pools store an empty string and return `null` in API responses.
+- **Mutable `parent_interface` on Allocated Pools:** `parent_interface` can now be changed on IP pools that already have allocations (applies only to newly created or rebuilt instances, not already running ones); `cidr`, `host_id`, and `network_mode` remain immutable while allocations exist.
+- **Classified IP Allocations Search:** The allocations `search` filter now matches IPv4 terms and MAC addresses by prefix (`term%`) and non-IP/non-MAC text (user name/email, VM name, pool name) by substring (`%term%`) with escaped `LIKE` wildcards.
+
+### Fixed
+- **Side-Effect-Free `GET /ips`:** `GET /ips` no longer deletes expired `cooling` allocation rows on read; expired rows are removed exclusively by the scheduled `ipam:prune-cooling` command and are reported as `released` with `cooldown_remaining_seconds` `0` until pruned.
+- **Networking Tab Status Filter Normalization:** Updated the Networking tab (`useNetworking` / `normalizeIpStatusFilter`) to ignore unsupported `status` filters rather than forwarding invalid values to `GET /api/ips`.
 
 ## [1.0.0-alpha.1] - 2026-11-14
 

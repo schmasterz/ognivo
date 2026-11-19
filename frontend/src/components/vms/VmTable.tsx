@@ -137,6 +137,20 @@ export function VmTable({
 
     const status = vm.network_status ?? vm.network?.primary?.status ?? "assigned";
 
+    if (vm.network?.settings?.mode === "manual" && status !== "observed") {
+      return (
+        <div className="flex flex-col" title={t("networkOperatorManagedHint")}>
+          <div className="flex items-center space-x-1.5 text-gray-800 dark:text-gray-200">
+            <span className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0" />
+            <span>{ip}</span>
+          </div>
+          <span className="text-[10px] text-amber-600 dark:text-amber-400 font-sans">
+            {t("networkOperatorManaged")}
+          </span>
+        </div>
+      );
+    }
+
     if (status === "observed") {
       return (
         <div className="flex flex-col">

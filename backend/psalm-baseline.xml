@@ -155,7 +155,6 @@
   <file src="app/Http/Resources/IpPoolResource.php">
     <DocblockTypeContradiction>
       <code><![CDATA[$pool->subnet]]></code>
-      <code><![CDATA['eth0']]></code>
       <code><![CDATA['routed']]></code>
       <code><![CDATA[300]]></code>
       <code><![CDATA[null]]></code>
@@ -174,7 +173,6 @@
       <code><![CDATA[$pool->cooldown_seconds]]></code>
       <code><![CDATA[$pool->host !== null]]></code>
       <code><![CDATA[$pool->network_mode]]></code>
-      <code><![CDATA[$pool->parent_interface]]></code>
     </RedundantConditionGivenDocblockType>
     <TypeDoesNotContainType>
       <code><![CDATA[new TenantHostResource($pool->host)]]></code>
@@ -412,9 +410,6 @@
       <code><![CDATA[$dto->lastUsable]]></code>
       <code><![CDATA[empty($pool->gateway)]]></code>
     </RiskyTruthyFalsyComparison>
-    <TooManyArguments>
-      <code><![CDATA[select]]></code>
-    </TooManyArguments>
     <UndefinedMagicPropertyAssignment>
       <code><![CDATA[$pool->utilization]]></code>
     </UndefinedMagicPropertyAssignment>

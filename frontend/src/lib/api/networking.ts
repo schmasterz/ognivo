@@ -1,5 +1,11 @@
 import { request } from "./client";
-import { IpAllocation, IpPool, PaginatedResponse } from "./types";
+import {
+  IpAllocation,
+  IpPool,
+  IpPoolAddressesResponse,
+  IpPoolAddressState,
+  MetaPaginatedResponse,
+} from "./types";
 
 /**
  * IPAM, Ranged Subnet Pools, and Allocation API Methods.
@@ -16,7 +22,7 @@ export const networkingApi = {
       per_page?: number | null;
     },
     options?: { signal?: AbortSignal }
-  ): Promise<PaginatedResponse<IpAllocation>> {
+  ): Promise<MetaPaginatedResponse<IpAllocation>> {
     const params = new URLSearchParams();
     if (filters?.user_id) params.set("user_id", String(filters.user_id));
     if (filters?.host_id) params.set("host_id", String(filters.host_id));
@@ -27,7 +33,7 @@ export const networkingApi = {
     if (filters?.per_page) params.set("per_page", String(filters.per_page));
 
     const query = params.toString() ? `?${params.toString()}` : "";
-    return request<PaginatedResponse<IpAllocation>>(`/ips${query}`, { signal: options?.signal });
+    return request<MetaPaginatedResponse<IpAllocation>>(`/ips${query}`, { signal: options?.signal });
   },
 
   async getIpPools(
@@ -37,13 +43,13 @@ export const networkingApi = {
       per_page?: number | null;
     },
     options?: { signal?: AbortSignal }
-  ): Promise<PaginatedResponse<IpPool>> {
+  ): Promise<MetaPaginatedResponse<IpPool>> {
     const params = new URLSearchParams();
     if (filters?.host_id) params.set("host_id", String(filters.host_id));
     if (filters?.page) params.set("page", String(filters.page));
     if (filters?.per_page) params.set("per_page", String(filters.per_page));
     const query = params.toString() ? `?${params.toString()}` : "";
-    return request<PaginatedResponse<IpPool>>(`/ip-pools${query}`, { signal: options?.signal });
+    return request<MetaPaginatedResponse<IpPool>>(`/ip-pools${query}`, { signal: options?.signal });
   },
 
   async adminGetIpPools(
@@ -53,13 +59,13 @@ export const networkingApi = {
       per_page?: number | null;
     },
     options?: { signal?: AbortSignal }
-  ): Promise<PaginatedResponse<IpPool>> {
+  ): Promise<MetaPaginatedResponse<IpPool>> {
     const params = new URLSearchParams();
     if (filters?.host_id) params.set("host_id", String(filters.host_id));
     if (filters?.page) params.set("page", String(filters.page));
     if (filters?.per_page) params.set("per_page", String(filters.per_page));
     const query = params.toString() ? `?${params.toString()}` : "";
-    return request<PaginatedResponse<IpPool>>(`/admin/ip-pools${query}`, { signal: options?.signal });
+    return request<MetaPaginatedResponse<IpPool>>(`/admin/ip-pools${query}`, { signal: options?.signal });
   },
 
   async adminReleaseIp(
@@ -141,6 +147,27 @@ export const networkingApi = {
       checks: Array<{ name: string; ok: boolean; hint: string }>;
     }>(`/admin/ip-pools/${poolId}/preflight`, {
       method: "POST",
+    });
+  },
+
+  async adminGetIpPoolAddresses(
+    poolId: number,
+    params?: {
+      state?: "all" | IpPoolAddressState;
+      search?: string | null;
+      page?: number;
+      per_page?: number;
+    },
+    options?: { signal?: AbortSignal }
+  ): Promise<IpPoolAddressesResponse> {
+    const queryParams = new URLSearchParams();
+    if (params?.state) queryParams.set("state", params.state);
+    if (params?.search) queryParams.set("search", params.search);
+    if (params?.page) queryParams.set("page", String(params.page));
+    if (params?.per_page) queryParams.set("per_page", String(params.per_page));
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : "";
+    return request<IpPoolAddressesResponse>(`/admin/ip-pools/${poolId}/addresses${query}`, {
+      signal: options?.signal,
     });
   },
 };

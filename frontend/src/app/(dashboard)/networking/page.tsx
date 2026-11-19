@@ -10,7 +10,6 @@ export default function NetworkingPage() {
   const { perPage } = useGlobalFilters();
   const {
     ips,
-    vms,
     pools,
     loadingIps,
     ipsMeta,
@@ -20,7 +19,6 @@ export default function NetworkingPage() {
     setPoolsPage,
     setPoolsPerPage,
     refetchPools,
-    refetchNetworking,
     handlePerPageChange,
     modals,
     handleRequestReleaseIp,
@@ -30,7 +28,6 @@ export default function NetworkingPage() {
   return (
     <NetworkingTab
       ips={ips}
-      vms={vms}
       pools={pools}
       loading={loadingIps}
       isAdmin={isAdmin}
@@ -38,7 +35,6 @@ export default function NetworkingPage() {
       onAddPool={() => modals.setCreatePoolModalOpen(true)}
       onRequestDeletePool={handleRequestDeletePool}
       onPoolUpdated={refetchPools}
-      onRefresh={refetchNetworking}
       ipsPagination={{
         currentPage: ipsMeta.current_page,
         lastPage: ipsMeta.last_page,

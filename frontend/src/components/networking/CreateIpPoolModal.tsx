@@ -11,6 +11,14 @@ interface CreateIpPoolModalProps {
   onSuccess: (newPool: IpPool) => void;
 }
 
+function parseCidrPrefix(cidr: string): number | null {
+  const parts = cidr.trim().split("/");
+  if (parts.length !== 2 || !/^\d+$/.test(parts[1])) return null;
+  const prefix = parseInt(parts[1], 10);
+  if (isNaN(prefix) || prefix < 0 || prefix > 32) return null;
+  return prefix;
+}
+
 function calculateUsableRange(cidr: string): { first: string; last: string; gateway: string } | null {
   const parts = cidr.trim().split("/");
   if (parts.length !== 2) return null;
@@ -59,7 +67,7 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
   const [cidr, setCidr] = useState("");
   const [firstUsable, setFirstUsable] = useState("");
   const [lastUsable, setLastUsable] = useState("");
-  const [parentInterface, setParentInterface] = useState("eth0");
+  const [parentInterface, setParentInterface] = useState("");
   const [isCustomInterface, setIsCustomInterface] = useState(false);
   const [networkMode, setNetworkMode] = useState<"routed" | "bridged" | "macvlan" | "manual">("routed");
   const [gateway, setGateway] = useState("");
@@ -116,7 +124,7 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
           const currentMode = networkModeRef.current;
           const currentIface = parentInterfaceRef.current;
           const preferred = nets.find((n) => n.recommended_modes.includes(currentMode)) || nets[0];
-          if (preferred && (currentIface === "eth0" || !nets.some((n) => n.name === currentIface))) {
+          if (preferred && (currentIface === "" || !nets.some((n) => n.name === currentIface))) {
             setParentInterface(preferred.name);
             setIsCustomInterface(false);
           }
@@ -165,7 +173,25 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
     setError(null);
 
     if (!selectedHostId) {
-      setError("Please select a target host node for this routed subnet pool.");
+      setError(t("selectTargetHostNode"));
+      return;
+    }
+
+    const trimmedParentInterface = parentInterface.trim();
+    if (networkMode !== "manual" && !trimmedParentInterface) {
+      setError(t("parentInterfaceRequired"));
+      return;
+    }
+
+    const isL2Mode = networkMode === "bridged" || networkMode === "macvlan";
+    const cidrPrefix = parseCidrPrefix(cidr);
+    if (isL2Mode && (cidrPrefix === 31 || cidrPrefix === 32)) {
+      setError(t("l2ModePrefixUnsupported"));
+      return;
+    }
+
+    if (isL2Mode && !gateway.trim()) {
+      setError(t("gatewayRequiredForL2Modes"));
       return;
     }
 
@@ -188,7 +214,7 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
         cidr: cidr.trim(),
         first_usable: firstUsable.trim() || undefined,
         last_usable: lastUsable.trim() || undefined,
-        parent_interface: parentInterface.trim() || "eth0",
+        ...(networkMode !== "manual" ? { parent_interface: trimmedParentInterface } : {}),
         network_mode: networkMode,
         gateway: gateway.trim() || undefined,
         dns_servers: parsedDns.length > 0 ? parsedDns : undefined,
@@ -204,7 +230,7 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError("Failed to create IP pool.");
+        setError(t("failedToCreatePool"));
       }
     } finally {
       setLoading(false);
@@ -221,7 +247,7 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
             </div>
             <div>
               <h2 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">{t("addPool")}</h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Routed L3 IP Subnet Pool</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{t("createPoolSubtitle")}</p>
             </div>
           </div>
           <button
@@ -249,7 +275,7 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Node 1 Routed Public Subnet"
+                placeholder={t("poolNamePlaceholder")}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50"
               />
             </div>
@@ -257,7 +283,7 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5 flex items-center space-x-1.5">
                 <Server className="w-3.5 h-3.5 text-teal-500" />
-                <span>Target Node (Required)</span>
+                <span>{t("targetNodeRequired")}</span>
               </label>
               <select
                 required
@@ -265,7 +291,7 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
                 onChange={(e) => setSelectedHostId(Number(e.target.value))}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50"
               >
-                <option value="" disabled>Select Compute Node...</option>
+                <option value="" disabled>{t("selectComputeNodeOption")}</option>
                 {hosts.map((h) => (
                   <option key={h.id} value={h.id}>
                     {h.name} {h.region ? `(${h.region})` : ""}
@@ -278,7 +304,7 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                CIDR Subnet Block
+                {t("cidrSubnetBlock")}
               </label>
               <input
                 type="text"
@@ -288,7 +314,7 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
                 placeholder="203.0.113.0/24"
                 className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50"
               />
-              <span className="text-[11px] text-gray-400 mt-1 block">Valid IPv4 prefix (/16 to /32)</span>
+              <span className="text-[11px] text-gray-400 mt-1 block">{t("validIpv4PrefixHint")}</span>
             </div>
 
             <div>
@@ -300,104 +326,116 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
                 onChange={(e) => handleModeChange(e.target.value as "routed" | "bridged" | "macvlan" | "manual")}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50"
               >
-                <option value="routed">{t("modeRouted")} (L3 /32 Link-Local)</option>
-                <option value="bridged">Bridged (L2 Bridge / NAT Bridge)</option>
-                <option value="macvlan">Macvlan (L2 Direct Physical NIC)</option>
+                <option value="routed">{t("modeRoutedOption")}</option>
+                <option value="bridged">{t("modeBridgedOption")}</option>
+                <option value="macvlan">{t("modeMacvlanOption")}</option>
                 <option value="manual">{t("modeManual")}</option>
               </select>
               <span className="text-[11px] text-gray-400 mt-1 block">
                 {networkMode === "manual"
                   ? t("manualWarning")
                   : networkMode === "bridged"
-                    ? "Attaches eth0 to host bridge (e.g. incusbr0 / br0) with Netplan static IP"
+                    ? t("modeBridgedDesc")
                     : networkMode === "macvlan"
-                      ? "Attaches eth0 via macvlan to physical NIC (e.g. eno1) with Netplan static IP"
-                      : "Routed L3 via host NIC (Netplan v2 link-local 169.254.0.1)"}
+                      ? t("modeMacvlanDesc")
+                      : t("modeRoutedDesc")}
               </span>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5 flex items-center justify-between">
-                <span>Host Parent Interface</span>
-                {discoveringHost && <Loader2 className="w-3 h-3 animate-spin text-teal-500" />}
-              </label>
-              <select
-                required
-                value={isCustomInterface ? "__custom__" : parentInterface}
-                onChange={(e) => {
-                  if (e.target.value === "__custom__") {
-                    setIsCustomInterface(true);
-                  } else {
-                    setIsCustomInterface(false);
-                    setParentInterface(e.target.value);
-                  }
-                }}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono"
-              >
-                {discoveringHost && discoveredNetworks.length === 0 && (
-                  <option value="" disabled>Detecting host interfaces...</option>
-                )}
-                {discoveredNetworks.length === 0 && !discoveringHost && (
-                  <>
-                    <option value="eth0">eth0 (Default)</option>
-                    <option value="eno1">eno1</option>
-                    <option value="incusbr0">incusbr0</option>
-                    <option value="lxdbr0">lxdbr0</option>
-                  </>
-                )}
-                {discoveredNetworks.map((net) => (
-                  <option key={net.name} value={net.name}>
-                    {net.name} ({net.type}{net.addresses && net.addresses.length > 0 ? `: ${net.addresses.join(", ")}` : ""})
-                  </option>
-                ))}
-                {parentInterface &&
-                  !isCustomInterface &&
-                  !discoveredNetworks.some((n) => n.name === parentInterface) &&
-                  parentInterface !== "eth0" && (
-                    <option value={parentInterface}>
-                      {parentInterface} (Current)
-                    </option>
+            {networkMode !== "manual" && (
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5 flex items-center justify-between">
+                  <span>{t("hostParentInterface")}</span>
+                  {discoveringHost && <Loader2 className="w-3 h-3 animate-spin text-teal-500" />}
+                </label>
+                <select
+                  required
+                  value={isCustomInterface ? "__custom__" : parentInterface}
+                  onChange={(e) => {
+                    if (e.target.value === "__custom__") {
+                      setIsCustomInterface(true);
+                    } else {
+                      setIsCustomInterface(false);
+                      setParentInterface(e.target.value);
+                    }
+                  }}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono"
+                >
+                  {discoveringHost && discoveredNetworks.length === 0 ? (
+                    <option value="" disabled>{t("detectingHostInterfaces")}</option>
+                  ) : (
+                    <option value="" disabled>{t("selectHostInterface")}</option>
                   )}
-                <option value="__custom__">Custom interface...</option>
-              </select>
+                  {discoveredNetworks.length === 0 && !discoveringHost && (
+                    <>
+                      <option value="eno1">eno1</option>
+                      <option value="incusbr0">incusbr0</option>
+                      <option value="lxdbr0">lxdbr0</option>
+                    </>
+                  )}
+                  {discoveredNetworks.map((net) => (
+                    <option key={net.name} value={net.name}>
+                      {net.name} ({net.type}{net.addresses && net.addresses.length > 0 ? `: ${net.addresses.join(", ")}` : ""})
+                    </option>
+                  ))}
+                  {parentInterface &&
+                    !isCustomInterface &&
+                    !discoveredNetworks.some((n) => n.name === parentInterface) &&
+                    (discoveredNetworks.length > 0 ||
+                      discoveringHost ||
+                      !["eno1", "incusbr0", "lxdbr0"].includes(parentInterface)) && (
+                      <option value={parentInterface}>
+                        {parentInterface} ({t("currentLabel")})
+                      </option>
+                    )}
+                  <option value="__custom__">{t("customInterfaceOption")}</option>
+                </select>
 
-              {isCustomInterface && (
-                <div className="mt-2">
-                  <input
-                    type="text"
-                    required
-                    value={parentInterface}
-                    onChange={(e) => setParentInterface(e.target.value)}
-                    placeholder="e.g. eth0, eno1, incusbr0"
-                    className="w-full px-3.5 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono"
-                    autoFocus
-                  />
-                </div>
-              )}
-              <span className="text-[11px] text-gray-400 mt-1 block">Host NIC or bridge on target node</span>
-            </div>
+                {isCustomInterface && (
+                  <div className="mt-2">
+                    <input
+                      type="text"
+                      required
+                      value={parentInterface}
+                      onChange={(e) => setParentInterface(e.target.value)}
+                      placeholder={t("customInterfacePlaceholder")}
+                      className="w-full px-3.5 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono"
+                      autoFocus
+                    />
+                  </div>
+                )}
+                <span className="text-[11px] text-gray-400 mt-1 block">{t("hostParentInterfaceHint")}</span>
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                Gateway IP (Optional for /31, /32)
+                {networkMode === "bridged" || networkMode === "macvlan" ? (
+                  <>
+                    {t("gatewayIpLabel")} <span className="text-red-500">*</span>
+                  </>
+                ) : (
+                  t("gatewayIpOptionalSmallSubnets")
+                )}
               </label>
               <input
                 type="text"
+                required={networkMode === "bridged" || networkMode === "macvlan"}
                 value={gateway}
                 onChange={(e) => setGateway(e.target.value)}
                 placeholder="203.0.113.1"
                 className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono"
               />
-              <span className="text-[11px] text-gray-400 mt-1 block">Automatically added to excluded IP set</span>
+              <span className="text-[11px] text-gray-400 mt-1 block">{t("gatewayAutoExcludedHint")}</span>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                First Usable IP
+                {t("firstUsableIp")}
               </label>
               <input
                 type="text"
@@ -410,7 +448,7 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
 
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                Last Usable IP
+                {t("lastUsableIp")}
               </label>
               <input
                 type="text"
@@ -425,7 +463,7 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                DNS Servers
+                {t("dnsServersLabel")}
               </label>
               <input
                 type="text"
@@ -438,7 +476,7 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
 
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                Cooldown Quarantine (Seconds)
+                {t("cooldownQuarantineSeconds")}
               </label>
               <input
                 type="number"
@@ -454,16 +492,16 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
 
           <div>
             <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-              Excluded Reserved IPs
+              {t("excludedReservedIps")}
             </label>
             <input
               type="text"
               value={excludedIps}
               onChange={(e) => setExcludedIps(e.target.value)}
-              placeholder="e.g. 203.0.113.1, 203.0.113.250"
+              placeholder={t("excludedIpsPlaceholder")}
               className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50"
             />
-            <span className="text-[11px] text-gray-400 mt-1 block">Comma-separated IPs excluded from tenant allocation</span>
+            <span className="text-[11px] text-gray-400 mt-1 block">{t("excludedIpsHint")}</span>
           </div>
 
           <div>
@@ -474,7 +512,7 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="e.g. Primary DMZ public IP subnet on host-1"
+              placeholder={t("poolDescriptionPlaceholder")}
               className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50"
             />
           </div>
