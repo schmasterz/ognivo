@@ -363,6 +363,7 @@ final class IpManagementTest extends TestCase
             'host_id' => $this->host->id,
             'cidr' => '198.51.100.55/32',
             'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
         ]);
         $res32->assertStatus(201);
         $res32->assertJsonPath('pool.first_usable', '198.51.100.55');
@@ -374,6 +375,7 @@ final class IpManagementTest extends TestCase
             'host_id' => $this->host->id,
             'cidr' => '198.51.100.60/31',
             'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
         ]);
         $res31->assertStatus(201);
         $res31->assertJsonPath('pool.first_usable', '198.51.100.60');
@@ -386,6 +388,7 @@ final class IpManagementTest extends TestCase
             'cidr' => '198.51.100.64/30',
             'gateway' => '198.51.100.65',
             'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
         ]);
         $res30->assertStatus(201);
         $res30->assertJsonPath('pool.first_usable', '198.51.100.65');
@@ -398,6 +401,7 @@ final class IpManagementTest extends TestCase
             'cidr' => '172.20.0.0/16',
             'gateway' => '172.20.0.1',
             'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
         ]);
         $res16->assertStatus(201);
         $res16->assertJsonPath('pool.first_usable', '172.20.0.1');
@@ -410,6 +414,7 @@ final class IpManagementTest extends TestCase
             'cidr' => '172.21.0.0/17',
             'gateway' => '172.21.0.1',
             'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
         ]);
         $res17->assertStatus(201);
 
@@ -419,6 +424,7 @@ final class IpManagementTest extends TestCase
             'host_id' => $this->host->id,
             'cidr' => '10.0.0.0/8',
             'gateway' => '10.0.0.1',
+            'parent_interface' => 'eth0',
         ])->assertStatus(422)->assertJsonValidationErrors(['cidr']);
 
         // /15 rejected
@@ -427,6 +433,7 @@ final class IpManagementTest extends TestCase
             'host_id' => $this->host->id,
             'cidr' => '10.0.0.0/15',
             'gateway' => '10.0.0.1',
+            'parent_interface' => 'eth0',
         ])->assertStatus(422)->assertJsonValidationErrors(['cidr']);
     }
 
@@ -447,6 +454,7 @@ final class IpManagementTest extends TestCase
             'host_id' => $this->host->id,
             'cidr' => '192.168.50.0/24',
             'gateway' => '192.168.50.1',
+            'parent_interface' => 'eth0',
             'is_public' => true,
         ]);
         $res->assertStatus(201);
@@ -457,6 +465,7 @@ final class IpManagementTest extends TestCase
             'host_id' => $this->host->id,
             'cidr' => '192.168.50.128/25',
             'gateway' => '192.168.50.129',
+            'parent_interface' => 'eth0',
             'is_public' => false,
         ]);
         $overlapSameHost->assertStatus(422)->assertJsonValidationErrors(['cidr']);
@@ -468,6 +477,7 @@ final class IpManagementTest extends TestCase
             'host_id' => $host2->id,
             'cidr' => '192.168.50.0/24',
             'gateway' => '192.168.50.1',
+            'parent_interface' => 'eth0',
             'is_public' => true,
         ]);
         $overlapDiffHostPublic->assertStatus(422)->assertJsonValidationErrors(['cidr']);
@@ -479,6 +489,7 @@ final class IpManagementTest extends TestCase
             'host_id' => $host2->id,
             'cidr' => '192.168.50.0/24',
             'gateway' => '192.168.50.1',
+            'parent_interface' => 'eth0',
             'is_public' => false,
         ]);
         $privateDiffHost->assertStatus(201);
@@ -738,5 +749,43 @@ final class IpManagementTest extends TestCase
         $this->assertEquals(7, $directUtil['free']);
 
         $this->assertSame($directUtil, $pool->utilization);
+    }
+
+    public function test_get_ips_does_not_delete_expired_cooling_rows_and_clamps_status_in_resource(): void
+    {
+        $expiredCooling = IpAllocation::create([
+            'pool_id' => $this->pool->id,
+            'user_id' => $this->tenant->id,
+            'address' => inet_pton('203.0.113.18'),
+            'ip_string' => '203.0.113.18',
+            'mac_address' => '02:54:de:ad:be:ef',
+            'status' => 'cooling',
+            'allocated_at' => now()->subHour(),
+            'released_at' => now()->subSeconds($this->pool->cooldown_seconds + 60),
+        ]);
+
+        Sanctum::actingAs($this->tenant);
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        $response = $this->getJson('/api/ips');
+
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.id', $expiredCooling->id);
+        $response->assertJsonPath('data.0.status', 'released');
+        $response->assertJsonPath('data.0.cooldown_remaining_seconds', 0);
+
+        $this->assertDatabaseHas('ip_allocations', ['id' => $expiredCooling->id]);
+
+        $deleteQueries = array_filter(
+            $queries,
+            static fn (array $entry): bool => str_starts_with(strtolower(ltrim((string) $entry['query'])), 'delete')
+        );
+        $this->assertSame([], $deleteQueries);
     }
 }

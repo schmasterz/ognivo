@@ -340,7 +340,7 @@ final class IpManagementService
 
         if (isset($filters['host_id'])) {
             $hostId = $filters['host_id'];
-            $query->whereHas('pool', fn (Builder $sub): Builder => $sub->where('host_id', $hostId));
+            $query->whereIn('pool_id', IpPool::query()->where('host_id', $hostId)->select('id'));
         }
 
         if (isset($filters['pool_id'])) {
@@ -365,7 +365,7 @@ final class IpManagementService
             });
         }
 
-        return $query->orderBy('ip_string');
+        return $query->orderBy('pool_id')->orderBy('address');
     }
 
     /**
@@ -373,35 +373,31 @@ final class IpManagementService
      */
     public function pruneExpiredCoolingAllocations(?int $poolId = null): int
     {
-        $query = IpAllocation::query()
-            ->where('status', 'cooling')
-            ->whereNotNull('released_at')
-            ->with('pool');
+        $poolsQuery = DB::table('ip_pools')->select(['id', 'cooldown_seconds']);
 
         if ($poolId !== null) {
-            $query->where('pool_id', $poolId);
+            $poolsQuery->where('id', $poolId);
         }
 
+        $pools = $poolsQuery->get();
         $now = now();
-        $expiredIds = [];
+        $deletedTotal = 0;
 
-        /** @var Collection<int, IpAllocation> $coolingAllocations */
-        $coolingAllocations = $query->get();
-        foreach ($coolingAllocations as $allocation) {
-            $cooldownSeconds = $allocation->pool->cooldown_seconds;
-            if ($allocation->released_at !== null && $allocation->released_at->copy()->addSeconds($cooldownSeconds)->lessThanOrEqualTo($now)) {
-                $expiredIds[] = $allocation->id;
-            }
+        foreach ($pools as $pool) {
+            $cooldownSeconds = is_numeric($pool->cooldown_seconds) ? max(0, (int) $pool->cooldown_seconds) : 0;
+            $cutoff = $now->copy()->subSeconds($cooldownSeconds);
+
+            $deleted = DB::table('ip_allocations')
+                ->where('pool_id', is_numeric($pool->id) ? (int) $pool->id : 0)
+                ->where('status', 'cooling')
+                ->whereNotNull('released_at')
+                ->where('released_at', '<=', $cutoff)
+                ->delete();
+
+            $deletedTotal += $deleted;
         }
 
-        if (! empty($expiredIds)) {
-            /** @var int $deletedCount */
-            $deletedCount = IpAllocation::whereIn('id', $expiredIds)->delete();
-
-            return $deletedCount;
-        }
-
-        return 0;
+        return $deletedTotal;
     }
 
     /**
@@ -412,8 +408,6 @@ final class IpManagementService
      */
     public function listForUser(User $user, array $filters = []): Collection
     {
-        $this->pruneExpiredCoolingAllocations();
-
         return $this->buildAllocationsQuery($user, $filters)->get();
     }
 
@@ -425,13 +419,11 @@ final class IpManagementService
      */
     public function paginateForUser(User $user, array $filters = [], int $perPage = 10): LengthAwarePaginator
     {
-        $this->pruneExpiredCoolingAllocations();
-
         return $this->buildAllocationsQuery($user, $filters)->paginate($perPage);
     }
 
     /**
-     * Pre-compute live utilization metrics for a collection of pools in a single batch query (avoiding N+1).
+     * Pre-compute live utilization metrics for a collection of pools in batch queries (avoiding N+1).
      *
      * @param  iterable<IpPool>  $pools
      */
@@ -442,31 +434,50 @@ final class IpManagementService
             return;
         }
 
-        $poolIds = array_filter(array_map(fn (IpPool $p) => $p->id, $poolList));
-        if (empty($poolIds)) {
+        $poolIds = array_values(array_unique(array_filter(array_map(static fn (IpPool $p): int => $p->id, $poolList))));
+        if ($poolIds === []) {
             return;
         }
 
-        $allocations = DB::table('ip_allocations')
-            ->join('ip_pools', 'ip_pools.id', '=', 'ip_allocations.pool_id')
-            ->whereIn('ip_allocations.pool_id', $poolIds)
-            ->whereIn('ip_allocations.status', ['allocated', 'cooling'])
-            ->select('ip_allocations.pool_id', 'ip_allocations.status', 'ip_allocations.released_at', 'ip_pools.cooldown_seconds')
+        /** @var array<int, int> $poolCooldowns */
+        $poolCooldowns = [];
+        foreach ($poolList as $pool) {
+            $poolCooldowns[$pool->id] = $pool->cooldown_seconds;
+        }
+
+        /** @var array<int, int> $allocatedCounts */
+        $allocatedCounts = [];
+        $allocatedRows = DB::table('ip_allocations')
+            ->select('pool_id')
+            ->selectRaw('COUNT(*) as aggregate_count')
+            ->whereIn('pool_id', $poolIds)
+            ->where('status', 'allocated')
+            ->groupBy('pool_id')
             ->get();
 
-        $allocatedCounts = [];
-        $coolingCounts = [];
+        foreach ($allocatedRows as $row) {
+            $pid = is_numeric($row->pool_id) ? (int) $row->pool_id : 0;
+            $allocatedCounts[$pid] = is_numeric($row->aggregate_count) ? (int) $row->aggregate_count : 0;
+        }
 
-        foreach ($allocations as $alloc) {
-            $pid = (int) $alloc->pool_id;
-            if ($alloc->status === 'allocated') {
-                $allocatedCounts[$pid] = ($allocatedCounts[$pid] ?? 0) + 1;
-            } elseif ($alloc->status === 'cooling') {
-                $releasedAt = $alloc->released_at ? Carbon::parse($alloc->released_at) : null;
-                $cooldownSeconds = (int) $alloc->cooldown_seconds;
-                if ($releasedAt !== null && $releasedAt->copy()->addSeconds($cooldownSeconds)->isFuture()) {
-                    $coolingCounts[$pid] = ($coolingCounts[$pid] ?? 0) + 1;
-                }
+        /** @var array<int, int> $coolingCounts */
+        $coolingCounts = [];
+        $coolingRows = DB::table('ip_allocations')
+            ->whereIn('pool_id', $poolIds)
+            ->where('status', 'cooling')
+            ->whereNotNull('released_at')
+            ->get(['pool_id', 'released_at']);
+
+        $now = now();
+        foreach ($coolingRows as $row) {
+            $pid = is_numeric($row->pool_id) ? (int) $row->pool_id : 0;
+            if (! is_string($row->released_at) || $row->released_at === '' || ! array_key_exists($pid, $poolCooldowns)) {
+                continue;
+            }
+            $cooldownSeconds = $poolCooldowns[$pid];
+            $releasedAt = Carbon::parse($row->released_at);
+            if ($releasedAt->copy()->addSeconds($cooldownSeconds)->greaterThan($now)) {
+                $coolingCounts[$pid] = ($coolingCounts[$pid] ?? 0) + 1;
             }
         }
 

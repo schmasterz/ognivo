@@ -7,11 +7,15 @@ namespace Tests\Unit;
 use App\DTO\Network\CreateIpPoolDTO;
 use App\Exceptions\IpPoolExhaustedException;
 use App\Models\Host;
+use App\Models\IpAllocation;
 use App\Models\IpPool;
 use App\Models\User;
 use App\Models\VirtualMachine;
 use App\Services\IpManagementService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 final class IpManagementServiceTest extends TestCase
@@ -278,5 +282,451 @@ final class IpManagementServiceTest extends TestCase
 
         $this->assertDatabaseMissing('ip_allocations', ['id' => $alloc1->id]);
         $this->assertDatabaseHas('ip_allocations', ['id' => $alloc2->id]);
+    }
+
+    public function test_prune_expired_cooling_allocations_respects_per_pool_cooldown_allocated_rows_and_pool_filter(): void
+    {
+        $shortPool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Short Cooldown Pool',
+            'cidr' => '192.168.71.0/29',
+            'first_usable' => '192.168.71.1',
+            'last_usable' => '192.168.71.5',
+            'network_mode' => 'routed',
+            'cooldown_seconds' => 30,
+        ]);
+
+        $longPool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Long Cooldown Pool',
+            'cidr' => '192.168.72.0/29',
+            'first_usable' => '192.168.72.1',
+            'last_usable' => '192.168.72.5',
+            'network_mode' => 'routed',
+            'cooldown_seconds' => 600,
+        ]);
+
+        $zeroPool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Zero Cooldown Pool',
+            'cidr' => '192.168.73.0/29',
+            'first_usable' => '192.168.73.1',
+            'last_usable' => '192.168.73.5',
+            'network_mode' => 'routed',
+            'cooldown_seconds' => 0,
+        ]);
+
+        // Short pool: expired cooling (60s > 30s), active cooling (10s < 30s), allocated row
+        $shortExpired = IpAllocation::create([
+            'pool_id' => $shortPool->id,
+            'user_id' => $this->user->id,
+            'address' => inet_pton('192.168.71.1'),
+            'ip_string' => '192.168.71.1',
+            'status' => 'cooling',
+            'allocated_at' => now()->subMinutes(10),
+            'released_at' => now()->subSeconds(60),
+        ]);
+        $shortFresh = IpAllocation::create([
+            'pool_id' => $shortPool->id,
+            'user_id' => $this->user->id,
+            'address' => inet_pton('192.168.71.2'),
+            'ip_string' => '192.168.71.2',
+            'status' => 'cooling',
+            'allocated_at' => now()->subMinutes(10),
+            'released_at' => now()->subSeconds(10),
+        ]);
+        $shortAllocated = IpAllocation::create([
+            'pool_id' => $shortPool->id,
+            'user_id' => $this->user->id,
+            'address' => inet_pton('192.168.71.3'),
+            'ip_string' => '192.168.71.3',
+            'status' => 'allocated',
+            'allocated_at' => now()->subMinutes(10),
+            'released_at' => null,
+        ]);
+
+        // Long pool: cooling released 120s ago (< 600s, must remain) and 700s ago (> 600s, expired)
+        $longNotExpired = IpAllocation::create([
+            'pool_id' => $longPool->id,
+            'user_id' => $this->user->id,
+            'address' => inet_pton('192.168.72.1'),
+            'ip_string' => '192.168.72.1',
+            'status' => 'cooling',
+            'allocated_at' => now()->subMinutes(20),
+            'released_at' => now()->subSeconds(120),
+        ]);
+        $longExpired = IpAllocation::create([
+            'pool_id' => $longPool->id,
+            'user_id' => $this->user->id,
+            'address' => inet_pton('192.168.72.2'),
+            'ip_string' => '192.168.72.2',
+            'status' => 'cooling',
+            'allocated_at' => now()->subMinutes(20),
+            'released_at' => now()->subSeconds(700),
+        ]);
+
+        // Zero cooldown pool: cooling released 1s ago (or now) must be pruned
+        $zeroExpired = IpAllocation::create([
+            'pool_id' => $zeroPool->id,
+            'user_id' => $this->user->id,
+            'address' => inet_pton('192.168.73.1'),
+            'ip_string' => '192.168.73.1',
+            'status' => 'cooling',
+            'allocated_at' => now()->subMinutes(5),
+            'released_at' => now()->subSecond(),
+        ]);
+
+        // Prune only shortPool first
+        $prunedShort = $this->service->pruneExpiredCoolingAllocations($shortPool->id);
+        $this->assertSame(1, $prunedShort);
+        $this->assertDatabaseMissing('ip_allocations', ['id' => $shortExpired->id]);
+        $this->assertDatabaseHas('ip_allocations', ['id' => $shortFresh->id]);
+        $this->assertDatabaseHas('ip_allocations', ['id' => $shortAllocated->id]);
+        $this->assertDatabaseHas('ip_allocations', ['id' => $longNotExpired->id]);
+        $this->assertDatabaseHas('ip_allocations', ['id' => $longExpired->id]);
+        $this->assertDatabaseHas('ip_allocations', ['id' => $zeroExpired->id]);
+
+        // Prune all pools: should delete longExpired and zeroExpired, keeping longNotExpired
+        $prunedAll = $this->service->pruneExpiredCoolingAllocations();
+        $this->assertSame(2, $prunedAll);
+        $this->assertDatabaseMissing('ip_allocations', ['id' => $longExpired->id]);
+        $this->assertDatabaseMissing('ip_allocations', ['id' => $zeroExpired->id]);
+        $this->assertDatabaseHas('ip_allocations', ['id' => $longNotExpired->id]);
+        $this->assertDatabaseHas('ip_allocations', ['id' => $shortFresh->id]);
+        $this->assertDatabaseHas('ip_allocations', ['id' => $shortAllocated->id]);
+    }
+
+    public function test_attach_utilization_to_pools_matches_single_pool_computation_across_varied_pools(): void
+    {
+        // Pool 1: /29 (1..6 = 6), gateway .1 inside range + excluded .2 => 4 usable.
+        // 1 allocated (.3), 1 active cooling (.4), 1 expired cooling (.5).
+        $pool1 = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Pool One',
+            'cidr' => '10.10.1.0/29',
+            'first_usable' => '10.10.1.1',
+            'last_usable' => '10.10.1.6',
+            'gateway' => '10.10.1.1',
+            'excluded_ips' => ['10.10.1.2'],
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+            'cooldown_seconds' => 120,
+        ]);
+
+        IpAllocation::create([
+            'pool_id' => $pool1->id,
+            'user_id' => $this->user->id,
+            'address' => inet_pton('10.10.1.3'),
+            'ip_string' => '10.10.1.3',
+            'status' => 'allocated',
+            'allocated_at' => now(),
+        ]);
+        IpAllocation::create([
+            'pool_id' => $pool1->id,
+            'user_id' => $this->user->id,
+            'address' => inet_pton('10.10.1.4'),
+            'ip_string' => '10.10.1.4',
+            'status' => 'cooling',
+            'allocated_at' => now()->subMinutes(5),
+            'released_at' => now()->subSeconds(30),
+        ]);
+        IpAllocation::create([
+            'pool_id' => $pool1->id,
+            'user_id' => $this->user->id,
+            'address' => inet_pton('10.10.1.5'),
+            'ip_string' => '10.10.1.5',
+            'status' => 'cooling',
+            'allocated_at' => now()->subMinutes(10),
+            'released_at' => now()->subSeconds(200),
+        ]);
+
+        // Pool 2: /28 (1..14 = 14), gateway outside range (.254), 2 excluded (.5, .6) => 12 usable.
+        // 2 allocated, 0 cooling.
+        $pool2 = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Pool Two',
+            'cidr' => '10.10.2.0/28',
+            'first_usable' => '10.10.2.1',
+            'last_usable' => '10.10.2.14',
+            'gateway' => '10.10.2.254',
+            'excluded_ips' => ['10.10.2.5', '10.10.2.6'],
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+            'cooldown_seconds' => 300,
+        ]);
+
+        IpAllocation::create([
+            'pool_id' => $pool2->id,
+            'user_id' => $this->user->id,
+            'address' => inet_pton('10.10.2.1'),
+            'ip_string' => '10.10.2.1',
+            'status' => 'allocated',
+            'allocated_at' => now(),
+        ]);
+        IpAllocation::create([
+            'pool_id' => $pool2->id,
+            'user_id' => $this->user->id,
+            'address' => inet_pton('10.10.2.2'),
+            'ip_string' => '10.10.2.2',
+            'status' => 'allocated',
+            'allocated_at' => now(),
+        ]);
+
+        // Pool 3: /30 (1..2 = 2), no gateway, no excluded => 2 usable.
+        // 0 allocated, 2 active cooling (100% utilized), plus 0s cooldown pool case tested via 600s cooldown.
+        $pool3 = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Pool Three',
+            'cidr' => '10.10.3.0/30',
+            'first_usable' => '10.10.3.1',
+            'last_usable' => '10.10.3.2',
+            'network_mode' => 'manual',
+            'parent_interface' => '',
+            'cooldown_seconds' => 600,
+        ]);
+
+        IpAllocation::create([
+            'pool_id' => $pool3->id,
+            'user_id' => $this->user->id,
+            'address' => inet_pton('10.10.3.1'),
+            'ip_string' => '10.10.3.1',
+            'status' => 'cooling',
+            'allocated_at' => now()->subMinutes(2),
+            'released_at' => now()->subSeconds(50),
+        ]);
+        IpAllocation::create([
+            'pool_id' => $pool3->id,
+            'user_id' => $this->user->id,
+            'address' => inet_pton('10.10.3.2'),
+            'ip_string' => '10.10.3.2',
+            'status' => 'cooling',
+            'allocated_at' => now()->subMinutes(2),
+            'released_at' => now()->subSeconds(100),
+        ]);
+
+        $this->service->attachUtilizationToPools([$pool1, $pool2, $pool3]);
+
+        $expected1 = [
+            'total' => 4,
+            'allocated' => 1,
+            'cooling' => 1,
+            'free' => 2,
+            'percent' => 50.0,
+        ];
+        $expected2 = [
+            'total' => 12,
+            'allocated' => 2,
+            'cooling' => 0,
+            'free' => 10,
+            'percent' => 16.7,
+        ];
+        $expected3 = [
+            'total' => 2,
+            'allocated' => 0,
+            'cooling' => 2,
+            'free' => 0,
+            'percent' => 100.0,
+        ];
+
+        $this->assertSame($expected1, $pool1->utilization);
+        $this->assertSame($expected2, $pool2->utilization);
+        $this->assertSame($expected3, $pool3->utilization);
+
+        $this->assertSame($this->service->getPoolUtilization($pool1), $pool1->utilization);
+        $this->assertSame($this->service->getPoolUtilization($pool2), $pool2->utilization);
+        $this->assertSame($this->service->getPoolUtilization($pool3), $pool3->utilization);
+    }
+
+    public function test_attach_utilization_to_pools_query_count_is_constant_for_3_vs_10_pools(): void
+    {
+        $pools = [];
+        for ($i = 1; $i <= 10; $i++) {
+            $pool = IpPool::create([
+                'host_id' => $this->host->id,
+                'name' => 'Batch Pool '.$i,
+                'cidr' => "10.20.{$i}.0/24",
+                'first_usable' => "10.20.{$i}.1",
+                'last_usable' => "10.20.{$i}.50",
+                'network_mode' => 'routed',
+                'parent_interface' => 'eth0',
+                'cooldown_seconds' => 120,
+            ]);
+
+            for ($j = 1; $j <= $i; $j++) {
+                IpAllocation::create([
+                    'pool_id' => $pool->id,
+                    'user_id' => $this->user->id,
+                    'address' => inet_pton("10.20.{$i}.{$j}"),
+                    'ip_string' => "10.20.{$i}.{$j}",
+                    'status' => $j % 2 === 0 ? 'cooling' : 'allocated',
+                    'allocated_at' => now()->subMinutes(5),
+                    'released_at' => $j % 2 === 0 ? now()->subSeconds(30) : null,
+                ]);
+            }
+
+            $pools[] = $pool;
+        }
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $this->service->attachUtilizationToPools(array_slice($pools, 0, 3));
+        $queriesFor3 = DB::getQueryLog();
+
+        DB::flushQueryLog();
+        $this->service->attachUtilizationToPools($pools);
+        $queriesFor10 = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $this->assertCount(2, $queriesFor3);
+        $this->assertSameSize($queriesFor3, $queriesFor10);
+
+        foreach ($queriesFor10 as $entry) {
+            $this->assertStringNotContainsString('ip_pools', strtolower((string) $entry['query']));
+        }
+    }
+
+    public function test_allocations_are_ordered_by_pool_id_and_numeric_ipv4_address(): void
+    {
+        $pool1 = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Order Pool 1',
+            'cidr' => '10.0.0.0/24',
+            'first_usable' => '10.0.0.1',
+            'last_usable' => '10.0.0.200',
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+        ]);
+
+        $pool2 = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Order Pool 2',
+            'cidr' => '10.0.1.0/24',
+            'first_usable' => '10.0.1.1',
+            'last_usable' => '10.0.1.200',
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+        ]);
+
+        // Insert shuffled across both pools to verify pool_id grouping + byte-wise numeric IPv4 order
+        $inserts = [
+            [$pool2->id, '10.0.1.20'],
+            [$pool1->id, '10.0.0.100'],
+            [$pool1->id, '10.0.0.9'],
+            [$pool2->id, '10.0.1.3'],
+            [$pool1->id, '10.0.0.10'],
+            [$pool1->id, '10.0.0.2'],
+        ];
+
+        foreach ($inserts as [$poolId, $ip]) {
+            IpAllocation::create([
+                'pool_id' => $poolId,
+                'user_id' => $this->user->id,
+                'address' => inet_pton($ip),
+                'ip_string' => $ip,
+                'status' => 'allocated',
+                'allocated_at' => now(),
+            ]);
+        }
+
+        $listed = $this->service->listForUser($this->user);
+        $this->assertSame(
+            ['10.0.0.2', '10.0.0.9', '10.0.0.10', '10.0.0.100', '10.0.1.3', '10.0.1.20'],
+            $listed->pluck('ip_string')->all()
+        );
+
+        $paginated = $this->service->paginateForUser($this->user, [], 10);
+        $this->assertSame(
+            ['10.0.0.2', '10.0.0.9', '10.0.0.10', '10.0.0.100', '10.0.1.3', '10.0.1.20'],
+            collect($paginated->items())->pluck('ip_string')->all()
+        );
+    }
+
+    public function test_host_filter_returns_allocations_only_for_pools_on_specified_host(): void
+    {
+        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+        $admin = User::factory()->create();
+        $admin->assignRole('admin');
+
+        $host2 = Host::create([
+            'name' => 'compute-node-de',
+            'endpoint_url' => 'https://127.0.0.2:8443',
+            'driver' => 'fake',
+            'is_active' => true,
+            'total_cpu_cores' => 16,
+            'total_ram_mb' => 32768,
+            'total_storage_gb' => 500,
+        ]);
+
+        $poolHost1 = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Host 1 Pool',
+            'cidr' => '10.30.1.0/24',
+            'first_usable' => '10.30.1.1',
+            'last_usable' => '10.30.1.50',
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+        ]);
+
+        $poolHost2 = IpPool::create([
+            'host_id' => $host2->id,
+            'name' => 'Host 2 Pool',
+            'cidr' => '10.30.2.0/24',
+            'first_usable' => '10.30.2.1',
+            'last_usable' => '10.30.2.50',
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+        ]);
+
+        IpAllocation::create([
+            'pool_id' => $poolHost1->id,
+            'user_id' => $this->user->id,
+            'address' => inet_pton('10.30.1.5'),
+            'ip_string' => '10.30.1.5',
+            'status' => 'allocated',
+            'allocated_at' => now(),
+        ]);
+        IpAllocation::create([
+            'pool_id' => $poolHost2->id,
+            'user_id' => $this->user->id,
+            'address' => inet_pton('10.30.2.10'),
+            'ip_string' => '10.30.2.10',
+            'status' => 'allocated',
+            'allocated_at' => now(),
+        ]);
+        IpAllocation::create([
+            'pool_id' => $poolHost2->id,
+            'user_id' => $this->user->id,
+            'address' => inet_pton('10.30.2.2'),
+            'ip_string' => '10.30.2.2',
+            'status' => 'cooling',
+            'allocated_at' => now()->subMinutes(10),
+            'released_at' => now()->subSeconds(30),
+        ]);
+
+        $host2Results = $this->service->listForUser($admin, ['host_id' => $host2->id]);
+        $this->assertSame(['10.30.2.2', '10.30.2.10'], $host2Results->pluck('ip_string')->all());
+
+        $host1Results = $this->service->paginateForUser($admin, ['host_id' => $this->host->id], 10);
+        $this->assertSame(['10.30.1.5'], collect($host1Results->items())->pluck('ip_string')->all());
+    }
+
+    public function test_ip_allocations_status_indexes_migration_up_and_down(): void
+    {
+        $this->assertTrue(Schema::hasIndex('ip_allocations', 'idx_ip_alloc_user_id'));
+        $this->assertTrue(Schema::hasIndex('ip_allocations', 'idx_ip_alloc_pool_status'));
+        $this->assertTrue(Schema::hasIndex('ip_allocations', 'idx_ip_alloc_user_status'));
+
+        $migration = require database_path('migrations/2026_11_19_000001_add_status_indexes_to_ip_allocations_table.php');
+        $migration->down();
+
+        $this->assertTrue(Schema::hasIndex('ip_allocations', 'idx_ip_alloc_user_id'));
+        $this->assertFalse(Schema::hasIndex('ip_allocations', 'idx_ip_alloc_pool_status'));
+        $this->assertFalse(Schema::hasIndex('ip_allocations', 'idx_ip_alloc_user_status'));
+
+        $migration->up();
+
+        $this->assertTrue(Schema::hasIndex('ip_allocations', 'idx_ip_alloc_user_id'));
+        $this->assertTrue(Schema::hasIndex('ip_allocations', 'idx_ip_alloc_pool_status'));
+        $this->assertTrue(Schema::hasIndex('ip_allocations', 'idx_ip_alloc_user_status'));
     }
 }
