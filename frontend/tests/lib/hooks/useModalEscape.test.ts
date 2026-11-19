@@ -4,7 +4,7 @@ import {
   registerModalEscape,
   dispatchModalEscape,
   getModalEscapeStackDepth,
-} from "../useModalEscape.ts";
+} from "../../../src/lib/hooks/useModalEscape.ts";
 
 describe("useModalEscape Stack Management Tests", () => {
   it("registers and unregisters modal escape handlers correctly", () => {
