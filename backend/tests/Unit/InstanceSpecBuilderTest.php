@@ -11,6 +11,7 @@ use App\Models\IpPool;
 use App\Models\User;
 use App\Models\VirtualMachine;
 use App\Services\Hypervisor\InstanceSpecBuilder;
+use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use RuntimeException;
 use Tests\TestCase;
@@ -306,7 +307,7 @@ final class InstanceSpecBuilderTest extends TestCase
         $this->assertStringContainsString('via: 10.241.79.1', $bridgedSpec['config']['cloud-init.network-config']);
         $this->assertSame('ubuntu/24.04/cloud', $bridgedSpec['source']['alias']);
 
-        // Macvlan pool with parent_interface 'eth0' auto-resolved to 'eno1' when host has ['eno1', 'incusbr0']
+        // Macvlan pool with configured parent_interface 'eno1' present on host ['docker0', 'eno1', 'incusbr0']
         $macvlanPool = IpPool::create([
             'host_id' => $this->host->id,
             'name' => 'Macvlan LAN Pool',
@@ -315,7 +316,7 @@ final class InstanceSpecBuilderTest extends TestCase
             'last_usable' => '198.51.100.200',
             'gateway' => '198.51.100.1',
             'network_mode' => 'macvlan',
-            'parent_interface' => 'eth0',
+            'parent_interface' => 'eno1',
         ]);
 
         $vmMacvlan = VirtualMachine::create([
@@ -349,5 +350,142 @@ final class InstanceSpecBuilderTest extends TestCase
         $this->assertSame('ubuntu/24.04/cloud', $macvlanSpec['source']['alias']);
         $this->assertStringContainsString('- 198.51.100.20/24', $macvlanSpec['config']['cloud-init.network-config']);
         $this->assertStringContainsString('via: 198.51.100.1', $macvlanSpec['config']['cloud-init.network-config']);
+    }
+
+    public function test_build_throws_when_configured_parent_interface_is_missing_on_host(): void
+    {
+        $pool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Macvlan Missing Parent Pool',
+            'cidr' => '198.51.100.0/24',
+            'first_usable' => '198.51.100.10',
+            'last_usable' => '198.51.100.200',
+            'gateway' => '198.51.100.1',
+            'network_mode' => 'macvlan',
+            'parent_interface' => 'eth0',
+        ]);
+
+        $vm = VirtualMachine::create([
+            'user_id' => $this->user->id,
+            'host_id' => $this->host->id,
+            'name' => 'vm-missing-iface',
+            'incus_project' => 'default',
+            'instance_type' => 'virtual-machine',
+            'status' => 'provisioning',
+            'cpu_cores' => 2,
+            'ram_mb' => 2048,
+            'disk_gb' => 20,
+            'os_image' => 'ubuntu/24.04',
+            'ipv4_address' => '198.51.100.20',
+        ]);
+
+        $alloc = IpAllocation::create([
+            'pool_id' => $pool->id,
+            'address' => inet_pton('198.51.100.20'),
+            'ip_string' => '198.51.100.20',
+            'virtual_machine_id' => $vm->id,
+            'user_id' => $this->user->id,
+            'mac_address' => '02:54:c6:33:64:14',
+            'status' => 'allocated',
+            'allocated_at' => now(),
+        ]);
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('eth0');
+        $this->expectExceptionMessage('macvlan');
+        $this->expectExceptionMessage('eno1, incusbr0');
+
+        $this->builder->build($vm, $alloc, 'default', null, null, null, ['eno1', 'incusbr0']);
+    }
+
+    public function test_build_throws_when_non_manual_pool_has_empty_parent_interface(): void
+    {
+        $pool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Empty Parent Pool',
+            'cidr' => '10.20.0.0/24',
+            'first_usable' => '10.20.0.10',
+            'last_usable' => '10.20.0.50',
+            'gateway' => '10.20.0.1',
+            'network_mode' => 'bridged',
+            'parent_interface' => '',
+        ]);
+
+        $vm = VirtualMachine::create([
+            'user_id' => $this->user->id,
+            'host_id' => $this->host->id,
+            'name' => 'vm-empty-iface',
+            'incus_project' => 'default',
+            'instance_type' => 'container',
+            'status' => 'provisioning',
+            'cpu_cores' => 1,
+            'ram_mb' => 1024,
+            'disk_gb' => 10,
+            'os_image' => 'ubuntu/24.04',
+            'ipv4_address' => '10.20.0.10',
+        ]);
+
+        $alloc = IpAllocation::create([
+            'pool_id' => $pool->id,
+            'address' => inet_pton('10.20.0.10'),
+            'ip_string' => '10.20.0.10',
+            'virtual_machine_id' => $vm->id,
+            'user_id' => $this->user->id,
+            'status' => 'allocated',
+            'allocated_at' => now(),
+        ]);
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('parent_interface');
+
+        $this->builder->build($vm, $alloc);
+    }
+
+    public function test_manual_pool_never_needs_parent_interface(): void
+    {
+        $pool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Manual Empty Parent Pool',
+            'cidr' => '203.0.113.0/24',
+            'first_usable' => '203.0.113.10',
+            'last_usable' => '203.0.113.50',
+            'network_mode' => 'manual',
+            'parent_interface' => '',
+        ]);
+
+        $vm = VirtualMachine::create([
+            'user_id' => $this->user->id,
+            'host_id' => $this->host->id,
+            'name' => 'vm-manual-empty-iface',
+            'incus_project' => 'default',
+            'instance_type' => 'virtual-machine',
+            'status' => 'provisioning',
+            'cpu_cores' => 2,
+            'ram_mb' => 2048,
+            'disk_gb' => 20,
+            'os_image' => 'ubuntu/24.04',
+            'ipv4_address' => '203.0.113.10',
+        ]);
+
+        $alloc = IpAllocation::create([
+            'pool_id' => $pool->id,
+            'address' => inet_pton('203.0.113.10'),
+            'ip_string' => '203.0.113.10',
+            'virtual_machine_id' => $vm->id,
+            'user_id' => $this->user->id,
+            'status' => 'allocated',
+            'allocated_at' => now(),
+        ]);
+
+        $spec = $this->builder->build($vm, $alloc, 'default', null, null, null, ['eno1']);
+
+        $this->assertArrayNotHasKey('eth0', $spec['devices']);
+        $this->assertArrayNotHasKey('cloud-init.network-config', $spec['config']);
+    }
+
+    public function test_resolve_parent_interface_returns_configured_value_when_host_networks_not_queried(): void
+    {
+        $this->assertSame('br-lan', $this->builder->resolveParentInterface('br-lan', 'bridged', null));
+        $this->assertSame('br-lan', $this->builder->resolveParentInterface('br-lan', 'bridged', []));
     }
 }

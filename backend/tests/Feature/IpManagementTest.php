@@ -17,6 +17,7 @@ use App\Services\IpManagementService;
 use App\Services\PanelCertificateService;
 use App\States\Vm\Running;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -689,6 +690,253 @@ final class IpManagementTest extends TestCase
         $sysctlCheck = $checksGood->firstWhere('name', 'Host sysctl & proxy ARP');
         $this->assertNotNull($sysctlCheck);
         $this->assertStringContainsString('proxy_arp', $sysctlCheck['hint']);
+    }
+
+    public function test_preflight_reports_failure_for_empty_parent_interface_on_non_manual_pool_and_ok_for_manual(): void
+    {
+        Sanctum::actingAs($this->admin);
+
+        app(PanelCertificateService::class)->generate(365);
+
+        Http::fake([
+            '*/1.0/networks*' => Http::response([
+                'type' => 'sync',
+                'status' => 'Success',
+                'metadata' => [
+                    '/1.0/networks/eth0',
+                ],
+            ], 200),
+        ]);
+
+        $emptyNonManualPool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Empty Routed Pool',
+            'cidr' => '10.171.0.0/24',
+            'first_usable' => '10.171.0.10',
+            'last_usable' => '10.171.0.50',
+            'network_mode' => 'routed',
+            'parent_interface' => '',
+            'gateway' => '10.171.0.1',
+        ]);
+
+        $resEmpty = $this->postJson(sprintf('/api/admin/ip-pools/%d/preflight', $emptyNonManualPool->id));
+        $resEmpty->assertOk();
+        $this->assertFalse($resEmpty->json('ok'));
+
+        $parentCheckEmpty = collect($resEmpty->json('checks'))->firstWhere('name', 'Parent interface exists');
+        $this->assertNotNull($parentCheckEmpty);
+        $this->assertFalse($parentCheckEmpty['ok']);
+        $this->assertStringContainsString('empty', strtolower((string) $parentCheckEmpty['hint']));
+
+        $manualPool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Manual Empty Pool',
+            'cidr' => '10.172.0.0/24',
+            'first_usable' => '10.172.0.10',
+            'last_usable' => '10.172.0.50',
+            'network_mode' => 'manual',
+            'parent_interface' => '',
+        ]);
+
+        $resManual = $this->postJson(sprintf('/api/admin/ip-pools/%d/preflight', $manualPool->id));
+        $resManual->assertOk();
+        $this->assertTrue($resManual->json('ok'));
+
+        $parentCheckManual = collect($resManual->json('checks'))->firstWhere('name', 'Parent interface exists');
+        $this->assertNotNull($parentCheckManual);
+        $this->assertTrue($parentCheckManual['ok']);
+        $this->assertStringContainsString('manual', strtolower((string) $parentCheckManual['hint']));
+    }
+
+    public function test_preflight_verifies_interface_type_vs_mode_and_gateway_configuration(): void
+    {
+        Sanctum::actingAs($this->admin);
+
+        app(PanelCertificateService::class)->generate(365);
+
+        Http::fake([
+            '*/1.0/networks*' => Http::response([
+                'type' => 'sync',
+                'status' => 'Success',
+                'metadata' => [
+                    ['name' => 'incusbr0', 'type' => 'bridge', 'managed' => true],
+                    ['name' => 'br0', 'type' => 'bridge', 'managed' => false],
+                    ['name' => 'eno1', 'type' => 'physical', 'managed' => false],
+                    ['name' => 'bond0', 'type' => 'bond', 'managed' => false],
+                    ['name' => 'eno1.100', 'type' => 'vlan', 'managed' => false],
+                    ['name' => 'legacy0'],
+                ],
+            ], 200),
+        ]);
+
+        // 1. Bridged over bridge (with gateway) -> ok
+        $bridgedOkPool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Bridged Over Bridge',
+            'cidr' => '10.173.0.0/24',
+            'first_usable' => '10.173.0.10',
+            'last_usable' => '10.173.0.50',
+            'network_mode' => 'bridged',
+            'parent_interface' => 'incusbr0',
+            'gateway' => '10.173.0.1',
+        ]);
+
+        $resBridgedOk = $this->postJson(sprintf('/api/admin/ip-pools/%d/preflight', $bridgedOkPool->id));
+        $resBridgedOk->assertOk();
+        $this->assertTrue($resBridgedOk->json('ok'));
+        $checksBridgedOk = collect($resBridgedOk->json('checks'));
+        $this->assertTrue($checksBridgedOk->firstWhere('name', 'Parent interface type matches mode')['ok']);
+        $this->assertTrue($checksBridgedOk->firstWhere('name', 'Gateway configured')['ok']);
+
+        Http::assertSent(fn (Request $req): bool => str_contains($req->url(), '/1.0/networks') && str_contains($req->url(), 'recursion=1'));
+
+        // 2. Bridged over physical -> blocking failure with recommendation
+        $bridgedPhysPool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Bridged Over Physical',
+            'cidr' => '10.174.0.0/24',
+            'first_usable' => '10.174.0.10',
+            'last_usable' => '10.174.0.50',
+            'network_mode' => 'bridged',
+            'parent_interface' => 'eno1',
+            'gateway' => '10.174.0.1',
+        ]);
+
+        $resBridgedPhys = $this->postJson(sprintf('/api/admin/ip-pools/%d/preflight', $bridgedPhysPool->id));
+        $resBridgedPhys->assertOk();
+        $this->assertFalse($resBridgedPhys->json('ok'));
+        $typeCheckBridgedPhys = collect($resBridgedPhys->json('checks'))->firstWhere('name', 'Parent interface type matches mode');
+        $this->assertFalse($typeCheckBridgedPhys['ok']);
+        $this->assertStringContainsString('macvlan', strtolower((string) $typeCheckBridgedPhys['hint']));
+
+        // 3. Macvlan over physical -> ok
+        $macvlanOkPool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Macvlan Over Physical',
+            'cidr' => '10.175.0.0/24',
+            'first_usable' => '10.175.0.10',
+            'last_usable' => '10.175.0.50',
+            'network_mode' => 'macvlan',
+            'parent_interface' => 'eno1',
+            'gateway' => '10.175.0.1',
+        ]);
+
+        $resMacvlanOk = $this->postJson(sprintf('/api/admin/ip-pools/%d/preflight', $macvlanOkPool->id));
+        $resMacvlanOk->assertOk();
+        $this->assertTrue($resMacvlanOk->json('ok'));
+        $this->assertTrue(collect($resMacvlanOk->json('checks'))->firstWhere('name', 'Parent interface type matches mode')['ok']);
+
+        // 4. Macvlan over bridge -> blocking failure with recommendation
+        $macvlanBridgePool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Macvlan Over Bridge',
+            'cidr' => '10.176.0.0/24',
+            'first_usable' => '10.176.0.10',
+            'last_usable' => '10.176.0.50',
+            'network_mode' => 'macvlan',
+            'parent_interface' => 'br0',
+            'gateway' => '10.176.0.1',
+        ]);
+
+        $resMacvlanBridge = $this->postJson(sprintf('/api/admin/ip-pools/%d/preflight', $macvlanBridgePool->id));
+        $resMacvlanBridge->assertOk();
+        $this->assertFalse($resMacvlanBridge->json('ok'));
+        $typeCheckMacvlanBridge = collect($resMacvlanBridge->json('checks'))->firstWhere('name', 'Parent interface type matches mode');
+        $this->assertFalse($typeCheckMacvlanBridge['ok']);
+        $this->assertStringContainsString('bridged', strtolower((string) $typeCheckMacvlanBridge['hint']));
+
+        // 5. Missing type info -> ok with hint that type could not be verified
+        $missingTypePool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Missing Type Info',
+            'cidr' => '10.177.0.0/24',
+            'first_usable' => '10.177.0.10',
+            'last_usable' => '10.177.0.50',
+            'network_mode' => 'bridged',
+            'parent_interface' => 'legacy0',
+            'gateway' => '10.177.0.1',
+        ]);
+
+        $resMissingType = $this->postJson(sprintf('/api/admin/ip-pools/%d/preflight', $missingTypePool->id));
+        $resMissingType->assertOk();
+        $this->assertTrue($resMissingType->json('ok'));
+        $typeCheckMissing = collect($resMissingType->json('checks'))->firstWhere('name', 'Parent interface type matches mode');
+        $this->assertTrue($typeCheckMissing['ok']);
+        $this->assertStringContainsString('could not be verified', strtolower((string) $typeCheckMissing['hint']));
+
+        // 6. Routed over bridge or physical -> ok with informational hint
+        $routedPool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Routed Over Bridge',
+            'cidr' => '10.178.0.0/24',
+            'first_usable' => '10.178.0.10',
+            'last_usable' => '10.178.0.50',
+            'network_mode' => 'routed',
+            'parent_interface' => 'incusbr0',
+        ]);
+
+        $resRouted = $this->postJson(sprintf('/api/admin/ip-pools/%d/preflight', $routedPool->id));
+        $resRouted->assertOk();
+        $this->assertTrue($resRouted->json('ok'));
+        $checksRouted = collect($resRouted->json('checks'));
+        $this->assertTrue($checksRouted->firstWhere('name', 'Parent interface type matches mode')['ok']);
+        $this->assertNull($checksRouted->firstWhere('name', 'Gateway configured'));
+
+        // 7. Manual -> ok / not applicable
+        $manualPool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Manual Mode Type Check',
+            'cidr' => '10.179.0.0/24',
+            'first_usable' => '10.179.0.10',
+            'last_usable' => '10.179.0.50',
+            'network_mode' => 'manual',
+            'parent_interface' => '',
+        ]);
+
+        $resManual = $this->postJson(sprintf('/api/admin/ip-pools/%d/preflight', $manualPool->id));
+        $resManual->assertOk();
+        $this->assertTrue($resManual->json('ok'));
+        $typeCheckManual = collect($resManual->json('checks'))->firstWhere('name', 'Parent interface type matches mode');
+        $this->assertTrue($typeCheckManual['ok']);
+        $this->assertStringContainsString('not applicable', strtolower((string) $typeCheckManual['hint']));
+
+        // 8. Bridged without gateway -> fails on 'Gateway configured'
+        $bridgedNoGwPool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Bridged Without Gateway',
+            'cidr' => '10.181.0.0/24',
+            'first_usable' => '10.181.0.10',
+            'last_usable' => '10.181.0.50',
+            'network_mode' => 'bridged',
+            'parent_interface' => 'incusbr0',
+            'gateway' => null,
+        ]);
+
+        $resNoGw = $this->postJson(sprintf('/api/admin/ip-pools/%d/preflight', $bridgedNoGwPool->id));
+        $resNoGw->assertOk();
+        $this->assertFalse($resNoGw->json('ok'));
+        $gwCheck = collect($resNoGw->json('checks'))->firstWhere('name', 'Gateway configured');
+        $this->assertNotNull($gwCheck);
+        $this->assertFalse($gwCheck['ok']);
+
+        // 9. Bridged with outside-CIDR gateway -> fails on 'Gateway configured' without duplicate in 'Pool range consistent'
+        $bridgedBadGwPool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Bridged Outside Gateway',
+            'cidr' => '10.182.0.0/24',
+            'first_usable' => '10.182.0.10',
+            'last_usable' => '10.182.0.50',
+            'network_mode' => 'bridged',
+            'parent_interface' => 'incusbr0',
+            'gateway' => '192.168.1.1',
+        ]);
+
+        $resBadGw = $this->postJson(sprintf('/api/admin/ip-pools/%d/preflight', $bridgedBadGwPool->id));
+        $resBadGw->assertOk();
+        $this->assertFalse($resBadGw->json('ok'));
+        $checksBadGw = collect($resBadGw->json('checks'));
+        $this->assertFalse($checksBadGw->firstWhere('name', 'Gateway configured')['ok']);
+        $this->assertTrue($checksBadGw->firstWhere('name', 'Pool range consistent')['ok']);
     }
 
     public function test_utilization_identical_from_both_code_paths(): void

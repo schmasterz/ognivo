@@ -307,7 +307,7 @@ final class TenantProvisioningArchitecturalComplianceTest extends TestCase
                 ],
             ], 200),
             'https://incus-node.local:8443/1.0/storage-pools' => Http::response(['metadata' => ['/1.0/storage-pools/default']], 200),
-            'https://incus-node.local:8443/1.0/networks' => Http::response(['metadata' => ['/1.0/networks/incusbr0']], 200),
+            'https://incus-node.local:8443/1.0/networks' => Http::response(['metadata' => ['/1.0/networks/eth0', '/1.0/networks/incusbr0']], 200),
             'https://incus-node.local:8443/1.0/instances?project=proj-tenant-test' => Http::response([
                 'type' => 'sync',
                 'status' => 'Success',

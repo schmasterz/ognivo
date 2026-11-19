@@ -866,11 +866,12 @@ final class IpManagementService
 
         // 1. Host reachable via HypervisorGateway
         $hostReachable = false;
-        $networkNames = [];
+        /** @var array<string, array{type: string|null, managed: bool}> $networks */
+        $networks = [];
         try {
             $gateway = app(HypervisorGateway::class);
             $client = $gateway->client($pool->host);
-            $res = $client->get('/1.0/networks');
+            $res = $client->withQueryParameters(['recursion' => 1])->get('/1.0/networks');
 
             if ($res->successful()) {
                 $hostReachable = true;
@@ -878,9 +879,18 @@ final class IpManagementService
                 if (is_array($metadata)) {
                     foreach ($metadata as $item) {
                         if (is_string($item)) {
-                            $networkNames[] = basename($item);
+                            $name = basename($item);
+                            if ($name !== '') {
+                                $networks[$name] = ['type' => null, 'managed' => false];
+                            }
                         } elseif (is_array($item) && isset($item['name']) && is_string($item['name'])) {
-                            $networkNames[] = $item['name'];
+                            $name = $item['name'];
+                            if ($name !== '') {
+                                $rawType = isset($item['type']) && is_string($item['type']) ? trim($item['type']) : '';
+                                $type = ($rawType !== '' && $rawType !== 'unknown') ? $rawType : null;
+                                $managed = isset($item['managed']) && (bool) $item['managed'];
+                                $networks[$name] = ['type' => $type, 'managed' => $managed];
+                            }
                         }
                     }
                 }
@@ -906,17 +916,34 @@ final class IpManagementService
             ];
         }
 
+        $networkNames = array_keys($networks);
+        $networkMode = $pool->network_mode !== '' ? $pool->network_mode : 'routed';
+        $isManual = ($networkMode === 'manual');
+        $parentInterface = trim($pool->parent_interface);
+
         // 2. Parent interface existence on host
-        if (! $hostReachable) {
+        if ($isManual) {
+            $checks[] = [
+                'name' => 'Parent interface exists',
+                'ok' => true,
+                'hint' => 'Parent interface is not used in manual network mode.',
+            ];
+        } elseif ($parentInterface === '') {
             $overallOk = false;
             $checks[] = [
                 'name' => 'Parent interface exists',
                 'ok' => false,
-                'hint' => sprintf("Cannot verify parent interface '%s' because host is unreachable.", $pool->parent_interface),
+                'hint' => sprintf("Parent interface is required for '%s' network mode and is currently empty.", $networkMode),
+            ];
+        } elseif (! $hostReachable) {
+            $overallOk = false;
+            $checks[] = [
+                'name' => 'Parent interface exists',
+                'ok' => false,
+                'hint' => sprintf("Cannot verify parent interface '%s' because host is unreachable.", $parentInterface),
             ];
         } else {
-            $parentInterface = $pool->parent_interface ?: 'eth0';
-            if (in_array($parentInterface, $networkNames, true)) {
+            if (array_key_exists($parentInterface, $networks)) {
                 $checks[] = [
                     'name' => 'Parent interface exists',
                     'ok' => true,
@@ -932,7 +959,21 @@ final class IpManagementService
             }
         }
 
-        // 3. Pool range consistent with CIDR and gateway
+        // 3. Parent interface type compatibility with network mode
+        $typeCheck = $this->evaluateParentInterfaceTypeCheck(
+            $networkMode,
+            $parentInterface,
+            $hostReachable,
+            $networks[$parentInterface] ?? null,
+        );
+        if (! $typeCheck['ok']) {
+            $overallOk = false;
+        }
+        $checks[] = $typeCheck;
+
+        // 4. Pool range consistent with CIDR (and gateway for non-bridged/macvlan modes)
+        $requiresGateway = in_array($networkMode, ['bridged', 'macvlan'], true);
+        $gatewayIp = $pool->gateway !== null ? trim($pool->gateway) : '';
         $rangeConsistent = true;
         $rangeHints = [];
         $range = CidrHelper::subnetRange($pool->cidr);
@@ -956,7 +997,7 @@ final class IpManagementService
                 $rangeConsistent = false;
                 $rangeHints[] = sprintf("First usable IP '%s' is greater than last usable '%s'.", $pool->first_usable, $pool->last_usable);
             }
-            if (! empty($pool->gateway)) {
+            if (! $requiresGateway && ! empty($pool->gateway)) {
                 $gwLong = CidrHelper::ipToUnsigned($pool->gateway);
                 if ($gwLong === null || $gwLong < $network || $gwLong > $broadcast) {
                     $rangeConsistent = false;
@@ -969,7 +1010,9 @@ final class IpManagementService
             $checks[] = [
                 'name' => 'Pool range consistent',
                 'ok' => true,
-                'hint' => 'Usable IP range and gateway are consistent with CIDR block.',
+                'hint' => $requiresGateway
+                    ? 'Usable IP range is consistent with CIDR block.'
+                    : 'Usable IP range and gateway are consistent with CIDR block.',
             ];
         } else {
             $overallOk = false;
@@ -980,7 +1023,43 @@ final class IpManagementService
             ];
         }
 
-        // 4. Host kernel routing & proxy ARP hint
+        // 5. Gateway configured (required for bridged and macvlan modes)
+        if ($requiresGateway) {
+            if ($gatewayIp === '') {
+                $overallOk = false;
+                $checks[] = [
+                    'name' => 'Gateway configured',
+                    'ok' => false,
+                    'hint' => sprintf("A gateway IP is required for '%s' network mode so instances receive a default route.", $networkMode),
+                ];
+            } elseif ($range === null) {
+                $overallOk = false;
+                $checks[] = [
+                    'name' => 'Gateway configured',
+                    'ok' => false,
+                    'hint' => sprintf("Cannot validate gateway IP '%s' against invalid CIDR '%s'.", $gatewayIp, $pool->cidr),
+                ];
+            } else {
+                [$network, $broadcast] = $range;
+                $gwLong = CidrHelper::ipToUnsigned($gatewayIp);
+                if ($gwLong === null || $gwLong < $network || $gwLong > $broadcast) {
+                    $overallOk = false;
+                    $checks[] = [
+                        'name' => 'Gateway configured',
+                        'ok' => false,
+                        'hint' => sprintf("Gateway IP '%s' is outside CIDR %s.", $gatewayIp, $pool->cidr),
+                    ];
+                } else {
+                    $checks[] = [
+                        'name' => 'Gateway configured',
+                        'ok' => true,
+                        'hint' => sprintf("Gateway IP '%s' is configured and within CIDR %s.", $gatewayIp, $pool->cidr),
+                    ];
+                }
+            }
+        }
+
+        // 6. Host kernel routing & proxy ARP hint
         $checks[] = [
             'name' => 'Host sysctl & proxy ARP',
             'ok' => true,
@@ -1007,6 +1086,118 @@ final class IpManagementService
         return [
             'ok' => $overallOk,
             'checks' => $checks,
+        ];
+    }
+
+    /**
+     * Evaluate whether the discovered host interface type matches the pool's network mode.
+     *
+     * @param  array{type: string|null, managed: bool}|null  $interfaceInfo
+     * @return array{name: string, ok: bool, hint: string}
+     */
+    private function evaluateParentInterfaceTypeCheck(
+        string $networkMode,
+        string $parentInterface,
+        bool $hostReachable,
+        ?array $interfaceInfo,
+    ): array {
+        $checkName = 'Parent interface type matches mode';
+
+        if ($networkMode === 'manual') {
+            return [
+                'name' => $checkName,
+                'ok' => true,
+                'hint' => 'Parent interface type check is not applicable in manual network mode.',
+            ];
+        }
+
+        if ($parentInterface === '') {
+            return [
+                'name' => $checkName,
+                'ok' => false,
+                'hint' => sprintf("Cannot verify parent interface type because parent_interface is empty for '%s' network mode.", $networkMode),
+            ];
+        }
+
+        if (! $hostReachable) {
+            return [
+                'name' => $checkName,
+                'ok' => false,
+                'hint' => sprintf("Cannot verify parent interface '%s' type because host is unreachable.", $parentInterface),
+            ];
+        }
+
+        if ($interfaceInfo === null) {
+            return [
+                'name' => $checkName,
+                'ok' => false,
+                'hint' => sprintf("Cannot verify interface type because parent interface '%s' was not found on the host.", $parentInterface),
+            ];
+        }
+
+        $type = $interfaceInfo['type'];
+        if ($type === null) {
+            return [
+                'name' => $checkName,
+                'ok' => true,
+                'hint' => sprintf("Interface type for '%s' could not be verified from hypervisor response; ensure it matches '%s' mode.", $parentInterface, $networkMode),
+            ];
+        }
+
+        if ($networkMode === 'bridged') {
+            if ($type === 'bridge') {
+                $bridgeKind = $interfaceInfo['managed'] ? 'an Incus managed bridge' : 'a Linux bridge';
+
+                return [
+                    'name' => $checkName,
+                    'ok' => true,
+                    'hint' => sprintf("Parent interface '%s' is %s (type 'bridge'), compatible with 'bridged' mode.", $parentInterface, $bridgeKind),
+                ];
+            }
+
+            $recommendation = in_array($type, ['physical', 'bond', 'vlan'], true)
+                ? sprintf("Use 'macvlan' or 'routed' mode for '%s' interfaces, or select a 'bridge' interface.", $type)
+                : "Select a 'bridge' interface for 'bridged' mode.";
+
+            return [
+                'name' => $checkName,
+                'ok' => false,
+                'hint' => sprintf("Parent interface '%s' has type '%s', which is incompatible with 'bridged' mode (requires 'bridge'). %s", $parentInterface, $type, $recommendation),
+            ];
+        }
+
+        if ($networkMode === 'macvlan') {
+            if (in_array($type, ['physical', 'bond', 'vlan'], true)) {
+                return [
+                    'name' => $checkName,
+                    'ok' => true,
+                    'hint' => sprintf("Parent interface '%s' has type '%s', compatible with 'macvlan' mode.", $parentInterface, $type),
+                ];
+            }
+
+            $recommendation = $type === 'bridge'
+                ? "Use 'bridged' or 'routed' mode for 'bridge' interfaces, or select a 'physical', 'bond', or 'vlan' interface."
+                : "Select a 'physical', 'bond', or 'vlan' interface for 'macvlan' mode.";
+
+            return [
+                'name' => $checkName,
+                'ok' => false,
+                'hint' => sprintf("Parent interface '%s' has type '%s', which is incompatible with 'macvlan' mode (requires 'physical', 'bond', or 'vlan'). %s", $parentInterface, $type, $recommendation),
+            ];
+        }
+
+        if (in_array($type, ['physical', 'bond', 'vlan', 'bridge'], true)) {
+            return [
+                'name' => $checkName,
+                'ok' => true,
+                'hint' => sprintf("Parent interface '%s' has type '%s', which is supported in 'routed' mode.", $parentInterface, $type),
+            ];
+        }
+
+        return [
+            'name' => $checkName,
+            'ok' => true,
+            'hint' => sprintf("Parent interface '%s' reports type '%s'. Routed mode typically uses 'physical', 'bond', 'vlan', or 'bridge' interfaces; verify host routing.", $parentInterface, $type),
         ];
     }
 
