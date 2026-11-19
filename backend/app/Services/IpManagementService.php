@@ -795,8 +795,8 @@ final class IpManagementService
                 if (isset($data['network_mode'])) {
                     $fieldsToUpdate['network_mode'] = $data['network_mode'];
                 }
-                if (isset($data['parent_interface'])) {
-                    $fieldsToUpdate['parent_interface'] = $data['parent_interface'];
+                if (array_key_exists('parent_interface', $data)) {
+                    $fieldsToUpdate['parent_interface'] = is_string($data['parent_interface']) ? $data['parent_interface'] : '';
                 }
             }
 

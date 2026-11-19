@@ -104,14 +104,23 @@ final class AdminIpPoolValidationTest extends TestCase
             'parent_interface' => '',
         ])->assertStatus(422)->assertJsonValidationErrors(['parent_interface']);
 
+        $pool->refresh();
+        $this->assertSame('eth0', $pool->parent_interface);
+
         $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
             'parent_interface' => null,
         ])->assertStatus(422)->assertJsonValidationErrors(['parent_interface']);
 
-        // Updating another field without sending parent_interface still succeeds
+        $pool->refresh();
+        $this->assertSame('eth0', $pool->parent_interface);
+
+        // Updating another field without sending parent_interface still succeeds and keeps stored value
         $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
             'name' => 'Routed Pool Renamed',
-        ])->assertOk();
+        ])->assertOk()->assertJsonPath('pool.parent_interface', 'eth0');
+
+        $pool->refresh();
+        $this->assertSame('eth0', $pool->parent_interface);
     }
 
     public function test_updating_manual_pool_to_empty_parent_interface_succeeds(): void
@@ -131,7 +140,10 @@ final class AdminIpPoolValidationTest extends TestCase
 
         $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
             'parent_interface' => '',
-        ])->assertOk();
+        ])->assertOk()->assertJsonPath('pool.parent_interface', null);
+
+        $pool->refresh();
+        $this->assertSame('', $pool->parent_interface);
 
         // Switching manual pool with empty interface to routed without providing parent_interface fails
         $manualEmptyPool = IpPool::create([
@@ -148,5 +160,86 @@ final class AdminIpPoolValidationTest extends TestCase
         $this->putJson(sprintf('/api/admin/ip-pools/%d', $manualEmptyPool->id), [
             'network_mode' => 'routed',
         ])->assertStatus(422)->assertJsonValidationErrors(['parent_interface']);
+    }
+
+    public function test_updating_routed_pool_to_manual_with_empty_parent_interface_clears_stored_value(): void
+    {
+        Sanctum::actingAs($this->admin);
+
+        $pool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Routed To Manual Pool',
+            'cidr' => '10.193.0.0/24',
+            'first_usable' => '10.193.0.10',
+            'last_usable' => '10.193.0.100',
+            'gateway' => '10.193.0.1',
+            'network_mode' => 'routed',
+            'parent_interface' => 'eno1',
+        ]);
+
+        $response = $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+            'network_mode' => 'manual',
+            'parent_interface' => '',
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('pool.network_mode', 'manual');
+        $response->assertJsonPath('pool.parent_interface', null);
+
+        $pool->refresh();
+        $this->assertSame('manual', $pool->network_mode);
+        $this->assertSame('', $pool->parent_interface);
+    }
+
+    public function test_updating_manual_pool_with_empty_parent_interface_stays_empty(): void
+    {
+        Sanctum::actingAs($this->admin);
+
+        $pool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Manual Stays Empty Pool',
+            'cidr' => '10.194.0.0/24',
+            'first_usable' => '10.194.0.10',
+            'last_usable' => '10.194.0.100',
+            'gateway' => '10.194.0.1',
+            'network_mode' => 'manual',
+            'parent_interface' => '',
+        ]);
+
+        $response = $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+            'parent_interface' => '',
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('pool.parent_interface', null);
+
+        $pool->refresh();
+        $this->assertSame('', $pool->parent_interface);
+    }
+
+    public function test_updating_pool_without_parent_interface_key_leaves_stored_value_unchanged(): void
+    {
+        Sanctum::actingAs($this->admin);
+
+        $pool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Keep Interface Pool',
+            'cidr' => '10.195.0.0/24',
+            'first_usable' => '10.195.0.10',
+            'last_usable' => '10.195.0.100',
+            'gateway' => '10.195.0.1',
+            'network_mode' => 'manual',
+            'parent_interface' => 'eno1',
+        ]);
+
+        $response = $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+            'name' => 'Keep Interface Pool Renamed',
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('pool.parent_interface', 'eno1');
+
+        $pool->refresh();
+        $this->assertSame('eno1', $pool->parent_interface);
     }
 }
