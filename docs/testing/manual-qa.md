@@ -128,4 +128,20 @@ curl -s -X DELETE http://localhost/api/vms/1/snapshots/1 \
 
 ### 2.5 Interactive OpenAPI Documentation
 - **Swagger / Scramble UI:** `http://localhost/docs/api`
-- **OpenAPI v3 JSON Spec:** `http://localhost/docs/api.json`
+- **OpenAPI v3.1 JSON Spec:** `http://localhost/docs/api.json`
+
+**Access Control:** Access is governed by the `viewApiDocs` authorization gate. The endpoints are public in `local` and `testing` environments, and restricted to authenticated users with the `admin` role in `production`.
+
+**Automatic Updates:** The OpenAPI specification updates automatically. Dedoc Scramble statically analyzes PHP 8 controller route attributes (`Spatie\RouteAttributes\Attributes\*`), `FormRequest` validation rules, and `JsonResource` return types dynamically on request.
+
+**Refreshing Caches:** If route or Scramble caching has been enabled, clear both caches so changes appear immediately:
+```bash
+docker exec ognivo-backend-dev php artisan route:clear && docker exec ognivo-backend-dev php artisan scramble:clear
+```
+
+**CLI Analysis & Export:** You can analyze routes for documentation issues and export `backend/api.json` locally using `make openapi`, or by running the Artisan commands directly:
+```bash
+docker exec ognivo-backend-dev php artisan scramble:analyze
+docker exec ognivo-backend-dev php artisan scramble:export --path=api.json
+```
+CI automatically runs these checks and uploads the `openapi-spec` artifact on every push.

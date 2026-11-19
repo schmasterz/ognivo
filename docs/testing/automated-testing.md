@@ -82,6 +82,11 @@ docker exec ognivo-backend-dev vendor/bin/phpstan analyse --memory-limit=1G
 docker exec ognivo-backend-dev vendor/bin/psalm --no-cache
 ```
 
+### OpenAPI Specification Analysis (Dedoc Scramble)
+```bash
+docker exec ognivo-backend-dev php artisan scramble:analyze
+```
+
 ---
 
 ## 4. Frontend & Console Proxy Verification
