@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import type { ImageCatalogCounts, ImageCatalogFilter } from "../api/types.ts";
+import type { ImageCatalogCounts, ImageCatalogFilter } from "../../../src/lib/api/types.ts";
 import {
   createInitialSelection,
   normalizeFilter,
@@ -17,8 +17,8 @@ import {
   estimateSelectedCount,
   MAX_ID_OVERRIDES,
   MAX_FILTER_OPS,
-} from "./imageSelection.ts";
-import type { ImageRow } from "./imageSelection.ts";
+} from "../../../src/lib/images/imageSelection.ts";
+import type { ImageRow } from "../../../src/lib/images/imageSelection.ts";
 
 const sampleLinux: ImageRow = {
   id: 1,
