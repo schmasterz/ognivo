@@ -15,6 +15,7 @@ use App\Models\Host;
 use App\Services\Hypervisor\HypervisorGateway;
 use App\Services\Hypervisor\HypervisorManager;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -68,15 +69,44 @@ final class HostNodeService
     }
 
     /**
-     * Paginate all host nodes with count relations for administrators.
+     * Paginate all host nodes with count relations for administrators, optionally filtered.
      *
+     * @param  array{search?: string|null, status?: string|null, is_active?: bool|null, driver?: string|null}  $filters
      * @return LengthAwarePaginator<int, Host>
      */
-    public function paginateAll(int $perPage = 10): LengthAwarePaginator
+    public function paginateAll(int $perPage = 10, array $filters = []): LengthAwarePaginator
     {
-        return Host::withCount(['virtualMachines', 'ipPools'])
-            ->orderBy('name')
-            ->paginate($perPage);
+        /** @var Builder<Host> $query */
+        $query = Host::withCount(['virtualMachines', 'ipPools']);
+
+        if (isset($filters['search']) && $filters['search'] !== '') {
+            $search = $filters['search'];
+            $query->where(function (Builder $q) use ($search): void {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('region', 'like', "%{$search}%")
+                    ->orWhere('endpoint_url', 'like', "%{$search}%")
+                    ->orWhere('server_fingerprint', 'like', "%{$search}%");
+            });
+        }
+
+        if (isset($filters['status']) && $filters['status'] !== '') {
+            $status = $filters['status'];
+            if ($status === 'needs_retrust') {
+                $query->where('needs_retrust', true);
+            } else {
+                $query->where('status', $status);
+            }
+        }
+
+        if (array_key_exists('is_active', $filters) && $filters['is_active'] !== null) {
+            $query->where('is_active', $filters['is_active']);
+        }
+
+        if (isset($filters['driver']) && $filters['driver'] !== '') {
+            $query->where('driver', $filters['driver']);
+        }
+
+        return $query->orderBy('name')->paginate($perPage);
     }
 
     /**

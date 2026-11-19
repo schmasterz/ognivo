@@ -69,8 +69,18 @@ final class HostNodeController extends Controller
     #[Get('admin/hosts', name: 'admin.hosts.index', middleware: ['auth:sanctum', 'active', 'admin'])]
     public function index(Request $request): JsonResponse
     {
+        /** @var array{search?: string|null, status?: string|null, is_active?: bool|null, driver?: string|null} $filters */
+        $filters = [
+            'search' => $request->filled('search') ? $request->string('search')->trim()->value() : null,
+            'status' => $request->filled('status') ? $request->string('status')->trim()->value() : null,
+            'is_active' => $request->filled('is_active')
+                ? filter_var($request->input('is_active'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE)
+                : null,
+            'driver' => $request->filled('driver') ? $request->string('driver')->trim()->value() : null,
+        ];
+
         $perPage = max(1, min(100, $request->integer('per_page', 10)));
-        $paginator = $this->hostNodeService->paginateAll($perPage);
+        $paginator = $this->hostNodeService->paginateAll($perPage, $filters);
 
         /** @var list<Host> $hosts */
         $hosts = $paginator->items();

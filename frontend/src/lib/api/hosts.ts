@@ -20,10 +20,30 @@ export const hostsApi = {
   async adminGetHosts(params?: {
     page?: number | null;
     per_page?: number | null;
+    search?: string | null;
+    status?: string | null;
+    is_active?: boolean | string | null;
+    driver?: string | null;
   }): Promise<PaginatedResponse<HostNode>> {
     const queryParams = new URLSearchParams();
     if (params?.page) queryParams.set("page", String(params.page));
     if (params?.per_page) queryParams.set("per_page", String(params.per_page));
+    if (params?.search && params.search.trim() !== "") {
+      queryParams.set("search", params.search.trim());
+    }
+    if (params?.status && params.status.trim() !== "") {
+      queryParams.set("status", params.status.trim());
+    }
+    if (
+      params?.is_active !== undefined &&
+      params?.is_active !== null &&
+      String(params.is_active).trim() !== ""
+    ) {
+      queryParams.set("is_active", String(params.is_active));
+    }
+    if (params?.driver && params.driver.trim() !== "") {
+      queryParams.set("driver", params.driver.trim());
+    }
     const query = queryParams.toString() ? `?${queryParams.toString()}` : "";
     return request<PaginatedResponse<HostNode>>(`/admin/hosts${query}`);
   },
