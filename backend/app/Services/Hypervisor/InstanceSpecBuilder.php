@@ -55,10 +55,6 @@ class InstanceSpecBuilder
             'limits.memory' => sprintf('%dMB', $vm->ram_mb),
         ];
 
-        if ($vm->instance_type === 'virtual-machine') {
-            $config['migration.stateful'] = 'true';
-        }
-
         $userData = $this->extractUserData($vm);
         if ($userData !== null && $userData !== '') {
             $config['cloud-init.user-data'] = $userData;
@@ -76,6 +72,13 @@ class InstanceSpecBuilder
                 'size' => sprintf('%dGB', $vm->disk_gb),
             ],
         ];
+
+        if ($vm->instance_type === 'virtual-machine') {
+            $devices['agent'] = [
+                'type' => 'disk',
+                'source' => 'agent:config',
+            ];
+        }
 
         if (! $isManual) {
             $configuredParent = $this->requireConfiguredParentInterface($allocation, $networkMode);
@@ -107,7 +110,8 @@ class InstanceSpecBuilder
                         $ipAddress,
                         $prefix,
                         $gateway,
-                        $dnsServers
+                        $dnsServers,
+                        instanceType: $vm->instance_type,
                     );
                 }
             } else {
@@ -128,12 +132,14 @@ class InstanceSpecBuilder
 
                 $devices['eth0'] = $eth0;
 
-                // Virtual Machines require cloud-init Netplan v2 configuration for link-local default route (169.254.0.1)
-                if ($vm->instance_type === 'virtual-machine' && $allocation !== null) {
+                // Instances require cloud-init Netplan v2 configuration for DNS nameservers and link-local default route (169.254.0.1)
+                if ($allocation !== null) {
                     $config['cloud-init.network-config'] = $this->generateNetplanConfig(
                         $effectiveMac,
                         $allocation->ip_string,
-                        $dnsServers
+                        $dnsServers,
+                        instanceType: $vm->instance_type,
+                        imageName: $image->name !== '' ? $image->name : $vm->os_image,
                     );
                 }
             }
@@ -217,28 +223,63 @@ class InstanceSpecBuilder
      *
      * @param  array<string>|null  $dnsServers
      */
-    public function generateNetplanConfig(string $macAddress, string $ipAddress, ?array $dnsServers = null): string
-    {
+    public function generateNetplanConfig(
+        string $macAddress,
+        string $ipAddress,
+        ?array $dnsServers = null,
+        string $instanceType = 'virtual-machine',
+        string $imageName = '',
+    ): string {
         $dnsList = $dnsServers !== null && $dnsServers !== [] ? $dnsServers : ['1.1.1.1', '8.8.8.8'];
         $dnsLines = implode("\n", array_map(fn (string $dns): string => sprintf('          - %s', trim($dns)), $dnsList));
+        $matchBlock = $this->buildEth0MatchBlock($macAddress, $instanceType);
+        $routesBlock = $this->buildRoutedRoutesBlock($imageName);
 
         return <<<YAML
 network:
   version: 2
   ethernets:
-    eth0:
-      match:
-        macaddress: "{$macAddress}"
-      set-name: eth0
+    eth0:{$matchBlock}
       addresses:
         - {$ipAddress}/32
-      routes:
-        - to: default
-          via: 169.254.0.1
-          on-link: true
+{$routesBlock}
       nameservers:
         addresses:
 {$dnsLines}
+YAML;
+    }
+
+    /**
+     * Build the Netplan v2 routes block for routed mode based on the target OS image family.
+     */
+    protected function buildRoutedRoutesBlock(string $imageName): string
+    {
+        $normalized = strtolower(trim($imageName));
+
+        foreach (['almalinux', 'rocky', 'rhel', 'centos', 'fedora'] as $rhelFamily) {
+            if (str_contains($normalized, $rhelFamily)) {
+                return <<<'YAML'
+      routes:
+        - to: 0.0.0.0/0
+          via: 169.254.0.1
+YAML;
+            }
+        }
+
+        if (str_contains($normalized, 'debian')) {
+            return <<<'YAML'
+      routes:
+        - to: 169.254.0.1/32
+        - to: 0.0.0.0/0
+          via: 169.254.0.1
+YAML;
+        }
+
+        return <<<'YAML'
+      routes:
+        - to: 0.0.0.0/0
+          via: 169.254.0.1
+          on-link: true
 YAML;
     }
 
@@ -253,9 +294,11 @@ YAML;
         int $prefix = 24,
         ?string $gateway = null,
         ?array $dnsServers = null,
+        string $instanceType = 'virtual-machine',
     ): string {
         $dnsList = $dnsServers !== null && $dnsServers !== [] ? $dnsServers : ['1.1.1.1', '8.8.8.8'];
         $dnsLines = implode("\n", array_map(fn (string $dns): string => sprintf('          - %s', trim($dns)), $dnsList));
+        $matchBlock = $this->buildEth0MatchBlock($macAddress, $instanceType);
 
         $routesBlock = '';
         if ($gateway !== null && trim($gateway) !== '') {
@@ -263,7 +306,7 @@ YAML;
             $routesBlock = <<<YAML
 
       routes:
-        - to: default
+        - to: 0.0.0.0/0
           via: {$gw}
 YAML;
         }
@@ -272,15 +315,29 @@ YAML;
 network:
   version: 2
   ethernets:
-    eth0:
-      match:
-        macaddress: "{$macAddress}"
-      set-name: eth0
+    eth0:{$matchBlock}
       addresses:
         - {$ipAddress}/{$prefix}{$routesBlock}
       nameservers:
         addresses:
 {$dnsLines}
+YAML;
+    }
+
+    /**
+     * Build the MAC address match and set-name block for virtual machines; containers use Incus-managed eth0 directly.
+     */
+    protected function buildEth0MatchBlock(string $macAddress, string $instanceType): string
+    {
+        if ($instanceType !== 'virtual-machine') {
+            return '';
+        }
+
+        return <<<YAML
+
+      match:
+        macaddress: "{$macAddress}"
+      set-name: eth0
 YAML;
     }
 
