@@ -256,6 +256,8 @@ Full walkthrough with explanations: [Installation guide](docs/getting-started/in
 
 Ognivo is only useful once it manages a hypervisor.
 
+👉 *For a complete end-to-end host preparation guide (including mandatory packages like `genisoimage`, NAT/firewall persistence, and storage pool sizing), see the [Compute Node Setup Guide](docs/getting-started/compute-node-setup.md).*
+
 **On the Incus host** (Incus 6.0 LTS or newer, with KVM support; nested virtualization if the host is itself a VM):
 
 ```bash

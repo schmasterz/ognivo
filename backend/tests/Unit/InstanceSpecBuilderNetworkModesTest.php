@@ -127,6 +127,7 @@ final class InstanceSpecBuilderNetworkModesTest extends TestCase
 
         $this->assertSame('container', $spec['type']);
         $this->assertArrayNotHasKey('migration.stateful', $spec['config']);
+        $this->assertArrayNotHasKey('agent', $spec['devices']);
 
         $eth0 = $spec['devices']['eth0'];
         $this->assertSame('nic', $eth0['type']);
@@ -140,13 +141,10 @@ network:
   version: 2
   ethernets:
     eth0:
-      match:
-        macaddress: "02:54:0a:f1:4f:32"
-      set-name: eth0
       addresses:
         - 10.241.79.50/25
       routes:
-        - to: default
+        - to: 0.0.0.0/0
           via: 10.241.79.1
       nameservers:
         addresses:
@@ -154,7 +152,13 @@ network:
           - 8.8.8.8
 YAML;
 
-        $this->assertSame($expectedYaml, $spec['config']['cloud-init.network-config']);
+        $netplanYaml = $spec['config']['cloud-init.network-config'];
+        $this->assertSame($expectedYaml, $netplanYaml);
+        $this->assertStringNotContainsString('match:', $netplanYaml);
+        $this->assertStringNotContainsString('set-name: eth0', $netplanYaml);
+        $this->assertStringContainsString('addresses:', $netplanYaml);
+        $this->assertStringContainsString('to: 0.0.0.0/0', $netplanYaml);
+        $this->assertStringContainsString('nameservers:', $netplanYaml);
         $this->assertSame('ubuntu/24.04/cloud', $spec['source']['alias']);
     }
 
@@ -174,7 +178,11 @@ YAML;
         $spec = $this->builder->build($vm, $allocation, 'default', null, null, null, ['br0']);
 
         $this->assertSame('virtual-machine', $spec['type']);
-        $this->assertSame('true', $spec['config']['migration.stateful']);
+        $this->assertArrayNotHasKey('migration.stateful', $spec['config']);
+        $this->assertSame([
+            'type' => 'disk',
+            'source' => 'agent:config',
+        ], $spec['devices']['agent']);
 
         $eth0 = $spec['devices']['eth0'];
         $this->assertSame('bridged', $eth0['nictype']);
@@ -193,7 +201,7 @@ network:
       addresses:
         - 192.168.100.20/26
       routes:
-        - to: default
+        - to: 0.0.0.0/0
           via: 192.168.100.1
       nameservers:
         addresses:
@@ -220,6 +228,7 @@ YAML;
         $spec = $this->builder->build($vm, $allocation, 'default', null, null, null, ['eno1']);
 
         $this->assertSame('container', $spec['type']);
+        $this->assertArrayNotHasKey('agent', $spec['devices']);
         $eth0 = $spec['devices']['eth0'];
         $this->assertSame('macvlan', $eth0['nictype']);
         $this->assertSame('eno1', $eth0['parent']);
@@ -231,9 +240,6 @@ network:
   version: 2
   ethernets:
     eth0:
-      match:
-        macaddress: "02:54:c6:33:64:28"
-      set-name: eth0
       addresses:
         - 198.51.100.40/24
       nameservers:
@@ -241,7 +247,12 @@ network:
           - 1.0.0.1
 YAML;
 
-        $this->assertSame($expectedYaml, $spec['config']['cloud-init.network-config']);
+        $netplanYaml = $spec['config']['cloud-init.network-config'];
+        $this->assertSame($expectedYaml, $netplanYaml);
+        $this->assertStringNotContainsString('match:', $netplanYaml);
+        $this->assertStringNotContainsString('set-name: eth0', $netplanYaml);
+        $this->assertStringContainsString('addresses:', $netplanYaml);
+        $this->assertStringContainsString('nameservers:', $netplanYaml);
     }
 
     public function test_macvlan_virtual_machine_spec_with_gateway_and_empty_dns_uses_defaults(): void
@@ -260,7 +271,11 @@ YAML;
         $spec = $this->builder->build($vm, $allocation, 'default', null, null, null, ['bond0.100']);
 
         $this->assertSame('virtual-machine', $spec['type']);
-        $this->assertSame('true', $spec['config']['migration.stateful']);
+        $this->assertArrayNotHasKey('migration.stateful', $spec['config']);
+        $this->assertSame([
+            'type' => 'disk',
+            'source' => 'agent:config',
+        ], $spec['devices']['agent']);
 
         $eth0 = $spec['devices']['eth0'];
         $this->assertSame('macvlan', $eth0['nictype']);
@@ -279,7 +294,7 @@ network:
       addresses:
         - 203.0.113.150/25
       routes:
-        - to: default
+        - to: 0.0.0.0/0
           via: 203.0.113.129
       nameservers:
         addresses:
@@ -290,7 +305,7 @@ YAML;
         $this->assertSame($expectedYaml, $spec['config']['cloud-init.network-config']);
     }
 
-    public function test_routed_container_has_ipv4_address_and_no_cloud_init_network_config(): void
+    public function test_routed_container_has_ipv4_address_and_exact_link_local_netplan_yaml(): void
     {
         [$vm, $allocation] = $this->createWorkload(
             instanceType: 'container',
@@ -306,12 +321,36 @@ YAML;
         $spec = $this->builder->build($vm, $allocation, 'default', null, null, null, ['eth0']);
 
         $this->assertSame('container', $spec['type']);
+        $this->assertArrayNotHasKey('agent', $spec['devices']);
         $eth0 = $spec['devices']['eth0'];
         $this->assertSame('routed', $eth0['nictype']);
         $this->assertSame('eth0', $eth0['parent']);
         $this->assertSame('02:54:c6:33:64:4d', $eth0['hwaddr']);
         $this->assertSame('198.51.100.77', $eth0['ipv4.address']);
-        $this->assertArrayNotHasKey('cloud-init.network-config', $spec['config']);
+
+        $expectedYaml = <<<'YAML'
+network:
+  version: 2
+  ethernets:
+    eth0:
+      addresses:
+        - 198.51.100.77/32
+      routes:
+        - to: 0.0.0.0/0
+          via: 169.254.0.1
+          on-link: true
+      nameservers:
+        addresses:
+          - 9.9.9.9
+YAML;
+
+        $netplanYaml = $spec['config']['cloud-init.network-config'];
+        $this->assertSame($expectedYaml, $netplanYaml);
+        $this->assertStringNotContainsString('match:', $netplanYaml);
+        $this->assertStringNotContainsString('set-name: eth0', $netplanYaml);
+        $this->assertStringContainsString('addresses:', $netplanYaml);
+        $this->assertStringContainsString('to: 0.0.0.0/0', $netplanYaml);
+        $this->assertStringContainsString('nameservers:', $netplanYaml);
     }
 
     public function test_routed_virtual_machine_has_ipv4_address_and_exact_link_local_netplan_yaml(): void
@@ -330,6 +369,10 @@ YAML;
         $spec = $this->builder->build($vm, $allocation, 'default', null, null, null, ['bond0']);
 
         $this->assertSame('virtual-machine', $spec['type']);
+        $this->assertSame([
+            'type' => 'disk',
+            'source' => 'agent:config',
+        ], $spec['devices']['agent']);
         $eth0 = $spec['devices']['eth0'];
         $this->assertSame('routed', $eth0['nictype']);
         $this->assertSame('bond0', $eth0['parent']);
@@ -347,7 +390,7 @@ network:
       addresses:
         - 203.0.113.33/32
       routes:
-        - to: default
+        - to: 0.0.0.0/0
           via: 169.254.0.1
           on-link: true
       nameservers:
@@ -377,6 +420,14 @@ YAML;
             $this->assertSame($instanceType, $spec['type']);
             $this->assertArrayNotHasKey('eth0', $spec['devices']);
             $this->assertArrayHasKey('root', $spec['devices']);
+            if ($instanceType === 'virtual-machine') {
+                $this->assertSame([
+                    'type' => 'disk',
+                    'source' => 'agent:config',
+                ], $spec['devices']['agent']);
+            } else {
+                $this->assertArrayNotHasKey('agent', $spec['devices']);
+            }
             $this->assertArrayNotHasKey('cloud-init.network-config', $spec['config']);
         }
     }
@@ -402,7 +453,7 @@ network:
       addresses:
         - 10.10.20.30/27
       routes:
-        - to: default
+        - to: 0.0.0.0/0
           via: 10.10.20.1
       nameservers:
         addresses:
@@ -450,7 +501,7 @@ network:
       addresses:
         - 198.51.100.99/32
       routes:
-        - to: default
+        - to: 0.0.0.0/0
           via: 169.254.0.1
           on-link: true
       nameservers:
@@ -458,6 +509,140 @@ network:
           - 1.1.1.1
           - 8.8.8.8
 YAML, $routedYaml);
+
+        $containerSubnetYaml = $this->builder->generateSubnetNetplanConfig(
+            macAddress: '02:54:00:00:00:13',
+            ipAddress: '10.10.20.32',
+            prefix: 24,
+            gateway: '10.10.20.1',
+            dnsServers: ['1.1.1.1'],
+            instanceType: 'container',
+        );
+
+        $this->assertSame(<<<'YAML'
+network:
+  version: 2
+  ethernets:
+    eth0:
+      addresses:
+        - 10.10.20.32/24
+      routes:
+        - to: 0.0.0.0/0
+          via: 10.10.20.1
+      nameservers:
+        addresses:
+          - 1.1.1.1
+YAML, $containerSubnetYaml);
+
+        $containerRoutedYaml = $this->builder->generateNetplanConfig(
+            macAddress: '02:54:00:00:00:14',
+            ipAddress: '198.51.100.100',
+            dnsServers: ['9.9.9.9'],
+            instanceType: 'container',
+        );
+
+        $this->assertSame(<<<'YAML'
+network:
+  version: 2
+  ethernets:
+    eth0:
+      addresses:
+        - 198.51.100.100/32
+      routes:
+        - to: 0.0.0.0/0
+          via: 169.254.0.1
+          on-link: true
+      nameservers:
+        addresses:
+          - 9.9.9.9
+YAML, $containerRoutedYaml);
+    }
+
+    public function test_routed_netplan_routes_vary_by_os_family(): void
+    {
+        $ubuntuYaml = $this->builder->generateNetplanConfig(
+            macAddress: '02:54:00:00:00:20',
+            ipAddress: '198.51.100.110',
+            dnsServers: ['1.1.1.1'],
+            instanceType: 'virtual-machine',
+            imageName: 'ubuntu/24.04',
+        );
+
+        $this->assertSame(<<<'YAML'
+network:
+  version: 2
+  ethernets:
+    eth0:
+      match:
+        macaddress: "02:54:00:00:00:20"
+      set-name: eth0
+      addresses:
+        - 198.51.100.110/32
+      routes:
+        - to: 0.0.0.0/0
+          via: 169.254.0.1
+          on-link: true
+      nameservers:
+        addresses:
+          - 1.1.1.1
+YAML, $ubuntuYaml);
+
+        foreach (['debian/12', 'images:Debian/12'] as $debianImage) {
+            $debianYaml = $this->builder->generateNetplanConfig(
+                macAddress: '02:54:00:00:00:21',
+                ipAddress: '198.51.100.111',
+                dnsServers: ['1.1.1.1'],
+                instanceType: 'virtual-machine',
+                imageName: $debianImage,
+            );
+
+            $this->assertSame(<<<'YAML'
+network:
+  version: 2
+  ethernets:
+    eth0:
+      match:
+        macaddress: "02:54:00:00:00:21"
+      set-name: eth0
+      addresses:
+        - 198.51.100.111/32
+      routes:
+        - to: 169.254.0.1/32
+        - to: 0.0.0.0/0
+          via: 169.254.0.1
+      nameservers:
+        addresses:
+          - 1.1.1.1
+YAML, $debianYaml);
+        }
+
+        foreach (['almalinux/9', 'rocky/9', 'rhel/9', 'centos/9-Stream', 'fedora/40'] as $rhelImage) {
+            $rhelYaml = $this->builder->generateNetplanConfig(
+                macAddress: '02:54:00:00:00:22',
+                ipAddress: '198.51.100.112',
+                dnsServers: ['1.1.1.1'],
+                instanceType: 'virtual-machine',
+                imageName: $rhelImage,
+            );
+
+            $this->assertSame(<<<'YAML'
+network:
+  version: 2
+  ethernets:
+    eth0:
+      match:
+        macaddress: "02:54:00:00:00:22"
+      set-name: eth0
+      addresses:
+        - 198.51.100.112/32
+      routes:
+        - to: 0.0.0.0/0
+          via: 169.254.0.1
+      nameservers:
+        addresses:
+          - 1.1.1.1
+YAML, $rhelYaml);
+        }
     }
 
     public function test_non_manual_modes_with_empty_parent_interface_throw_domain_exception(): void

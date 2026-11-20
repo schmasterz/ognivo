@@ -8,6 +8,7 @@ Welcome to the **Ognivo** technical documentation. All guides are organized into
 - **[Installation Guide](getting-started/installation.md)** - Requirements, cloning the repository, development and production installs, TLS certificates, firewall, connecting the first Incus node, verification, updating, removal, and installation troubleshooting.
 - **[Quickstart Guide](getting-started/quickstart.md)** - Prerequisites, generating `.env` secrets, and starting Development or Production in minutes.
 - **[Development Environment](getting-started/development.md)** - Docker service layout, hot reloading, seeded demo data (accounts, quota tiers, nodes, images, IP pool, instances), and local ports.
+- **[Compute Node Setup](getting-started/compute-node-setup.md)** - Prepare a dedicated Linux server as an Incus hypervisor host (KVM checks, genisoimage, sysctl, NAT/firewall rules, remote API).
 
 ## 2. Architecture & Security (`docs/architecture/`)
 - **[System Architecture Overview](architecture/overview.md)** - High-level topology, Backend Eloquent models & services, Next.js 16 App Router architecture, API endpoint map, Reverb WebSockets, and lifecycle sequence diagrams.

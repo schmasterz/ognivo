@@ -159,7 +159,7 @@ final class NetworkProvisioningIntegrationTest extends TestCase
         // Verify Netplan v2 in cloud-init network-config
         $networkConfig = (string) $spec['config']['cloud-init.network-config'];
         $this->assertStringContainsString('version: 2', $networkConfig);
-        $this->assertStringContainsString('to: default', $networkConfig);
+        $this->assertStringContainsString('to: 0.0.0.0/0', $networkConfig);
         $this->assertStringContainsString('via: 169.254.0.1', $networkConfig);
         $this->assertStringContainsString('on-link: true', $networkConfig);
         $this->assertStringContainsString('203.0.113.66/32', $networkConfig);

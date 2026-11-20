@@ -109,7 +109,7 @@ final class InstanceSpecBuilderTest extends TestCase
         // Limits
         $this->assertEquals('4', $spec['config']['limits.cpu']);
         $this->assertEquals('8192MB', $spec['config']['limits.memory']);
-        $this->assertEquals('true', $spec['config']['migration.stateful'] ?? null);
+        $this->assertArrayNotHasKey('migration.stateful', $spec['config']);
         $this->assertEquals("#cloud-config\npackage_update: true", $spec['config']['cloud-init.user-data']);
 
         // Devices
@@ -117,6 +117,10 @@ final class InstanceSpecBuilderTest extends TestCase
         $this->assertEquals('disk', $spec['devices']['root']['type']);
         $this->assertEquals('custom-pool', $spec['devices']['root']['pool']);
         $this->assertEquals('50GB', $spec['devices']['root']['size']);
+        $this->assertSame([
+            'type' => 'disk',
+            'source' => 'agent:config',
+        ], $spec['devices']['agent']);
 
         // Routed NIC device
         $eth0 = $spec['devices']['eth0'];
@@ -131,16 +135,20 @@ final class InstanceSpecBuilderTest extends TestCase
         $netplanYaml = $spec['config']['cloud-init.network-config'];
 
         $this->assertStringContainsString('version: 2', $netplanYaml);
+        $this->assertStringContainsString('match:', $netplanYaml);
         $this->assertStringContainsString('macaddress: "02:54:cb:00:71:19"', $netplanYaml);
+        $this->assertStringContainsString('set-name: eth0', $netplanYaml);
         $this->assertStringContainsString('- 203.0.113.25/32', $netplanYaml);
-        $this->assertStringContainsString('to: default', $netplanYaml);
+        $this->assertStringContainsString('to: 0.0.0.0/0', $netplanYaml);
         $this->assertStringContainsString('via: 169.254.0.1', $netplanYaml);
         $this->assertStringContainsString('on-link: true', $netplanYaml);
+        $this->assertStringNotContainsString('169.254.0.1/32', $netplanYaml);
+        $this->assertStringContainsString('nameservers:', $netplanYaml);
         $this->assertStringContainsString('- 1.1.1.1', $netplanYaml);
         $this->assertStringContainsString('- 1.0.0.1', $netplanYaml);
     }
 
-    public function test_build_container_spec_has_routed_nic_without_cloud_init_network_config(): void
+    public function test_build_container_spec_has_routed_nic_with_cloud_init_network_config_for_dns_and_routes(): void
     {
         $pool = IpPool::create([
             'host_id' => $this->host->id,
@@ -181,12 +189,24 @@ final class InstanceSpecBuilderTest extends TestCase
         $spec = $this->builder->build($container, $allocation);
 
         $this->assertEquals('container', $spec['type']);
+        $this->assertArrayNotHasKey('agent', $spec['devices']);
         $this->assertEquals('routed', $spec['devices']['eth0']['nictype']);
         $this->assertEquals('198.51.100.42', $spec['devices']['eth0']['ipv4.address']);
         $this->assertEquals('02:54:c6:33:64:2a', $spec['devices']['eth0']['hwaddr']);
 
-        // Containers configure networking in-kernel; cloud-init.network-config should NOT be present
-        $this->assertArrayNotHasKey('cloud-init.network-config', $spec['config']);
+        // Containers in routed mode receive cloud-init.network-config for DNS nameservers and link-local default route
+        $this->assertArrayHasKey('cloud-init.network-config', $spec['config']);
+        $netplanYaml = $spec['config']['cloud-init.network-config'];
+        $this->assertStringNotContainsString('match:', $netplanYaml);
+        $this->assertStringNotContainsString('set-name: eth0', $netplanYaml);
+        $this->assertStringContainsString('addresses:', $netplanYaml);
+        $this->assertStringContainsString('to: 0.0.0.0/0', $netplanYaml);
+        $this->assertStringContainsString('via: 169.254.0.1', $netplanYaml);
+        $this->assertStringContainsString('on-link: true', $netplanYaml);
+        $this->assertStringNotContainsString('169.254.0.1/32', $netplanYaml);
+        $this->assertStringContainsString('nameservers:', $netplanYaml);
+        $this->assertStringContainsString('1.1.1.1', $netplanYaml);
+        $this->assertStringContainsString('8.8.8.8', $netplanYaml);
         $this->assertArrayNotHasKey('migration.stateful', $spec['config']);
     }
 
@@ -233,6 +253,10 @@ final class InstanceSpecBuilderTest extends TestCase
         // devices must NOT contain eth0
         $this->assertArrayNotHasKey('eth0', $payload['devices']);
         $this->assertArrayHasKey('root', $payload['devices']);
+        $this->assertSame([
+            'type' => 'disk',
+            'source' => 'agent:config',
+        ], $payload['devices']['agent']);
 
         // config must NOT contain cloud-init.network-config
         $this->assertArrayNotHasKey('cloud-init.network-config', $payload['config']);
@@ -299,12 +323,22 @@ final class InstanceSpecBuilderTest extends TestCase
         ]);
 
         $bridgedSpec = $this->builder->build($vmBridged, $allocBridged);
+        $this->assertSame([
+            'type' => 'disk',
+            'source' => 'agent:config',
+        ], $bridgedSpec['devices']['agent']);
         $this->assertSame('bridged', $bridgedSpec['devices']['eth0']['nictype']);
         $this->assertSame('incusbr0', $bridgedSpec['devices']['eth0']['parent']);
         $this->assertSame('02:54:0a:f1:4f:32', $bridgedSpec['devices']['eth0']['hwaddr']);
         $this->assertArrayNotHasKey('ipv4.address', $bridgedSpec['devices']['eth0']);
-        $this->assertStringContainsString('- 10.241.79.50/24', $bridgedSpec['config']['cloud-init.network-config']);
-        $this->assertStringContainsString('via: 10.241.79.1', $bridgedSpec['config']['cloud-init.network-config']);
+        $bridgedNetplan = $bridgedSpec['config']['cloud-init.network-config'];
+        $this->assertStringContainsString('match:', $bridgedNetplan);
+        $this->assertStringContainsString('macaddress: "02:54:0a:f1:4f:32"', $bridgedNetplan);
+        $this->assertStringContainsString('set-name: eth0', $bridgedNetplan);
+        $this->assertStringContainsString('- 10.241.79.50/24', $bridgedNetplan);
+        $this->assertStringContainsString('to: 0.0.0.0/0', $bridgedNetplan);
+        $this->assertStringContainsString('via: 10.241.79.1', $bridgedNetplan);
+        $this->assertStringContainsString('nameservers:', $bridgedNetplan);
         $this->assertSame('ubuntu/24.04/cloud', $bridgedSpec['source']['alias']);
 
         // Macvlan pool with configured parent_interface 'eno1' present on host ['docker0', 'eno1', 'incusbr0']
@@ -345,11 +379,21 @@ final class InstanceSpecBuilderTest extends TestCase
         ]);
 
         $macvlanSpec = $this->builder->build($vmMacvlan, $allocMacvlan, 'default', null, null, null, ['docker0', 'eno1', 'incusbr0']);
+        $this->assertSame([
+            'type' => 'disk',
+            'source' => 'agent:config',
+        ], $macvlanSpec['devices']['agent']);
         $this->assertSame('macvlan', $macvlanSpec['devices']['eth0']['nictype']);
         $this->assertSame('eno1', $macvlanSpec['devices']['eth0']['parent']);
         $this->assertSame('ubuntu/24.04/cloud', $macvlanSpec['source']['alias']);
-        $this->assertStringContainsString('- 198.51.100.20/24', $macvlanSpec['config']['cloud-init.network-config']);
-        $this->assertStringContainsString('via: 198.51.100.1', $macvlanSpec['config']['cloud-init.network-config']);
+        $macvlanNetplan = $macvlanSpec['config']['cloud-init.network-config'];
+        $this->assertStringContainsString('match:', $macvlanNetplan);
+        $this->assertStringContainsString('macaddress: "02:54:c6:33:64:14"', $macvlanNetplan);
+        $this->assertStringContainsString('set-name: eth0', $macvlanNetplan);
+        $this->assertStringContainsString('- 198.51.100.20/24', $macvlanNetplan);
+        $this->assertStringContainsString('to: 0.0.0.0/0', $macvlanNetplan);
+        $this->assertStringContainsString('via: 198.51.100.1', $macvlanNetplan);
+        $this->assertStringContainsString('nameservers:', $macvlanNetplan);
     }
 
     public function test_build_throws_when_configured_parent_interface_is_missing_on_host(): void
@@ -479,6 +523,10 @@ final class InstanceSpecBuilderTest extends TestCase
 
         $spec = $this->builder->build($vm, $alloc, 'default', null, null, null, ['eno1']);
 
+        $this->assertSame([
+            'type' => 'disk',
+            'source' => 'agent:config',
+        ], $spec['devices']['agent']);
         $this->assertArrayNotHasKey('eth0', $spec['devices']);
         $this->assertArrayNotHasKey('cloud-init.network-config', $spec['config']);
     }
@@ -487,5 +535,105 @@ final class InstanceSpecBuilderTest extends TestCase
     {
         $this->assertSame('br-lan', $this->builder->resolveParentInterface('br-lan', 'bridged', null));
         $this->assertSame('br-lan', $this->builder->resolveParentInterface('br-lan', 'bridged', []));
+    }
+
+    public function test_build_routed_spec_differentiates_routes_by_os_image(): void
+    {
+        $debianImage = Image::firstOrCreate(
+            ['name' => 'debian/12'],
+            [
+                'source' => 'https://images.linuxcontainers.org',
+                'protocol' => 'simplestreams',
+                'os_type' => 'linux',
+                'enabled' => true,
+            ]
+        );
+        $debianImage->hosts()->syncWithoutDetaching([$this->host->id]);
+
+        $almaImage = Image::firstOrCreate(
+            ['name' => 'almalinux/9'],
+            [
+                'source' => 'https://images.linuxcontainers.org',
+                'protocol' => 'simplestreams',
+                'os_type' => 'linux',
+                'enabled' => true,
+            ]
+        );
+        $almaImage->hosts()->syncWithoutDetaching([$this->host->id]);
+
+        $pool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'OS Route Differentiation Pool',
+            'cidr' => '203.0.113.0/24',
+            'first_usable' => '203.0.113.10',
+            'last_usable' => '203.0.113.50',
+            'network_mode' => 'routed',
+            'parent_interface' => 'bond0',
+            'dns_servers' => ['1.1.1.1'],
+        ]);
+
+        $debianVm = VirtualMachine::create([
+            'user_id' => $this->user->id,
+            'host_id' => $this->host->id,
+            'name' => 'srv-debian-01',
+            'incus_project' => 'default',
+            'instance_type' => 'virtual-machine',
+            'status' => 'provisioning',
+            'network_status' => 'assigned',
+            'cpu_cores' => 2,
+            'ram_mb' => 2048,
+            'disk_gb' => 20,
+            'os_image' => 'debian/12',
+            'ipv4_address' => '203.0.113.31',
+        ]);
+
+        $debianAlloc = IpAllocation::create([
+            'pool_id' => $pool->id,
+            'address' => inet_pton('203.0.113.31'),
+            'ip_string' => '203.0.113.31',
+            'virtual_machine_id' => $debianVm->id,
+            'user_id' => $this->user->id,
+            'mac_address' => '02:54:cb:00:71:1f',
+            'status' => 'allocated',
+            'allocated_at' => now(),
+        ]);
+
+        $debianSpec = $this->builder->build($debianVm, $debianAlloc);
+        $debianNetplan = $debianSpec['config']['cloud-init.network-config'];
+        $this->assertStringContainsString('- to: 169.254.0.1/32', $debianNetplan);
+        $this->assertStringContainsString("- to: 0.0.0.0/0\n          via: 169.254.0.1", $debianNetplan);
+        $this->assertStringNotContainsString('on-link: true', $debianNetplan);
+
+        $almaVm = VirtualMachine::create([
+            'user_id' => $this->user->id,
+            'host_id' => $this->host->id,
+            'name' => 'srv-alma-01',
+            'incus_project' => 'default',
+            'instance_type' => 'virtual-machine',
+            'status' => 'provisioning',
+            'network_status' => 'assigned',
+            'cpu_cores' => 2,
+            'ram_mb' => 2048,
+            'disk_gb' => 20,
+            'os_image' => 'almalinux/9',
+            'ipv4_address' => '203.0.113.32',
+        ]);
+
+        $almaAlloc = IpAllocation::create([
+            'pool_id' => $pool->id,
+            'address' => inet_pton('203.0.113.32'),
+            'ip_string' => '203.0.113.32',
+            'virtual_machine_id' => $almaVm->id,
+            'user_id' => $this->user->id,
+            'mac_address' => '02:54:cb:00:71:20',
+            'status' => 'allocated',
+            'allocated_at' => now(),
+        ]);
+
+        $almaSpec = $this->builder->build($almaVm, $almaAlloc);
+        $almaNetplan = $almaSpec['config']['cloud-init.network-config'];
+        $this->assertStringContainsString("- to: 0.0.0.0/0\n          via: 169.254.0.1", $almaNetplan);
+        $this->assertStringNotContainsString('on-link: true', $almaNetplan);
+        $this->assertStringNotContainsString('169.254.0.1/32', $almaNetplan);
     }
 }

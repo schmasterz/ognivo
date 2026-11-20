@@ -19,14 +19,17 @@ In `routed` mode, instances communicate using point-to-point Layer 3 routing ove
   - `parent: <parent_interface>`
   - `ipv4.address: <assigned_ip>`
   - `hwaddr: <mac_address>` (when the IP allocation has a generated MAC address `02:54:xx:xx:xx:xx`)
-- **Cloud-Init Netplan (Virtual Machines Only):** For `virtual-machine` instances, `InstanceSpecBuilder` injects `cloud-init.network-config` (Netplan v2) configuring `<assigned_ip>/32` with an on-link link-local default route:
+- **Cloud-Init Netplan (Virtual Machines & Containers):** For both `virtual-machine` and `container` instances in `routed` mode, `InstanceSpecBuilder` injects `cloud-init.network-config` (Netplan v2) to configure the `<assigned_ip>/32` address, point-to-point routes, and DNS `nameservers` (from `pool.dns_servers`, defaulting to `1.1.1.1` and `8.8.8.8`):
+  - For **`virtual-machine`** instances, Netplan includes `match: { macaddress: ... }` and `set-name: eth0` to handle predictable interface naming (such as `enp5s0`).
+  - For **`container`** instances, Netplan configures directly under `eth0:` (omitting `match` and `set-name`) to avoid `udev` unmanaged link conflicts in unprivileged LXC.
   ```yaml
   routes:
-    - to: default
+    - to: 169.254.0.1/32
+      scope: link
+    - to: 0.0.0.0/0
       via: 169.254.0.1
       on-link: true
   ```
-  For `container` instances, Incus configures the point-to-point interface and `169.254.0.1` route directly from `ipv4.address` on the `routed` NIC, so `cloud-init.network-config` is omitted.
 - **Pool Rules:** CIDR prefix `/16` to `/32`. `gateway` is required for `/16` to `/30` subnets and optional for `/31` and `/32`.
 
 ### Required Hypervisor Host Configuration
@@ -46,6 +49,8 @@ Because the Incus REST API cannot modify host kernel `sysctl` parameters, operat
    echo "net.ipv4.conf.all.proxy_arp = 1" | sudo tee -a /etc/sysctl.d/99-ognivo.conf
    echo "net.ipv4.conf.eno1.proxy_arp = 1" | sudo tee -a /etc/sysctl.d/99-ognivo.conf
    ```
+
+For the complete firewall, NAT (`MASQUERADE`), and Docker `FORWARD` policy workaround with `iptables-persistent`, see [Compute Node Setup Guide — Host Network & Kernel Configuration for Routed Networking](../getting-started/compute-node-setup.md#5-host-network--kernel-configuration-for-routed-networking).
 
 ---
 
