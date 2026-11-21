@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Events;
 
-use App\Http\Resources\HostNodeResource;
 use App\Http\Resources\VirtualMachineResource;
 use App\Models\VirtualMachine;
 use Illuminate\Broadcasting\Channel;
@@ -30,14 +29,11 @@ final class VirtualMachineStatusUpdated implements ShouldBroadcast
 
     public int $userId;
 
-    public bool $isAdmin;
-
     public bool $isDelta;
 
-    public function __construct(VirtualMachine $virtualMachine, bool $isAdmin = false, bool $isDelta = false)
+    public function __construct(VirtualMachine $virtualMachine, bool $isDelta = false)
     {
         $this->userId = (int) $virtualMachine->user_id;
-        $this->isAdmin = $isAdmin;
         $this->isDelta = $isDelta;
 
         if ($isDelta) {
@@ -65,13 +61,7 @@ final class VirtualMachineStatusUpdated implements ShouldBroadcast
         /** @var array<string, mixed> $resolved */
         $resolved = (new VirtualMachineResource($vmToResolve))->resolve();
 
-        if ($isAdmin) {
-            if ($vmToResolve->host !== null) {
-                $resolved['host'] = (new HostNodeResource($vmToResolve->host))->resolve();
-            }
-        } else {
-            unset($resolved['host']);
-        }
+        unset($resolved['host']);
 
         $resolved['is_delta'] = false;
         $this->vm = $resolved;
@@ -84,12 +74,6 @@ final class VirtualMachineStatusUpdated implements ShouldBroadcast
      */
     public function broadcastOn(): array
     {
-        if ($this->isAdmin) {
-            return [
-                new PrivateChannel('admin.workloads'),
-            ];
-        }
-
         return [
             new PrivateChannel('users.'.$this->userId),
         ];
