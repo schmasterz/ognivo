@@ -2,13 +2,30 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { X, Network, Server, Loader2, CheckCircle2 } from "lucide-react";
-import { api, IpPool, HostNode, HostDiscoveredNetwork } from "@/lib/api";
+import { api, ApiError, IpPool, HostNode, HostDiscoveredNetwork } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
 import { useModalEscape } from "@/lib/hooks/useModalEscape";
+
+type PoolNetworkMode = "routed" | "bridged" | "macvlan" | "manual";
 
 interface CreateIpPoolModalProps {
   onClose: () => void;
   onSuccess: (newPool: IpPool) => void;
+}
+
+function parseIpv4ToNum(ip: string): number | null {
+  const trimmed = ip.trim();
+  const octets = trimmed.split(".");
+  if (octets.length !== 4) return null;
+  const nums: number[] = [];
+  for (const part of octets) {
+    if (!/^\d+$/.test(part)) return null;
+    if (part.length > 1 && part.startsWith("0")) return null;
+    const n = Number(part);
+    if (n < 0 || n > 255) return null;
+    nums.push(n);
+  }
+  return ((nums[0] << 24) | (nums[1] << 16) | (nums[2] << 8) | nums[3]) >>> 0;
 }
 
 function parseCidrPrefix(cidr: string): number | null {
@@ -19,23 +36,40 @@ function parseCidrPrefix(cidr: string): number | null {
   return prefix;
 }
 
-function calculateUsableRange(cidr: string): { first: string; last: string; gateway: string } | null {
+function parseCidrRange(cidr: string): {
+  ipStr: string;
+  prefix: number;
+  network: number;
+  broadcast: number;
+  numToIp: (n: number) => string;
+} | null {
   const parts = cidr.trim().split("/");
-  if (parts.length !== 2) return null;
-  const ipStr = parts[0];
+  if (parts.length !== 2 || !/^\d+$/.test(parts[1])) return null;
+  const ipStr = parts[0].trim();
   const prefix = parseInt(parts[1], 10);
   if (isNaN(prefix) || prefix < 16 || prefix > 32) return null;
 
-  const octets = ipStr.split(".").map(Number);
-  if (octets.length !== 4 || octets.some((o) => isNaN(o) || o < 0 || o > 255)) return null;
+  const ipNum = parseIpv4ToNum(ipStr);
+  if (ipNum === null) return null;
 
-  const ipNum = ((octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3]) >>> 0;
-  const mask = prefix === 32 ? 0xffffffff : prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
+  const mask = prefix === 32 ? 0xffffffff : (0xffffffff << (32 - prefix)) >>> 0;
   const network = (ipNum & mask) >>> 0;
   const broadcast = (network | (~mask >>> 0)) >>> 0;
 
   const numToIp = (n: number) =>
     [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join(".");
+
+  return { ipStr, prefix, network, broadcast, numToIp };
+}
+
+function calculateUsableRange(
+  cidr: string,
+  networkMode: PoolNetworkMode
+): { first: string; last: string; gateway: string } | null {
+  const range = parseCidrRange(cidr);
+  if (!range) return null;
+
+  const { ipStr, prefix, network, broadcast, numToIp } = range;
 
   if (prefix === 32) {
     return {
@@ -53,11 +87,30 @@ function calculateUsableRange(cidr: string): { first: string; last: string; gate
     };
   }
 
+  if (networkMode === "routed") {
+    return {
+      gateway: "",
+      first: numToIp(network + 1),
+      last: numToIp(broadcast - 1),
+    };
+  }
+
   return {
     gateway: numToIp(network + 1),
     first: numToIp(network + 2),
     last: numToIp(broadcast - 1),
   };
+}
+
+function getFieldError(errors: Record<string, string[]>, field: string): string | null {
+  if (errors[field] && errors[field].length > 0) {
+    return errors[field][0];
+  }
+  const nestedKey = Object.keys(errors).find((k) => k.startsWith(`${field}.`));
+  if (nestedKey && errors[nestedKey]?.length > 0) {
+    return errors[nestedKey][0];
+  }
+  return null;
 }
 
 export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps) {
@@ -90,8 +143,25 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
 
   useModalEscape(onClose, !loading);
+
+  const clearFieldError = (field: string) => {
+    setFieldErrors((prev) => {
+      if (!prev[field] && !Object.keys(prev).some((k) => k.startsWith(`${field}.`))) {
+        return prev;
+      }
+      const next = { ...prev };
+      delete next[field];
+      for (const k of Object.keys(next)) {
+        if (k.startsWith(`${field}.`)) {
+          delete next[k];
+        }
+      }
+      return next;
+    });
+  };
 
   useEffect(() => {
     api.getHosts().then((res) => {
@@ -142,8 +212,28 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
     };
   }, [selectedHostId]);
 
-  const handleModeChange = (mode: "routed" | "bridged" | "macvlan" | "manual") => {
+  const handleModeChange = (mode: PoolNetworkMode) => {
+    const prevMode = networkMode;
     setNetworkMode(mode);
+    clearFieldError("network_mode");
+    clearFieldError("gateway");
+    clearFieldError("cidr");
+
+    const prevCalc = calculateUsableRange(cidr, prevMode);
+    const nextCalc = calculateUsableRange(cidr, mode);
+    if (prevCalc && nextCalc) {
+      if (firstUsable === prevCalc.first) {
+        setFirstUsable(nextCalc.first);
+      }
+      if (mode === "routed") {
+        if (gateway === prevCalc.gateway) {
+          setGateway("");
+        }
+      } else if (!gateway.trim()) {
+        setGateway(nextCalc.gateway);
+      }
+    }
+
     if (discoveredNetworks.length > 0 && mode !== "manual" && !isCustomInterface) {
       const preferred = discoveredNetworks.find((n) => n.recommended_modes.includes(mode));
       if (preferred) {
@@ -153,45 +243,108 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
   };
 
   const handleCidrChange = (val: string) => {
+    const prevCalc = calculateUsableRange(cidr, networkMode);
     setCidr(val);
-    const calculated = calculateUsableRange(val);
+    clearFieldError("cidr");
+    clearFieldError("gateway");
+    const calculated = calculateUsableRange(val, networkMode);
     if (calculated) {
-      if (!firstUsable || firstUsable === calculated.first || firstUsable.startsWith(val.split(".")[0])) {
+      if (
+        !firstUsable ||
+        (prevCalc && firstUsable === prevCalc.first) ||
+        firstUsable === calculated.first ||
+        firstUsable.startsWith(val.split(".")[0])
+      ) {
         setFirstUsable(calculated.first);
       }
-      if (!lastUsable || lastUsable === calculated.last || lastUsable.startsWith(val.split(".")[0])) {
+      if (
+        !lastUsable ||
+        (prevCalc && lastUsable === prevCalc.last) ||
+        lastUsable === calculated.last ||
+        lastUsable.startsWith(val.split(".")[0])
+      ) {
         setLastUsable(calculated.last);
       }
-      if (!gateway) {
+      if (networkMode !== "routed" && (!gateway || (prevCalc && gateway === prevCalc.gateway))) {
         setGateway(calculated.gateway);
       }
     }
   };
 
+  const validateGatewayField = (
+    gatewayInput: string,
+    cidrInput: string,
+    mode: PoolNetworkMode
+  ): string | null => {
+    const trimmedGw = gatewayInput.trim();
+    const isL2 = mode === "bridged" || mode === "macvlan";
+    const range = parseCidrRange(cidrInput);
+    const prefix = range?.prefix ?? parseCidrPrefix(cidrInput);
+
+    if (isL2 && !trimmedGw) {
+      return t("gatewayRequiredForL2Modes");
+    }
+
+    if (mode === "manual" && prefix !== null && prefix <= 30 && !trimmedGw) {
+      return t("gatewayRequiredForManualSubnets");
+    }
+
+    if (trimmedGw !== "") {
+      const gwNum = parseIpv4ToNum(trimmedGw);
+      if (gwNum === null) {
+        return t("gatewayInvalidIpv4");
+      }
+
+      if (range !== null) {
+        if (gwNum < range.network || gwNum > range.broadcast) {
+          return t("gatewayOutsideCidr");
+        }
+        if (
+          (isL2 || mode === "routed") &&
+          range.prefix <= 30 &&
+          (gwNum === range.network || gwNum === range.broadcast)
+        ) {
+          return t("gatewayNetworkOrBroadcast");
+        }
+      }
+    }
+
+    return null;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setFieldErrors({});
 
     if (!selectedHostId) {
-      setError(t("selectTargetHostNode"));
+      const msg = t("selectTargetHostNode");
+      setFieldErrors({ host_id: [msg] });
+      setError(msg);
       return;
     }
 
     const trimmedParentInterface = parentInterface.trim();
     if (networkMode !== "manual" && !trimmedParentInterface) {
-      setError(t("parentInterfaceRequired"));
+      const msg = t("parentInterfaceRequired");
+      setFieldErrors({ parent_interface: [msg] });
+      setError(msg);
       return;
     }
 
     const isL2Mode = networkMode === "bridged" || networkMode === "macvlan";
     const cidrPrefix = parseCidrPrefix(cidr);
     if (isL2Mode && (cidrPrefix === 31 || cidrPrefix === 32)) {
-      setError(t("l2ModePrefixUnsupported"));
+      const msg = t("l2ModePrefixUnsupported");
+      setFieldErrors({ cidr: [msg] });
+      setError(msg);
       return;
     }
 
-    if (isL2Mode && !gateway.trim()) {
-      setError(t("gatewayRequiredForL2Modes"));
+    const gatewayErr = validateGatewayField(gateway, cidr, networkMode);
+    if (gatewayErr) {
+      setFieldErrors({ gateway: [gatewayErr] });
+      setError(gatewayErr);
       return;
     }
 
@@ -227,7 +380,12 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
       onSuccess(res.pool);
       onClose();
     } catch (err: unknown) {
-      if (err instanceof Error) {
+      if (err instanceof ApiError) {
+        if (err.errors) {
+          setFieldErrors(err.errors);
+        }
+        setError(err.message);
+      } else if (err instanceof Error) {
         setError(err.message);
       } else {
         setError(t("failedToCreatePool"));
@@ -236,6 +394,24 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
       setLoading(false);
     }
   };
+
+  const cidrPrefix = parseCidrPrefix(cidr);
+  const isL2Mode = networkMode === "bridged" || networkMode === "macvlan";
+  const isGatewayRequired =
+    isL2Mode || (networkMode === "manual" && cidrPrefix !== null && cidrPrefix <= 30);
+
+  const nameError = getFieldError(fieldErrors, "name");
+  const hostError = getFieldError(fieldErrors, "host_id");
+  const cidrError = getFieldError(fieldErrors, "cidr");
+  const networkModeError = getFieldError(fieldErrors, "network_mode");
+  const parentInterfaceError = getFieldError(fieldErrors, "parent_interface");
+  const gatewayError = getFieldError(fieldErrors, "gateway");
+  const firstUsableError = getFieldError(fieldErrors, "first_usable");
+  const lastUsableError = getFieldError(fieldErrors, "last_usable");
+  const dnsServersError = getFieldError(fieldErrors, "dns_servers");
+  const cooldownError = getFieldError(fieldErrors, "cooldown_seconds");
+  const excludedIpsError = getFieldError(fieldErrors, "excluded_ips");
+  const descriptionError = getFieldError(fieldErrors, "description");
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
@@ -274,10 +450,16 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
                 type="text"
                 required
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  clearFieldError("name");
+                }}
                 placeholder={t("poolNamePlaceholder")}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+                className={`w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
+                  nameError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
+                } text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50`}
               />
+              {nameError && <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{nameError}</p>}
             </div>
 
             <div>
@@ -288,8 +470,13 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
               <select
                 required
                 value={selectedHostId ?? ""}
-                onChange={(e) => setSelectedHostId(Number(e.target.value))}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+                onChange={(e) => {
+                  setSelectedHostId(Number(e.target.value));
+                  clearFieldError("host_id");
+                }}
+                className={`w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
+                  hostError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
+                } text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50`}
               >
                 <option value="" disabled>{t("selectComputeNodeOption")}</option>
                 {hosts.map((h) => (
@@ -298,6 +485,7 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
                   </option>
                 ))}
               </select>
+              {hostError && <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{hostError}</p>}
             </div>
           </div>
 
@@ -312,9 +500,15 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
                 value={cidr}
                 onChange={(e) => handleCidrChange(e.target.value)}
                 placeholder="203.0.113.0/24"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+                className={`w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
+                  cidrError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
+                } text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50`}
               />
-              <span className="text-[11px] text-gray-400 mt-1 block">{t("validIpv4PrefixHint")}</span>
+              {cidrError ? (
+                <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{cidrError}</p>
+              ) : (
+                <span className="text-[11px] text-gray-400 mt-1 block">{t("validIpv4PrefixHint")}</span>
+              )}
             </div>
 
             <div>
@@ -323,14 +517,19 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
               </label>
               <select
                 value={networkMode}
-                onChange={(e) => handleModeChange(e.target.value as "routed" | "bridged" | "macvlan" | "manual")}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+                onChange={(e) => handleModeChange(e.target.value as PoolNetworkMode)}
+                className={`w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
+                  networkModeError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
+                } text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50`}
               >
                 <option value="routed">{t("modeRoutedOption")}</option>
                 <option value="bridged">{t("modeBridgedOption")}</option>
                 <option value="macvlan">{t("modeMacvlanOption")}</option>
                 <option value="manual">{t("modeManual")}</option>
               </select>
+              {networkModeError && (
+                <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{networkModeError}</p>
+              )}
               <span className="text-[11px] text-gray-400 mt-1 block">
                 {networkMode === "manual"
                   ? t("manualWarning")
@@ -354,6 +553,7 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
                   required
                   value={isCustomInterface ? "__custom__" : parentInterface}
                   onChange={(e) => {
+                    clearFieldError("parent_interface");
                     if (e.target.value === "__custom__") {
                       setIsCustomInterface(true);
                     } else {
@@ -361,7 +561,9 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
                       setParentInterface(e.target.value);
                     }
                   }}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono"
+                  className={`w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
+                    parentInterfaceError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
+                  } text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono`}
                 >
                   {discoveringHost && discoveredNetworks.length === 0 ? (
                     <option value="" disabled>{t("detectingHostInterfaces")}</option>
@@ -399,36 +601,57 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
                       type="text"
                       required
                       value={parentInterface}
-                      onChange={(e) => setParentInterface(e.target.value)}
+                      onChange={(e) => {
+                        setParentInterface(e.target.value);
+                        clearFieldError("parent_interface");
+                      }}
                       placeholder={t("customInterfacePlaceholder")}
-                      className="w-full px-3.5 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono"
+                      className={`w-full px-3.5 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
+                        parentInterfaceError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
+                      } text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono`}
                       autoFocus
                     />
                   </div>
                 )}
-                <span className="text-[11px] text-gray-400 mt-1 block">{t("hostParentInterfaceHint")}</span>
+                {parentInterfaceError ? (
+                  <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{parentInterfaceError}</p>
+                ) : (
+                  <span className="text-[11px] text-gray-400 mt-1 block">{t("hostParentInterfaceHint")}</span>
+                )}
               </div>
             )}
 
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                {networkMode === "bridged" || networkMode === "macvlan" ? (
+                {isGatewayRequired ? (
                   <>
                     {t("gatewayIpLabel")} <span className="text-red-500">*</span>
                   </>
+                ) : networkMode === "routed" ? (
+                  t("gatewayIpOptionalReserved")
                 ) : (
                   t("gatewayIpOptionalSmallSubnets")
                 )}
               </label>
               <input
                 type="text"
-                required={networkMode === "bridged" || networkMode === "macvlan"}
+                required={isGatewayRequired}
                 value={gateway}
-                onChange={(e) => setGateway(e.target.value)}
+                onChange={(e) => {
+                  setGateway(e.target.value);
+                  clearFieldError("gateway");
+                }}
                 placeholder="203.0.113.1"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono"
+                className={`w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
+                  gatewayError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
+                } text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono`}
               />
-              <span className="text-[11px] text-gray-400 mt-1 block">{t("gatewayAutoExcludedHint")}</span>
+              {gatewayError && (
+                <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{gatewayError}</p>
+              )}
+              <span className="text-[11px] text-gray-400 mt-1 block">
+                {networkMode === "routed" ? t("gatewayRoutedHint") : t("gatewayReservedDesc")}
+              </span>
             </div>
           </div>
 
@@ -440,10 +663,18 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
               <input
                 type="text"
                 value={firstUsable}
-                onChange={(e) => setFirstUsable(e.target.value)}
-                placeholder="203.0.113.2"
-                className="w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono"
+                onChange={(e) => {
+                  setFirstUsable(e.target.value);
+                  clearFieldError("first_usable");
+                }}
+                placeholder={networkMode === "routed" ? "203.0.113.1" : "203.0.113.2"}
+                className={`w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
+                  firstUsableError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
+                } text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono`}
               />
+              {firstUsableError && (
+                <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{firstUsableError}</p>
+              )}
             </div>
 
             <div>
@@ -453,10 +684,18 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
               <input
                 type="text"
                 value={lastUsable}
-                onChange={(e) => setLastUsable(e.target.value)}
+                onChange={(e) => {
+                  setLastUsable(e.target.value);
+                  clearFieldError("last_usable");
+                }}
                 placeholder="203.0.113.254"
-                className="w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono"
+                className={`w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
+                  lastUsableError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
+                } text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono`}
               />
+              {lastUsableError && (
+                <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{lastUsableError}</p>
+              )}
             </div>
           </div>
 
@@ -468,10 +707,18 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
               <input
                 type="text"
                 value={dnsServers}
-                onChange={(e) => setDnsServers(e.target.value)}
+                onChange={(e) => {
+                  setDnsServers(e.target.value);
+                  clearFieldError("dns_servers");
+                }}
                 placeholder="1.1.1.1, 8.8.8.8"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+                className={`w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
+                  dnsServersError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
+                } text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50`}
               />
+              {dnsServersError && (
+                <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{dnsServersError}</p>
+              )}
             </div>
 
             <div>
@@ -483,10 +730,18 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
                 min={0}
                 max={86400}
                 value={cooldownSeconds}
-                onChange={(e) => setCooldownSeconds(Number(e.target.value))}
+                onChange={(e) => {
+                  setCooldownSeconds(Number(e.target.value));
+                  clearFieldError("cooldown_seconds");
+                }}
                 placeholder="300"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+                className={`w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
+                  cooldownError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
+                } text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50`}
               />
+              {cooldownError && (
+                <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{cooldownError}</p>
+              )}
             </div>
           </div>
 
@@ -494,14 +749,32 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
             <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
               {t("excludedReservedIps")}
             </label>
+            {gateway.trim() && (
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                  <span className="font-semibold">{t("gatewayReservedBadgeLabel")}:</span>
+                  <span className="font-mono">{gateway.trim()}</span>
+                </span>
+                <span className="text-[11px] text-gray-400">{t("gatewayReservedDesc")}</span>
+              </div>
+            )}
             <input
               type="text"
               value={excludedIps}
-              onChange={(e) => setExcludedIps(e.target.value)}
+              onChange={(e) => {
+                setExcludedIps(e.target.value);
+                clearFieldError("excluded_ips");
+              }}
               placeholder={t("excludedIpsPlaceholder")}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+              className={`w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
+                excludedIpsError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
+              } text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50`}
             />
-            <span className="text-[11px] text-gray-400 mt-1 block">{t("excludedIpsHint")}</span>
+            {excludedIpsError ? (
+              <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{excludedIpsError}</p>
+            ) : (
+              <span className="text-[11px] text-gray-400 mt-1 block">{t("excludedIpsHint")}</span>
+            )}
           </div>
 
           <div>
@@ -511,10 +784,18 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
             <input
               type="text"
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e) => {
+                setDescription(e.target.value);
+                clearFieldError("description");
+              }}
               placeholder={t("poolDescriptionPlaceholder")}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+              className={`w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
+                descriptionError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
+              } text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50`}
             />
+            {descriptionError && (
+              <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{descriptionError}</p>
+            )}
           </div>
 
           <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/60">
