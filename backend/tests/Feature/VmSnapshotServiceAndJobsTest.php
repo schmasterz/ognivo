@@ -5,9 +5,6 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Contracts\BackupTargetInterface;
-use App\Events\SnapshotCreated;
-use App\Events\SnapshotDeleted;
-use App\Events\SnapshotRestored;
 use App\Events\SnapshotStatusUpdated;
 use App\Exceptions\DuplicateSnapshotNameException;
 use App\Exceptions\InvalidSnapshotNameException;
@@ -158,7 +155,7 @@ final class VmSnapshotServiceAndJobsTest extends TestCase
                 && in_array('private-admin.workloads', $channels, true);
         });
 
-        // 2. Execute CreateSnapshotJob -> transitions to `ready` and dispatches SnapshotCreated
+        // 2. Execute CreateSnapshotJob -> transitions to ready and dispatches SnapshotStatusUpdated
         (new CreateSnapshotJob($snapshot))->handle(app(BackupTargetInterface::class));
 
         $snapshot->refresh();
@@ -166,7 +163,6 @@ final class VmSnapshotServiceAndJobsTest extends TestCase
         $this->assertNull($snapshot->error);
         $this->assertCount(1, $this->fakeDriver->listSnapshots($this->vm));
 
-        Event::assertDispatched(SnapshotCreated::class, fn (SnapshotCreated $event): bool => $event->snapshot->is($snapshot));
         Event::assertDispatched(SnapshotStatusUpdated::class, fn (SnapshotStatusUpdated $event): bool => $event->snapshot->is($snapshot) && $event->status === VmSnapshot::STATUS_READY);
 
         // Mutate VM state marker on hypervisor to verify restore reverts it
@@ -181,15 +177,13 @@ final class VmSnapshotServiceAndJobsTest extends TestCase
         Queue::assertPushed(RestoreSnapshotJob::class, fn (RestoreSnapshotJob $job): bool => $job->snapshot->is($snapshot));
         Event::assertDispatched(SnapshotStatusUpdated::class, fn (SnapshotStatusUpdated $event): bool => $event->snapshot->is($snapshot) && $event->status === VmSnapshot::STATUS_RESTORING);
 
-        // 4. Execute RestoreSnapshotJob -> restores on hypervisor, returns status to `ready`, dispatches SnapshotRestored
+        // 4. Execute RestoreSnapshotJob -> restores on hypervisor, returns status to `ready`, dispatches SnapshotStatusUpdated
         (new RestoreSnapshotJob($snapshot))->handle(app(BackupTargetInterface::class));
 
         $snapshot->refresh();
         $this->assertSame(VmSnapshot::STATUS_READY, $snapshot->status);
         $this->assertSame('pre-upgrade', $this->fakeDriver->getRestoredSnapshot($this->vm));
         $this->assertSame('clean-baseline-v1', $this->fakeDriver->getStateMarker($this->vm));
-
-        Event::assertDispatched(SnapshotRestored::class, fn (SnapshotRestored $event): bool => $event->snapshot->is($snapshot));
 
         // 5. Delete snapshot -> marks `deleting` and dispatches DeleteSnapshotJob
         $this->snapshotService->delete($snapshot);
@@ -199,13 +193,12 @@ final class VmSnapshotServiceAndJobsTest extends TestCase
         Queue::assertPushed(DeleteSnapshotJob::class, fn (DeleteSnapshotJob $job): bool => $job->snapshot->is($snapshot));
         Event::assertDispatched(SnapshotStatusUpdated::class, fn (SnapshotStatusUpdated $event): bool => $event->snapshot->is($snapshot) && $event->status === VmSnapshot::STATUS_DELETING);
 
-        // 6. Execute DeleteSnapshotJob -> deletes from hypervisor and DB, dispatches SnapshotDeleted
+        // 6. Execute DeleteSnapshotJob -> deletes from hypervisor and DB, dispatches SnapshotStatusUpdated
         (new DeleteSnapshotJob($snapshot))->handle(app(BackupTargetInterface::class));
 
         $this->assertDatabaseMissing('vm_snapshots', ['id' => $snapshot->id]);
         $this->assertSame([], $this->fakeDriver->listSnapshots($this->vm));
 
-        Event::assertDispatched(SnapshotDeleted::class, fn (SnapshotDeleted $event): bool => $event->snapshot->id === $snapshot->id);
         Event::assertDispatched(SnapshotStatusUpdated::class, fn (SnapshotStatusUpdated $event): bool => $event->snapshot->id === $snapshot->id && $event->status === 'deleted');
     }
 
@@ -376,7 +369,7 @@ final class VmSnapshotServiceAndJobsTest extends TestCase
         $this->assertSame(VmSnapshot::STATUS_FAILED, $snapCreate->status);
         $this->assertNotNull($snapCreate->error);
         $this->assertStringContainsString('fail-create', $snapCreate->error);
-        Event::assertNotDispatched(SnapshotCreated::class);
+        Event::assertNotDispatched(SnapshotStatusUpdated::class, fn (SnapshotStatusUpdated $e): bool => $e->snapshot->id === $snapCreate->id && $e->status === VmSnapshot::STATUS_READY);
 
         // 2. RestoreSnapshotJob failure
         $this->fakeDriver->setFailAction('createSnapshot', false);
@@ -399,7 +392,7 @@ final class VmSnapshotServiceAndJobsTest extends TestCase
         $snapRestore->refresh();
         $this->assertSame(VmSnapshot::STATUS_FAILED, $snapRestore->status);
         $this->assertNotNull($snapRestore->error);
-        Event::assertNotDispatched(SnapshotRestored::class);
+        Event::assertNotDispatched(SnapshotStatusUpdated::class, fn (SnapshotStatusUpdated $e): bool => $e->snapshot->id === $snapRestore->id && $e->status === VmSnapshot::STATUS_READY);
 
         // 3. DeleteSnapshotJob failure
         $this->fakeDriver->createSnapshot($this->vm, 'fail-delete');
@@ -422,7 +415,7 @@ final class VmSnapshotServiceAndJobsTest extends TestCase
         $this->assertSame(VmSnapshot::STATUS_FAILED, $snapDelete->status);
         $this->assertNotNull($snapDelete->error);
         $this->assertDatabaseHas('vm_snapshots', ['id' => $snapDelete->id, 'status' => VmSnapshot::STATUS_FAILED]);
-        Event::assertNotDispatched(SnapshotDeleted::class);
+        Event::assertNotDispatched(SnapshotStatusUpdated::class, fn (SnapshotStatusUpdated $e): bool => $e->snapshot->id === $snapDelete->id && $e->status === 'deleted');
     }
 
     public function test_jobs_are_idempotent_and_do_not_run_concurrently_for_the_same_vm(): void
@@ -452,7 +445,7 @@ final class VmSnapshotServiceAndJobsTest extends TestCase
         $createJob->handle($mockTarget);
         $createJob->handle($mockTarget);
 
-        Event::assertDispatchedTimes(SnapshotCreated::class, 1);
+        Event::assertDispatched(SnapshotStatusUpdated::class, fn (SnapshotStatusUpdated $e): bool => $e->snapshot->id === $snapshot->id && $e->status === VmSnapshot::STATUS_READY);
 
         // 2. RestoreSnapshotJob idempotency (running twice calls target->restore only once)
         $this->snapshotService->restore($snapshot);
@@ -460,7 +453,7 @@ final class VmSnapshotServiceAndJobsTest extends TestCase
         $restoreJob->handle($mockTarget);
         $restoreJob->handle($mockTarget);
 
-        Event::assertDispatchedTimes(SnapshotRestored::class, 1);
+        Event::assertDispatched(SnapshotStatusUpdated::class, fn (SnapshotStatusUpdated $e): bool => $e->snapshot->id === $snapshot->id && $e->status === VmSnapshot::STATUS_READY);
 
         // 3. DeleteSnapshotJob idempotency (running twice calls target->delete only once)
         $this->snapshotService->delete($snapshot);
@@ -468,7 +461,7 @@ final class VmSnapshotServiceAndJobsTest extends TestCase
         $deleteJob->handle($mockTarget);
         $deleteJob->handle($mockTarget);
 
-        Event::assertDispatchedTimes(SnapshotDeleted::class, 1);
+        Event::assertDispatched(SnapshotStatusUpdated::class, fn (SnapshotStatusUpdated $e): bool => $e->snapshot->id === $snapshot->id && $e->status === 'deleted');
 
         // 4. Verify shared WithoutOverlapping middleware on all three jobs for the same VM
         foreach ([$createJob, $restoreJob, $deleteJob] as $job) {

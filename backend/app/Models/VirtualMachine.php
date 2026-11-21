@@ -221,7 +221,7 @@ final class VirtualMachine extends Model
 
                 try {
                     $isDelta = ($broadcastType === 'delta');
-                    event(new VirtualMachineStatusUpdated($vm, false, $isDelta));
+                    event(new VirtualMachineStatusUpdated($vm, $isDelta));
                     event(new AdminVirtualMachineStatusUpdated($vm, $isDelta));
                 } catch (\Throwable) {
                     // Silently ignore broadcast failure so transactions never fail

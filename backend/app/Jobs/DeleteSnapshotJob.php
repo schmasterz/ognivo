@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Contracts\BackupTargetInterface;
-use App\Events\SnapshotDeleted;
 use App\Events\SnapshotStatusUpdated;
 use App\Models\VirtualMachine;
 use App\Models\VmSnapshot;
@@ -106,7 +105,6 @@ final class DeleteSnapshotJob implements ShouldQueue
             $this->snapshot->delete();
 
             event(new SnapshotStatusUpdated($deletedSnapshot, 'deleted'));
-            event(new SnapshotDeleted($deletedSnapshot, $vm));
 
             Log::info(sprintf('Snapshot "%s" deleted successfully on VM #%d', $deletedSnapshot->name, $vmId));
         } catch (Throwable $e) {

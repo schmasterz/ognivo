@@ -72,6 +72,6 @@ Content-Type: application/json
 ## 4. Extension Points for Remote Backups
 
 1. **`BackupTargetInterface` (`app/Contracts/BackupTargetInterface.php`):** Decouples snapshot storage operations (`create`, `restore`, `delete`, `list`) from hypervisor drivers.
-2. **Domain Events (`app/Events/`):** `SnapshotCreated`, `SnapshotRestored`, `SnapshotDeleted`, and `SnapshotStatusUpdated` allow external listeners to trigger offsite archiving or webhooks.
+2. **Lifecycle Events (`app/Events/`):** `SnapshotStatusUpdated` broadcasts WebSocket notifications to tenant and administrator channels and serves as the single event hook across snapshot state transitions (`creating`, `ready`, `restoring`, `deleting`, `deleted`, `failed`).
 3. **Provenance Discriminator (`source`):** Distinguishes `manual` snapshots from future `scheduled` policy snapshots.
 4. **Frontend UI Registry (`frontend/src/lib/registry/vmRegistry.ts`):** Allows dynamically registering tabs (`registerVmTab`) and actions (`registerVmAction`) inside the VM details modal.
