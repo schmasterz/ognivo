@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Contracts\BackupTargetInterface;
-use App\Events\SnapshotRestored;
 use App\Events\SnapshotStatusUpdated;
 use App\Models\VirtualMachine;
 use App\Models\VmSnapshot;
@@ -120,7 +119,6 @@ final class RestoreSnapshotJob implements ShouldQueue
             $this->snapshot->save();
 
             event(new SnapshotStatusUpdated($this->snapshot, VmSnapshot::STATUS_READY));
-            event(new SnapshotRestored($this->snapshot, $vm));
 
             Log::info(sprintf('Snapshot "%s" restored successfully on VM #%d (%s)', $this->snapshot->name, $vm->id, $vm->name));
         } catch (Throwable $e) {
