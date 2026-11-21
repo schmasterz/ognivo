@@ -147,7 +147,7 @@ YAML;
      *
      * @param  array<string>|null  $dnsServers
      */
-    public function buildVendorData(?array $dnsServers = null): string
+    public function buildVendorData(?array $dnsServers = null, string $instanceType = 'virtual-machine'): string
     {
         $dnsList = $dnsServers !== null && $dnsServers !== [] ? $dnsServers : ['1.1.1.1', '8.8.8.8'];
         $dnsLines = implode("\n", array_map(fn (string $dns): string => sprintf('    - %s', trim($dns)), $dnsList));
