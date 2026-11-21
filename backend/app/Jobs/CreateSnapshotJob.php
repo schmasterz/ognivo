@@ -89,7 +89,7 @@ final class CreateSnapshotJob implements ShouldQueue
 
             Log::info(sprintf('Creating snapshot "%s" on VM #%d (%s)', $this->snapshot->name, $vm->id, $vm->name));
 
-            $created = $target->create($vm, $this->snapshot->name, $this->snapshot->stateful);
+            $created = $target->create($vm, $this->snapshot->name);
             if (! $created) {
                 throw new RuntimeException(sprintf(
                     'Backup target failed to create snapshot "%s" on VM #%d (%s).',
