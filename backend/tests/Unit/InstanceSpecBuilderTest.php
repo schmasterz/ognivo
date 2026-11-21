@@ -110,6 +110,7 @@ final class InstanceSpecBuilderTest extends TestCase
         $this->assertEquals('4', $spec['config']['limits.cpu']);
         $this->assertEquals('8192MB', $spec['config']['limits.memory']);
         $this->assertArrayNotHasKey('migration.stateful', $spec['config']);
+        $this->assertArrayNotHasKey('cloud-init.vendor-data', $spec['config']);
         $this->assertEquals("#cloud-config\npackage_update: true", $spec['config']['cloud-init.user-data']);
 
         // Devices
@@ -635,5 +636,63 @@ final class InstanceSpecBuilderTest extends TestCase
         $this->assertStringContainsString("- to: 0.0.0.0/0\n          via: 169.254.0.1", $almaNetplan);
         $this->assertStringNotContainsString('on-link: true', $almaNetplan);
         $this->assertStringNotContainsString('169.254.0.1/32', $almaNetplan);
+    }
+
+    public function test_build_alpine_spec_injects_vendor_data_for_resolv_conf(): void
+    {
+        $alpineImage = Image::firstOrCreate(
+            ['name' => 'alpine/3.21'],
+            [
+                'source' => 'https://images.linuxcontainers.org',
+                'protocol' => 'simplestreams',
+                'os_type' => 'linux',
+                'enabled' => true,
+            ]
+        );
+        $alpineImage->hosts()->syncWithoutDetaching([$this->host->id]);
+
+        $pool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Alpine Routed Pool',
+            'cidr' => '203.0.113.0/24',
+            'first_usable' => '203.0.113.10',
+            'last_usable' => '203.0.113.50',
+            'network_mode' => 'routed',
+            'parent_interface' => 'bond0',
+            'dns_servers' => ['1.1.1.1', '8.8.8.8'],
+        ]);
+
+        $vm = VirtualMachine::create([
+            'user_id' => $this->user->id,
+            'host_id' => $this->host->id,
+            'name' => 'srv-alpine-01',
+            'incus_project' => 'default',
+            'instance_type' => 'virtual-machine',
+            'status' => 'provisioning',
+            'network_status' => 'assigned',
+            'cpu_cores' => 2,
+            'ram_mb' => 2048,
+            'disk_gb' => 20,
+            'os_image' => 'alpine/3.21',
+            'ipv4_address' => '203.0.113.45',
+        ]);
+
+        $allocation = IpAllocation::create([
+            'pool_id' => $pool->id,
+            'address' => inet_pton('203.0.113.45'),
+            'ip_string' => '203.0.113.45',
+            'virtual_machine_id' => $vm->id,
+            'user_id' => $this->user->id,
+            'mac_address' => '02:54:cb:00:71:2d',
+            'status' => 'allocated',
+            'allocated_at' => now(),
+        ]);
+
+        $spec = $this->builder->build($vm, $allocation);
+
+        $this->assertArrayHasKey('cloud-init.vendor-data', $spec['config']);
+        $this->assertStringContainsString('manage_resolv_conf: true', $spec['config']['cloud-init.vendor-data']);
+        $this->assertStringContainsString('- 1.1.1.1', $spec['config']['cloud-init.vendor-data']);
+        $this->assertStringContainsString('- 8.8.8.8', $spec['config']['cloud-init.vendor-data']);
     }
 }
