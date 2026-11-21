@@ -20,7 +20,6 @@ use Override;
  * @property string $name
  * @property string $source
  * @property string $status
- * @property bool $stateful
  * @property int|null $size_bytes
  * @property string|null $error
  * @property Carbon|null $created_at
@@ -62,7 +61,6 @@ final class VmSnapshot extends Model
     protected $attributes = [
         'source' => self::SOURCE_MANUAL,
         'status' => self::STATUS_CREATING,
-        'stateful' => false,
     ];
 
     /**
@@ -76,7 +74,6 @@ final class VmSnapshot extends Model
         'name',
         'source',
         'status',
-        'stateful',
         'size_bytes',
         'error',
     ];
@@ -92,7 +89,6 @@ final class VmSnapshot extends Model
         return [
             'virtual_machine_id' => 'integer',
             'user_id' => 'integer',
-            'stateful' => 'boolean',
             'size_bytes' => 'integer',
         ];
     }
