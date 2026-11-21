@@ -6,6 +6,7 @@ namespace App\Services\Hypervisor\GuestOs\Adapters;
 
 use App\Services\Hypervisor\GuestOs\Contracts\GuestOsAdapterInterface;
 use Override;
+use Symfony\Component\Yaml\Yaml;
 
 /**
  * Guest OS adapter for Alpine Linux using Cloud-Init Network Config version 1 (ENI).
@@ -116,30 +117,40 @@ final class AlpineOsAdapter implements GuestOsAdapterInterface
         ?array $dnsServers,
         string $instanceType,
     ): string {
-        $macBlock = $instanceType === 'virtual-machine'
-            ? "\n    mac_address: '{$macAddress}'"
-            : '';
+        $dnsList = $dnsServers !== null && $dnsServers !== []
+            ? array_values(array_map('trim', $dnsServers))
+            : ['1.1.1.1', '8.8.8.8'];
 
-        $gatewayLine = '';
+        $subnet = [
+            'type' => 'static',
+            'address' => $cidr,
+        ];
+
         if ($gateway !== null && trim($gateway) !== '') {
-            $gw = trim($gateway);
-            $gatewayLine = "\n        gateway: '{$gw}'";
+            $subnet['gateway'] = trim($gateway);
         }
 
-        $dnsList = $dnsServers !== null && $dnsServers !== [] ? $dnsServers : ['1.1.1.1', '8.8.8.8'];
-        $dnsLines = implode("\n", array_map(fn (string $dns): string => sprintf('          - %s', trim($dns)), $dnsList));
+        $subnet['dns_nameservers'] = $dnsList;
 
-        return <<<YAML
-version: 1
-config:
-  - type: physical
-    name: eth0{$macBlock}
-    subnets:
-      - type: static
-        address: '{$cidr}'{$gatewayLine}
-        dns_nameservers:
-{$dnsLines}
-YAML;
+        $interface = [
+            'type' => 'physical',
+            'name' => 'eth0',
+        ];
+
+        if ($instanceType === 'virtual-machine') {
+            $interface['mac_address'] = $macAddress;
+        }
+
+        $interface['subnets'] = [$subnet];
+
+        $config = [
+            'version' => 1,
+            'config' => [
+                $interface,
+            ],
+        ];
+
+        return Yaml::dump($config, inline: 10, indent: 2);
     }
 
     /**
@@ -149,15 +160,17 @@ YAML;
      */
     public function buildVendorData(?array $dnsServers = null, string $instanceType = 'virtual-machine'): string
     {
-        $dnsList = $dnsServers !== null && $dnsServers !== [] ? $dnsServers : ['1.1.1.1', '8.8.8.8'];
-        $dnsLines = implode("\n", array_map(fn (string $dns): string => sprintf('    - %s', trim($dns)), $dnsList));
+        $dnsList = $dnsServers !== null && $dnsServers !== []
+            ? array_values(array_map('trim', $dnsServers))
+            : ['1.1.1.1', '8.8.8.8'];
 
-        return <<<YAML
-#cloud-config
-manage_resolv_conf: true
-resolv_conf:
-  nameservers:
-{$dnsLines}
-YAML;
+        $data = [
+            'manage_resolv_conf' => true,
+            'resolv_conf' => [
+                'nameservers' => $dnsList,
+            ],
+        ];
+
+        return "#cloud-config\n".Yaml::dump($data, inline: 10, indent: 2);
     }
 }

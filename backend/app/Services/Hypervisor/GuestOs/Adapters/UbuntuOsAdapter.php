@@ -17,14 +17,18 @@ final class UbuntuOsAdapter extends DebianOsAdapter
         return 'ubuntu';
     }
 
+    /**
+     * @return array<int, array<string, mixed>>
+     */
     #[Override]
-    protected function routedRoutesBlock(): string
+    protected function routedRoutes(): array
     {
-        return <<<'YAML'
-      routes:
-        - to: 0.0.0.0/0
-          via: 169.254.0.1
-          on-link: true
-YAML;
+        return [
+            [
+                'to' => '0.0.0.0/0',
+                'via' => '169.254.0.1',
+                'on-link' => true,
+            ],
+        ];
     }
 }

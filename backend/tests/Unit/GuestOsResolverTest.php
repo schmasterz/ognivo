@@ -15,6 +15,7 @@ use App\Services\Hypervisor\GuestOs\Adapters\SuseOsAdapter;
 use App\Services\Hypervisor\GuestOs\Adapters\UbuntuOsAdapter;
 use App\Services\Hypervisor\GuestOs\Contracts\GuestOsAdapterInterface;
 use App\Services\Hypervisor\GuestOs\GuestOsResolver;
+use Symfony\Component\Yaml\Yaml;
 use Tests\TestCase;
 
 final class GuestOsResolverTest extends TestCase
@@ -224,22 +225,13 @@ final class GuestOsResolverTest extends TestCase
             instanceType: 'virtual-machine',
         );
 
-        $this->assertNotNull($vmYaml);
-        $this->assertStringContainsString('version: 1', $vmYaml);
-        $this->assertStringContainsString("gateway: '169.254.0.1'", $vmYaml);
-        $this->assertSame(<<<'YAML'
-version: 1
-config:
-  - type: physical
-    name: eth0
-    mac_address: '02:54:00:00:00:23'
-    subnets:
-      - type: static
-        address: '198.51.100.113/32'
-        gateway: '169.254.0.1'
-        dns_nameservers:
-          - 1.1.1.1
-YAML, $vmYaml);
+        $this->assertAlpineV1Config(
+            yaml: $vmYaml,
+            expectedAddress: '198.51.100.113/32',
+            expectedGateway: '169.254.0.1',
+            expectedDns: ['1.1.1.1'],
+            expectedMacAddress: '02:54:00:00:00:23',
+        );
 
         $containerYaml = $adapter->buildRoutedNetworkConfig(
             macAddress: '02:54:00:00:00:23',
@@ -248,27 +240,24 @@ YAML, $vmYaml);
             instanceType: 'container',
         );
 
-        $this->assertNotNull($containerYaml);
-        $this->assertStringContainsString('version: 1', $containerYaml);
-        $this->assertStringContainsString("gateway: '169.254.0.1'", $containerYaml);
-        $this->assertSame(<<<'YAML'
-version: 1
-config:
-  - type: physical
-    name: eth0
-    subnets:
-      - type: static
-        address: '198.51.100.113/32'
-        gateway: '169.254.0.1'
-        dns_nameservers:
-          - 1.1.1.1
-          - 8.8.8.8
-YAML, $containerYaml);
+        $this->assertAlpineV1Config(
+            yaml: $containerYaml,
+            expectedAddress: '198.51.100.113/32',
+            expectedGateway: '169.254.0.1',
+            expectedDns: ['1.1.1.1', '8.8.8.8'],
+        );
     }
 
     public function test_ubuntu_routed_network_config_for_vm_and_container(): void
     {
         $adapter = $this->resolver->resolve('ubuntu/24.04');
+        $expectedRoutes = [
+            [
+                'to' => '0.0.0.0/0',
+                'via' => '169.254.0.1',
+                'on-link' => true,
+            ],
+        ];
 
         $vmYaml = $adapter->buildRoutedNetworkConfig(
             macAddress: '02:54:00:00:00:20',
@@ -277,24 +266,13 @@ YAML, $containerYaml);
             instanceType: 'virtual-machine',
         );
 
-        $this->assertSame(<<<'YAML'
-network:
-  version: 2
-  ethernets:
-    eth0:
-      match:
-        macaddress: "02:54:00:00:00:20"
-      set-name: eth0
-      addresses:
-        - 198.51.100.110/32
-      routes:
-        - to: 0.0.0.0/0
-          via: 169.254.0.1
-          on-link: true
-      nameservers:
-        addresses:
-          - 1.1.1.1
-YAML, $vmYaml);
+        $this->assertNetplanV2Config(
+            yaml: $vmYaml,
+            expectedAddress: '198.51.100.110/32',
+            expectedRoutes: $expectedRoutes,
+            expectedDns: ['1.1.1.1'],
+            expectedMacAddress: '02:54:00:00:00:20',
+        );
 
         $containerYaml = $adapter->buildRoutedNetworkConfig(
             macAddress: '02:54:00:00:00:20',
@@ -303,27 +281,21 @@ YAML, $vmYaml);
             instanceType: 'container',
         );
 
-        $this->assertSame(<<<'YAML'
-network:
-  version: 2
-  ethernets:
-    eth0:
-      addresses:
-        - 198.51.100.110/32
-      routes:
-        - to: 0.0.0.0/0
-          via: 169.254.0.1
-          on-link: true
-      nameservers:
-        addresses:
-          - 1.1.1.1
-          - 8.8.8.8
-YAML, $containerYaml);
+        $this->assertNetplanV2Config(
+            yaml: $containerYaml,
+            expectedAddress: '198.51.100.110/32',
+            expectedRoutes: $expectedRoutes,
+            expectedDns: ['1.1.1.1', '8.8.8.8'],
+        );
     }
 
     public function test_debian_routed_network_config_for_vm_and_container(): void
     {
         $adapter = $this->resolver->resolve('debian/12/cloud');
+        $expectedRoutes = [
+            ['to' => '169.254.0.1/32'],
+            ['to' => '0.0.0.0/0', 'via' => '169.254.0.1'],
+        ];
 
         $vmYaml = $adapter->buildRoutedNetworkConfig(
             macAddress: '02:54:00:00:00:21',
@@ -332,25 +304,13 @@ YAML, $containerYaml);
             instanceType: 'virtual-machine',
         );
 
-        $this->assertSame(<<<'YAML'
-network:
-  version: 2
-  ethernets:
-    eth0:
-      match:
-        macaddress: "02:54:00:00:00:21"
-      set-name: eth0
-      addresses:
-        - 198.51.100.111/32
-      routes:
-        - to: 169.254.0.1/32
-        - to: 0.0.0.0/0
-          via: 169.254.0.1
-      nameservers:
-        addresses:
-          - 1.1.1.1
-          - 9.9.9.9
-YAML, $vmYaml);
+        $this->assertNetplanV2Config(
+            yaml: $vmYaml,
+            expectedAddress: '198.51.100.111/32',
+            expectedRoutes: $expectedRoutes,
+            expectedDns: ['1.1.1.1', '9.9.9.9'],
+            expectedMacAddress: '02:54:00:00:00:21',
+        );
 
         $containerYaml = $adapter->buildRoutedNetworkConfig(
             macAddress: '02:54:00:00:00:21',
@@ -359,26 +319,20 @@ YAML, $vmYaml);
             instanceType: 'container',
         );
 
-        $this->assertSame(<<<'YAML'
-network:
-  version: 2
-  ethernets:
-    eth0:
-      addresses:
-        - 198.51.100.111/32
-      routes:
-        - to: 169.254.0.1/32
-        - to: 0.0.0.0/0
-          via: 169.254.0.1
-      nameservers:
-        addresses:
-          - 1.1.1.1
-YAML, $containerYaml);
+        $this->assertNetplanV2Config(
+            yaml: $containerYaml,
+            expectedAddress: '198.51.100.111/32',
+            expectedRoutes: $expectedRoutes,
+            expectedDns: ['1.1.1.1'],
+        );
     }
 
     public function test_rhel_routed_network_config_for_vm_and_container(): void
     {
         $adapter = $this->resolver->resolve('almalinux/9');
+        $expectedRoutes = [
+            ['to' => '0.0.0.0/0', 'via' => '169.254.0.1'],
+        ];
 
         $vmYaml = $adapter->buildRoutedNetworkConfig(
             macAddress: '02:54:00:00:00:22',
@@ -387,23 +341,13 @@ YAML, $containerYaml);
             instanceType: 'virtual-machine',
         );
 
-        $this->assertSame(<<<'YAML'
-network:
-  version: 2
-  ethernets:
-    eth0:
-      match:
-        macaddress: "02:54:00:00:00:22"
-      set-name: eth0
-      addresses:
-        - 198.51.100.112/32
-      routes:
-        - to: 0.0.0.0/0
-          via: 169.254.0.1
-      nameservers:
-        addresses:
-          - 1.1.1.1
-YAML, $vmYaml);
+        $this->assertNetplanV2Config(
+            yaml: $vmYaml,
+            expectedAddress: '198.51.100.112/32',
+            expectedRoutes: $expectedRoutes,
+            expectedDns: ['1.1.1.1'],
+            expectedMacAddress: '02:54:00:00:00:22',
+        );
 
         $containerYaml = $adapter->buildRoutedNetworkConfig(
             macAddress: '02:54:00:00:00:22',
@@ -412,21 +356,90 @@ YAML, $vmYaml);
             instanceType: 'container',
         );
 
-        $this->assertSame(<<<'YAML'
-network:
-  version: 2
-  ethernets:
-    eth0:
-      addresses:
-        - 198.51.100.112/32
-      routes:
-        - to: 0.0.0.0/0
-          via: 169.254.0.1
-      nameservers:
-        addresses:
-          - 1.1.1.1
-          - 8.8.8.8
-YAML, $containerYaml);
+        $this->assertNetplanV2Config(
+            yaml: $containerYaml,
+            expectedAddress: '198.51.100.112/32',
+            expectedRoutes: $expectedRoutes,
+            expectedDns: ['1.1.1.1', '8.8.8.8'],
+        );
+    }
+
+    /**
+     * Assert semantic structure of a Cloud-Init Network Config v1 (Alpine) YAML payload.
+     *
+     * @param  array<int, string>  $expectedDns
+     */
+    private function assertAlpineV1Config(
+        ?string $yaml,
+        string $expectedAddress,
+        string $expectedGateway,
+        array $expectedDns,
+        ?string $expectedMacAddress = null,
+    ): void {
+        $this->assertNotNull($yaml);
+        $this->assertStringContainsString('version: 1', $yaml);
+        $this->assertStringContainsString($expectedGateway, $yaml);
+
+        $parsed = Yaml::parse($yaml);
+        $this->assertIsArray($parsed);
+        $this->assertSame(1, $parsed['version'] ?? null);
+        $this->assertCount(1, $parsed['config'] ?? []);
+
+        $interface = $parsed['config'][0];
+        $this->assertIsArray($interface);
+        $this->assertSame('physical', $interface['type'] ?? null);
+        $this->assertSame('eth0', $interface['name'] ?? null);
+
+        if ($expectedMacAddress !== null) {
+            $this->assertSame($expectedMacAddress, $interface['mac_address'] ?? null);
+        } else {
+            $this->assertArrayNotHasKey('mac_address', $interface);
+        }
+
+        $this->assertSame([
+            [
+                'type' => 'static',
+                'address' => $expectedAddress,
+                'gateway' => $expectedGateway,
+                'dns_nameservers' => $expectedDns,
+            ],
+        ], $interface['subnets'] ?? null);
+    }
+
+    /**
+     * Assert semantic structure of a Netplan v2 YAML payload.
+     *
+     * @param  array<int, array<string, mixed>>  $expectedRoutes
+     * @param  array<int, string>  $expectedDns
+     */
+    private function assertNetplanV2Config(
+        ?string $yaml,
+        string $expectedAddress,
+        array $expectedRoutes,
+        array $expectedDns,
+        ?string $expectedMacAddress = null,
+    ): void {
+        $this->assertNotNull($yaml);
+        $this->assertStringContainsString('version: 2', $yaml);
+
+        $parsed = Yaml::parse($yaml);
+        $this->assertIsArray($parsed);
+        $this->assertSame(2, $parsed['network']['version'] ?? null);
+
+        $eth0 = $parsed['network']['ethernets']['eth0'] ?? null;
+        $this->assertIsArray($eth0);
+
+        if ($expectedMacAddress !== null) {
+            $this->assertSame(['macaddress' => $expectedMacAddress], $eth0['match'] ?? null);
+            $this->assertSame('eth0', $eth0['set-name'] ?? null);
+        } else {
+            $this->assertArrayNotHasKey('match', $eth0);
+            $this->assertArrayNotHasKey('set-name', $eth0);
+        }
+
+        $this->assertSame([$expectedAddress], $eth0['addresses'] ?? null);
+        $this->assertSame($expectedRoutes, $eth0['routes'] ?? null);
+        $this->assertSame(['addresses' => $expectedDns], $eth0['nameservers'] ?? null);
     }
 
     private function assertCommonAdapterDefaults(

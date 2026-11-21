@@ -6,6 +6,7 @@ namespace App\Services\Hypervisor\GuestOs\Adapters;
 
 use App\Services\Hypervisor\GuestOs\Contracts\GuestOsAdapterInterface;
 use Override;
+use Symfony\Component\Yaml\Yaml;
 
 /**
  * Guest OS adapter for BSD cloud images (e.g. FreeBSD) using vtnet0 on virtual machines without interface renaming.
@@ -71,17 +72,12 @@ final class BsdOsAdapter implements GuestOsAdapterInterface
         ?array $dnsServers = null,
         string $instanceType = 'virtual-machine',
     ): string {
-        $routesBlock = <<<'YAML'
-
-      routes:
-        - to: 169.254.0.1/32
-        - to: 0.0.0.0/0
-          via: 169.254.0.1
-YAML;
-
-        return $this->buildNetplanV2Config(
+        return $this->buildNetplanConfig(
             cidr: "{$ipAddress}/32",
-            routesBlock: $routesBlock,
+            routes: [
+                ['to' => '169.254.0.1/32'],
+                ['to' => '0.0.0.0/0', 'via' => '169.254.0.1'],
+            ],
             dnsServers: $dnsServers,
             instanceType: $instanceType,
         );
@@ -99,50 +95,59 @@ YAML;
         ?array $dnsServers = null,
         string $instanceType = 'virtual-machine',
     ): string {
-        $routesBlock = '';
+        $routes = [];
         if ($gateway !== null && trim($gateway) !== '') {
-            $gw = trim($gateway);
-            $routesBlock = <<<YAML
-
-      routes:
-        - to: 0.0.0.0/0
-          via: {$gw}
-YAML;
+            $routes[] = [
+                'to' => '0.0.0.0/0',
+                'via' => trim($gateway),
+            ];
         }
 
-        return $this->buildNetplanV2Config(
+        return $this->buildNetplanConfig(
             cidr: "{$ipAddress}/{$prefix}",
-            routesBlock: $routesBlock,
+            routes: $routes,
             dnsServers: $dnsServers,
             instanceType: $instanceType,
         );
     }
 
     /**
-     * Build a Netplan v2 YAML document targeting the BSD primary interface directly without match/set-name renaming.
+     * Build and serialize a Netplan v2 YAML document targeting the BSD primary interface directly without match/set-name renaming.
      *
+     * @param  array<int, array<string, mixed>>  $routes
      * @param  array<string>|null  $dnsServers
      */
-    private function buildNetplanV2Config(
+    private function buildNetplanConfig(
         string $cidr,
-        string $routesBlock,
+        array $routes,
         ?array $dnsServers,
         string $instanceType,
     ): string {
         $interface = $this->primaryInterfaceName($instanceType);
         $dnsList = $dnsServers !== null && $dnsServers !== [] ? $dnsServers : ['1.1.1.1', '8.8.8.8'];
-        $dnsLines = implode("\n", array_map(fn (string $dns): string => sprintf('          - %s', trim($dns)), $dnsList));
+        $resolvedDns = array_values(array_map(static fn (string $dns): string => trim($dns), $dnsList));
 
-        return <<<YAML
-network:
-  version: 2
-  ethernets:
-    {$interface}:
-      addresses:
-        - {$cidr}{$routesBlock}
-      nameservers:
-        addresses:
-{$dnsLines}
-YAML;
+        $interfaceConfig = [
+            'addresses' => [$cidr],
+        ];
+
+        if ($routes !== []) {
+            $interfaceConfig['routes'] = $routes;
+        }
+
+        $interfaceConfig['nameservers'] = [
+            'addresses' => $resolvedDns,
+        ];
+
+        $config = [
+            'network' => [
+                'version' => 2,
+                'ethernets' => [
+                    $interface => $interfaceConfig,
+                ],
+            ],
+        ];
+
+        return Yaml::dump($config, inline: 10, indent: 2);
     }
 }

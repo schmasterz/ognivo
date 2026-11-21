@@ -14,6 +14,7 @@ use App\Services\Hypervisor\InstanceSpecBuilder;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use RuntimeException;
+use Symfony\Component\Yaml\Yaml;
 use Tests\TestCase;
 
 final class InstanceSpecBuilderTest extends TestCase
@@ -134,10 +135,11 @@ final class InstanceSpecBuilderTest extends TestCase
         // Netplan v2 configuration for VM
         $this->assertArrayHasKey('cloud-init.network-config', $spec['config']);
         $netplanYaml = $spec['config']['cloud-init.network-config'];
+        $parsedNetplan = Yaml::parse($netplanYaml);
 
         $this->assertStringContainsString('version: 2', $netplanYaml);
         $this->assertStringContainsString('match:', $netplanYaml);
-        $this->assertStringContainsString('macaddress: "02:54:cb:00:71:19"', $netplanYaml);
+        $this->assertSame('02:54:cb:00:71:19', $parsedNetplan['network']['ethernets']['eth0']['match']['macaddress']);
         $this->assertStringContainsString('set-name: eth0', $netplanYaml);
         $this->assertStringContainsString('- 203.0.113.25/32', $netplanYaml);
         $this->assertStringContainsString('to: 0.0.0.0/0', $netplanYaml);
@@ -333,8 +335,9 @@ final class InstanceSpecBuilderTest extends TestCase
         $this->assertSame('02:54:0a:f1:4f:32', $bridgedSpec['devices']['eth0']['hwaddr']);
         $this->assertArrayNotHasKey('ipv4.address', $bridgedSpec['devices']['eth0']);
         $bridgedNetplan = $bridgedSpec['config']['cloud-init.network-config'];
+        $bridgedParsed = Yaml::parse($bridgedNetplan);
         $this->assertStringContainsString('match:', $bridgedNetplan);
-        $this->assertStringContainsString('macaddress: "02:54:0a:f1:4f:32"', $bridgedNetplan);
+        $this->assertSame('02:54:0a:f1:4f:32', $bridgedParsed['network']['ethernets']['eth0']['match']['macaddress']);
         $this->assertStringContainsString('set-name: eth0', $bridgedNetplan);
         $this->assertStringContainsString('- 10.241.79.50/24', $bridgedNetplan);
         $this->assertStringContainsString('to: 0.0.0.0/0', $bridgedNetplan);
@@ -388,8 +391,9 @@ final class InstanceSpecBuilderTest extends TestCase
         $this->assertSame('eno1', $macvlanSpec['devices']['eth0']['parent']);
         $this->assertSame('ubuntu/24.04/cloud', $macvlanSpec['source']['alias']);
         $macvlanNetplan = $macvlanSpec['config']['cloud-init.network-config'];
+        $macvlanParsed = Yaml::parse($macvlanNetplan);
         $this->assertStringContainsString('match:', $macvlanNetplan);
-        $this->assertStringContainsString('macaddress: "02:54:c6:33:64:14"', $macvlanNetplan);
+        $this->assertSame('02:54:c6:33:64:14', $macvlanParsed['network']['ethernets']['eth0']['match']['macaddress']);
         $this->assertStringContainsString('set-name: eth0', $macvlanNetplan);
         $this->assertStringContainsString('- 198.51.100.20/24', $macvlanNetplan);
         $this->assertStringContainsString('to: 0.0.0.0/0', $macvlanNetplan);
@@ -601,8 +605,11 @@ final class InstanceSpecBuilderTest extends TestCase
 
         $debianSpec = $this->builder->build($debianVm, $debianAlloc);
         $debianNetplan = $debianSpec['config']['cloud-init.network-config'];
-        $this->assertStringContainsString('- to: 169.254.0.1/32', $debianNetplan);
-        $this->assertStringContainsString("- to: 0.0.0.0/0\n          via: 169.254.0.1", $debianNetplan);
+        $debianParsed = Yaml::parse($debianNetplan);
+        $this->assertSame([
+            ['to' => '169.254.0.1/32'],
+            ['to' => '0.0.0.0/0', 'via' => '169.254.0.1'],
+        ], $debianParsed['network']['ethernets']['eth0']['routes']);
         $this->assertStringNotContainsString('on-link: true', $debianNetplan);
 
         $almaVm = VirtualMachine::create([
@@ -633,7 +640,10 @@ final class InstanceSpecBuilderTest extends TestCase
 
         $almaSpec = $this->builder->build($almaVm, $almaAlloc);
         $almaNetplan = $almaSpec['config']['cloud-init.network-config'];
-        $this->assertStringContainsString("- to: 0.0.0.0/0\n          via: 169.254.0.1", $almaNetplan);
+        $almaParsed = Yaml::parse($almaNetplan);
+        $this->assertSame([
+            ['to' => '0.0.0.0/0', 'via' => '169.254.0.1'],
+        ], $almaParsed['network']['ethernets']['eth0']['routes']);
         $this->assertStringNotContainsString('on-link: true', $almaNetplan);
         $this->assertStringNotContainsString('169.254.0.1/32', $almaNetplan);
     }
@@ -754,7 +764,8 @@ final class InstanceSpecBuilderTest extends TestCase
         $this->assertStringContainsString('path: /etc/resolv.conf', $containerSpec['config']['cloud-init.vendor-data']);
         $this->assertStringContainsString('nameserver 1.1.1.1', $containerSpec['config']['cloud-init.vendor-data']);
         $this->assertStringContainsString('nameserver 9.9.9.9', $containerSpec['config']['cloud-init.vendor-data']);
-        $this->assertStringContainsString("runcmd:\n  - nmcli connection up 'cloud-init eth0' || true", $containerSpec['config']['cloud-init.vendor-data']);
+        $parsedVendorData = Yaml::parse(str_replace('#cloud-config', '', $containerSpec['config']['cloud-init.vendor-data']));
+        $this->assertSame(["nmcli connection up 'cloud-init eth0' || true"], $parsedVendorData['runcmd']);
 
         $vm = VirtualMachine::create([
             'user_id' => $this->user->id,

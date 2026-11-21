@@ -6,6 +6,7 @@ namespace App\Services\Hypervisor\GuestOs\Adapters;
 
 use App\Services\Hypervisor\GuestOs\Contracts\GuestOsAdapterInterface;
 use Override;
+use Symfony\Component\Yaml\Yaml;
 
 /**
  * Base adapter for Linux guest operating systems configured via cloud-init and Netplan v2.
@@ -13,9 +14,17 @@ use Override;
 abstract class AbstractLinuxCloudInitOsAdapter implements GuestOsAdapterInterface
 {
     /**
-     * Build the Netplan v2 routes block for routed networking mode.
+     * Build the Netplan v2 routes list for routed networking mode.
+     *
+     * @return array<int, array<string, mixed>>
      */
-    abstract protected function routedRoutesBlock(): string;
+    protected function routedRoutes(): array
+    {
+        return [
+            ['to' => '169.254.0.1/32'],
+            ['to' => '0.0.0.0/0', 'via' => '169.254.0.1'],
+        ];
+    }
 
     #[Override]
     public function primaryInterfaceName(string $instanceType): string
@@ -61,22 +70,13 @@ abstract class AbstractLinuxCloudInitOsAdapter implements GuestOsAdapterInterfac
         ?array $dnsServers = null,
         string $instanceType = 'virtual-machine',
     ): ?string {
-        $dnsLines = $this->formatDnsLines($dnsServers);
-        $matchBlock = $this->buildEth0MatchBlock($macAddress, $instanceType);
-        $routesBlock = $this->routedRoutesBlock();
-
-        return <<<YAML
-network:
-  version: 2
-  ethernets:
-    eth0:{$matchBlock}
-      addresses:
-        - {$ipAddress}/32
-{$routesBlock}
-      nameservers:
-        addresses:
-{$dnsLines}
-YAML;
+        return $this->buildNetplanConfig(
+            macAddress: $macAddress,
+            cidr: "{$ipAddress}/32",
+            routes: $this->routedRoutes(),
+            dnsServers: $dnsServers,
+            instanceType: $instanceType,
+        );
     }
 
     /**
@@ -91,59 +91,75 @@ YAML;
         ?array $dnsServers = null,
         string $instanceType = 'virtual-machine',
     ): ?string {
-        $dnsLines = $this->formatDnsLines($dnsServers);
-        $matchBlock = $this->buildEth0MatchBlock($macAddress, $instanceType);
-
-        $routesBlock = '';
+        $routes = [];
         if ($gateway !== null && trim($gateway) !== '') {
-            $gw = trim($gateway);
-            $routesBlock = <<<YAML
-
-      routes:
-        - to: 0.0.0.0/0
-          via: {$gw}
-YAML;
+            $routes[] = [
+                'to' => '0.0.0.0/0',
+                'via' => trim($gateway),
+            ];
         }
 
-        return <<<YAML
-network:
-  version: 2
-  ethernets:
-    eth0:{$matchBlock}
-      addresses:
-        - {$ipAddress}/{$prefix}{$routesBlock}
-      nameservers:
-        addresses:
-{$dnsLines}
-YAML;
+        return $this->buildNetplanConfig(
+            macAddress: $macAddress,
+            cidr: "{$ipAddress}/{$prefix}",
+            routes: $routes,
+            dnsServers: $dnsServers,
+            instanceType: $instanceType,
+        );
     }
 
     /**
-     * Build the MAC address match and set-name block for virtual machines; containers use Incus-managed eth0 directly.
-     */
-    protected function buildEth0MatchBlock(string $macAddress, string $instanceType): string
-    {
-        if ($instanceType !== 'virtual-machine') {
-            return '';
-        }
-
-        return <<<YAML
-
-      match:
-        macaddress: "{$macAddress}"
-      set-name: eth0
-YAML;
-    }
-
-    /**
-     * Format DNS nameserver entries as indented YAML list lines, defaulting to public resolvers when empty.
+     * Build and serialize a Netplan v2 YAML configuration for eth0.
      *
+     * @param  array<int, array<string, mixed>>  $routes
      * @param  array<string>|null  $dnsServers
      */
-    protected function formatDnsLines(?array $dnsServers): string
+    private function buildNetplanConfig(
+        string $macAddress,
+        string $cidr,
+        array $routes,
+        ?array $dnsServers,
+        string $instanceType,
+    ): string {
+        $eth0 = [];
+
+        if ($instanceType === 'virtual-machine') {
+            $eth0['match'] = ['macaddress' => $macAddress];
+            $eth0['set-name'] = 'eth0';
+        }
+
+        $eth0['addresses'] = [$cidr];
+
+        if ($routes !== []) {
+            $eth0['routes'] = $routes;
+        }
+
+        $eth0['nameservers'] = [
+            'addresses' => $this->resolveDnsAddresses($dnsServers),
+        ];
+
+        $config = [
+            'network' => [
+                'version' => 2,
+                'ethernets' => [
+                    'eth0' => $eth0,
+                ],
+            ],
+        ];
+
+        return Yaml::dump($config, inline: 10, indent: 2);
+    }
+
+    /**
+     * Resolve DNS nameserver entries, defaulting to public resolvers when empty.
+     *
+     * @param  array<string>|null  $dnsServers
+     * @return array<int, string>
+     */
+    protected function resolveDnsAddresses(?array $dnsServers): array
     {
         $dnsList = $dnsServers !== null && $dnsServers !== [] ? $dnsServers : ['1.1.1.1', '8.8.8.8'];
 
-        return implode("\n", array_map(fn (string $dns): string => sprintf('          - %s', trim($dns)), $dnsList));
+        return array_values(array_map(static fn (string $dns): string => trim($dns), $dnsList));
     }
 }
