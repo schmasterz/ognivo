@@ -86,14 +86,12 @@ final class VmSnapshotModelAndQuotaTest extends TestCase
             'name' => 'snap-initial',
             'source' => VmSnapshot::SOURCE_MANUAL,
             'status' => VmSnapshot::STATUS_READY,
-            'stateful' => true,
             'size_bytes' => 1073741824,
             'error' => null,
         ]);
 
         $this->assertSame($vm->id, $snapshot->virtual_machine_id);
         $this->assertSame($this->customer->id, $snapshot->user_id);
-        $this->assertTrue($snapshot->stateful);
         $this->assertSame(1073741824, $snapshot->size_bytes);
         $this->assertNull($snapshot->error);
 
