@@ -7,6 +7,7 @@ namespace App\Services\Hypervisor;
 use App\Models\Image;
 use App\Models\IpAllocation;
 use App\Models\VirtualMachine;
+use App\Services\Hypervisor\GuestOs\Adapters\AlpineOsAdapter;
 use App\Services\Hypervisor\GuestOs\GuestOsResolver;
 use DomainException;
 use RuntimeException;
@@ -151,9 +152,13 @@ class InstanceSpecBuilder
                     }
                 }
             }
+
+            if ($osAdapter instanceof AlpineOsAdapter) {
+                $config['cloud-init.vendor-data'] = $osAdapter->buildVendorData($dnsServers);
+            }
         }
 
-        $requiresCloudInit = isset($config['cloud-init.user-data']) || isset($config['cloud-init.network-config']);
+        $requiresCloudInit = isset($config['cloud-init.user-data']) || isset($config['cloud-init.network-config']) || isset($config['cloud-init.vendor-data']);
 
         $source = [
             'type' => 'image',
