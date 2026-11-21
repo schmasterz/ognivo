@@ -151,9 +151,16 @@ class InstanceSpecBuilder
                     }
                 }
             }
+
+            if (method_exists($osAdapter, 'buildVendorData')) {
+                $vendorData = $osAdapter->buildVendorData($dnsServers, $vm->instance_type);
+                if ($vendorData !== null && $vendorData !== '') {
+                    $config['cloud-init.vendor-data'] = $vendorData;
+                }
+            }
         }
 
-        $requiresCloudInit = isset($config['cloud-init.user-data']) || isset($config['cloud-init.network-config']);
+        $requiresCloudInit = isset($config['cloud-init.user-data']) || isset($config['cloud-init.network-config']) || isset($config['cloud-init.vendor-data']);
 
         $source = [
             'type' => 'image',
@@ -191,7 +198,9 @@ class InstanceSpecBuilder
             && $image->os_type === 'linux'
             && $image->protocol === 'simplestreams'
             && str_contains($image->source, 'images.linuxcontainers.org')
-            && preg_match('/^[a-z0-9_-]+\/[a-z0-9._-]+$/i', $alias) === 1
+            && preg_match('/^[a-z0-9_.-]+(\/[a-z0-9_.-]+)?$/i', $alias) === 1
+            && ! str_ends_with($alias, '/cloud')
+            && ! str_ends_with($alias, '/default')
         ) {
             return $alias.'/cloud';
         }
