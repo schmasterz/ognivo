@@ -135,7 +135,7 @@ sudo apt install -y genisoimage iptables-persistent
 ### Why each package is required
 
 1. **`genisoimage` (or `xorriso` / `mkisofs`):**
-   Incus requires `genisoimage` or `mkisofs` on the host to generate the `agent:config` ISO device attached to KVM virtual machines. This ISO delivers cloud-init / `incus-agent` bootstrap configuration into guest VMs and is **specifically required for RHEL, AlmaLinux, Rocky Linux, and Windows VM bootstrapping**.
+   Incus requires `genisoimage` or `mkisofs` on the host to generate the `agent:config` ISO device attached to KVM virtual machines. This ISO delivers cloud-init / `incus-agent` bootstrap configuration into guest VMs across diverse Linux guest distributions and Windows—**specifically including RHEL, AlmaLinux, Rocky Linux, Alpine, and Windows VM bootstrapping**.
 
    > [!IMPORTANT]
    > Without `genisoimage` (or `mkisofs`) installed on the compute node, starting affected KVM virtual machines fails with:
@@ -202,6 +202,11 @@ sudo netfilter-persistent save
 > - `-I FORWARD` inserts the rules at the top of the `FORWARD` chain so they are evaluated before Docker's isolation/drop rules.
 > - If you manage multiple routed subnets on the same compute node, repeat the three `iptables` rules for each `<SUBNET_CIDR>` and run `sudo netfilter-persistent save` again.
 > - If your routed pool uses **publicly routable IPv4 addresses** assigned directly to the host, you do **not** need the `MASQUERADE` rule, though you still need the `FORWARD` `ACCEPT` rules if Docker is present or the `FORWARD` policy is `DROP`.
+
+### Automated Guest OS Compatibility
+
+> [!NOTE]
+> Compute node operators do **not** need to maintain custom Incus profiles or run manual CLI tweaks for non-SecureBoot guest operating systems (such as Alpine, Arch, Gentoo, openEuler, or BSD). Ognivo's Guest OS adapter layer automatically injects `security.secureboot: "false"` into the instance specification when provisioning those virtual machines.
 
 ---
 

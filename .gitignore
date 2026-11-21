@@ -28,4 +28,8 @@ docker/certs/*.crt
 # Backups
 backups/
 
+# Live hypervisor tests
+/backend/tests/Live/
+
+
 
