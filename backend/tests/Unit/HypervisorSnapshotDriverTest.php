@@ -94,27 +94,24 @@ final class HypervisorSnapshotDriverTest extends TestCase
         $driver->statuses[$this->vm->name] = 'Running';
         $driver->setStateMarker($this->vm, 'clean-v1');
 
-        $this->assertTrue($driver->createSnapshot($this->vm, 'snap-1', false));
+        $this->assertTrue($driver->createSnapshot($this->vm, 'snap-1'));
         // Duplicate snapshot name must fail
-        $this->assertFalse($driver->createSnapshot($this->vm, 'snap-1', false));
+        $this->assertFalse($driver->createSnapshot($this->vm, 'snap-1'));
 
-        // Mutate state and take a second stateful snapshot
         $driver->statuses[$this->vm->name] = 'Stopped';
         $driver->setStateMarker($this->vm, 'dirty-v2');
-        $this->assertTrue($driver->createSnapshot($this->vm, 'snap-2', true));
+        $this->assertTrue($driver->createSnapshot($this->vm, 'snap-2'));
 
         $snapshots = $driver->listSnapshots($this->vm);
         $this->assertCount(2, $snapshots);
 
         $this->assertSame('snap-1', $snapshots[0]['name']);
         $this->assertNotEmpty($snapshots[0]['created_at']);
-        $this->assertFalse($snapshots[0]['stateful']);
         $this->assertArrayHasKey('size', $snapshots[0]);
         $this->assertNull($snapshots[0]['size']);
 
         $this->assertSame('snap-2', $snapshots[1]['name']);
         $this->assertNotEmpty($snapshots[1]['created_at']);
-        $this->assertTrue($snapshots[1]['stateful']);
         $this->assertArrayHasKey('size', $snapshots[1]);
         $this->assertNull($snapshots[1]['size']);
 
@@ -176,16 +173,14 @@ final class HypervisorSnapshotDriverTest extends TestCase
         $driver->setStateMarker($vmTenantA, 'marker-a-v1');
         $driver->setStateMarker($vmTenantB, 'marker-b-v1');
 
-        $this->assertTrue($driver->createSnapshot($vmTenantA, 'same-snap', false));
-        $this->assertTrue($driver->createSnapshot($vmTenantB, 'same-snap', true));
+        $this->assertTrue($driver->createSnapshot($vmTenantA, 'same-snap'));
+        $this->assertTrue($driver->createSnapshot($vmTenantB, 'same-snap'));
 
         $listA = $driver->listSnapshots($vmTenantA);
         $listB = $driver->listSnapshots($vmTenantB);
 
         $this->assertCount(1, $listA);
         $this->assertCount(1, $listB);
-        $this->assertFalse($listA[0]['stateful']);
-        $this->assertTrue($listB[0]['stateful']);
 
         $driver->setStateMarker($vmTenantA, 'marker-a-v2');
         $driver->setStateMarker($vmTenantB, 'marker-b-v2');
@@ -243,7 +238,7 @@ final class HypervisorSnapshotDriverTest extends TestCase
         ]);
 
         $driver = new IncusDriver($this->incusHost);
-        $result = $driver->createSnapshot($this->vm, 'daily-backup', true);
+        $result = $driver->createSnapshot($this->vm, 'daily-backup');
 
         $this->assertTrue($result);
 
@@ -256,8 +251,7 @@ final class HypervisorSnapshotDriverTest extends TestCase
             $data = $request->data();
 
             return $request->url() === 'https://incus-snap.local:8443/1.0/instances/vm-snap-01/snapshots?project=tenant-snap-proj'
-                && ($data['name'] ?? null) === 'daily-backup'
-                && ($data['stateful'] ?? null) === true;
+                && ($data['name'] ?? null) === 'daily-backup';
         });
 
         Http::assertSent(function (Request $request): bool {
@@ -280,19 +274,16 @@ final class HypervisorSnapshotDriverTest extends TestCase
                     [
                         'name' => 'vm-snap-01/snap-alpha',
                         'created_at' => '2026-11-02T10:00:00Z',
-                        'stateful' => false,
                         'size' => 10485760,
                     ],
                     [
                         'name' => 'snap-beta',
                         'created_at' => '2026-11-02T11:30:00Z',
-                        'stateful' => true,
                         'size' => -1,
                     ],
                     [
                         'name' => 'snap-gamma',
                         'created_at' => '2026-11-02T12:00:00Z',
-                        'stateful' => false,
                     ],
                 ],
             ], 200),
@@ -305,19 +296,16 @@ final class HypervisorSnapshotDriverTest extends TestCase
             [
                 'name' => 'snap-alpha',
                 'created_at' => '2026-11-02T10:00:00Z',
-                'stateful' => false,
                 'size' => 10485760,
             ],
             [
                 'name' => 'snap-beta',
                 'created_at' => '2026-11-02T11:30:00Z',
-                'stateful' => true,
                 'size' => null,
             ],
             [
                 'name' => 'snap-gamma',
                 'created_at' => '2026-11-02T12:00:00Z',
-                'stateful' => false,
                 'size' => null,
             ],
         ], $snapshots);
@@ -404,7 +392,7 @@ final class HypervisorSnapshotDriverTest extends TestCase
 
         $gateway = app(HypervisorGateway::class);
 
-        $this->assertTrue($gateway->createSnapshot($this->vm, 'gw-snap', false));
+        $this->assertTrue($gateway->createSnapshot($this->vm, 'gw-snap'));
         $list = $gateway->listSnapshots($this->vm);
         $this->assertCount(1, $list);
         $this->assertSame('gw-snap', $list[0]['name']);
