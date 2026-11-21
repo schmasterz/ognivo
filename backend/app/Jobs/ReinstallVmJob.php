@@ -99,20 +99,23 @@ final class ReinstallVmJob implements ShouldQueue
                 return;
             }
 
-            // If instance deletion was already performed and VM is Failed, stop processing
-            if ($this->instanceDeleted && $this->vm->status->equals(Failed::class)) {
+            $meta = is_array($this->vm->metadata) ? $this->vm->metadata : [];
+            $reinstallInProgress = ($meta['reinstall_in_progress'] ?? false) === true;
+
+            // If reinstallation was already initiated and VM is Failed, stop processing
+            if ($reinstallInProgress && $this->vm->status->equals(Failed::class)) {
                 return;
             }
 
-            // If instance deletion was already performed and VM has finished reinstallation
-            if ($this->instanceDeleted && $this->vm->status->equals(Running::class) && in_array($this->vm->network_status, ['observed', 'unverified'], true)) {
+            // If reinstallation was already initiated and VM has finished reinstallation
+            if ($reinstallInProgress && $this->vm->status->equals(Running::class) && in_array($this->vm->network_status, ['observed', 'unverified'], true)) {
                 return;
             }
 
             $driver = $manager->driverForVm($this->vm);
 
             // Step 0: Initial run - delete existing hypervisor instance, update configs, and transition state
-            if (! $this->instanceDeleted) {
+            if (! $reinstallInProgress) {
                 try {
                     $driver->deleteInstance($this->vm);
                 } catch (Throwable $e) {
@@ -127,8 +130,6 @@ final class ReinstallVmJob implements ShouldQueue
                         $e->getMessage()
                     ));
                 }
-
-                $this->instanceDeleted = true;
 
                 if ($this->osImage !== null && $this->osImage !== '') {
                     $this->vm->os_image = $this->osImage;
@@ -145,6 +146,10 @@ final class ReinstallVmJob implements ShouldQueue
                         $this->vm->cloud_init = $cloudInitData;
                     }
                 }
+
+                $meta = is_array($this->vm->metadata) ? $this->vm->metadata : [];
+                $meta['reinstall_in_progress'] = true;
+                $this->vm->metadata = $meta;
 
                 $this->vm->network_wait_started_at = null;
                 $this->vm->network_status = 'assigned';
@@ -216,11 +221,7 @@ final class ReinstallVmJob implements ShouldQueue
 
             if ($observedIp !== null && $assignedIp !== null && $observedIp === $assignedIp) {
                 // Network confirmed! Transition to Running with observed status
-                $this->vm->network_status = 'observed';
-                if (! $this->vm->status->equals(Running::class)) {
-                    $this->vm->status->transitionTo(Running::class);
-                }
-                $this->vm->save();
+                $this->completeReinstall('observed');
 
                 Log::info(sprintf('VM #%d (%s) network observed: %s. Reinstallation complete.', $this->vm->id, $this->vm->name, $observedIp));
 
@@ -234,11 +235,7 @@ final class ReinstallVmJob implements ShouldQueue
             $isManualPool = ($allocation?->pool?->network_mode === 'manual');
 
             if ($isManualPool) {
-                $this->vm->network_status = 'unverified';
-                if (! $this->vm->status->equals(Running::class)) {
-                    $this->vm->status->transitionTo(Running::class);
-                }
-                $this->vm->save();
+                $this->completeReinstall('unverified');
 
                 Log::info(sprintf('VM #%d (%s) in manual network mode completed reinstall with unverified status.', $this->vm->id, $this->vm->name));
 
@@ -247,11 +244,7 @@ final class ReinstallVmJob implements ShouldQueue
 
             if ($observedIp !== null && $assignedIp !== null && $observedIp !== $assignedIp) {
                 // IP mismatch detected
-                $this->vm->network_status = 'mismatch';
-                if (! $this->vm->status->equals(Running::class)) {
-                    $this->vm->status->transitionTo(Running::class);
-                }
-                $this->vm->save();
+                $this->completeReinstall('mismatch');
 
                 Log::warning(sprintf('VM #%d (%s) IP mismatch during reinstall: expected %s, observed %s.', $this->vm->id, $this->vm->name, $assignedIp, $observedIp));
 
@@ -274,11 +267,7 @@ final class ReinstallVmJob implements ShouldQueue
 
             if ($elapsed >= $waitLimit) {
                 // Elapsed time exceeded network_wait_seconds: mark unverified and VM Running (not an error)
-                $this->vm->network_status = 'unverified';
-                if (! $this->vm->status->equals(Running::class)) {
-                    $this->vm->status->transitionTo(Running::class);
-                }
-                $this->vm->save();
+                $this->completeReinstall('unverified');
 
                 Log::info(sprintf('VM #%d (%s) completed reinstall with unverified network status after %ds timeout.', $this->vm->id, $this->vm->name, $waitLimit));
 
@@ -360,6 +349,21 @@ final class ReinstallVmJob implements ShouldQueue
     }
 
     /**
+     * Clear the reinstall flag, update network status, and transition the VM to Running.
+     */
+    private function completeReinstall(string $networkStatus): void
+    {
+        $meta = is_array($this->vm->metadata) ? $this->vm->metadata : [];
+        unset($meta['reinstall_in_progress']);
+        $this->vm->metadata = $meta;
+        $this->vm->network_status = $networkStatus;
+        if (! $this->vm->status->equals(Running::class)) {
+            $this->vm->status->transitionTo(Running::class);
+        }
+        $this->vm->save();
+    }
+
+    /**
      * Mark VM as Failed with failure_reason in metadata WITHOUT releasing IP allocation.
      */
     protected function failVm(string $reason): void
@@ -374,6 +378,7 @@ final class ReinstallVmJob implements ShouldQueue
         try {
             $this->vm->refresh();
             $existingMeta = is_array($this->vm->metadata) ? $this->vm->metadata : [];
+            unset($existingMeta['reinstall_in_progress']);
             $this->vm->metadata = array_merge($existingMeta, [
                 'failure_reason' => $reason,
                 'failed_at' => now()->toIso8601String(),

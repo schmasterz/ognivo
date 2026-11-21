@@ -660,4 +660,189 @@ final class VmReinstallTest extends TestCase
         );
         $this->assertSame($this->linuxImage->name, $contextWithoutImage['os_image'] ?? null);
     }
+
+    public function test_reinstall_polling_preserves_instance_across_multiple_releases_until_network_observed(): void
+    {
+        $vm = $this->createVm([
+            'status' => Running::class,
+            'os_image' => $this->linuxImage->name,
+            'cloud_init' => ['user-data' => '#old-config'],
+        ]);
+        $allocation = $this->assignIp($vm, '10.60.0.35');
+
+        $this->driver->setInstanceStatus($vm, 'Unknown');
+        $this->driver->setActionCallback('createInstance', function (VirtualMachine $createdVm): bool {
+            $this->driver->setInstanceStatus($createdVm, 'Stopped');
+
+            return true;
+        });
+        $this->driver->setActionCallback('startInstance', function (VirtualMachine $startedVm): bool {
+            $this->driver->setInstanceStatus($startedVm, 'Running');
+
+            return true;
+        });
+        // First execution: VM boots without an observed IP yet
+        $this->driver->setInstanceState($vm, [
+            'status' => 'Running',
+            'network' => [],
+        ]);
+
+        $newImage = $this->otherLinuxImage->name;
+        $newCloudInit = ['user-data' => '#new-config'];
+        $manager = app(HypervisorManager::class);
+
+        $job = new ReinstallVmJob($vm, $newImage, $newCloudInit, false, $allocation->id);
+        // Simulate Redis queue payload serialization before first execution
+        $serializedJob = serialize($job);
+
+        $job->handle($manager);
+
+        $this->assertTrue($this->driver->wasInstanceDeleted($vm));
+        $deleteCount = count(array_filter(
+            $this->driver->deletedInstances,
+            static fn (string $name): bool => $name === $vm->name
+        ));
+        $this->assertSame(1, $deleteCount);
+
+        $vm->refresh();
+        $this->assertTrue($vm->status->equals(Provisioning::class));
+        $this->assertSame('assigned', $vm->network_status);
+        $this->assertSame($newImage, $vm->os_image);
+        $this->assertSame($newCloudInit, $vm->cloud_init);
+        $this->assertIsArray($vm->metadata);
+        $this->assertTrue($vm->metadata['reinstall_in_progress'] ?? false);
+        $this->assertNotNull($vm->network_wait_started_at);
+        $initialWaitStartedAt = $vm->network_wait_started_at->getTimestamp();
+
+        // Second execution (still no observed IP): unserialize original payload so $instanceDeleted === false
+        $this->travel(15)->seconds();
+        $secondPollJob = unserialize($serializedJob);
+        $this->assertInstanceOf(ReinstallVmJob::class, $secondPollJob);
+        $secondPollJob->handle($manager);
+
+        $deleteCountAfterSecondPoll = count(array_filter(
+            $this->driver->deletedInstances,
+            static fn (string $name): bool => $name === $vm->name
+        ));
+        $this->assertSame(1, $deleteCountAfterSecondPoll);
+
+        $vm->refresh();
+        $this->assertTrue($vm->status->equals(Provisioning::class));
+        $this->assertNotNull($vm->network_wait_started_at);
+        $this->assertSame($initialWaitStartedAt, $vm->network_wait_started_at->getTimestamp());
+        $this->assertIsArray($vm->metadata);
+        $this->assertTrue($vm->metadata['reinstall_in_progress'] ?? false);
+
+        // Third execution: hypervisor now reports the expected IPv4 address
+        $this->driver->setInstanceState($vm, [
+            'status' => 'Running',
+            'network' => [
+                'eth0' => [
+                    'addresses' => [
+                        [
+                            'family' => 'inet',
+                            'address' => '10.60.0.35',
+                            'netmask' => '32',
+                            'scope' => 'global',
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        $thirdPollJob = unserialize($serializedJob);
+        $this->assertInstanceOf(ReinstallVmJob::class, $thirdPollJob);
+        $thirdPollJob->handle($manager);
+
+        $deleteCountAfterThirdPoll = count(array_filter(
+            $this->driver->deletedInstances,
+            static fn (string $name): bool => $name === $vm->name
+        ));
+        $this->assertSame(1, $deleteCountAfterThirdPoll);
+
+        $vm->refresh();
+        $this->assertTrue($vm->status->equals(Running::class));
+        $this->assertSame('observed', $vm->network_status);
+        $this->assertIsArray($vm->metadata);
+        $this->assertArrayNotHasKey('reinstall_in_progress', $vm->metadata);
+
+        $allocation->refresh();
+        $this->assertSame('allocated', $allocation->status);
+        $this->assertSame($vm->id, $allocation->virtual_machine_id);
+
+        $this->travelBack();
+    }
+
+    public function test_reinstall_polling_completes_as_unverified_after_wait_limit(): void
+    {
+        config(['provisioning.network_wait_seconds' => 30]);
+
+        $vm = $this->createVm(['status' => Running::class]);
+        $allocation = $this->assignIp($vm, '10.60.0.36');
+
+        $this->driver->setInstanceStatus($vm, 'Unknown');
+        $this->driver->setActionCallback('createInstance', function (VirtualMachine $createdVm): bool {
+            $this->driver->setInstanceStatus($createdVm, 'Stopped');
+
+            return true;
+        });
+        $this->driver->setActionCallback('startInstance', function (VirtualMachine $startedVm): bool {
+            $this->driver->setInstanceStatus($startedVm, 'Running');
+
+            return true;
+        });
+        $this->driver->setInstanceState($vm, [
+            'status' => 'Running',
+            'network' => [],
+        ]);
+
+        $manager = app(HypervisorManager::class);
+        $job = new ReinstallVmJob($vm, null, null, false, $allocation->id);
+        $serializedJob = serialize($job);
+
+        $job->handle($manager);
+
+        $this->travel(35)->seconds();
+        $requeuedJob = unserialize($serializedJob);
+        $this->assertInstanceOf(ReinstallVmJob::class, $requeuedJob);
+        $requeuedJob->handle($manager);
+
+        $deleteCount = count(array_filter(
+            $this->driver->deletedInstances,
+            static fn (string $name): bool => $name === $vm->name
+        ));
+        $this->assertSame(1, $deleteCount);
+
+        $vm->refresh();
+        $this->assertTrue($vm->status->equals(Running::class));
+        $this->assertSame('unverified', $vm->network_status);
+        $this->assertIsArray($vm->metadata);
+        $this->assertArrayNotHasKey('reinstall_in_progress', $vm->metadata);
+
+        $this->travelBack();
+    }
+
+    public function test_reinstall_failure_cleans_up_reinstall_flag_and_preserves_ip(): void
+    {
+        $vm = $this->createVm(['status' => Running::class]);
+        $allocation = $this->assignIp($vm, '10.60.0.37');
+
+        $this->driver->setInstanceStatus($vm, 'Unknown');
+        $this->driver->shouldFail['createInstance'] = true;
+
+        $job = new ReinstallVmJob($vm, null, null, false, $allocation->id);
+        $job->handle(app(HypervisorManager::class));
+
+        $vm->refresh();
+        $this->assertTrue($vm->status->equals(Failed::class));
+        $this->assertIsArray($vm->metadata);
+        $this->assertArrayNotHasKey('reinstall_in_progress', $vm->metadata);
+        $this->assertArrayHasKey('failure_reason', $vm->metadata);
+        $this->assertArrayHasKey('failed_at', $vm->metadata);
+
+        $allocation->refresh();
+        $this->assertSame('allocated', $allocation->status);
+        $this->assertSame($vm->id, $allocation->virtual_machine_id);
+        $this->assertSame('10.60.0.37', $vm->ipv4_address);
+    }
 }
