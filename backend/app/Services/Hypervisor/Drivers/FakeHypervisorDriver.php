@@ -166,7 +166,7 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
     }
 
     /**
-     * @var array<string, list<array{name: string, created_at: string, stateful: bool, size: int|null}>>
+     * @var array<string, list<array{name: string, created_at: string, size: int|null}>>
      */
     public array $snapshots = [];
 
@@ -381,7 +381,7 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
     }
 
     /**
-     * @return list<array{name: string, created_at: string, stateful: bool, size: int|null}>
+     * @return list<array{name: string, created_at: string, size: int|null}>
      */
     private function getSnapshotsList(VirtualMachine $vm): array
     {
@@ -398,13 +398,13 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
         try {
             $cached = Cache::get("fake_driver:snapshots:{$key}");
             if (is_array($cached)) {
-                /** @var list<array{name: string, created_at: string, stateful: bool, size: int|null}> $cached */
+                /** @var list<array{name: string, created_at: string, size: int|null}> $cached */
                 return $cached;
             }
 
             $cachedLegacy = Cache::get("fake_driver:snapshots:{$vm->name}");
             if (is_array($cachedLegacy)) {
-                /** @var list<array{name: string, created_at: string, stateful: bool, size: int|null}> $cachedLegacy */
+                /** @var list<array{name: string, created_at: string, size: int|null}> $cachedLegacy */
                 return $cachedLegacy;
             }
         } catch (\Throwable) {
@@ -414,7 +414,7 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
     }
 
     #[Override]
-    public function createSnapshot(VirtualMachine $vm, string $name, bool $stateful = false): bool
+    public function createSnapshot(VirtualMachine $vm, string $name): bool
     {
         if ($this->shouldFail('createSnapshot')) {
             return false;
@@ -436,7 +436,6 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
         $snapshotItem = [
             'name' => $name,
             'created_at' => now()->toIso8601String(),
-            'stateful' => $stateful,
             'size' => null,
         ];
 
@@ -461,7 +460,7 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
     }
 
     /**
-     * @return list<array{name: string, created_at: string, stateful: bool, size: int|null}>
+     * @return list<array{name: string, created_at: string, size: int|null}>
      */
     #[Override]
     public function listSnapshots(VirtualMachine $vm): array
@@ -477,7 +476,6 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
             $normalized[] = [
                 'name' => (string) $item['name'],
                 'created_at' => (string) $item['created_at'],
-                'stateful' => (bool) $item['stateful'],
                 'size' => isset($item['size']) ? (int) $item['size'] : null,
             ];
         }

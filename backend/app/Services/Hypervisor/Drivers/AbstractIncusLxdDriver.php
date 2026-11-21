@@ -519,24 +519,14 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
     }
 
     #[Override]
-    public function createSnapshot(VirtualMachine $vm, string $name, bool $stateful = false): bool
+    public function createSnapshot(VirtualMachine $vm, string $name): bool
     {
-        if ($stateful && $vm->instance_type === 'virtual-machine') {
-            $this->client()
-                ->withQueryParameters(['project' => $vm->incus_project])
-                ->patch(sprintf('/1.0/instances/%s', rawurlencode($vm->name)), [
-                    'config' => [
-                        'migration.stateful' => 'true',
-                    ],
-                ]);
-        }
-
         /** @var Response $response */
         $response = $this->client()
             ->withQueryParameters(['project' => $vm->incus_project])
             ->post(sprintf('/1.0/instances/%s/snapshots', rawurlencode($vm->name)), [
                 'name' => $name,
-                'stateful' => $stateful,
+                'stateful' => false,
             ]);
 
         return $this->handleOperationResponse($response, $vm->incus_project);
@@ -545,7 +535,7 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
     /**
      * List all snapshots for the specified instance.
      *
-     * @return list<array{name: string, created_at: string, stateful: bool, size: int|null}>
+     * @return list<array{name: string, created_at: string, size: int|null}>
      */
     #[Override]
     public function listSnapshots(VirtualMachine $vm): array
@@ -586,14 +576,12 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
                 $snapshots[] = [
                     'name' => $rawName,
                     'created_at' => isset($item['created_at']) && is_scalar($item['created_at']) ? (string) $item['created_at'] : '',
-                    'stateful' => isset($item['stateful']) && (bool) $item['stateful'],
                     'size' => $size,
                 ];
             } elseif (is_string($item)) {
                 $snapshots[] = [
                     'name' => basename($item),
                     'created_at' => '',
-                    'stateful' => false,
                     'size' => null,
                 ];
             }
