@@ -13,7 +13,6 @@ final readonly class CreateSnapshotDTO
 {
     public function __construct(
         public string $name,
-        public bool $stateful = false,
     ) {}
 
     /**
@@ -23,18 +22,16 @@ final readonly class CreateSnapshotDTO
     {
         return new self(
             name: Cast::string($data['name'] ?? ''),
-            stateful: Cast::bool($data['stateful'] ?? false),
         );
     }
 
     /**
-     * @return array{name: string, stateful: bool}
+     * @return array{name: string}
      */
     public function toArray(): array
     {
         return [
             'name' => $this->name,
-            'stateful' => $this->stateful,
         ];
     }
 }
