@@ -14,10 +14,9 @@ interface BackupTargetInterface
     /**
      * Create a snapshot/backup for the specified virtual machine.
      *
-     * @param  bool  $stateful  Whether to capture running process/memory state.
      * @return bool True if creation succeeded.
      */
-    public function create(VirtualMachine $vm, string $name, bool $stateful = false): bool;
+    public function create(VirtualMachine $vm, string $name): bool;
 
     /**
      * Restore the specified virtual machine from a named snapshot/backup.
@@ -36,7 +35,7 @@ interface BackupTargetInterface
     /**
      * List all snapshots/backups for the specified virtual machine.
      *
-     * @return list<array{name: string, created_at: string, stateful: bool, size: int|null}>
+     * @return list<array{name: string, created_at: string, size: int|null}>
      */
     public function list(VirtualMachine $vm): array;
 }

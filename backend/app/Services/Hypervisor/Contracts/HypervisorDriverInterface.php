@@ -92,15 +92,14 @@ interface HypervisorDriverInterface
     /**
      * Create a snapshot for the specified instance.
      *
-     * @param  bool  $stateful  Whether to capture running process/memory state.
      * @return bool True if snapshot creation succeeded.
      */
-    public function createSnapshot(VirtualMachine $vm, string $name, bool $stateful = false): bool;
+    public function createSnapshot(VirtualMachine $vm, string $name): bool;
 
     /**
      * List all snapshots for the specified instance.
      *
-     * @return list<array{name: string, created_at: string, stateful: bool, size: int|null}>
+     * @return list<array{name: string, created_at: string, size: int|null}>
      */
     public function listSnapshots(VirtualMachine $vm): array;
 

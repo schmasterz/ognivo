@@ -47,7 +47,7 @@ It is an open-source alternative to hosting panels such as SolusVM and Virtualiz
 | Hypervisor onboarding | mTLS with `secp384r1` client certificates, one-time trust tokens, server certificate fingerprint and public-key (SPKI) pinning, certificate rotation | Alpha        |
 | Web terminal          | `xterm.js` through an isolated `console-proxy`; exec-based shell with a serial-console fallback; single-use Redis tickets (60 s by default)          | Alpha        |
 | Images                | Admin-managed image catalog, per-node image selection                                                                                                | Alpha        |
-| Snapshots             | Async stateful and stateless snapshots, distributed locks, per-tier quotas, pluggable `BackupTargetInterface`                                        | Alpha        |
+| Snapshots             | Async crash-consistent disk snapshots, distributed locks, per-tier quotas, pluggable `BackupTargetInterface`                                         | Alpha        |
 | Networking / IPAM     | IPv4 pools (Routed, Bridged, Macvlan, and Manual modes), pool address/free-IP inspector, IP cooldown quarantine, hypervisor preflight checks | Alpha        |
 | Quotas                | Reusable plans and tiers, race-free provisioning with row locks and Redis mutexes                                                                    | Alpha        |
 | Audit log             | Separate audit DB connection, `INSERT`/`SELECT`-only grants in production, SHA-256 hash chain with HMAC seals, PII pseudonymisation                  | Alpha        |

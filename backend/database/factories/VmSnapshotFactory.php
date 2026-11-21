@@ -38,7 +38,6 @@ class VmSnapshotFactory extends Factory
             'name' => 'snap-'.$this->faker->unique()->lexify('??????'),
             'source' => VmSnapshot::SOURCE_MANUAL,
             'status' => VmSnapshot::STATUS_READY,
-            'stateful' => false,
             'size_bytes' => null,
             'error' => null,
         ];
@@ -102,16 +101,6 @@ class VmSnapshotFactory extends Factory
     {
         return $this->state(fn (): array => [
             'source' => VmSnapshot::SOURCE_SCHEDULED,
-        ]);
-    }
-
-    /**
-     * Indicate that the snapshot is stateful.
-     */
-    public function stateful(): static
-    {
-        return $this->state(fn (): array => [
-            'stateful' => true,
         ]);
     }
 }

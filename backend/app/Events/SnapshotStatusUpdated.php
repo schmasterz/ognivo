@@ -83,7 +83,6 @@ class SnapshotStatusUpdated implements ShouldBroadcast
                 'name' => $this->snapshot->name,
                 'source' => $this->snapshot->source,
                 'status' => $this->status,
-                'stateful' => $this->snapshot->stateful,
                 'size_bytes' => $this->snapshot->size_bytes,
                 'error' => $this->snapshot->error,
                 'created_at' => $this->snapshot->created_at?->toISOString(),

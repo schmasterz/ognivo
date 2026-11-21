@@ -11,7 +11,6 @@ import {
   RefreshCw,
   HardDrive,
   Clock,
-  Sparkles,
 } from "lucide-react";
 import { VirtualMachine, User, VmSnapshot, VmSnapshotMeta, api, ApiError } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
@@ -399,20 +398,11 @@ export function VmSnapshotsTab({ vm, user, isAdmin }: VmSnapshotsTabProps) {
                       key={snapshot.id || snapshot.name}
                       className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition group"
                     >
-                      {/* Name & Stateful badge */}
+                      {/* Name */}
                       <td className="px-4 py-3.5 font-medium text-zinc-900 dark:text-zinc-100 whitespace-nowrap">
                         <div className="flex items-center space-x-2">
                           <Camera className="w-4 h-4 text-blue-500 shrink-0" />
                           <span className="font-mono">{snapshot.name}</span>
-                          {snapshot.stateful && (
-                            <span
-                              title={t("snapshotStatefulTooltip")}
-                              className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20"
-                            >
-                              <Sparkles className="w-2.5 h-2.5 mr-1" />
-                              {t("snapshotStatefulBadge")}
-                            </span>
-                          )}
                         </div>
                       </td>
 

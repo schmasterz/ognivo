@@ -43,7 +43,6 @@ final class VmSnapshotResource extends JsonResource
             'name' => $snapshot->name,
             'source' => $snapshot->source,
             'status' => $snapshot->status,
-            'stateful' => (bool) $snapshot->stateful,
             'size_bytes' => $snapshot->size_bytes,
             'error' => self::sanitizeError($snapshot->error),
             'created_at' => $snapshot->created_at?->toISOString(),

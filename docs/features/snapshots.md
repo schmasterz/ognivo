@@ -1,12 +1,12 @@
 # Virtual Machine Snapshots
 
-Point-in-time snapshot and state capture subsystem for KVM virtual machines and LXC containers running on Incus and LXD hypervisors.
+Point-in-time disk snapshot subsystem for KVM virtual machines and LXC containers running on Incus and LXD hypervisors.
 
 ---
 
 ## 1. Overview
 
-The snapshot subsystem allows tenants and administrators to capture, restore, and delete point-in-time snapshots of workloads. Snapshots capture block storage disks and optionally volatile RAM state (`stateful: true` on running VMs).
+The snapshot subsystem allows tenants and administrators to capture, restore, and delete point-in-time snapshots of workloads. All snapshots are crash-consistent point-in-time disk captures of the instance's block storage.
 
 - **Asynchronous Execution:** Creation, restoration, and deletion run as background Redis queue jobs (`CreateSnapshotJob`, `RestoreSnapshotJob`, `DeleteSnapshotJob`).
 - **Real-Time WebSocket Events:** Push notifications via `SnapshotStatusUpdated` update the UI immediately as states transition.
@@ -50,7 +50,7 @@ All endpoints require `auth:sanctum`. Mutating routes enforce `throttle:vm-actio
 | :--- | :--- | :--- | :--- |
 | `GET` | `/api/snapshots` | `200 OK` | Global paginated list of snapshots (filtered by tenant ownership, `vm_id`, `status`, `search`, or `user_id` for admins) |
 | `GET` | `/api/vms/{vm}/snapshots` | `200 OK` | Lists snapshots for a specific VM alongside quota `meta` (`used`, `max_snapshots`, `remaining`) |
-| `POST` | `/api/vms/{vm}/snapshots` | `202 Accepted` | Queues a manual snapshot (`name`, optional `stateful`) |
+| `POST` | `/api/vms/{vm}/snapshots` | `202 Accepted` | Queues a manual snapshot (`name`) |
 | `POST` | `/api/vms/{vm}/snapshots/{snapshot}/restore` | `202 Accepted` | Queues restoration of a `ready` snapshot (by ID or slug name) |
 | `DELETE` | `/api/vms/{vm}/snapshots/{snapshot}` | `202 Accepted` | Queues deletion of a snapshot (by ID or slug name) |
 
@@ -60,12 +60,10 @@ POST /api/vms/1/snapshots
 Content-Type: application/json
 
 {
-  "name": "pre-upgrade-baseline",
-  "stateful": false
+  "name": "pre-upgrade-baseline"
 }
 ```
 - `name`: Slug-safe identifier (`^[a-z0-9][a-z0-9_-]{0,62}[a-z0-9]$`, max 64 chars).
-- `stateful`: Boolean (default `false`). Valid only when the VM is `running`.
 
 ---
 

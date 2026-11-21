@@ -35,7 +35,6 @@ final class AuditEntryResource extends JsonResource
         'virtual_machine_id',
         'vm_id',
         'snapshot_id',
-        'stateful',
         'source',
         'force',
         'forced',

@@ -85,7 +85,7 @@ final class VmSnapshotController extends Controller
         $dto = $request->toDTO();
 
         try {
-            $snapshot = $this->snapshotService->create($vm, $dto->name, $dto->stateful);
+            $snapshot = $this->snapshotService->create($vm, $dto->name);
         } catch (SnapshotQuotaExceededException $e) {
             throw ValidationException::withMessages([
                 'quota' => [$e->getMessage()],

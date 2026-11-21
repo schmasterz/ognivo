@@ -193,17 +193,17 @@ class HypervisorGateway
     /**
      * Create a snapshot for the specified instance via its hypervisor driver.
      */
-    public function createSnapshot(VirtualMachine $vm, string $name, bool $stateful = false): bool
+    public function createSnapshot(VirtualMachine $vm, string $name): bool
     {
         $manager = $this->manager ?? app(HypervisorManager::class);
 
-        return $manager->driverForVm($vm)->createSnapshot($vm, $name, $stateful);
+        return $manager->driverForVm($vm)->createSnapshot($vm, $name);
     }
 
     /**
      * List all snapshots for the specified instance via its hypervisor driver.
      *
-     * @return list<array{name: string, created_at: string, stateful: bool, size: int|null}>
+     * @return list<array{name: string, created_at: string, size: int|null}>
      */
     public function listSnapshots(VirtualMachine $vm): array
     {

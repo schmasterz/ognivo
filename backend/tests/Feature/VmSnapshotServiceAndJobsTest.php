@@ -426,7 +426,7 @@ final class VmSnapshotServiceAndJobsTest extends TestCase
         $mockTarget = Mockery::mock(BackupTargetInterface::class);
         $mockTarget->shouldReceive('create')
             ->once()
-            ->with(Mockery::on(fn (VirtualMachine $v): bool => $v->id === $this->vm->id), 'idem-snap', false)
+            ->with(Mockery::on(fn (VirtualMachine $v): bool => $v->id === $this->vm->id), 'idem-snap')
             ->andReturn(true);
         $mockTarget->shouldReceive('restore')
             ->once()
@@ -514,10 +514,10 @@ final class VmSnapshotServiceAndJobsTest extends TestCase
             'user_id' => $this->customer->id,
             'name' => 'kept-snap',
         ]);
-        $this->fakeDriver->createSnapshot($this->vm, 'kept-snap', false);
+        $this->fakeDriver->createSnapshot($this->vm, 'kept-snap');
 
         // Snapshot created externally on hypervisor (not in DB yet)
-        $this->fakeDriver->createSnapshot($this->vm, 'created-externally', true);
+        $this->fakeDriver->createSnapshot($this->vm, 'created-externally');
 
         $this->fakeDriver->projects = ['tenant-snap-svc'];
         $this->fakeDriver->instances = [
@@ -556,7 +556,6 @@ final class VmSnapshotServiceAndJobsTest extends TestCase
             'user_id' => $this->customer->id,
             'name' => 'created-externally',
             'status' => VmSnapshot::STATUS_READY,
-            'stateful' => true,
         ]);
 
         // Also test direct syncFromHypervisor when external snapshot is deleted on hypervisor

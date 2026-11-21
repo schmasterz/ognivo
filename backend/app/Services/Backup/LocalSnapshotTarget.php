@@ -20,9 +20,9 @@ final class LocalSnapshotTarget implements BackupTargetInterface
     ) {}
 
     #[Override]
-    public function create(VirtualMachine $vm, string $name, bool $stateful = false): bool
+    public function create(VirtualMachine $vm, string $name): bool
     {
-        return $this->driverFor($vm)->createSnapshot($vm, $name, $stateful);
+        return $this->driverFor($vm)->createSnapshot($vm, $name);
     }
 
     #[Override]
@@ -38,7 +38,7 @@ final class LocalSnapshotTarget implements BackupTargetInterface
     }
 
     /**
-     * @return list<array{name: string, created_at: string, stateful: bool, size: int|null}>
+     * @return list<array{name: string, created_at: string, size: int|null}>
      */
     #[Override]
     public function list(VirtualMachine $vm): array
@@ -49,9 +49,9 @@ final class LocalSnapshotTarget implements BackupTargetInterface
     /**
      * Alias for create() matching HypervisorDriverInterface naming.
      */
-    public function createSnapshot(VirtualMachine $vm, string $name, bool $stateful = false): bool
+    public function createSnapshot(VirtualMachine $vm, string $name): bool
     {
-        return $this->create($vm, $name, $stateful);
+        return $this->create($vm, $name);
     }
 
     /**
@@ -73,7 +73,7 @@ final class LocalSnapshotTarget implements BackupTargetInterface
     /**
      * Alias for list() matching HypervisorDriverInterface naming.
      *
-     * @return list<array{name: string, created_at: string, stateful: bool, size: int|null}>
+     * @return list<array{name: string, created_at: string, size: int|null}>
      */
     public function listSnapshots(VirtualMachine $vm): array
     {

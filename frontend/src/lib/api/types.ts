@@ -237,7 +237,6 @@ export interface VmSnapshot {
   name: string;
   source: "manual" | "scheduled" | string;
   status: VmSnapshotStatus | string;
-  stateful: boolean;
   size_bytes: number | null;
   error?: string | null;
   created_at?: string;
@@ -274,7 +273,6 @@ export interface SnapshotListResponse {
 
 export interface CreateSnapshotPayload {
   name: string;
-  stateful?: boolean;
 }
 
 export interface SnapshotActionResponse {
