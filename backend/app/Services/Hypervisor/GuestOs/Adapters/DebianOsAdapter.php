@@ -23,14 +23,15 @@ class DebianOsAdapter extends AbstractLinuxCloudInitOsAdapter
         return 'debian';
     }
 
+    /**
+     * @return array<int, array<string, mixed>>
+     */
     #[Override]
-    protected function routedRoutesBlock(): string
+    protected function routedRoutes(): array
     {
-        return <<<'YAML'
-      routes:
-        - to: 169.254.0.1/32
-        - to: 0.0.0.0/0
-          via: 169.254.0.1
-YAML;
+        return [
+            ['to' => '169.254.0.1/32'],
+            ['to' => '0.0.0.0/0', 'via' => '169.254.0.1'],
+        ];
     }
 }

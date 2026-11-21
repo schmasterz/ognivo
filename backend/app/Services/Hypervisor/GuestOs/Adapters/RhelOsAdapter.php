@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Hypervisor\GuestOs\Adapters;
 
 use Override;
+use Symfony\Component\Yaml\Yaml;
 
 /**
  * Guest OS adapter for RHEL-family cloud images (AlmaLinux, Rocky, CentOS, Fedora, Oracle, RHEL, Amazon Linux, openEuler).
@@ -41,14 +42,15 @@ final class RhelOsAdapter extends AbstractLinuxCloudInitOsAdapter
         return [];
     }
 
+    /**
+     * @return array<int, array<string, mixed>>
+     */
     #[Override]
-    protected function routedRoutesBlock(): string
+    protected function routedRoutes(): array
     {
-        return <<<'YAML'
-      routes:
-        - to: 0.0.0.0/0
-          via: 169.254.0.1
-YAML;
+        return [
+            ['to' => '0.0.0.0/0', 'via' => '169.254.0.1'],
+        ];
     }
 
     /**
@@ -69,18 +71,22 @@ YAML;
             return null;
         }
 
-        $dnsList = $dnsServers !== null && $dnsServers !== [] ? $dnsServers : ['1.1.1.1', '8.8.8.8'];
-        $dnsLines = implode("\n", array_map(fn (string $dns): string => sprintf('      nameserver %s', trim($dns)), $dnsList));
+        $dnsList = $dnsServers !== null && $dnsServers !== [] ? array_values(array_map('trim', $dnsServers)) : ['1.1.1.1', '8.8.8.8'];
+        $content = implode("\n", array_map(fn (string $dns): string => sprintf('nameserver %s', $dns), $dnsList))."\n";
 
-        return <<<YAML
-#cloud-config
-write_files:
-  - path: /etc/resolv.conf
-    permissions: '0644'
-    content: |
-{$dnsLines}
-runcmd:
-  - nmcli connection up 'cloud-init eth0' || true
-YAML;
+        $data = [
+            'write_files' => [
+                [
+                    'path' => '/etc/resolv.conf',
+                    'permissions' => '0644',
+                    'content' => $content,
+                ],
+            ],
+            'runcmd' => [
+                "nmcli connection up 'cloud-init eth0' || true",
+            ],
+        ];
+
+        return "#cloud-config\n".Yaml::dump($data, inline: 10, indent: 2, flags: Yaml::DUMP_MULTI_LINE_LITERAL_BLOCK);
     }
 }

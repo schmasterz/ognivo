@@ -13,6 +13,7 @@ use App\Models\VirtualMachine;
 use App\Services\Hypervisor\InstanceSpecBuilder;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Symfony\Component\Yaml\Yaml;
 use Tests\TestCase;
 
 final class InstanceSpecBuilderNetworkModesTest extends TestCase
@@ -153,7 +154,7 @@ network:
 YAML;
 
         $netplanYaml = $spec['config']['cloud-init.network-config'];
-        $this->assertSame($expectedYaml, $netplanYaml);
+        $this->assertSame(Yaml::parse($expectedYaml), Yaml::parse($netplanYaml));
         $this->assertStringNotContainsString('match:', $netplanYaml);
         $this->assertStringNotContainsString('set-name: eth0', $netplanYaml);
         $this->assertStringContainsString('addresses:', $netplanYaml);
@@ -209,7 +210,7 @@ network:
           - 8.8.4.4
 YAML;
 
-        $this->assertSame($expectedYaml, $spec['config']['cloud-init.network-config']);
+        $this->assertSame(Yaml::parse($expectedYaml), Yaml::parse($spec['config']['cloud-init.network-config']));
     }
 
     public function test_macvlan_container_spec_without_gateway_omits_routes_block(): void
@@ -248,7 +249,7 @@ network:
 YAML;
 
         $netplanYaml = $spec['config']['cloud-init.network-config'];
-        $this->assertSame($expectedYaml, $netplanYaml);
+        $this->assertSame(Yaml::parse($expectedYaml), Yaml::parse($netplanYaml));
         $this->assertStringNotContainsString('match:', $netplanYaml);
         $this->assertStringNotContainsString('set-name: eth0', $netplanYaml);
         $this->assertStringContainsString('addresses:', $netplanYaml);
@@ -302,7 +303,7 @@ network:
           - 8.8.8.8
 YAML;
 
-        $this->assertSame($expectedYaml, $spec['config']['cloud-init.network-config']);
+        $this->assertSame(Yaml::parse($expectedYaml), Yaml::parse($spec['config']['cloud-init.network-config']));
     }
 
     public function test_routed_container_has_ipv4_address_and_exact_link_local_netplan_yaml(): void
@@ -345,7 +346,7 @@ network:
 YAML;
 
         $netplanYaml = $spec['config']['cloud-init.network-config'];
-        $this->assertSame($expectedYaml, $netplanYaml);
+        $this->assertSame(Yaml::parse($expectedYaml), Yaml::parse($netplanYaml));
         $this->assertStringNotContainsString('match:', $netplanYaml);
         $this->assertStringNotContainsString('set-name: eth0', $netplanYaml);
         $this->assertStringContainsString('addresses:', $netplanYaml);
@@ -399,7 +400,7 @@ network:
           - 9.9.9.9
 YAML;
 
-        $this->assertSame($expectedYaml, $spec['config']['cloud-init.network-config']);
+        $this->assertSame(Yaml::parse($expectedYaml), Yaml::parse($spec['config']['cloud-init.network-config']));
     }
 
     public function test_manual_mode_for_vm_and_container_has_no_eth0_and_no_cloud_init_network_config(): void
@@ -442,7 +443,7 @@ YAML;
             dnsServers: ['8.8.8.8'],
         );
 
-        $this->assertSame(<<<'YAML'
+        $this->assertSame(Yaml::parse(<<<'YAML'
 network:
   version: 2
   ethernets:
@@ -458,7 +459,7 @@ network:
       nameservers:
         addresses:
           - 8.8.8.8
-YAML, $subnetWithGateway);
+YAML), Yaml::parse($subnetWithGateway));
 
         $subnetWithoutGateway = $this->builder->generateSubnetNetplanConfig(
             macAddress: '02:54:00:00:00:11',
@@ -468,7 +469,7 @@ YAML, $subnetWithGateway);
             dnsServers: null,
         );
 
-        $this->assertSame(<<<'YAML'
+        $this->assertSame(Yaml::parse(<<<'YAML'
 network:
   version: 2
   ethernets:
@@ -482,7 +483,7 @@ network:
         addresses:
           - 1.1.1.1
           - 8.8.8.8
-YAML, $subnetWithoutGateway);
+YAML), Yaml::parse($subnetWithoutGateway));
 
         $routedYaml = $this->builder->generateNetplanConfig(
             macAddress: '02:54:00:00:00:12',
@@ -490,7 +491,7 @@ YAML, $subnetWithoutGateway);
             dnsServers: null,
         );
 
-        $this->assertSame(<<<'YAML'
+        $this->assertSame(Yaml::parse(<<<'YAML'
 network:
   version: 2
   ethernets:
@@ -508,7 +509,7 @@ network:
         addresses:
           - 1.1.1.1
           - 8.8.8.8
-YAML, $routedYaml);
+YAML), Yaml::parse($routedYaml));
 
         $containerSubnetYaml = $this->builder->generateSubnetNetplanConfig(
             macAddress: '02:54:00:00:00:13',
@@ -519,7 +520,7 @@ YAML, $routedYaml);
             instanceType: 'container',
         );
 
-        $this->assertSame(<<<'YAML'
+        $this->assertSame(Yaml::parse(<<<'YAML'
 network:
   version: 2
   ethernets:
@@ -532,7 +533,7 @@ network:
       nameservers:
         addresses:
           - 1.1.1.1
-YAML, $containerSubnetYaml);
+YAML), Yaml::parse($containerSubnetYaml));
 
         $containerRoutedYaml = $this->builder->generateNetplanConfig(
             macAddress: '02:54:00:00:00:14',
@@ -541,7 +542,7 @@ YAML, $containerSubnetYaml);
             instanceType: 'container',
         );
 
-        $this->assertSame(<<<'YAML'
+        $this->assertSame(Yaml::parse(<<<'YAML'
 network:
   version: 2
   ethernets:
@@ -555,7 +556,7 @@ network:
       nameservers:
         addresses:
           - 9.9.9.9
-YAML, $containerRoutedYaml);
+YAML), Yaml::parse($containerRoutedYaml));
     }
 
     public function test_routed_netplan_routes_vary_by_os_family(): void
@@ -568,7 +569,7 @@ YAML, $containerRoutedYaml);
             imageName: 'ubuntu/24.04',
         );
 
-        $this->assertSame(<<<'YAML'
+        $this->assertSame(Yaml::parse(<<<'YAML'
 network:
   version: 2
   ethernets:
@@ -585,7 +586,7 @@ network:
       nameservers:
         addresses:
           - 1.1.1.1
-YAML, $ubuntuYaml);
+YAML), Yaml::parse($ubuntuYaml));
 
         foreach (['debian/12', 'images:Debian/12'] as $debianImage) {
             $debianYaml = $this->builder->generateNetplanConfig(
@@ -596,7 +597,7 @@ YAML, $ubuntuYaml);
                 imageName: $debianImage,
             );
 
-            $this->assertSame(<<<'YAML'
+            $this->assertSame(Yaml::parse(<<<'YAML'
 network:
   version: 2
   ethernets:
@@ -613,7 +614,7 @@ network:
       nameservers:
         addresses:
           - 1.1.1.1
-YAML, $debianYaml);
+YAML), Yaml::parse($debianYaml));
         }
 
         foreach (['almalinux/9', 'rocky/9', 'rhel/9', 'centos/9-Stream', 'fedora/40'] as $rhelImage) {
@@ -625,7 +626,7 @@ YAML, $debianYaml);
                 imageName: $rhelImage,
             );
 
-            $this->assertSame(<<<'YAML'
+            $this->assertSame(Yaml::parse(<<<'YAML'
 network:
   version: 2
   ethernets:
@@ -641,7 +642,7 @@ network:
       nameservers:
         addresses:
           - 1.1.1.1
-YAML, $rhelYaml);
+YAML), Yaml::parse($rhelYaml));
         }
     }
 
