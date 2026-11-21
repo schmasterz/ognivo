@@ -522,19 +522,11 @@ export function SnapshotsTab({
                       key={snap.id}
                       className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors group"
                     >
-                      {/* Name & Flags */}
+                      {/* Name */}
                       <td className="px-4 sm:px-6 py-3.5 font-mono font-medium text-gray-900 dark:text-white whitespace-nowrap">
                         <div className="flex items-center space-x-2">
                           <Camera className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
                           <span>{snap.name}</span>
-                          {snap.stateful && (
-                            <span
-                              title={t("snapshotStatefulTooltip")}
-                              className="px-1.5 py-0.5 rounded text-[10px] font-sans font-semibold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20"
-                            >
-                              {t("snapshotStatefulBadge")}
-                            </span>
-                          )}
                         </div>
                       </td>
 
