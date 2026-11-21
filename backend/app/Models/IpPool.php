@@ -6,6 +6,7 @@ namespace App\Models;
 
 use App\Audit\Auditable;
 use App\Services\Network\CidrHelper;
+use App\Services\Network\NetworkConstants;
 use Database\Factories\IpPoolFactory;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -183,5 +184,64 @@ final class IpPool extends Model
     public function getActiveAllocationsCountAttribute(): int
     {
         return $this->allocations()->where('status', 'allocated')->count();
+    }
+
+    /**
+     * Compute effective excluded IP addresses as unsigned long integers.
+     * Single source of truth for allocation, utilization, address mapping, and preflight.
+     *
+     * Contract:
+     * 1. Input: excluded_ips and gateway.
+     * 2. Normalize every entry as valid IPv4 address; ignore invalid or non-string entries.
+     * 3. Merge gateway into the set and remove duplicates.
+     * 4. Keep only addresses inside [first_usable, last_usable].
+     * 5. Never include any address in 169.254.0.0/16.
+     * 6. Return map/set of unsigned integers (suitable for O(1) lookup).
+     *
+     * @return array<int, int> Map of unsigned long => unsigned long
+     */
+    public function effectiveExcludedLongs(): array
+    {
+        $firstLong = CidrHelper::ipToUnsigned((string) $this->first_usable);
+        $lastLong = CidrHelper::ipToUnsigned((string) $this->last_usable);
+
+        if ($firstLong === null || $lastLong === null || $firstLong > $lastLong) {
+            return [];
+        }
+
+        [$linkLocalNet, $linkLocalBcast] = CidrHelper::subnetRange(NetworkConstants::LINK_LOCAL_CIDR) ?? [2851995648, 2852061183];
+
+        $candidates = [];
+
+        if ($this->gateway !== null && $this->gateway !== '') {
+            $candidates[] = $this->gateway;
+        }
+
+        if (is_array($this->excluded_ips)) {
+            foreach ($this->excluded_ips as $entry) {
+                if (is_string($entry)) {
+                    $candidates[] = $entry;
+                }
+            }
+        }
+
+        $result = [];
+
+        foreach ($candidates as $ip) {
+            $ipLong = CidrHelper::ipToUnsigned($ip);
+            if ($ipLong === null) {
+                continue;
+            }
+
+            if ($ipLong >= $linkLocalNet && $ipLong <= $linkLocalBcast) {
+                continue;
+            }
+
+            if ($ipLong >= $firstLong && $ipLong <= $lastLong) {
+                $result[$ipLong] = $ipLong;
+            }
+        }
+
+        return $result;
     }
 }
