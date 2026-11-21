@@ -7,6 +7,7 @@ namespace App\Http\Requests\Admin;
 use App\Models\IpPool;
 use App\Services\IpManagementService;
 use App\Services\Network\CidrHelper;
+use App\Services\Network\IpPoolConfigValidator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -60,7 +61,7 @@ final class UpdateIpPoolRequest extends FormRequest
 
             $hasAllocations = $pool->allocations()->count() > 0;
 
-            // Enforce immutability of cidr, host_id, network_mode when allocations exist
+            // Enforce immutability of cidr, host_id, network_mode, and L2 gateway when allocations exist
             if ($hasAllocations) {
                 if ($this->has('cidr') && $this->input('cidr') !== null && $this->input('cidr') !== $pool->cidr) {
                     $v->errors()->add('cidr', 'CIDR cannot be modified when allocations exist in the pool.');
@@ -71,76 +72,52 @@ final class UpdateIpPoolRequest extends FormRequest
                 if ($this->has('network_mode') && $this->input('network_mode') !== null && $this->input('network_mode') !== $pool->network_mode) {
                     $v->errors()->add('network_mode', 'Network mode cannot be modified when allocations exist in the pool.');
                 }
+                if ($this->has('gateway') && $this->input('gateway') !== $pool->gateway && ($pool->network_mode === 'bridged' || $pool->network_mode === 'macvlan')) {
+                    $v->errors()->add('gateway', 'Gateway cannot be modified when allocations exist in bridged or macvlan pools.');
+                }
             }
 
             $inputMode = $this->input('network_mode');
-            $resultingMode = is_string($inputMode) && $inputMode !== '' ? $inputMode : $pool->network_mode;
-            $isL2Mode = in_array($resultingMode, ['bridged', 'macvlan'], true);
+            $effectiveMode = is_string($inputMode) && $inputMode !== '' ? $inputMode : $pool->network_mode;
             $resultingInterface = $this->exists('parent_interface')
                 ? $this->input('parent_interface')
                 : $pool->parent_interface;
 
-            if ($resultingMode !== 'manual' && trim(is_string($resultingInterface) ? $resultingInterface : '') === '') {
+            if ($effectiveMode !== 'manual' && trim(is_string($resultingInterface) ? $resultingInterface : '') === '') {
                 $v->errors()->add('parent_interface', 'Parent interface is required when network mode is not manual.');
             }
 
-            $cidr = (string) ($this->input('cidr') ?: $pool->cidr);
-            $parsed = CidrHelper::parse($cidr);
-            if ($parsed === null) {
-                $v->errors()->add('cidr', 'CIDR must be in format IPv4/prefix (e.g. 192.168.1.0/24).');
+            $effectiveCidr = (string) ($this->input('cidr') ?: $pool->cidr);
+            $rawGateway = $this->input('gateway');
+            $effectiveGateway = $this->has('gateway')
+                ? (is_string($rawGateway) && trim($rawGateway) !== '' ? $rawGateway : null)
+                : $pool->gateway;
+            $effectiveExcluded = $this->has('excluded_ips')
+                ? (is_array($this->input('excluded_ips')) ? $this->input('excluded_ips') : [])
+                : ($pool->excluded_ips ?? []);
+            $effectiveFirst = (string) ($this->input('first_usable') ?: $pool->first_usable);
+            $effectiveLast = (string) ($this->input('last_usable') ?: $pool->last_usable);
 
-                return;
-            }
-
-            [$ip, $prefix] = $parsed;
-
-            if ($prefix < 16 || $prefix > 32) {
-                $v->errors()->add('cidr', 'CIDR prefix length must be between 16 and 32.');
-
-                return;
-            }
-
-            if ($isL2Mode && $prefix > 30) {
-                $v->errors()->add('cidr', 'Layer-2 pool modes require a prefix between /16 and /30.');
-            }
-
-            $range = CidrHelper::subnetRange($cidr);
-            if ($range === null) {
-                $v->errors()->add('cidr', 'Invalid CIDR subnet range.');
-
-                return;
-            }
-
-            [$network, $broadcast] = $range;
-            $defaults = CidrHelper::calculateUsableRange($cidr);
-            if ($defaults === null) {
-                $v->errors()->add('cidr', 'Unable to calculate usable range for CIDR.');
-
-                return;
-            }
-
-            $minAllowed = CidrHelper::ipToUnsigned($defaults['first']);
-            $maxAllowed = CidrHelper::ipToUnsigned($defaults['last']);
-
-            $firstUsable = (string) ($this->input('first_usable') ?: $pool->first_usable);
-            $lastUsable = (string) ($this->input('last_usable') ?: $pool->last_usable);
-
-            $firstLong = CidrHelper::ipToUnsigned($firstUsable);
-            $lastLong = CidrHelper::ipToUnsigned($lastUsable);
-
-            if ($firstLong === null || $minAllowed === null || $maxAllowed === null || $firstLong < $minAllowed || $firstLong > $maxAllowed) {
-                $v->errors()->add('first_usable', 'First usable IP is outside the CIDR subnet.');
-            }
-
-            if ($lastLong === null || $minAllowed === null || $maxAllowed === null || $lastLong < $minAllowed || $lastLong > $maxAllowed) {
-                $v->errors()->add('last_usable', 'Last usable IP is outside the CIDR subnet.');
-            }
-
-            if ($firstLong !== null && $lastLong !== null && $firstLong > $lastLong) {
-                $v->errors()->add('first_usable', 'First usable IP cannot be greater than last usable IP.');
+            if (in_array($effectiveMode, ['routed', 'bridged', 'macvlan', 'manual'], true)) {
+                $errors = IpPoolConfigValidator::validate(
+                    $effectiveMode,
+                    $effectiveCidr,
+                    $effectiveGateway,
+                    $effectiveExcluded,
+                    $effectiveFirst,
+                    $effectiveLast
+                );
+                foreach ($errors as $field => $messages) {
+                    foreach ($messages as $msg) {
+                        $v->errors()->add($field, $msg);
+                    }
+                }
             }
 
             // Verify that no active or cooling allocation falls outside the new range
+            $firstLong = CidrHelper::ipToUnsigned($effectiveFirst);
+            $lastLong = CidrHelper::ipToUnsigned($effectiveLast);
+
             if ($firstLong !== null && $lastLong !== null) {
                 $allocations = $pool->allocations()
                     ->whereIn('status', ['allocated', 'cooling'])
@@ -152,38 +129,10 @@ final class UpdateIpPoolRequest extends FormRequest
                         $v->errors()->add('first_usable', sprintf(
                             'Cannot adjust IP range: existing allocation %s falls outside the new range (%s - %s).',
                             $alloc->ip_string,
-                            $firstUsable,
-                            $lastUsable
+                            $effectiveFirst,
+                            $effectiveLast
                         ));
                         break;
-                    }
-                }
-            }
-
-            // Gateway check
-            $gateway = $this->exists('gateway') ? $this->input('gateway') : $pool->gateway;
-            if ($isL2Mode) {
-                if (! is_string($gateway) || trim($gateway) === '') {
-                    $v->errors()->add('gateway', 'Gateway is required for bridged and macvlan pool modes.');
-                } elseif (filter_var($gateway, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false) {
-                    $v->errors()->add('gateway', 'Gateway must be a valid IPv4 address.');
-                } else {
-                    $gwLong = CidrHelper::ipToUnsigned($gateway);
-                    if ($gwLong === null || $gwLong < $network || $gwLong > $broadcast) {
-                        $v->errors()->add('gateway', 'Gateway IP is outside the CIDR subnet.');
-                    } elseif ($prefix <= 30 && ($gwLong === $network || $gwLong === $broadcast)) {
-                        $v->errors()->add('gateway', 'Gateway IP cannot be the network or broadcast address.');
-                    }
-                }
-            } else {
-                if ($prefix <= 30 && (empty($gateway) || ! is_string($gateway))) {
-                    $v->errors()->add('gateway', 'Gateway is required for subnets /16 to /30.');
-                }
-
-                if ($gateway && is_string($gateway)) {
-                    $gwLong = CidrHelper::ipToUnsigned($gateway);
-                    if ($gwLong === null || $gwLong < $network || $gwLong > $broadcast) {
-                        $v->errors()->add('gateway', 'Gateway IP is outside the CIDR subnet.');
                     }
                 }
             }
@@ -192,11 +141,11 @@ final class UpdateIpPoolRequest extends FormRequest
             $effectiveHostId = (int) ($this->input('host_id') ?: $pool->host_id);
             $effectiveIsPublic = $this->has('is_public') ? (bool) $this->input('is_public') : $pool->is_public;
 
-            $conflictingPool = app(IpManagementService::class)->checkPoolOverlap($cidr, $effectiveHostId, $effectiveIsPublic, $pool->id);
+            $conflictingPool = app(IpManagementService::class)->checkPoolOverlap($effectiveCidr, $effectiveHostId, $effectiveIsPublic, $pool->id);
             if ($conflictingPool !== null) {
                 $v->errors()->add('cidr', sprintf(
                     "Subnet '%s' overlaps with existing pool '%s' (ID #%d, CIDR %s).",
-                    $cidr,
+                    $effectiveCidr,
                     $conflictingPool->name,
                     $conflictingPool->id,
                     $conflictingPool->cidr
