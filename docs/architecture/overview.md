@@ -74,6 +74,7 @@ flowchart TB
 
 - **`VmProvisioningService`** — Performs race-free quota and IP allocation inside database transactions with `lockForUpdate()` and Redis distributed locks, then dispatches `ProvisionVmJob` after commit.
 - **`HypervisorManager` & Drivers (`IncusDriver`, `LxdDriver`, `FakeHypervisorDriver`)** — Implements `HypervisorDriverInterface` over mTLS REST (`/1.0/instances`, `/1.0/projects`, `/1.0/certificates`, `/1.0/events`).
+- **`InstanceSpecBuilder` & Guest OS Adapters (`GuestOsResolver`, `GuestOsAdapterInterface`)** — Responsible for generating compliant Incus instance payloads (devices, root disk, `eth0` NIC, `agent:config` drive) and tailoring cloud-init networking and hypervisor configuration across distinct OS families.
 - **`IncusTrustService` & `PanelCertificateService`** — Handles single-use trust token onboarding, TLS peer certificate fingerprint verification, and mTLS key rotation.
 - **`ConsoleTicketService`** — Issues 60-second single-use Redis console tickets without exposing hypervisor credentials to the client.
 - **`VmSnapshotService` & `LocalSnapshotTarget`** — Coordinates snapshot operations through `BackupTargetInterface` with per-VM mutex locks.

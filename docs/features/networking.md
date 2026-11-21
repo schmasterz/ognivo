@@ -19,18 +19,64 @@ In `routed` mode, instances communicate using point-to-point Layer 3 routing ove
   - `parent: <parent_interface>`
   - `ipv4.address: <assigned_ip>`
   - `hwaddr: <mac_address>` (when the IP allocation has a generated MAC address `02:54:xx:xx:xx:xx`)
-- **Cloud-Init Netplan (Virtual Machines & Containers):** For both `virtual-machine` and `container` instances in `routed` mode, `InstanceSpecBuilder` injects `cloud-init.network-config` (Netplan v2) to configure the `<assigned_ip>/32` address, point-to-point routes, and DNS `nameservers` (from `pool.dns_servers`, defaulting to `1.1.1.1` and `8.8.8.8`):
+- **Cloud-Init Network Config (Virtual Machines & Containers):** For both `virtual-machine` and `container` instances in `routed` mode, `InstanceSpecBuilder` delegates to the Guest OS adapter layer (`GuestOsResolver`) to inject `cloud-init.network-config` configuring the `<assigned_ip>/32` address, point-to-point routes via the link-local gateway `169.254.0.1`, and DNS `nameservers` (from `pool.dns_servers`, defaulting to `1.1.1.1` and `8.8.8.8`):
   - For **`virtual-machine`** instances, Netplan includes `match: { macaddress: ... }` and `set-name: eth0` to handle predictable interface naming (such as `enp5s0`).
   - For **`container`** instances, Netplan configures directly under `eth0:` (omitting `match` and `set-name`) to avoid `udev` unmanaged link conflicts in unprivileged LXC.
+  - Modern Netplan deprecates `scope: link` for point-to-point `/32` routes; instead, routes use either `on-link: true` directly on the default route (as in Ubuntu) or an explicit host route to `169.254.0.1/32` alongside the default route (for `systemd-networkd`), depending on the guest OS strategy below. For example, the default Ubuntu Netplan v2 route block is:
   ```yaml
   routes:
-    - to: 169.254.0.1/32
-      scope: link
     - to: 0.0.0.0/0
       via: 169.254.0.1
       on-link: true
   ```
 - **Pool Rules:** CIDR prefix `/16` to `/32`. `gateway` is required for `/16` to `/30` subnets and optional for `/31` and `/32`.
+
+### 1.1 Guest OS Routed Route Strategies
+Because Linux and BSD guest distributions ship different network renderers behind `cloud-init`, Ognivo's Guest OS adapters generate four distinct routing configurations in `routed` mode:
+
+1. **Ubuntu Style (`UbuntuOsAdapter`):**
+   Uses a single Netplan v2 default route with `on-link: true` so Netplan directly attaches the off-subnet link-local gateway `169.254.0.1` to `eth0`:
+   ```yaml
+   routes:
+     - to: 0.0.0.0/0
+       via: 169.254.0.1
+       on-link: true
+   ```
+
+2. **Debian / Arch / Gentoo / BSD Style (`DebianOsAdapter`, `ArchOsAdapter`, `GentooOsAdapter`, `BsdOsAdapter`):**
+   Generates two Netplan v2 routes—an explicit host link route to `169.254.0.1/32` followed by the default route via `169.254.0.1`—which `systemd-networkd` requires to resolve the link-local gateway cleanly without `on-link`:
+   ```yaml
+   routes:
+     - to: 169.254.0.1/32
+     - to: 0.0.0.0/0
+       via: 169.254.0.1
+   ```
+   *(Note: `BsdOsAdapter` targets `vtnet0` directly on KVM virtual machines without `match`/`set-name` interface renaming, and `eth0` on containers.)*
+
+3. **RHEL / SUSE Style (`RhelOsAdapter`, `SuseOsAdapter`):**
+   Generates a single Netplan v2 default route without `on-link` for `sysconfig`/`NetworkManager` parser compatibility:
+   ```yaml
+   routes:
+     - to: 0.0.0.0/0
+       via: 169.254.0.1
+   ```
+
+4. **Alpine Linux Style (`AlpineOsAdapter`):**
+   Uses Cloud-Init Network Config **version 1** (`version: 1`) YAML instead of Netplan v2, specifying a static `/32` subnet with `gateway: '169.254.0.1'` so Alpine's `ifupdown-ng` ENI renderer natively sets up the kernel on-link route:
+   ```yaml
+   version: 1
+   config:
+     - type: physical
+       name: eth0
+       mac_address: "02:54:xx:xx:xx:xx" # virtual-machine only
+       subnets:
+         - type: static
+           address: "<assigned_ip>/32"
+           gateway: "169.254.0.1"
+           dns_nameservers:
+             - 1.1.1.1
+             - 8.8.8.8
+   ```
 
 ### Required Hypervisor Host Configuration
 Because the Incus REST API cannot modify host kernel `sysctl` parameters, operators must enable IPv4 forwarding and Proxy ARP on each hypervisor host running `routed` pools:
@@ -142,7 +188,7 @@ In `manual` mode, guest networking is managed externally by the infrastructure o
 ### Mode Comparison
 | Mode | `eth0` `nictype` | `ipv4.address` on NIC | `cloud-init.network-config` | Allowed CIDR | `gateway` | `parent_interface` |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `routed` | `routed` | Yes | VMs only (`/32`, `via 169.254.0.1`) | `/16` – `/32` | Required for `/16`–`/30`; optional for `/31`–`/32` | Required (no default) |
+| `routed` | `routed` | Yes | Containers & VMs (`/32`, `via 169.254.0.1`) | `/16` – `/32` | Required for `/16`–`/30`; optional for `/31`–`/32` | Required (no default) |
 | `bridged` | `bridged` | No | Containers & VMs (`/<prefix>`, `via <gateway>`) | `/16` – `/30` | Required, inside CIDR, not network/broadcast | Required (`bridge`, no default) |
 | `macvlan` | `macvlan` | No | Containers & VMs (`/<prefix>`, `via <gateway>`) | `/16` – `/30` | Required, inside CIDR, not network/broadcast | Required (`physical`/`bond`/`vlan`, no default) |
 | `manual` | *(omitted)* | No | No | `/16` – `/32` | Required for `/16`–`/30`; optional for `/31`–`/32` | Unused (stored `""`, API `null`) |
@@ -216,7 +262,7 @@ Ognivo 1.0 allocates and tracks **IPv4 addresses only**.
 | :--- | :--- |
 | Pool creation | `POST /api/admin/ip-pools` rejects an `ip_version` other than `4` with a validation error on `ip_version` (`messages.ip.ipv6_not_supported_v1`: "IPv6 is not supported in v1.0."). Omitting `ip_version` creates an IPv4 pool |
 | Pool CIDR | Must be a valid **IPv4** CIDR with a prefix length between `/16` and `/32` (`/16` to `/30` for `bridged` and `macvlan`). An IPv6 CIDR fails validation |
-| Instance NIC | Only IPv4 addresses are configured (`ipv4.address` on `routed` NICs, Netplan IPv4 `addresses` for `bridged`/`macvlan` and `routed` VMs). No IPv6 address is assigned or tracked by Ognivo |
+| Instance NIC | Only IPv4 addresses are configured (`ipv4.address` on `routed` NICs, Netplan IPv4 `addresses` for `bridged`/`macvlan` and `routed` instances). No IPv6 address is assigned or tracked by Ognivo |
 | Host configuration | The required `sysctl` settings in [Section 1](#1-routed-network-mode-routed) are IPv4 settings (`ip_forward`, `proxy_arp`). No IPv6 forwarding or NDP proxy setup is needed or managed |
 | Quotas | The per-user IP quota (`max_ips`) counts IPv4 allocations |
 

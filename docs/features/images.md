@@ -74,6 +74,26 @@ When an instance is created, Ognivo sends Incus a source built from the catalog 
 
 The instance type is `container` or `virtual-machine`. Windows and other non-Linux images are for virtual machines only.
 
+### 2.3 Guest OS Family Abstraction & Cloud-Init Adapters
+
+When provisioning an instance, Ognivo resolves the catalog image to an OS-specific adapter via `GuestOsResolver` and the pluggable `GuestOsAdapterInterface` layer (`backend/app/Services/Hypervisor/GuestOs/`). Each adapter tailors cloud-init network configuration, default login username resolution, and VM hypervisor flags to match the target distribution's network stack and bootloader requirements:
+
+| Adapter | Distributions | Family | Default User | Cloud-Init / Network & VM Notes |
+| :--- | :--- | :--- | :--- | :--- |
+| `UbuntuOsAdapter` | Ubuntu, Linux Mint, Pop!_OS | `debian` | `ubuntu` | Netplan v2 single default route with `on-link: true` |
+| `DebianOsAdapter` | Debian, Kali Linux, Devuan | `debian` | `debian` | Netplan v2 two-route format (`169.254.0.1/32` link route + `0.0.0.0/0 via 169.254.0.1`) required for `systemd-networkd` |
+| `RhelOsAdapter` | AlmaLinux, Rocky Linux, CentOS, Fedora, Oracle Linux, RHEL, Amazon Linux, openEuler | `rhel` | Per-distro (`almalinux`, `rocky`, `centos`, `fedora`, `cloud-user`, `ec2-user`, `root`) | Strict sysconfig/NetworkManager compatibility (single default route `to: 0.0.0.0/0 via 169.254.0.1` without `on-link` or extra link routes); `openeuler` automatically disables SecureBoot |
+| `AlpineOsAdapter` | Alpine | `alpine` | `alpine` | Cloud-Init Network Config `version: 1` with static subnet `gateway: 169.254.0.1` (`ifupdown-ng` sets up the kernel onlink route natively, whereas Netplan v2 causes `eni.py` renderer crashes); sets `security.secureboot: "false"` on VMs |
+| `ArchOsAdapter` | Arch Linux, CachyOS | `arch` | `arch` | Two-route format for `systemd-networkd`; sets `security.secureboot: "false"` on VMs |
+| `SuseOsAdapter` | openSUSE Leap/Tumbleweed, SLES | `suse` | `opensuse` | Single route |
+| `GentooOsAdapter` | Gentoo Linux | `gentoo` | `gentoo` | Two-route format for `systemd-networkd`; sets `security.secureboot: "false"` on VMs |
+| `BsdOsAdapter` | FreeBSD, OpenBSD, NetBSD | `bsd` | `freebsd` | Primary interface is `vtnet0` on VMs (omitting udev renaming); sets `security.secureboot: "false"` on VMs |
+
+#### KVM VM Devices & SecureBoot
+
+- **SecureBoot handling:** Ognivo automatically sets `security.secureboot: "false"` on KVM virtual machines for images lacking signed Microsoft/UEFI bootloaders (Alpine, Arch, Gentoo, BSD, and openEuler) to prevent Incus hypervisor startup rejection.
+- **Agent config drive:** KVM virtual machines automatically receive an `agent:config` virtual CD-ROM device (named `agent`) to deliver cloud-init configuration and `incus-agent` credentials. `migration.stateful: true` is omitted to avoid Incus device conflicts.
+
 ---
 
 ## 3. Managing the Catalog (Administrators)
