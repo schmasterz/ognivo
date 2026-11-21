@@ -63,7 +63,7 @@ class VmSnapshotService
      * Validate quota, VM state, and snapshot name (slug-safe, unique per VM),
      * insert a snapshot record with `creating` status, and dispatch `CreateSnapshotJob`.
      *
-     * @param  string|array{name?: string, stateful?: bool, source?: string}  $name
+     * @param  string|array{name?: string, source?: string}  $name
      *
      * @throws InvalidVmStateException
      * @throws InvalidSnapshotStateException
@@ -74,28 +74,26 @@ class VmSnapshotService
     public function create(
         VirtualMachine $vm,
         string|array $name,
-        bool $stateful = false,
         string $source = VmSnapshot::SOURCE_MANUAL,
     ): VmSnapshot {
         if (is_array($name)) {
             $snapshotName = isset($name['name']) ? (string) $name['name'] : '';
-            $stateful = isset($name['stateful']) ? (bool) $name['stateful'] : $stateful;
             $source = isset($name['source']) ? (string) $name['source'] : $source;
         } else {
             $snapshotName = $name;
         }
 
         try {
-            $this->assertValidVmStateForCreate($vm, $stateful);
+            $this->assertValidVmStateForCreate($vm);
             $this->assertValidSnapshotName($snapshotName);
             $this->assertValidSource($source);
 
             $lock = Cache::lock(sprintf('vm_snapshot_create:%d', $vm->id), 10);
 
             /** @var VmSnapshot $snapshot */
-            $snapshot = $lock->block(5, function () use ($vm, $snapshotName, $stateful, $source): VmSnapshot {
-                return DB::transaction(function () use ($vm, $snapshotName, $stateful, $source): VmSnapshot {
-                    $this->assertValidVmStateForCreate($vm, $stateful);
+            $snapshot = $lock->block(5, function () use ($vm, $snapshotName, $source): VmSnapshot {
+                return DB::transaction(function () use ($vm, $snapshotName, $source): VmSnapshot {
+                    $this->assertValidVmStateForCreate($vm);
 
                     if (VmSnapshot::query()
                         ->where('virtual_machine_id', $vm->id)
@@ -118,7 +116,6 @@ class VmSnapshotService
                         'name' => $snapshotName,
                         'source' => $source,
                         'status' => VmSnapshot::STATUS_CREATING,
-                        'stateful' => $stateful,
                         'size_bytes' => null,
                         'error' => null,
                     ]);
@@ -132,7 +129,6 @@ class VmSnapshotService
                         context: [
                             'name' => $createdSnapshot->name,
                             'virtual_machine_id' => $vm->id,
-                            'stateful' => $stateful,
                         ],
                     ));
 
@@ -309,7 +305,7 @@ class VmSnapshotService
      * Reconcile database snapshot rows for the given VM with the live snapshots reported by the BackupTarget.
      *
      * - Externally created snapshots on the hypervisor are inserted as `ready`.
-     * - Existing snapshots present on the hypervisor have their metadata (`stateful`, `size_bytes`, `status=ready`) updated.
+     * - Existing snapshots present on the hypervisor have their metadata (`size_bytes`, `status=ready`) updated.
      * - Stale database rows no longer present on the hypervisor are removed.
      *
      * @return Collection<int, VmSnapshot>
@@ -318,7 +314,7 @@ class VmSnapshotService
     {
         $liveSnapshots = $this->backupTarget->list($vm);
 
-        /** @var array<string, array{name: string, created_at: string, stateful: bool, size: int|null}> $liveByName */
+        /** @var array<string, array{name: string, created_at: string, size: int|null}> $liveByName */
         $liveByName = [];
         foreach ($liveSnapshots as $item) {
             $name = trim($item['name']);
@@ -328,7 +324,6 @@ class VmSnapshotService
             $liveByName[$name] = [
                 'name' => $name,
                 'created_at' => $item['created_at'],
-                'stateful' => $item['stateful'],
                 'size' => $item['size'],
             ];
         }
@@ -345,7 +340,6 @@ class VmSnapshotService
                     $seenNames[$name] = true;
                     $live = $liveByName[$name];
 
-                    $dbSnapshot->stateful = $live['stateful'];
                     if ($live['size'] !== null) {
                         $dbSnapshot->size_bytes = $live['size'];
                     }
@@ -374,7 +368,6 @@ class VmSnapshotService
                     'name' => $name,
                     'source' => VmSnapshot::SOURCE_MANUAL,
                     'status' => VmSnapshot::STATUS_READY,
-                    'stateful' => $live['stateful'],
                     'size_bytes' => $live['size'],
                     'error' => null,
                 ]);
@@ -388,28 +381,9 @@ class VmSnapshotService
      * Validate that the VM is in a state that permits creating a snapshot.
      *
      * @throws InvalidVmStateException
-     * @throws InvalidSnapshotStateException
      */
-    private function assertValidVmStateForCreate(VirtualMachine $vm, bool $stateful = false): void
+    private function assertValidVmStateForCreate(VirtualMachine $vm): void
     {
-        if ($stateful) {
-            if ($vm->instance_type === 'container') {
-                throw new InvalidSnapshotStateException(
-                    $vm->name,
-                    'create stateful snapshot',
-                    sprintf('Cannot create stateful snapshot for container "%s". In-memory snapshots are only supported for virtual machines.', $vm->name)
-                );
-            }
-
-            if (! $vm->status->equals(Running::class)) {
-                throw new InvalidVmStateException(
-                    (string) $vm->status,
-                    'create stateful snapshot',
-                    sprintf('Cannot create stateful snapshot for virtual machine "%s" while in "%s" state. Virtual machine must be running to capture memory state.', $vm->name, (string) $vm->status)
-                );
-            }
-        }
-
         if (! $this->isVmInStableState($vm)) {
             throw new InvalidVmStateException(
                 (string) $vm->status,
