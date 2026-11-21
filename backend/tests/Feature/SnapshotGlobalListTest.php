@@ -72,7 +72,6 @@ final class SnapshotGlobalListTest extends TestCase
             'name' => 'user1-snap',
             'status' => 'ready',
             'source' => 'manual',
-            'stateful' => false,
         ]);
 
         VmSnapshot::create([
@@ -81,7 +80,6 @@ final class SnapshotGlobalListTest extends TestCase
             'name' => 'user2-snap',
             'status' => 'ready',
             'source' => 'manual',
-            'stateful' => false,
         ]);
 
         $response = $this->actingAs($user1)->getJson('/api/snapshots');
@@ -107,7 +105,6 @@ final class SnapshotGlobalListTest extends TestCase
             'name' => 'snap-alpha',
             'status' => 'ready',
             'source' => 'manual',
-            'stateful' => false,
         ]);
 
         VmSnapshot::create([
@@ -116,7 +113,6 @@ final class SnapshotGlobalListTest extends TestCase
             'name' => 'snap-beta',
             'status' => 'creating',
             'source' => 'manual',
-            'stateful' => false,
         ]);
 
         $response = $this->actingAs($admin)->getJson('/api/snapshots?status=creating');
