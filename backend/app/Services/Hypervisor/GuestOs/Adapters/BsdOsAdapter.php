@@ -10,7 +10,7 @@ use Override;
 /**
  * Guest OS adapter for BSD cloud images (e.g. FreeBSD) using vtnet0 on virtual machines without interface renaming.
  */
-class BsdOsAdapter implements GuestOsAdapterInterface
+final class BsdOsAdapter implements GuestOsAdapterInterface
 {
     #[Override]
     public function family(): string
@@ -70,7 +70,7 @@ class BsdOsAdapter implements GuestOsAdapterInterface
         string $ipAddress,
         ?array $dnsServers = null,
         string $instanceType = 'virtual-machine',
-    ): ?string {
+    ): string {
         $routesBlock = <<<'YAML'
 
       routes:
@@ -98,7 +98,7 @@ YAML;
         ?string $gateway = null,
         ?array $dnsServers = null,
         string $instanceType = 'virtual-machine',
-    ): ?string {
+    ): string {
         $routesBlock = '';
         if ($gateway !== null && trim($gateway) !== '') {
             $gw = trim($gateway);

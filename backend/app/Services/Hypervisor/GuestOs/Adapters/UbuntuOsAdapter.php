@@ -9,7 +9,7 @@ use Override;
 /**
  * Guest OS adapter for Ubuntu cloud images using Netplan on-link link-local routing.
  */
-class UbuntuOsAdapter extends DebianOsAdapter
+final class UbuntuOsAdapter extends DebianOsAdapter
 {
     #[Override]
     public function defaultUsername(): string

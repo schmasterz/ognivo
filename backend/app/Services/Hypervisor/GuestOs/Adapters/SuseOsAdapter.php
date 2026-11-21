@@ -9,7 +9,7 @@ use Override;
 /**
  * Guest OS adapter for openSUSE / SUSE cloud images using sysconfig/NetworkManager via Netplan v2.
  */
-class SuseOsAdapter extends AbstractLinuxCloudInitOsAdapter
+final class SuseOsAdapter extends AbstractLinuxCloudInitOsAdapter
 {
     #[Override]
     public function family(): string

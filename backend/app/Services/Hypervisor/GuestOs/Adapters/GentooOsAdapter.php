@@ -9,7 +9,7 @@ use Override;
 /**
  * Guest OS adapter for Gentoo Linux cloud images requiring an explicit /32 host route to 169.254.0.1.
  */
-class GentooOsAdapter extends AbstractLinuxCloudInitOsAdapter
+final class GentooOsAdapter extends AbstractLinuxCloudInitOsAdapter
 {
     #[Override]
     public function family(): string

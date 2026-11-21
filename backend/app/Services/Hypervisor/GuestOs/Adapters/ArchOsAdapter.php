@@ -9,7 +9,7 @@ use Override;
 /**
  * Guest OS adapter for Arch Linux cloud images using systemd-networkd via Netplan v2.
  */
-class ArchOsAdapter extends AbstractLinuxCloudInitOsAdapter
+final class ArchOsAdapter extends AbstractLinuxCloudInitOsAdapter
 {
     #[Override]
     public function family(): string

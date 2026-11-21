@@ -13,7 +13,7 @@ use Override;
  * Alpine's ENI renderer with ifupdown-ng crashes on Netplan v2 with KeyError: gateway or unhandled onlink,
  * whereas version 1 static configuration with gateway 169.254.0.1 generates native kernel on-link routing cleanly.
  */
-class AlpineOsAdapter implements GuestOsAdapterInterface
+final class AlpineOsAdapter implements GuestOsAdapterInterface
 {
     #[Override]
     public function family(): string
@@ -73,7 +73,7 @@ class AlpineOsAdapter implements GuestOsAdapterInterface
         string $ipAddress,
         ?array $dnsServers = null,
         string $instanceType = 'virtual-machine',
-    ): ?string {
+    ): string {
         return $this->buildVersion1NetworkConfig(
             macAddress: $macAddress,
             cidr: "{$ipAddress}/32",
@@ -94,7 +94,7 @@ class AlpineOsAdapter implements GuestOsAdapterInterface
         ?string $gateway = null,
         ?array $dnsServers = null,
         string $instanceType = 'virtual-machine',
-    ): ?string {
+    ): string {
         return $this->buildVersion1NetworkConfig(
             macAddress: $macAddress,
             cidr: "{$ipAddress}/{$prefix}",

@@ -18,7 +18,7 @@ use App\Services\Hypervisor\GuestOs\Contracts\GuestOsAdapterInterface;
 /**
  * Resolves the appropriate guest OS adapter from an approved Image model or image name string.
  */
-class GuestOsResolver
+final class GuestOsResolver
 {
     /**
      * Map of RHEL-family image keywords to their default cloud-init usernames.

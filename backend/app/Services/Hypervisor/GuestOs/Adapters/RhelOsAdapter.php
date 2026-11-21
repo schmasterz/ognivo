@@ -9,7 +9,7 @@ use Override;
 /**
  * Guest OS adapter for RHEL-family cloud images (AlmaLinux, Rocky, CentOS, Fedora, Oracle, RHEL, Amazon Linux, openEuler).
  */
-class RhelOsAdapter extends AbstractLinuxCloudInitOsAdapter
+final class RhelOsAdapter extends AbstractLinuxCloudInitOsAdapter
 {
     public function __construct(
         private readonly string $distroUsername = 'almalinux',

@@ -47,7 +47,7 @@ class InstanceSpecBuilder
 
         // Enforce admin-approved image allowlist
         $image = Image::where('name', $vm->os_image)->where('enabled', true)->first();
-        if ($image === null) {
+        if (! $image instanceof Image) {
             throw new RuntimeException(sprintf("OS image '%s' is not in the approved allowlist or is disabled.", $vm->os_image));
         }
 
