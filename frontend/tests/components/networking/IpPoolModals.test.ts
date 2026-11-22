@@ -49,12 +49,33 @@ interface EditModalStateEval {
   isGatewayRequired: boolean;
 }
 
+interface EditModeChangeInput {
+  pool: EditPoolInput;
+  initialMode: string;
+  initialParentInterface: string;
+  initialGateway: string;
+  isCustomInterface?: boolean;
+  discoveredNetworks?: Array<{
+    name: string;
+    recommended_modes: Array<"routed" | "bridged" | "macvlan">;
+  }>;
+  nextMode: string;
+}
+
+interface EditModeChangeResult {
+  networkMode: string;
+  parentInterface: string;
+  gateway: string;
+  clearedErrors: string[];
+}
+
 interface EditModalHelpers {
   parseIpv4ToNum: (ip: string) => number | null;
   parseCidrPrefix: (cidr: string) => number | null;
   parseCidrRange: (cidr: string) => CidrRangeResult | null;
   validateGatewayField: (gatewayInput: string, cidrInput: string, mode: string) => string | null;
   evaluateEditGatewayFlags: (pool: EditPoolInput, networkMode: string) => EditModalStateEval;
+  simulateEditModeChange: (input: EditModeChangeInput) => EditModeChangeResult;
 }
 
 const createModalPath = fileURLToPath(
@@ -192,12 +213,48 @@ function loadEditModalHelpers(): EditModalHelpers {
       ${getVariableDeclarationSnippet(editModalSource, "EditIpPoolModal.tsx", "isGatewayRequired")}
       return { hasAllocations, isL2Mode, isGatewayLocked, isGatewayRequired };
     }`,
+    `function simulateEditModeChange(input: {
+      pool: { cidr?: string; subnet?: string };
+      initialMode: string;
+      initialParentInterface: string;
+      initialGateway: string;
+      isCustomInterface?: boolean;
+      discoveredNetworks?: Array<{ name: string; recommended_modes: Array<"routed" | "bridged" | "macvlan"> }>;
+      nextMode: string;
+    }) {
+      const pool = input.pool;
+      let networkMode = input.initialMode;
+      let parentInterface = input.initialParentInterface;
+      let gateway = input.initialGateway;
+      const isCustomInterface = input.isCustomInterface ?? false;
+      const discoveredNetworks = input.discoveredNetworks ?? [];
+      const clearedErrors: string[] = [];
+
+      const setNetworkMode = (mode: string) => {
+        networkMode = mode;
+      };
+      const setParentInterface = (iface: string) => {
+        parentInterface = iface;
+      };
+      const setGateway = (gw: string) => {
+        gateway = gw;
+      };
+      const clearFieldError = (field: string) => {
+        clearedErrors.push(field);
+      };
+
+      ${getVariableDeclarationSnippet(editModalSource, "EditIpPoolModal.tsx", "handleModeChange")}
+      handleModeChange(input.nextMode);
+
+      return { networkMode, parentInterface, gateway, clearedErrors };
+    }`,
     `module.exports = {
       parseIpv4ToNum,
       parseCidrPrefix,
       parseCidrRange,
       validateGatewayField,
       evaluateEditGatewayFlags,
+      simulateEditModeChange,
     };`,
   ].join("\n\n");
 
@@ -312,7 +369,7 @@ describe("IP Pool Modals (Create & Edit) IPAM Tests", () => {
   });
 
   describe("3. Bridged & Macvlan (L2) Pool Mode Rules", () => {
-    it("requires gateway and defaults gateway to network + 1 with first_usable at network + 2", () => {
+    it("requires gateway and defaults gateway to network + 1 with first_usable at network + 1", () => {
       for (const mode of ["bridged", "macvlan"] as const) {
         assert.equal(createHelpers.isGatewayRequiredFor(mode, "203.0.113.0/24"), true);
         assert.equal(
@@ -330,9 +387,27 @@ describe("IP Pool Modals (Create & Edit) IPAM Tests", () => {
 
         assert.deepEqual(createHelpers.calculateUsableRange("203.0.113.0/24", mode), {
           gateway: "203.0.113.1",
-          first: "203.0.113.2",
+          first: "203.0.113.1",
           last: "203.0.113.254",
         });
+      }
+    });
+
+    it("computes first_usable at network + 1 across all modes for /16-/30 subnets", () => {
+      const subnets = [
+        { cidr: "10.10.0.0/16", first: "10.10.0.1", last: "10.10.255.254" },
+        { cidr: "192.168.50.0/24", first: "192.168.50.1", last: "192.168.50.254" },
+        { cidr: "198.51.100.4/30", first: "198.51.100.5", last: "198.51.100.6" },
+      ];
+
+      for (const { cidr, first, last } of subnets) {
+        for (const mode of ["bridged", "macvlan", "manual", "routed"] as const) {
+          assert.deepEqual(createHelpers.calculateUsableRange(cidr, mode), {
+            gateway: mode === "routed" ? "" : first,
+            first,
+            last,
+          });
+        }
       }
     });
 
@@ -431,6 +506,33 @@ describe("IP Pool Modals (Create & Edit) IPAM Tests", () => {
       );
     });
 
+    it("rejects network and broadcast addresses as gateway for /16-/30 subnets in manual mode", () => {
+      const cases = [
+        { cidr: "10.10.0.0/16", network: "10.10.0.0", broadcast: "10.10.255.255" },
+        { cidr: "203.0.113.0/24", network: "203.0.113.0", broadcast: "203.0.113.255" },
+        { cidr: "198.51.100.4/30", network: "198.51.100.4", broadcast: "198.51.100.7" },
+      ];
+
+      for (const { cidr, network, broadcast } of cases) {
+        assert.equal(
+          createHelpers.validateGatewayField(network, cidr, "manual"),
+          "gatewayNetworkOrBroadcast",
+        );
+        assert.equal(
+          createHelpers.validateGatewayField(broadcast, cidr, "manual"),
+          "gatewayNetworkOrBroadcast",
+        );
+        assert.equal(
+          editHelpers.validateGatewayField(network, cidr, "manual"),
+          "gatewayNetworkOrBroadcast",
+        );
+        assert.equal(
+          editHelpers.validateGatewayField(broadcast, cidr, "manual"),
+          "gatewayNetworkOrBroadcast",
+        );
+      }
+    });
+
     it("keeps gateway optional for /31 and /32 subnets", () => {
       for (const cidr of ["203.0.113.10/31", "203.0.113.10/32"]) {
         assert.equal(createHelpers.isGatewayRequiredFor("manual", cidr), false);
@@ -485,6 +587,98 @@ describe("IP Pool Modals (Create & Edit) IPAM Tests", () => {
           `${name} should render reserved gateway badge separately from excludedIps input`,
         );
       }
+    });
+  });
+
+  describe("6. Link-Local Gateway Rejection (169.254.0.0/16)", () => {
+    it("rejects link-local addresses in 169.254.0.0/16 in both Create and Edit modals", () => {
+      const expectedError =
+        "Link-local addresses (169.254.0.0/16) cannot be used as pool CIDR, gateway, or excluded IPs.";
+      const linkLocalGateways = ["169.254.0.1", "169.254.10.20"];
+
+      for (const gw of linkLocalGateways) {
+        for (const mode of ["routed", "bridged", "macvlan", "manual"] as const) {
+          assert.equal(
+            createHelpers.validateGatewayField(gw, "169.254.0.0/16", mode),
+            expectedError,
+          );
+          assert.equal(
+            editHelpers.validateGatewayField(gw, "169.254.0.0/16", mode),
+            expectedError,
+          );
+          assert.equal(
+            createHelpers.validateGatewayField(gw, "203.0.113.0/24", mode),
+            expectedError,
+          );
+          assert.equal(
+            editHelpers.validateGatewayField(gw, "203.0.113.0/24", mode),
+            expectedError,
+          );
+        }
+      }
+    });
+  });
+
+  describe("7. EditIpPoolModal Network Mode Switching & L2 Prefix Guard", () => {
+    it("defines handleModeChange, clears parent_interface when manual, and disables bridged/macvlan on /31-/32", () => {
+      assert.match(editModalSource, /const\s+handleModeChange\s*=\s*\(mode:\s*string\)\s*=>/);
+      assert.match(editModalSource, /onChange=\{\(e\)\s*=>\s*handleModeChange\(e\.target\.value\)\}/);
+      assert.match(
+        editModalSource,
+        /parent_interface:\s*networkMode\s*===\s*"manual"\s*\?\s*""\s*:\s*trimmedParentInterface/,
+      );
+      assert.match(
+        editModalSource,
+        /<option\s+value="bridged"\s+disabled=\{cidrPrefix\s*===\s*31\s*\|\|\s*cidrPrefix\s*===\s*32\}>/,
+      );
+      assert.match(
+        editModalSource,
+        /<option\s+value="macvlan"\s+disabled=\{cidrPrefix\s*===\s*31\s*\|\|\s*cidrPrefix\s*===\s*32\}>/,
+      );
+    });
+
+    it("updates networkMode, clears field errors, and handles parentInterface and gateway on mode change", () => {
+      const toManual = editHelpers.simulateEditModeChange({
+        pool: { cidr: "203.0.113.0/24" },
+        initialMode: "bridged",
+        initialParentInterface: "eno1",
+        initialGateway: "",
+        discoveredNetworks: [
+          { name: "eno1", recommended_modes: ["bridged", "macvlan"] },
+          { name: "incusbr0", recommended_modes: ["routed"] },
+        ],
+        nextMode: "manual",
+      });
+      assert.equal(toManual.networkMode, "manual");
+      assert.equal(toManual.gateway, "203.0.113.1");
+      assert.deepEqual(toManual.clearedErrors, ["network_mode", "gateway", "cidr", "parent_interface"]);
+
+      const toBridged = editHelpers.simulateEditModeChange({
+        pool: { cidr: "203.0.113.0/24" },
+        initialMode: "manual",
+        initialParentInterface: "",
+        initialGateway: "",
+        discoveredNetworks: [
+          { name: "incusbr0", recommended_modes: ["routed"] },
+          { name: "eno1", recommended_modes: ["bridged", "macvlan"] },
+        ],
+        nextMode: "bridged",
+      });
+      assert.equal(toBridged.networkMode, "bridged");
+      assert.equal(toBridged.parentInterface, "eno1");
+      assert.equal(toBridged.gateway, "203.0.113.1");
+
+      const toRouted = editHelpers.simulateEditModeChange({
+        pool: { cidr: "203.0.113.0/24" },
+        initialMode: "manual",
+        initialParentInterface: "",
+        initialGateway: "",
+        discoveredNetworks: [{ name: "incusbr0", recommended_modes: ["routed"] }],
+        nextMode: "routed",
+      });
+      assert.equal(toRouted.networkMode, "routed");
+      assert.equal(toRouted.parentInterface, "incusbr0");
+      assert.equal(toRouted.gateway, "");
     });
   });
 });
