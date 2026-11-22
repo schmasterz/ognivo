@@ -580,7 +580,7 @@ final class VmReinstallTest extends TestCase
         $newImage = $this->otherLinuxImage->name;
         $newCloudInit = ['user-data' => '#new-cloud-config'];
 
-        $job = new ReinstallVmJob($vm, $newImage, $newCloudInit, false, $allocation->id);
+        $job = new ReinstallVmJob($vm, $newImage, $newCloudInit, $allocation->id);
         $job->handle(app(HypervisorManager::class));
 
         $this->assertTrue($this->driver->wasInstanceDeleted($vm));
@@ -691,7 +691,7 @@ final class VmReinstallTest extends TestCase
         $newCloudInit = ['user-data' => '#new-config'];
         $manager = app(HypervisorManager::class);
 
-        $job = new ReinstallVmJob($vm, $newImage, $newCloudInit, false, $allocation->id);
+        $job = new ReinstallVmJob($vm, $newImage, $newCloudInit, $allocation->id);
         // Simulate Redis queue payload serialization before first execution
         $serializedJob = serialize($job);
 
@@ -797,7 +797,7 @@ final class VmReinstallTest extends TestCase
         ]);
 
         $manager = app(HypervisorManager::class);
-        $job = new ReinstallVmJob($vm, null, null, false, $allocation->id);
+        $job = new ReinstallVmJob($vm, null, null, $allocation->id);
         $serializedJob = serialize($job);
 
         $job->handle($manager);
@@ -830,7 +830,7 @@ final class VmReinstallTest extends TestCase
         $this->driver->setInstanceStatus($vm, 'Unknown');
         $this->driver->shouldFail['createInstance'] = true;
 
-        $job = new ReinstallVmJob($vm, null, null, false, $allocation->id);
+        $job = new ReinstallVmJob($vm, null, null, $allocation->id);
         $job->handle(app(HypervisorManager::class));
 
         $vm->refresh();

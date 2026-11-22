@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
-use App\Models\IpAllocation;
+use App\Jobs\Concerns\InteractsWithHypervisorNetwork;
 use App\Models\VirtualMachine;
 use App\Services\Hypervisor\HypervisorManager;
 use App\States\Vm\Deleted;
@@ -15,10 +15,7 @@ use App\States\Vm\Running;
 use DateTimeInterface;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Http\Client\RequestException;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -29,6 +26,7 @@ use Throwable;
  */
 final class ReinstallVmJob implements ShouldQueue
 {
+    use InteractsWithHypervisorNetwork;
     use Queueable;
 
     /**
@@ -63,9 +61,7 @@ final class ReinstallVmJob implements ShouldQueue
         public readonly VirtualMachine $vm,
         public readonly ?string $osImage = null,
         public readonly array|string|null $cloudInit = null,
-        public bool $instanceDeleted = false,
         public readonly ?int $allocationId = null,
-        public int $pollAttempt = 0,
     ) {}
 
     /**
@@ -163,6 +159,7 @@ final class ReinstallVmJob implements ShouldQueue
 
             // Step 1: Create instance ONLY when the driver reports it does not exist ('Unknown')
             $status = $driver->getInstanceStatus($this->vm);
+            $justCreated = false;
             if ($status === 'Unknown') {
                 try {
                     $created = $driver->createInstance($this->vm);
@@ -175,6 +172,7 @@ final class ReinstallVmJob implements ShouldQueue
 
                         return;
                     }
+                    $justCreated = true;
                 } catch (Throwable $e) {
                     if ($this->isTransient($e)) {
                         throw $e;
@@ -187,7 +185,7 @@ final class ReinstallVmJob implements ShouldQueue
             }
 
             // Step 2: Start instance only if it is not running
-            $status = $driver->getInstanceStatus($this->vm);
+            $status = $justCreated ? 'Stopped' : $driver->getInstanceStatus($this->vm);
             if ($status !== 'Running') {
                 try {
                     $started = $driver->startInstance($this->vm);
@@ -213,139 +211,37 @@ final class ReinstallVmJob implements ShouldQueue
 
             // Step 3: await_network - check observed IP on instance state
             $state = $driver->getInstanceState($this->vm);
-            /** @var array<string, mixed> $network */
-            $network = isset($state['network']) && is_array($state['network']) ? $state['network'] : [];
-            $assignedIp = $this->vm->ipv4_address;
+            $observation = $this->evaluateNetworkObservation($this->vm, $this->allocationId, $state);
 
-            $observedIp = $this->extractObservedIp($network);
-
-            if ($observedIp !== null && $assignedIp !== null && $observedIp === $assignedIp) {
-                // Network confirmed! Transition to Running with observed status
+            if ($observation['status'] === 'observed') {
                 $this->completeReinstall('observed');
-
-                Log::info(sprintf('VM #%d (%s) network observed: %s. Reinstallation complete.', $this->vm->id, $this->vm->name, $observedIp));
+                Log::info(sprintf('VM #%d (%s) network observed: %s. Reinstallation complete.', $this->vm->id, $this->vm->name, $observation['observed_ip'] ?? ''));
 
                 return;
             }
 
-            // Check if this VM belongs to a manual pool
-            $allocation = $this->allocationId !== null
-                ? IpAllocation::with('pool')->find($this->allocationId)
-                : $this->vm->primaryAllocation()->with('pool')->first();
-            $isManualPool = ($allocation?->pool?->network_mode === 'manual');
-
-            if ($isManualPool) {
+            if ($observation['status'] === 'unverified') {
                 $this->completeReinstall('unverified');
 
-                Log::info(sprintf('VM #%d (%s) in manual network mode completed reinstall with unverified status.', $this->vm->id, $this->vm->name));
+                if ($this->vm->network_wait_started_at !== null && $observation['elapsed'] >= $observation['wait_limit']) {
+                    Log::info(sprintf('VM #%d (%s) completed reinstall with unverified network status after %ds timeout.', $this->vm->id, $this->vm->name, $observation['wait_limit']));
+                } else {
+                    Log::info(sprintf('VM #%d (%s) in manual network mode completed reinstall with unverified status.', $this->vm->id, $this->vm->name));
+                }
 
                 return;
             }
 
-            if ($observedIp !== null && $assignedIp !== null && $observedIp !== $assignedIp) {
-                // IP mismatch detected
+            if ($observation['status'] === 'mismatch') {
                 $this->completeReinstall('mismatch');
-
-                Log::warning(sprintf('VM #%d (%s) IP mismatch during reinstall: expected %s, observed %s.', $this->vm->id, $this->vm->name, $assignedIp, $observedIp));
-
-                return;
-            }
-
-            // Address not yet visible (agent still starting or cloud-init running)
-            if ($this->vm->network_wait_started_at === null) {
-                $this->vm->network_wait_started_at = Carbon::now();
-                $this->vm->save();
-            }
-
-            $waitLimitConfig = config('provisioning.network_wait_seconds');
-            $waitLimit = is_numeric($waitLimitConfig) ? (int) $waitLimitConfig : 120;
-
-            $pollIntervalConfig = config('provisioning.poll_interval_seconds');
-            $pollInterval = is_numeric($pollIntervalConfig) ? (int) $pollIntervalConfig : 10;
-
-            $elapsed = now()->getTimestamp() - $this->vm->network_wait_started_at->getTimestamp();
-
-            if ($elapsed >= $waitLimit) {
-                // Elapsed time exceeded network_wait_seconds: mark unverified and VM Running (not an error)
-                $this->completeReinstall('unverified');
-
-                Log::info(sprintf('VM #%d (%s) completed reinstall with unverified network status after %ds timeout.', $this->vm->id, $this->vm->name, $waitLimit));
+                Log::warning(sprintf('VM #%d (%s) IP mismatch during reinstall: expected %s, observed %s.', $this->vm->id, $this->vm->name, $this->vm->ipv4_address ?? '', $observation['observed_ip'] ?? ''));
 
                 return;
             }
 
-            Log::info(sprintf('VM #%d (%s) waiting for network during reinstall (%ds/%ds). Releasing for %ds.', $this->vm->id, $this->vm->name, $elapsed, $waitLimit, $pollInterval));
-            $this->pollAttempt++;
-            $this->release($pollInterval);
+            Log::info(sprintf('VM #%d (%s) waiting for network during reinstall (%ds/%ds). Releasing for %ds.', $this->vm->id, $this->vm->name, $observation['elapsed'], $observation['wait_limit'], $observation['poll_interval']));
+            $this->release($observation['poll_interval']);
         });
-    }
-
-    /**
-     * Determine if an exception represents a transient failure that should be retried.
-     */
-    protected function isTransient(Throwable $e): bool
-    {
-        if ($e instanceof ConnectionException) {
-            return true;
-        }
-
-        if ($e instanceof RequestException) {
-            $status = $e->response->status();
-
-            if ($status === 408 || $status === 429) {
-                return true;
-            }
-
-            return $status >= 500;
-        }
-
-        $message = strtolower($e->getMessage());
-        foreach (['timeout', 'timed out', 'connection refused', 'connection reset', 'temporarily unavailable', '502 bad gateway', '503 service unavailable', '504 gateway timeout'] as $needle) {
-            if (str_contains($message, $needle)) {
-                return true;
-            }
-        }
-
-        if (str_contains($message, 'permanent') || str_contains($message, 'rejected')) {
-            return false;
-        }
-
-        return true;
-    }
-
-    /**
-     * Extract the primary observed IPv4 address from the Incus network state array.
-     *
-     * @param  array<string, mixed>  $network
-     */
-    protected function extractObservedIp(array $network): ?string
-    {
-        foreach ($network as $device => $info) {
-            if (! is_array($info)) {
-                continue;
-            }
-
-            $addresses = $info['addresses'] ?? [];
-            if (! is_array($addresses)) {
-                continue;
-            }
-
-            foreach ($addresses as $addr) {
-                if (! is_array($addr)) {
-                    continue;
-                }
-
-                $family = $addr['family'] ?? '';
-                $ip = $addr['address'] ?? '';
-                $scope = $addr['scope'] ?? '';
-
-                if ($family === 'inet' && is_string($ip) && $ip !== '' && $scope === 'global' && ! str_starts_with($ip, '127.')) {
-                    return $ip;
-                }
-            }
-        }
-
-        return null;
     }
 
     /**
