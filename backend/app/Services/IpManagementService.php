@@ -1218,7 +1218,7 @@ final class IpManagementService
     }
 
     /**
-     * Create a new routed or manual IP subnet pool.
+     * Create a new IP subnet pool (routed, bridged, macvlan, or manual).
      */
     public function createPool(CreateIpPoolDTO $dto): IpPool
     {
@@ -1226,6 +1226,18 @@ final class IpManagementService
             Host::where('id', $dto->hostId)->lockForUpdate()->first();
 
             $cidr = $dto->cidr;
+
+            $configErrors = IpPoolConfigValidator::validate(
+                $dto->networkMode,
+                $cidr,
+                $dto->gateway,
+                $dto->excludedIps ?? [],
+                $dto->firstUsable,
+                $dto->lastUsable,
+            );
+            if ($configErrors !== []) {
+                throw ValidationException::withMessages($configErrors);
+            }
 
             if ($conflictingPool = $this->checkPoolOverlap($cidr, $dto->hostId, $dto->isPublic)) {
                 throw ValidationException::withMessages([
@@ -1301,7 +1313,21 @@ final class IpManagementService
             /** @var IpPool $lockedPool */
             $lockedPool = IpPool::where('id', $pool->id)->lockForUpdate()->firstOrFail();
 
-            $hasAllocations = $lockedPool->allocations()->count() > 0;
+            $cooldownLimit = now()->subSeconds($lockedPool->cooldown_seconds);
+            $activeOrCoolingQuery = $lockedPool->allocations()
+                ->where(function (Builder $query) use ($cooldownLimit): void {
+                    $query->where('status', 'allocated')
+                        ->orWhere(function (Builder $sub) use ($cooldownLimit): void {
+                            $sub->where('status', 'cooling')
+                                ->where('released_at', '>', $cooldownLimit);
+                        });
+                });
+
+            $hasAllocations = (clone $activeOrCoolingQuery)->count() > 0;
+
+            $gateway = array_key_exists('gateway', $data)
+                ? (is_string($data['gateway']) && trim($data['gateway']) !== '' ? trim($data['gateway']) : null)
+                : $lockedPool->gateway;
 
             if ($hasAllocations) {
                 if (isset($data['cidr']) && $data['cidr'] !== $lockedPool->cidr) {
@@ -1313,7 +1339,7 @@ final class IpManagementService
                 if (isset($data['network_mode']) && $data['network_mode'] !== $lockedPool->network_mode) {
                     throw ValidationException::withMessages(['network_mode' => ['Network mode cannot be modified when allocations exist in the pool.']]);
                 }
-                if (array_key_exists('gateway', $data) && $data['gateway'] !== $lockedPool->gateway && ($lockedPool->network_mode === 'bridged' || $lockedPool->network_mode === 'macvlan')) {
+                if (array_key_exists('gateway', $data) && $gateway !== $lockedPool->gateway && ($lockedPool->network_mode === 'bridged' || $lockedPool->network_mode === 'macvlan')) {
                     throw ValidationException::withMessages(['gateway' => ['Gateway cannot be modified when allocations exist in bridged or macvlan pools.']]);
                 }
             }
@@ -1321,6 +1347,35 @@ final class IpManagementService
             $effectiveCidr = (string) ($data['cidr'] ?? $lockedPool->cidr);
             $effectiveHostId = isset($data['host_id']) ? (int) $data['host_id'] : $lockedPool->host_id;
             $effectiveIsPublic = isset($data['is_public']) ? (bool) $data['is_public'] : $lockedPool->is_public;
+            $effectiveMode = isset($data['network_mode']) && is_string($data['network_mode']) && $data['network_mode'] !== ''
+                ? $data['network_mode']
+                : $lockedPool->network_mode;
+
+            $excluded = array_key_exists('excluded_ips', $data)
+                ? (is_array($data['excluded_ips'])
+                    ? array_values(array_unique(array_filter(array_map(
+                        static fn (mixed $ip): ?string => is_string($ip) ? trim($ip) : null,
+                        $data['excluded_ips']
+                    ), static fn (?string $ip): bool => $ip !== null && $ip !== '')))
+                    : [])
+                : ($lockedPool->excluded_ips ?? []);
+
+            $cidrChanged = $effectiveCidr !== $lockedPool->cidr;
+            $calculatedRange = $cidrChanged ? CidrHelper::calculateUsableRange($effectiveCidr) : null;
+            $firstUsable = (string) ($data['first_usable'] ?? ($calculatedRange !== null ? $calculatedRange['first'] : $lockedPool->first_usable));
+            $lastUsable = (string) ($data['last_usable'] ?? ($calculatedRange !== null ? $calculatedRange['last'] : $lockedPool->last_usable));
+
+            $configErrors = IpPoolConfigValidator::validate(
+                $effectiveMode,
+                $effectiveCidr,
+                $gateway,
+                $excluded,
+                $firstUsable,
+                $lastUsable,
+            );
+            if ($configErrors !== []) {
+                throw ValidationException::withMessages($configErrors);
+            }
 
             if ($conflictingPool = $this->checkPoolOverlap($effectiveCidr, $effectiveHostId, $effectiveIsPublic, $lockedPool->id)) {
                 throw ValidationException::withMessages([
@@ -1334,15 +1389,11 @@ final class IpManagementService
                 ]);
             }
 
-            $firstUsable = (string) ($data['first_usable'] ?? $lockedPool->first_usable);
-            $lastUsable = (string) ($data['last_usable'] ?? $lockedPool->last_usable);
             $firstLong = CidrHelper::ipToUnsigned($firstUsable);
             $lastLong = CidrHelper::ipToUnsigned($lastUsable);
 
             if ($firstLong !== null && $lastLong !== null) {
-                $allocations = $lockedPool->allocations()
-                    ->whereIn('status', ['allocated', 'cooling'])
-                    ->get(['ip_string']);
+                $allocations = (clone $activeOrCoolingQuery)->get(['ip_string']);
 
                 foreach ($allocations as $alloc) {
                     $allocLong = CidrHelper::ipToUnsigned($alloc->ip_string);
@@ -1359,19 +1410,6 @@ final class IpManagementService
                 }
             }
 
-            $gateway = array_key_exists('gateway', $data)
-                ? (is_string($data['gateway']) && trim($data['gateway']) !== '' ? trim($data['gateway']) : null)
-                : $lockedPool->gateway;
-
-            $excluded = array_key_exists('excluded_ips', $data)
-                ? (is_array($data['excluded_ips'])
-                    ? array_values(array_unique(array_filter(array_map(
-                        static fn (mixed $ip): ?string => is_string($ip) ? trim($ip) : null,
-                        $data['excluded_ips']
-                    ), static fn (?string $ip): bool => $ip !== null && $ip !== '')))
-                    : [])
-                : ($lockedPool->excluded_ips ?? []);
-
             if (array_key_exists('gateway', $data) || array_key_exists('excluded_ips', $data)) {
                 $activeAllocations = $lockedPool->allocations()
                     ->where('status', 'allocated')
@@ -1379,11 +1417,11 @@ final class IpManagementService
 
                 foreach ($activeAllocations as $alloc) {
                     if ($gateway !== null && $gateway === $alloc->ip_string) {
-                        throw new PoolAllocationConflictException($alloc->id, $alloc->ip_string);
+                        throw new PoolAllocationConflictException($alloc->id, $alloc->ip_string, 'gateway');
                     }
 
                     if (in_array($alloc->ip_string, $excluded, true)) {
-                        throw new PoolAllocationConflictException($alloc->id, $alloc->ip_string);
+                        throw new PoolAllocationConflictException($alloc->id, $alloc->ip_string, 'excluded_ips');
                     }
                 }
             }
@@ -1575,9 +1613,7 @@ final class IpManagementService
             $checks[] = [
                 'name' => 'Pool range consistent',
                 'ok' => true,
-                'hint' => $requiresGateway
-                    ? 'Usable IP range is consistent with CIDR block.'
-                    : 'Usable IP range and gateway are consistent with CIDR block.',
+                'hint' => 'Usable IP range is consistent with CIDR block.',
             ];
         } else {
             $overallOk = false;
