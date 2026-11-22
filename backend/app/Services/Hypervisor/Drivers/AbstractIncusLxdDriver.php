@@ -255,10 +255,9 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
 
         $storagePool = $provisioner->discoverStoragePool($client);
         $availableNetworks = $provisioner->listNetworkNames($client);
-        $network = $availableNetworks[0] ?? 'incusbr0';
 
         $builder = $this->instanceSpecBuilder ?? app(InstanceSpecBuilder::class);
-        $payload = $builder->build($vm, null, $storagePool, $network, null, null, $availableNetworks);
+        $payload = $builder->build($vm, null, $storagePool, $availableNetworks);
 
         /** @var Response $response */
         $response = (clone $client)

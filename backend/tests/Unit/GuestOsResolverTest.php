@@ -181,6 +181,7 @@ final class GuestOsResolverTest extends TestCase
                 $adapter,
                 expectSecureBootDisabled: true,
                 vmInterfaceName: 'vtnet0',
+                expectCloudInitDisk: true,
             );
         }
     }
@@ -364,6 +365,79 @@ final class GuestOsResolverTest extends TestCase
         );
     }
 
+    public function test_bsd_routed_and_subnet_network_config_for_vm(): void
+    {
+        $adapter = $this->resolver->resolve('freebsd/15.1');
+        $this->assertInstanceOf(BsdOsAdapter::class, $adapter);
+
+        $routedYaml = $adapter->buildRoutedNetworkConfig(
+            macAddress: '02:54:00:00:00:24',
+            ipAddress: '198.51.100.114',
+            dnsServers: ['1.1.1.1', '9.9.9.9'],
+            instanceType: 'virtual-machine',
+        );
+
+        $parsedRouted = Yaml::parse($routedYaml);
+        $this->assertIsArray($parsedRouted);
+        $this->assertSame(2, $parsedRouted['network']['version'] ?? null);
+        $this->assertArrayNotHasKey('eth0', $parsedRouted['network']['ethernets'] ?? []);
+
+        $vtnet0Routed = $parsedRouted['network']['ethernets']['vtnet0'] ?? null;
+        $this->assertIsArray($vtnet0Routed);
+        $this->assertArrayNotHasKey('match', $vtnet0Routed);
+        $this->assertArrayNotHasKey('set-name', $vtnet0Routed);
+        $this->assertSame(['198.51.100.114/32'], $vtnet0Routed['addresses'] ?? null);
+        $this->assertSame([
+            ['to' => '169.254.0.1/32'],
+            ['to' => '0.0.0.0/0', 'via' => '169.254.0.1'],
+        ], $vtnet0Routed['routes'] ?? null);
+        $this->assertSame(['addresses' => ['1.1.1.1', '9.9.9.9']], $vtnet0Routed['nameservers'] ?? null);
+
+        $subnetYaml = $adapter->buildSubnetNetworkConfig(
+            macAddress: '02:54:00:00:00:24',
+            ipAddress: '10.241.79.50',
+            prefix: 24,
+            gateway: '10.241.79.1',
+            dnsServers: ['1.1.1.1'],
+            instanceType: 'virtual-machine',
+        );
+
+        $parsedSubnet = Yaml::parse($subnetYaml);
+        $this->assertIsArray($parsedSubnet);
+        $this->assertSame(2, $parsedSubnet['network']['version'] ?? null);
+
+        $vtnet0Subnet = $parsedSubnet['network']['ethernets']['vtnet0'] ?? null;
+        $this->assertIsArray($vtnet0Subnet);
+        $this->assertArrayNotHasKey('match', $vtnet0Subnet);
+        $this->assertArrayNotHasKey('set-name', $vtnet0Subnet);
+        $this->assertSame(['10.241.79.50/24'], $vtnet0Subnet['addresses'] ?? null);
+        $this->assertSame('10.241.79.1', $vtnet0Subnet['gateway4'] ?? null);
+        $this->assertSame([
+            ['to' => '0.0.0.0/0', 'via' => '10.241.79.1'],
+        ], $vtnet0Subnet['routes'] ?? null);
+        $this->assertSame(['addresses' => ['1.1.1.1']], $vtnet0Subnet['nameservers'] ?? null);
+
+        $mergedFromNull = $adapter->mergeRoutedUserData(null, 'virtual-machine');
+        $this->assertStringStartsWith("#cloud-config\n", $mergedFromNull);
+        $parsedFromNull = Yaml::parse(substr($mergedFromNull, strlen("#cloud-config\n")));
+        $this->assertIsArray($parsedFromNull);
+        $this->assertCount(1, $parsedFromNull['write_files'] ?? []);
+        $this->assertSame('/etc/rc.conf.d/routing', $parsedFromNull['write_files'][0]['path'] ?? null);
+        $this->assertStringContainsString('route_ognivo_gw="-host 169.254.0.1 -iface vtnet0"', (string) ($parsedFromNull['write_files'][0]['content'] ?? ''));
+        $this->assertStringContainsString('defaultrouter="169.254.0.1"', (string) ($parsedFromNull['write_files'][0]['content'] ?? ''));
+
+        $existingUserData = "#cloud-config\npackage_update: true\nwrite_files:\n  - path: /etc/motd\n    content: Welcome\n";
+        $mergedFromExisting = $adapter->mergeRoutedUserData($existingUserData, 'virtual-machine');
+        $this->assertStringStartsWith("#cloud-config\n", $mergedFromExisting);
+        $parsedFromExisting = Yaml::parse(substr($mergedFromExisting, strlen("#cloud-config\n")));
+        $this->assertIsArray($parsedFromExisting);
+        $this->assertTrue($parsedFromExisting['package_update'] ?? false);
+        $this->assertCount(2, $parsedFromExisting['write_files'] ?? []);
+        $this->assertSame('/etc/motd', $parsedFromExisting['write_files'][0]['path'] ?? null);
+        $this->assertSame('/etc/rc.conf.d/routing', $parsedFromExisting['write_files'][1]['path'] ?? null);
+        $this->assertStringContainsString('route_ognivo_gw="-host 169.254.0.1 -iface vtnet0"', (string) ($parsedFromExisting['write_files'][1]['content'] ?? ''));
+    }
+
     /**
      * Assert semantic structure of a Cloud-Init Network Config v1 (Alpine) YAML payload.
      *
@@ -446,16 +520,25 @@ final class GuestOsResolverTest extends TestCase
         GuestOsAdapterInterface $adapter,
         bool $expectSecureBootDisabled = false,
         string $vmInterfaceName = 'eth0',
+        bool $expectCloudInitDisk = false,
     ): void {
         $this->assertSame($vmInterfaceName, $adapter->primaryInterfaceName('virtual-machine'));
         $this->assertSame('eth0', $adapter->primaryInterfaceName('container'));
 
-        $this->assertSame([
+        $expectedVmDevices = [
             'agent' => [
                 'type' => 'disk',
                 'source' => 'agent:config',
             ],
-        ], $adapter->extraDevices('virtual-machine'));
+        ];
+        if ($expectCloudInitDisk) {
+            $expectedVmDevices['cloud-init'] = [
+                'type' => 'disk',
+                'source' => 'cloud-init:config',
+            ];
+        }
+
+        $this->assertSame($expectedVmDevices, $adapter->extraDevices('virtual-machine'));
         $this->assertSame([], $adapter->extraDevices('container'));
 
         $expectedVmConfig = $expectSecureBootDisabled ? ['security.secureboot' => 'false'] : [];

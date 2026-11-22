@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Hypervisor\GuestOs\Adapters;
 
 use App\Services\Hypervisor\GuestOs\Contracts\GuestOsAdapterInterface;
+use App\Services\Network\NetworkConstants;
 use Override;
 use Symfony\Component\Yaml\Yaml;
 
@@ -56,6 +57,10 @@ final class BsdOsAdapter implements GuestOsAdapterInterface
                     'type' => 'disk',
                     'source' => 'agent:config',
                 ],
+                'cloud-init' => [
+                    'type' => 'disk',
+                    'source' => 'cloud-init:config',
+                ],
             ];
         }
 
@@ -75,8 +80,8 @@ final class BsdOsAdapter implements GuestOsAdapterInterface
         return $this->buildNetplanConfig(
             cidr: "{$ipAddress}/32",
             routes: [
-                ['to' => '169.254.0.1/32'],
-                ['to' => '0.0.0.0/0', 'via' => '169.254.0.1'],
+                ['to' => NetworkConstants::ROUTED_GUEST_GATEWAY.'/32'],
+                ['to' => '0.0.0.0/0', 'via' => NetworkConstants::ROUTED_GUEST_GATEWAY],
             ],
             dnsServers: $dnsServers,
             instanceType: $instanceType,
@@ -96,10 +101,12 @@ final class BsdOsAdapter implements GuestOsAdapterInterface
         string $instanceType = 'virtual-machine',
     ): string {
         $routes = [];
+        $gateway4 = null;
         if ($gateway !== null && trim($gateway) !== '') {
+            $gateway4 = trim($gateway);
             $routes[] = [
                 'to' => '0.0.0.0/0',
-                'via' => trim($gateway),
+                'via' => $gateway4,
             ];
         }
 
@@ -108,7 +115,66 @@ final class BsdOsAdapter implements GuestOsAdapterInterface
             routes: $routes,
             dnsServers: $dnsServers,
             instanceType: $instanceType,
+            gateway4: $gateway4,
         );
+    }
+
+    /**
+     * @param  array<string>|null  $dnsServers
+     */
+    #[Override]
+    public function buildVendorData(
+        ?array $dnsServers = null,
+        string $instanceType = 'virtual-machine',
+    ): ?string {
+        return null;
+    }
+
+    /**
+     * Merge routed-mode /etc/rc.conf.d/routing configuration into BSD cloud-init user-data.
+     *
+     * FreeBSD's nuageinit requires a #cloud-config YAML mapping to process network_config and
+     * ignores Netplan v2 routes entries, so /32 routed mode writes /etc/rc.conf.d/routing via write_files.
+     */
+    public function mergeRoutedUserData(?string $userData, string $instanceType = 'virtual-machine'): string
+    {
+        $interface = $this->primaryInterfaceName($instanceType);
+        $gw = NetworkConstants::ROUTED_GUEST_GATEWAY;
+
+        $routingFile = [
+            'path' => '/etc/rc.conf.d/routing',
+            'permissions' => '0644',
+            'content' => sprintf(
+                "static_routes=\"ognivo_gw\"\nroute_ognivo_gw=\"-host %s -iface %s\"\ndefaultrouter=\"%s\"\n",
+                $gw,
+                $interface,
+                $gw,
+            ),
+        ];
+
+        if ($userData !== null && trim($userData) !== '') {
+            $trimmed = ltrim($userData);
+            if (! str_starts_with($trimmed, '#cloud-config')) {
+                return $userData;
+            }
+
+            $body = preg_replace('/^#cloud-config[^\r\n]*(?:\r?\n|$)/', '', $trimmed) ?? '';
+            $parsed = trim($body) === '' ? [] : Yaml::parse($body);
+
+            if (is_array($parsed)) {
+                $existingFiles = isset($parsed['write_files']) && is_array($parsed['write_files'])
+                    ? array_values($parsed['write_files'])
+                    : [];
+                $existingFiles[] = $routingFile;
+                $parsed['write_files'] = $existingFiles;
+
+                return "#cloud-config\n".Yaml::dump($parsed, inline: 10, indent: 2, flags: Yaml::DUMP_MULTI_LINE_LITERAL_BLOCK);
+            }
+
+            return $userData;
+        }
+
+        return "#cloud-config\n".Yaml::dump(['write_files' => [$routingFile]], inline: 10, indent: 2, flags: Yaml::DUMP_MULTI_LINE_LITERAL_BLOCK);
     }
 
     /**
@@ -122,14 +188,18 @@ final class BsdOsAdapter implements GuestOsAdapterInterface
         array $routes,
         ?array $dnsServers,
         string $instanceType,
+        ?string $gateway4 = null,
     ): string {
         $interface = $this->primaryInterfaceName($instanceType);
-        $dnsList = $dnsServers !== null && $dnsServers !== [] ? $dnsServers : ['1.1.1.1', '8.8.8.8'];
-        $resolvedDns = array_values(array_map(static fn (string $dns): string => trim($dns), $dnsList));
+        $resolvedDns = NetworkConstants::normalizeDnsServers($dnsServers);
 
         $interfaceConfig = [
             'addresses' => [$cidr],
         ];
+
+        if ($gateway4 !== null) {
+            $interfaceConfig['gateway4'] = $gateway4;
+        }
 
         if ($routes !== []) {
             $interfaceConfig['routes'] = $routes;

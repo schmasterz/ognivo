@@ -54,7 +54,7 @@ When saving or updating an image, Ognivo verifies that the technical name exists
 The `name` is resolved to the Incus image alias like this:
 
 1. Legacy CLI remote prefixes such as `images:` or `local:` are stripped automatically when resolving the remote alias (for example, `images:ubuntu/24.04` becomes `ubuntu/24.04`). Both spellings work.
-2. For Linux images from `images.linuxcontainers.org` with the `simplestreams` protocol, `/cloud` is appended when the instance needs cloud-init (for example, a user-supplied cloud-init configuration, the network configuration of an instance on a Manual pool, or the network configuration of a virtual machine on a Routed pool), so `ubuntu/24.04` becomes `ubuntu/24.04/cloud`.
+2. For Linux and BSD images from `images.linuxcontainers.org` with the `simplestreams` protocol, `/cloud` is appended when the instance needs cloud-init (for example, a user-supplied cloud-init configuration, the network configuration of an instance on a Manual pool, or the network configuration of a virtual machine on a Routed pool), so `ubuntu/24.04` becomes `ubuntu/24.04/cloud` and `freebsd/15.1` becomes `freebsd/15.1/cloud`.
 
 Custom images from other servers are used as they are. Manual-mode instances and virtual machines on Routed pools get their network settings through cloud-init, so make sure such images contain cloud-init. Containers on Routed pools get the address through the Incus NIC and do not need it.
 
@@ -87,12 +87,12 @@ When provisioning an instance, Ognivo resolves the catalog image to an OS-specif
 | `ArchOsAdapter` | Arch Linux, CachyOS | `arch` | `arch` | Two-route format for `systemd-networkd`; sets `security.secureboot: "false"` on VMs |
 | `SuseOsAdapter` | openSUSE Leap/Tumbleweed, SLES | `suse` | `opensuse` | Single route |
 | `GentooOsAdapter` | Gentoo Linux | `gentoo` | `gentoo` | Two-route format for `systemd-networkd`; sets `security.secureboot: "false"` on VMs |
-| `BsdOsAdapter` | FreeBSD, OpenBSD, NetBSD | `bsd` | `freebsd` | Primary interface is `vtnet0` on VMs (omitting udev renaming); sets `security.secureboot: "false"` on VMs |
+| `BsdOsAdapter` | FreeBSD, OpenBSD, NetBSD | `bsd` | `freebsd` | Primary interface is `vtnet0` on VMs (omitting udev renaming, while keeping the Incus NIC device key as `eth0` to override the project's default profile); attaches `cloud-init:config` (`cidata`) alongside `agent:config` on VMs; injects `/etc/rc.conf.d/routing` for FreeBSD `nuageinit` compatibility in routed mode; sets `security.secureboot: "false"` on VMs |
 
 #### KVM VM Devices & SecureBoot
 
 - **SecureBoot handling:** Ognivo automatically sets `security.secureboot: "false"` on KVM virtual machines for images lacking signed Microsoft/UEFI bootloaders (Alpine, Arch, Gentoo, BSD, and openEuler) to prevent Incus hypervisor startup rejection.
-- **Agent config drive:** KVM virtual machines automatically receive an `agent:config` virtual CD-ROM device (named `agent`) to deliver cloud-init configuration and `incus-agent` credentials. `migration.stateful: true` is omitted to avoid Incus device conflicts.
+- **Agent & cloud-init config drives:** KVM virtual machines automatically receive an `agent:config` virtual CD-ROM device (named `agent`) to deliver cloud-init configuration and `incus-agent` credentials. BSD virtual machines (`BsdOsAdapter`) also attach a `cloud-init:config` (`cidata`) virtual CD-ROM device (named `cloud-init`) alongside `agent:config` so FreeBSD `nuageinit` receives cloud-init configuration, and inject `/etc/rc.conf.d/routing` in routed mode while keeping the Incus NIC device key as `eth0` to override the project's default profile. `migration.stateful: true` is omitted to avoid Incus device conflicts.
 
 ---
 

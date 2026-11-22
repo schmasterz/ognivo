@@ -191,14 +191,6 @@ final class TenantProvisioningArchitecturalComplianceTest extends TestCase
             'status' => 'allocated',
         ]);
 
-        $ipv6 = IpAllocation::create([
-            'pool_id' => $pool->id,
-            'user_id' => $this->user->id,
-            'address' => inet_pton('2001:db8::55'),
-            'ip_string' => '2001:db8::55',
-            'status' => 'allocated',
-        ]);
-
         $vm = VirtualMachine::create([
             'user_id' => $this->user->id,
             'host_id' => $this->host->id,
@@ -217,15 +209,12 @@ final class TenantProvisioningArchitecturalComplianceTest extends TestCase
         ]);
 
         $ip->update(['virtual_machine_id' => $vm->id]);
-        $ipv6->update(['virtual_machine_id' => $vm->id]);
 
         $builder = app(InstanceSpecBuilder::class);
         $payload = $builder->build(
             vm: $vm,
+            allocation: $ip,
             storagePool: 'nvme-pool',
-            network: 'tenantbr0',
-            allocatedIp: $ip,
-            allocatedIpv6: $ipv6,
         );
 
         $this->assertSame('workload-alpha', $payload['name']);

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Hypervisor\GuestOs\Adapters;
 
+use App\Services\Network\NetworkConstants;
 use Override;
 use Symfony\Component\Yaml\Yaml;
 
@@ -49,7 +50,7 @@ final class RhelOsAdapter extends AbstractLinuxCloudInitOsAdapter
     protected function routedRoutes(): array
     {
         return [
-            ['to' => '0.0.0.0/0', 'via' => '169.254.0.1'],
+            ['to' => '0.0.0.0/0', 'via' => NetworkConstants::ROUTED_GUEST_GATEWAY],
         ];
     }
 
@@ -65,13 +66,14 @@ final class RhelOsAdapter extends AbstractLinuxCloudInitOsAdapter
      *
      * @param  array<string>|null  $dnsServers
      */
+    #[Override]
     public function buildVendorData(?array $dnsServers = null, string $instanceType = 'virtual-machine'): ?string
     {
         if ($instanceType !== 'container') {
             return null;
         }
 
-        $dnsList = $dnsServers !== null && $dnsServers !== [] ? array_values(array_map('trim', $dnsServers)) : ['1.1.1.1', '8.8.8.8'];
+        $dnsList = NetworkConstants::normalizeDnsServers($dnsServers);
         $content = implode("\n", array_map(fn (string $dns): string => sprintf('nameserver %s', $dns), $dnsList))."\n";
 
         $data = [

@@ -382,7 +382,7 @@ final class InstanceSpecBuilderTest extends TestCase
             'allocated_at' => now(),
         ]);
 
-        $macvlanSpec = $this->builder->build($vmMacvlan, $allocMacvlan, 'default', null, null, null, ['docker0', 'eno1', 'incusbr0']);
+        $macvlanSpec = $this->builder->build($vmMacvlan, $allocMacvlan, 'default', ['docker0', 'eno1', 'incusbr0']);
         $this->assertSame([
             'type' => 'disk',
             'source' => 'agent:config',
@@ -444,7 +444,7 @@ final class InstanceSpecBuilderTest extends TestCase
         $this->expectExceptionMessage('macvlan');
         $this->expectExceptionMessage('eno1, incusbr0');
 
-        $this->builder->build($vm, $alloc, 'default', null, null, null, ['eno1', 'incusbr0']);
+        $this->builder->build($vm, $alloc, 'default', ['eno1', 'incusbr0']);
     }
 
     public function test_build_throws_when_non_manual_pool_has_empty_parent_interface(): void
@@ -526,7 +526,7 @@ final class InstanceSpecBuilderTest extends TestCase
             'allocated_at' => now(),
         ]);
 
-        $spec = $this->builder->build($vm, $alloc, 'default', null, null, null, ['eno1']);
+        $spec = $this->builder->build($vm, $alloc, 'default', ['eno1']);
 
         $this->assertSame([
             'type' => 'disk',
@@ -836,5 +836,82 @@ final class InstanceSpecBuilderTest extends TestCase
 
         $this->assertSame('archlinux/cloud', $this->builder->resolveImageAlias($archCloudImage, true));
         $this->assertSame('archlinux/default', $this->builder->resolveImageAlias($archDefaultImage, true));
+    }
+
+    public function test_build_bsd_virtual_machine_spec_overrides_eth0_attaches_cloud_init_disk_and_resolves_cloud_alias(): void
+    {
+        $bsdImage = Image::firstOrCreate(
+            ['name' => 'freebsd/15.1'],
+            [
+                'source' => 'https://images.linuxcontainers.org',
+                'protocol' => 'simplestreams',
+                'os_type' => 'bsd',
+                'enabled' => true,
+            ]
+        );
+        $bsdImage->hosts()->syncWithoutDetaching([$this->host->id]);
+
+        $pool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'BSD Routed Pool',
+            'cidr' => '203.0.113.0/24',
+            'first_usable' => '203.0.113.10',
+            'last_usable' => '203.0.113.50',
+            'network_mode' => 'routed',
+            'parent_interface' => 'bond0',
+            'dns_servers' => ['1.1.1.1', '9.9.9.9'],
+        ]);
+
+        $vm = VirtualMachine::create([
+            'user_id' => $this->user->id,
+            'host_id' => $this->host->id,
+            'name' => 'srv-freebsd-01',
+            'incus_project' => 'default',
+            'instance_type' => 'virtual-machine',
+            'status' => 'provisioning',
+            'network_status' => 'assigned',
+            'cpu_cores' => 2,
+            'ram_mb' => 2048,
+            'disk_gb' => 20,
+            'os_image' => 'freebsd/15.1',
+            'ipv4_address' => '203.0.113.48',
+        ]);
+
+        $allocation = IpAllocation::create([
+            'pool_id' => $pool->id,
+            'address' => inet_pton('203.0.113.48'),
+            'ip_string' => '203.0.113.48',
+            'virtual_machine_id' => $vm->id,
+            'user_id' => $this->user->id,
+            'mac_address' => '02:54:cb:00:71:30',
+            'status' => 'allocated',
+            'allocated_at' => now(),
+        ]);
+
+        $spec = $this->builder->build($vm, $allocation);
+
+        $this->assertSame('freebsd/15.1/cloud', $spec['source']['alias']);
+        $this->assertSame('false', $spec['config']['security.secureboot']);
+
+        $this->assertSame([
+            'type' => 'disk',
+            'source' => 'agent:config',
+        ], $spec['devices']['agent']);
+        $this->assertSame([
+            'type' => 'disk',
+            'source' => 'cloud-init:config',
+        ], $spec['devices']['cloud-init']);
+        $this->assertSame('routed', $spec['devices']['eth0']['nictype']);
+        $this->assertArrayNotHasKey('vtnet0', $spec['devices']);
+
+        $parsedNetplan = Yaml::parse($spec['config']['cloud-init.network-config']);
+        $this->assertSame(2, $parsedNetplan['network']['version'] ?? null);
+        $this->assertArrayHasKey('vtnet0', $parsedNetplan['network']['ethernets']);
+        $this->assertArrayNotHasKey('eth0', $parsedNetplan['network']['ethernets']);
+
+        $userData = $spec['config']['cloud-init.user-data'];
+        $this->assertStringContainsString('/etc/rc.conf.d/routing', $userData);
+        $this->assertStringContainsString('route_ognivo_gw="-host 169.254.0.1 -iface vtnet0"', $userData);
+        $this->assertStringContainsString('defaultrouter="169.254.0.1"', $userData);
     }
 }
