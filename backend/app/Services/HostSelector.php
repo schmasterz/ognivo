@@ -182,7 +182,9 @@ class HostSelector
         $this->ipService->attachUtilizationToPools($activePools);
 
         foreach ($activePools as $pool) {
-            if (($pool->utilization['free'] ?? 0) > 0) {
+            /** @var array{total: int, allocated: int, cooling: int, free: int, percent: float}|null $util */
+            $util = $pool->utilization;
+            if ($util !== null && $util['free'] > 0) {
                 return true;
             }
         }

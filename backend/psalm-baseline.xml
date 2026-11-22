@@ -128,21 +128,13 @@
   </file>
   <file src="app/Http/Resources/IpAllocationResource.php">
     <DocblockTypeContradiction>
-      <code><![CDATA[$allocation->pool]]></code>
-      <code><![CDATA[300]]></code>
-      <code><![CDATA[null]]></code>
-      <code><![CDATA[null]]></code>
       <code><![CDATA[null]]></code>
       <code><![CDATA[null]]></code>
       <code><![CDATA[null]]></code>
     </DocblockTypeContradiction>
     <RedundantConditionGivenDocblockType>
       <code><![CDATA[$allocation->pool !== null]]></code>
-      <code><![CDATA[$allocation->pool !== null]]></code>
       <code><![CDATA[$allocation->pool->host !== null]]></code>
-      <code><![CDATA[$allocation->pool->host !== null]]></code>
-      <code><![CDATA[$allocation->pool?->cooldown_seconds]]></code>
-      <code><![CDATA[$allocation->pool?->cooldown_seconds]]></code>
       <code><![CDATA[$allocation->user !== null]]></code>
     </RedundantConditionGivenDocblockType>
   </file>
@@ -153,12 +145,6 @@
       <code><![CDATA[300]]></code>
       <code><![CDATA[null]]></code>
     </DocblockTypeContradiction>
-    <MixedArrayAccess>
-      <code><![CDATA[$utilization['allocated']]]></code>
-      <code><![CDATA[$utilization['cooling']]]></code>
-      <code><![CDATA[$utilization['free']]]></code>
-      <code><![CDATA[$utilization['total']]]></code>
-    </MixedArrayAccess>
     <RedundantCondition>
       <code><![CDATA[$isAdmin]]></code>
     </RedundantCondition>
@@ -171,11 +157,6 @@
     <TypeDoesNotContainType>
       <code><![CDATA[new TenantHostResource($pool->host)]]></code>
     </TypeDoesNotContainType>
-  </file>
-  <file src="app/Http/Resources/TenantIpPoolResource.php">
-    <MixedArrayAccess>
-      <code><![CDATA[$utilization['free']]]></code>
-    </MixedArrayAccess>
   </file>
   <file src="app/Jobs/DeleteUserWorkloadsJob.php">
     <MixedPropertyAssignment>
@@ -197,12 +178,6 @@
     <PossiblyNullArgument>
       <code><![CDATA[$exception?->getMessage()]]></code>
     </PossiblyNullArgument>
-    <PropertyTypeCoercion>
-      <code><![CDATA[now()]]></code>
-    </PropertyTypeCoercion>
-    <RiskyTruthyFalsyComparison>
-      <code><![CDATA[$this->allocationId]]></code>
-    </RiskyTruthyFalsyComparison>
   </file>
   <file src="app/Listeners/SyncUserQuotaToHypervisorProjectListener.php">
     <ClassMustBeFinal>
@@ -375,9 +350,6 @@
     </RedundantCast>
   </file>
   <file src="app/Services/IpManagementService.php">
-    <MixedArrayOffset>
-      <code><![CDATA[$occupied[$alloc->ip_string]]]></code>
-    </MixedArrayOffset>
     <PossiblyUndefinedMethod>
       <code><![CDATA[body]]></code>
       <code><![CDATA[json]]></code>
@@ -391,9 +363,6 @@
       <code><![CDATA[$dto->firstUsable]]></code>
       <code><![CDATA[$dto->lastUsable]]></code>
     </RiskyTruthyFalsyComparison>
-    <UndefinedMagicPropertyAssignment>
-      <code><![CDATA[$pool->utilization]]></code>
-    </UndefinedMagicPropertyAssignment>
   </file>
   <file src="app/Services/SystemOverviewService.php">
     <PossiblyInvalidCast>

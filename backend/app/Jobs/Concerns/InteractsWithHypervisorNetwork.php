@@ -8,6 +8,7 @@ use App\Models\IpAllocation;
 use App\Models\VirtualMachine;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Carbon;
 use Throwable;
 
 /**
@@ -69,7 +70,7 @@ trait InteractsWithHypervisorNetwork
         }
 
         if ($vm->network_wait_started_at === null) {
-            $vm->network_wait_started_at = now();
+            $vm->network_wait_started_at = Carbon::now();
             $vm->save();
         }
 

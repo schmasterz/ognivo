@@ -249,7 +249,9 @@ final class VmProvisioningService
 
                     $pool = null;
                     foreach ($activePools as $poolCandidate) {
-                        if (($poolCandidate->utilization['free'] ?? 0) > 0) {
+                        /** @var array{total: int, allocated: int, cooling: int, free: int, percent: float}|null $util */
+                        $util = $poolCandidate->utilization;
+                        if ($util !== null && $util['free'] > 0) {
                             $pool = $poolCandidate;
                             break;
                         }
