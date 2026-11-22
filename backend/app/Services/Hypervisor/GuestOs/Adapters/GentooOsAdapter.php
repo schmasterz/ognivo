@@ -35,16 +35,4 @@ final class GentooOsAdapter extends AbstractLinuxCloudInitOsAdapter
 
         return [];
     }
-
-    /**
-     * @return array<int, array<string, mixed>>
-     */
-    #[Override]
-    protected function routedRoutes(): array
-    {
-        return [
-            ['to' => '169.254.0.1/32'],
-            ['to' => '0.0.0.0/0', 'via' => '169.254.0.1'],
-        ];
-    }
 }

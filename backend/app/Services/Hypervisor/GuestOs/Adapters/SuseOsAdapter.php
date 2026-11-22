@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Hypervisor\GuestOs\Adapters;
 
+use App\Services\Network\NetworkConstants;
 use Override;
 
 /**
@@ -30,7 +31,7 @@ final class SuseOsAdapter extends AbstractLinuxCloudInitOsAdapter
     protected function routedRoutes(): array
     {
         return [
-            ['to' => '0.0.0.0/0', 'via' => '169.254.0.1'],
+            ['to' => '0.0.0.0/0', 'via' => NetworkConstants::ROUTED_GUEST_GATEWAY],
         ];
     }
 }

@@ -78,6 +78,9 @@ interface EditModalHelpers {
   simulateEditModeChange: (input: EditModeChangeInput) => EditModeChangeResult;
 }
 
+const cidrUtilsPath = fileURLToPath(
+  new URL("../../../src/components/networking/cidrUtils.ts", import.meta.url),
+);
 const createModalPath = fileURLToPath(
   new URL("../../../src/components/networking/CreateIpPoolModal.tsx", import.meta.url),
 );
@@ -85,6 +88,7 @@ const editModalPath = fileURLToPath(
   new URL("../../../src/components/networking/EditIpPoolModal.tsx", import.meta.url),
 );
 
+const cidrUtilsSource = fs.readFileSync(cidrUtilsPath, "utf8");
 const createModalSource = fs.readFileSync(createModalPath, "utf8");
 const editModalSource = fs.readFileSync(editModalPath, "utf8");
 
@@ -164,12 +168,12 @@ function runTranspiledSnippet<T>(
 
 function loadCreateModalHelpers(): CreateModalHelpers {
   const snippets = [
-    getTypeAliasSnippet(createModalSource, "CreateIpPoolModal.tsx", "PoolNetworkMode"),
-    getTopLevelFunctionSnippet(createModalSource, "CreateIpPoolModal.tsx", "parseIpv4ToNum"),
-    getTopLevelFunctionSnippet(createModalSource, "CreateIpPoolModal.tsx", "parseCidrPrefix"),
-    getTopLevelFunctionSnippet(createModalSource, "CreateIpPoolModal.tsx", "parseCidrRange"),
-    getTopLevelFunctionSnippet(createModalSource, "CreateIpPoolModal.tsx", "calculateUsableRange"),
-    getVariableDeclarationSnippet(createModalSource, "CreateIpPoolModal.tsx", "validateGatewayField"),
+    getTypeAliasSnippet(cidrUtilsSource, "cidrUtils.ts", "PoolNetworkMode"),
+    getTopLevelFunctionSnippet(cidrUtilsSource, "cidrUtils.ts", "parseIpv4ToNum"),
+    getTopLevelFunctionSnippet(cidrUtilsSource, "cidrUtils.ts", "parseCidrPrefix"),
+    getTopLevelFunctionSnippet(cidrUtilsSource, "cidrUtils.ts", "parseCidrRange"),
+    getTopLevelFunctionSnippet(cidrUtilsSource, "cidrUtils.ts", "calculateUsableRange"),
+    getTopLevelFunctionSnippet(cidrUtilsSource, "cidrUtils.ts", "validateGatewayField"),
     `function isGatewayRequiredFor(networkMode: PoolNetworkMode, cidr: string): boolean {
       const cidrPrefix = parseCidrPrefix(cidr);
       const isL2Mode = networkMode === "bridged" || networkMode === "macvlan";
@@ -181,7 +185,8 @@ function loadCreateModalHelpers(): CreateModalHelpers {
       parseCidrPrefix,
       parseCidrRange,
       calculateUsableRange,
-      validateGatewayField,
+      validateGatewayField: (gatewayInput: string, cidrInput: string, mode: PoolNetworkMode) =>
+        validateGatewayField(gatewayInput, cidrInput, mode, t),
       isGatewayRequiredFor,
     };`,
   ].join("\n\n");
@@ -191,10 +196,10 @@ function loadCreateModalHelpers(): CreateModalHelpers {
 
 function loadEditModalHelpers(): EditModalHelpers {
   const snippets = [
-    getTopLevelFunctionSnippet(editModalSource, "EditIpPoolModal.tsx", "parseIpv4ToNum"),
-    getTopLevelFunctionSnippet(editModalSource, "EditIpPoolModal.tsx", "parseCidrPrefix"),
-    getTopLevelFunctionSnippet(editModalSource, "EditIpPoolModal.tsx", "parseCidrRange"),
-    getVariableDeclarationSnippet(editModalSource, "EditIpPoolModal.tsx", "validateGatewayField"),
+    getTopLevelFunctionSnippet(cidrUtilsSource, "cidrUtils.ts", "parseIpv4ToNum"),
+    getTopLevelFunctionSnippet(cidrUtilsSource, "cidrUtils.ts", "parseCidrPrefix"),
+    getTopLevelFunctionSnippet(cidrUtilsSource, "cidrUtils.ts", "parseCidrRange"),
+    getTopLevelFunctionSnippet(cidrUtilsSource, "cidrUtils.ts", "validateGatewayField"),
     `function evaluateEditGatewayFlags(
       pool: {
         cidr?: string;
@@ -252,7 +257,8 @@ function loadEditModalHelpers(): EditModalHelpers {
       parseIpv4ToNum,
       parseCidrPrefix,
       parseCidrRange,
-      validateGatewayField,
+      validateGatewayField: (gatewayInput: string, cidrInput: string, mode: string) =>
+        validateGatewayField(gatewayInput, cidrInput, mode, t),
       evaluateEditGatewayFlags,
       simulateEditModeChange,
     };`,

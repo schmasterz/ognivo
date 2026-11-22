@@ -263,19 +263,18 @@ final class ProvisionVmJobTest extends TestCase
             'network' => [],
         ]);
 
-        // Attempt 1: In-memory pollAttempt is initially 0
-        $job1 = new ProvisionVmJob($vm, $allocation->id, 0);
+        // Attempt 1: In-memory job starts with DB wait timestamp unset
+        $job1 = new ProvisionVmJob($vm, $allocation->id);
         $job1->handle($this->manager);
 
         $vm->refresh();
         $this->assertNotNull($vm->network_wait_started_at);
         $this->assertSame('assigned', $vm->network_status);
 
-        // Simulate queue re-queue: restored job has original constructor args (pollAttempt=0)
-        $serialized = serialize(new ProvisionVmJob($vm->fresh(), $allocation->id, 0));
+        // Simulate queue re-queue: restored job has original constructor args
+        $serialized = serialize(new ProvisionVmJob($vm->fresh(), $allocation->id));
         /** @var ProvisionVmJob $jobRestored */
         $jobRestored = unserialize($serialized);
-        $this->assertSame(0, $jobRestored->pollAttempt);
 
         // Run before deadline has elapsed -> still waiting, does not mark unverified prematurely
         $jobRestored->handle($this->manager);
@@ -285,11 +284,10 @@ final class ProvisionVmJobTest extends TestCase
         // Fast forward network_wait_started_at past the 5s threshold
         $vm->update(['network_wait_started_at' => now()->subSeconds(6)]);
 
-        // Restored job with pollAttempt = 0 still succeeds in marking unverified based on DB timestamp
-        $serialized2 = serialize(new ProvisionVmJob($vm->fresh(), $allocation->id, 0));
+        // Restored job still succeeds in marking unverified based on DB timestamp
+        $serialized2 = serialize(new ProvisionVmJob($vm->fresh(), $allocation->id));
         /** @var ProvisionVmJob $jobRestored2 */
         $jobRestored2 = unserialize($serialized2);
-        $this->assertSame(0, $jobRestored2->pollAttempt);
 
         $jobRestored2->handle($this->manager);
 

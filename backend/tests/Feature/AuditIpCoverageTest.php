@@ -60,9 +60,9 @@ final class AuditIpCoverageTest extends TestCase
         app(AuditContext::class)->setRequestId('req-ip-test-4321');
     }
 
-    public function test_ip_allocated_released_and_reassigned(): void
+    public function test_ip_allocated_and_released(): void
     {
-        $vm1 = VirtualMachine::create([
+        $vm = VirtualMachine::create([
             'user_id' => $this->tenant->id,
             'host_id' => $this->host->id,
             'name' => 'vm-1-'.uniqid(),
@@ -75,21 +75,8 @@ final class AuditIpCoverageTest extends TestCase
             'os_image' => 'images:ubuntu/24.04',
         ]);
 
-        $vm2 = VirtualMachine::create([
-            'user_id' => $this->tenant->id,
-            'host_id' => $this->host->id,
-            'name' => 'vm-2-'.uniqid(),
-            'incus_project' => 'user-'.$this->tenant->id,
-            'instance_type' => 'virtual-machine',
-            'status' => Running::class,
-            'cpu_cores' => 1,
-            'ram_mb' => 1024,
-            'disk_gb' => 10,
-            'os_image' => 'images:ubuntu/24.04',
-        ]);
-
         // 1. IP Allocated
-        $allocation = $this->ipService->allocateIp($this->pool, $vm1, $this->tenant);
+        $allocation = $this->ipService->allocateIp($this->pool, $vm, $this->tenant);
 
         $allocRow = $this->assertAuditRow(
             action: 'ip.allocated',
@@ -100,26 +87,11 @@ final class AuditIpCoverageTest extends TestCase
         );
         $allocCtx = json_decode((string) $allocRow->context, true);
         $this->assertSame($allocation->ip_string, $allocCtx['ip']);
-        $this->assertSame($vm1->id, $allocCtx['virtual_machine_id']);
+        $this->assertSame($vm->id, $allocCtx['virtual_machine_id']);
         $this->assertSame($this->pool->id, $allocCtx['pool_id']);
 
-        // 2. IP Reassigned to vm2
-        $this->ipService->reassignIp($allocation, $vm2->id);
-
-        $reassignRow = $this->assertAuditRow(
-            action: 'ip.reassigned',
-            outcome: 'success',
-            tenantUserId: $this->tenant->id,
-            visibility: 'tenant',
-            requestId: 'req-ip-test-4321',
-        );
-        $reassignCtx = json_decode((string) $reassignRow->context, true);
-        $this->assertSame($allocation->ip_string, $reassignCtx['ip']);
-        $this->assertSame($vm1->id, $reassignCtx['old_virtual_machine_id']);
-        $this->assertSame($vm2->id, $reassignCtx['new_virtual_machine_id']);
-
-        // 3. IP Released
-        $this->ipService->forceReleaseAllocation($allocation);
+        // 2. IP Released
+        $this->ipService->emergencyReleaseAllocation($allocation);
 
         $releaseRow = $this->assertAuditRow(
             action: 'ip.released',

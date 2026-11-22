@@ -175,9 +175,16 @@ class HostSelector
             ->orderBy('id', 'asc')
             ->get();
 
+        if ($activePools->isEmpty()) {
+            return false;
+        }
+
+        $this->ipService->attachUtilizationToPools($activePools);
+
         foreach ($activePools as $pool) {
-            $util = $this->ipService->getPoolUtilization($pool);
-            if (($util['free'] ?? 0) > 0) {
+            /** @var array{total: int, allocated: int, cooling: int, free: int, percent: float}|null $util */
+            $util = $pool->utilization;
+            if ($util !== null && $util['free'] > 0) {
                 return true;
             }
         }

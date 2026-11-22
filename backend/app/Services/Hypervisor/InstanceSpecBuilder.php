@@ -7,6 +7,7 @@ namespace App\Services\Hypervisor;
 use App\Models\Image;
 use App\Models\IpAllocation;
 use App\Models\VirtualMachine;
+use App\Services\Hypervisor\GuestOs\Adapters\BsdOsAdapter;
 use App\Services\Hypervisor\GuestOs\GuestOsResolver;
 use App\Services\Network\NetworkConstants;
 use DomainException;
@@ -30,22 +31,10 @@ class InstanceSpecBuilder
      */
     public function build(
         VirtualMachine $vm,
-        IpAllocation|string|null $allocation = null,
+        ?IpAllocation $allocation = null,
         string $storagePool = 'default',
-        ?string $network = null,
-        mixed $allocatedIp = null,
-        mixed $allocatedIpv6 = null,
         ?array $availableNetworks = null,
     ): array {
-        if (is_string($allocation)) {
-            $storagePool = $allocation;
-            $allocation = null;
-        }
-
-        if ($allocation === null && $allocatedIp instanceof IpAllocation) {
-            $allocation = $allocatedIp;
-        }
-
         // Enforce admin-approved image allowlist
         $image = Image::where('name', $vm->os_image)->where('enabled', true)->first();
         if (! $image instanceof Image) {
@@ -86,9 +75,8 @@ class InstanceSpecBuilder
             $parentInterface = $this->resolveParentInterface($configuredParent, $networkMode, $availableNetworks);
             $ipAddress = $allocation?->ip_string ?? $vm->ipv4_address;
             $macAddress = $allocation?->mac_address;
-            $dnsServers = $allocation?->pool?->dns_servers ?? ['1.1.1.1', '8.8.8.8'];
+            $dnsServers = $allocation?->pool?->dns_servers ?? NetworkConstants::DEFAULT_DNS_SERVERS;
             $effectiveMac = $macAddress ?: '02:54:00:00:00:01';
-            $nicName = $osAdapter->primaryInterfaceName($vm->instance_type);
 
             if ($networkMode === 'bridged' || $networkMode === 'macvlan') {
                 $nic = [
@@ -101,7 +89,7 @@ class InstanceSpecBuilder
                     $nic['hwaddr'] = $macAddress;
                 }
 
-                $devices[$nicName] = $nic;
+                $devices['eth0'] = $nic;
 
                 if ($allocation !== null && $ipAddress !== null && $ipAddress !== '') {
                     $prefix = $this->extractPrefixFromCidr($allocation->pool->cidr ?: $allocation->pool->subnet);
@@ -120,6 +108,10 @@ class InstanceSpecBuilder
                         $config['cloud-init.network-config'] = $networkConfig;
                     }
                 }
+
+                if ($osAdapter->family() === 'bsd' && ! isset($config['cloud-init.user-data'])) {
+                    $config['cloud-init.user-data'] = "#cloud-config\nmanage_etc_hosts: true\n";
+                }
             } else {
                 // Default: 'routed' mode
                 $nic = [
@@ -136,7 +128,7 @@ class InstanceSpecBuilder
                     $nic['hwaddr'] = $macAddress;
                 }
 
-                $devices[$nicName] = $nic;
+                $devices['eth0'] = $nic;
 
                 // Instances require cloud-init Netplan v2 configuration for DNS nameservers and link-local default route (NetworkConstants::ROUTED_GUEST_GATEWAY)
                 if ($allocation !== null) {
@@ -150,14 +142,16 @@ class InstanceSpecBuilder
                     if ($networkConfig !== null && $networkConfig !== '') {
                         $config['cloud-init.network-config'] = $networkConfig;
                     }
+
+                    if ($osAdapter instanceof BsdOsAdapter) {
+                        $config['cloud-init.user-data'] = $osAdapter->mergeRoutedUserData($userData, $vm->instance_type);
+                    }
                 }
             }
 
-            if (method_exists($osAdapter, 'buildVendorData')) {
-                $vendorData = $osAdapter->buildVendorData($dnsServers, $vm->instance_type);
-                if ($vendorData !== null && $vendorData !== '') {
-                    $config['cloud-init.vendor-data'] = $vendorData;
-                }
+            $vendorData = $osAdapter->buildVendorData($dnsServers, $vm->instance_type);
+            if ($vendorData !== null && $vendorData !== '') {
+                $config['cloud-init.vendor-data'] = $vendorData;
             }
         }
 
@@ -196,7 +190,7 @@ class InstanceSpecBuilder
 
         if (
             $requiresCloudInit
-            && $image->os_type === 'linux'
+            && in_array($image->os_type, ['linux', 'bsd'], true)
             && $image->protocol === 'simplestreams'
             && str_contains($image->source, 'images.linuxcontainers.org')
             && preg_match('/^[a-z0-9_.-]+(\/[a-z0-9_.-]+)?$/i', $alias) === 1

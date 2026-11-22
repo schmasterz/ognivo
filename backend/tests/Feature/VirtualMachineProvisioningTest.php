@@ -13,7 +13,6 @@ use App\Models\VirtualMachine;
 use App\States\Vm\Deleted;
 use App\States\Vm\Failed;
 use App\States\Vm\Running;
-use App\States\Vm\Suspended;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;

@@ -184,7 +184,7 @@ final class NetworkProvisioningIntegrationTest extends TestCase
         $ipService = app(IpManagementService::class);
         $firstAllocation = IpAllocation::where('ip_string', '203.0.113.66')->firstOrFail();
 
-        $ipService->forceReleaseAllocation($firstAllocation);
+        $ipService->emergencyReleaseAllocation($firstAllocation);
 
         $firstAllocation->refresh();
         $this->assertEquals('cooling', $firstAllocation->status);

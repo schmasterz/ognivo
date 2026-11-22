@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Hypervisor\GuestOs\Adapters;
 
+use App\Services\Network\NetworkConstants;
 use Override;
 
 /**
@@ -26,7 +27,7 @@ final class UbuntuOsAdapter extends DebianOsAdapter
         return [
             [
                 'to' => '0.0.0.0/0',
-                'via' => '169.254.0.1',
+                'via' => NetworkConstants::ROUTED_GUEST_GATEWAY,
                 'on-link' => true,
             ],
         ];

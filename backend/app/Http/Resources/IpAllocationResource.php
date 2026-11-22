@@ -33,9 +33,7 @@ final class IpAllocationResource extends JsonResource
         $cooldownRemaining = 0;
         $status = $allocation->status;
         if ($allocation->status === 'cooling' && $allocation->released_at !== null) {
-            $cooldownSeconds = $allocation->pool?->cooldown_seconds ?? 300;
-            $coolingUntil = $allocation->released_at->copy()->addSeconds($cooldownSeconds);
-            $diff = (int) now()->diffInSeconds($coolingUntil, false);
+            $diff = $allocation->getCooldownRemainingSeconds();
             if ($diff <= 0) {
                 $cooldownRemaining = 0;
                 $status = 'released';
@@ -85,19 +83,6 @@ final class IpAllocationResource extends JsonResource
                 'email' => $allocation->user->email,
             ] : null,
             'pool' => $allocation->pool !== null ? [
-                'id' => $allocation->pool->id,
-                'name' => $allocation->pool->name,
-                'cidr' => $allocation->pool->cidr,
-                'host_id' => $allocation->pool->host_id,
-                'host' => $allocation->pool->host !== null ? [
-                    'id' => $allocation->pool->host->id,
-                    'name' => $allocation->pool->host->name,
-                    'region' => $allocation->pool->host->region,
-                    'driver' => $allocation->pool->host->driver,
-                    'is_active' => $allocation->pool->host->is_active,
-                ] : null,
-            ] : null,
-            'ip_pool' => $allocation->pool !== null ? [
                 'id' => $allocation->pool->id,
                 'name' => $allocation->pool->name,
                 'cidr' => $allocation->pool->cidr,

@@ -63,4 +63,14 @@ interface GuestOsAdapterInterface
         ?array $dnsServers = null,
         string $instanceType = 'virtual-machine',
     ): ?string;
+
+    /**
+     * Build optional cloud-init vendor-data configuration for the guest OS.
+     *
+     * @param  array<string>|null  $dnsServers
+     */
+    public function buildVendorData(
+        ?array $dnsServers = null,
+        string $instanceType = 'virtual-machine',
+    ): ?string;
 }

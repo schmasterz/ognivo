@@ -245,10 +245,13 @@ final class VmProvisioningService
                         ->orderBy('id', 'asc')
                         ->get();
 
+                    $this->ipService->attachUtilizationToPools($activePools);
+
                     $pool = null;
                     foreach ($activePools as $poolCandidate) {
-                        $util = $this->ipService->getPoolUtilization($poolCandidate);
-                        if (($util['free'] ?? 0) > 0) {
+                        /** @var array{total: int, allocated: int, cooling: int, free: int, percent: float}|null $util */
+                        $util = $poolCandidate->utilization;
+                        if ($util !== null && $util['free'] > 0) {
                             $pool = $poolCandidate;
                             break;
                         }

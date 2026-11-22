@@ -28,7 +28,7 @@ final class TenantIpPoolResource extends JsonResource
     {
         $pool = $this->resource;
         $utilization = $pool->utilization ?? app(IpManagementService::class)->getPoolUtilization($pool);
-        $hasFree = ($utilization['free'] ?? 0) > 0;
+        $hasFree = $utilization['free'] > 0;
 
         return [
             'id' => $pool->id,

@@ -65,8 +65,6 @@ final class IpManagementService
             // 2. Query occupied IP addresses (active allocations + cooling allocations still in quarantine)
             $cooldownLimit = now()->subSeconds($lockedPool->cooldown_seconds);
 
-            /** @var array<string, bool> $occupied */
-            $occupied = [];
             $occupiedAllocations = IpAllocation::where('pool_id', $lockedPool->id)
                 ->where(function (Builder $query) use ($cooldownLimit): void {
                     $query->where('status', 'allocated')
@@ -77,12 +75,15 @@ final class IpManagementService
                 })
                 ->get(['ip_string']);
 
+            // 3. Build blocked unsigned IP lookup map (effective exclusions + occupied allocations)
+            /** @var array<int, true|int> $blockedLongs */
+            $blockedLongs = $lockedPool->effectiveExcludedLongs();
             foreach ($occupiedAllocations as $alloc) {
-                $occupied[$alloc->ip_string] = true;
+                $ipLong = CidrHelper::ipToUnsigned($alloc->ip_string);
+                if ($ipLong !== null) {
+                    $blockedLongs[$ipLong] = true;
+                }
             }
-
-            // 3. Retrieve effective excluded set (gateway + administrator exclusions)
-            $effectiveExcludedSet = $lockedPool->effectiveExcludedLongs();
 
             // 4. Scan the usable address range deterministically
             $firstLong = CidrHelper::ipToUnsigned((string) $lockedPool->first_usable);
@@ -94,14 +95,10 @@ final class IpManagementService
 
             $candidateIp = null;
             for ($ipLong = $firstLong; $ipLong <= $lastLong; $ipLong++) {
-                if (isset($effectiveExcludedSet[$ipLong])) {
+                if (isset($blockedLongs[$ipLong])) {
                     continue;
                 }
-                $currentIp = long2ip($ipLong);
-                if (isset($occupied[$currentIp])) {
-                    continue;
-                }
-                $candidateIp = $currentIp;
+                $candidateIp = long2ip($ipLong);
                 break;
             }
 
@@ -192,39 +189,6 @@ final class IpManagementService
             $vm->ipv4_address = null;
             $vm->network_status = 'unassigned';
             $vm->save();
-        });
-    }
-
-    /**
-     * Forcefully release an allocation immediately (admin action).
-     */
-    public function forceReleaseAllocation(IpAllocation $allocation): void
-    {
-        DB::transaction(function () use ($allocation): void {
-            if ($allocation->virtual_machine_id !== null) {
-                VirtualMachine::where('id', $allocation->virtual_machine_id)->update([
-                    'ipv4_address' => null,
-                    'network_status' => null,
-                ]);
-            }
-
-            $this->logger()->record(new AuditEntry(
-                action: AuditAction::IpReleased,
-                outcome: AuditOutcome::Success,
-                subject: $allocation,
-                tenantUserId: $allocation->user_id,
-                visibility: 'tenant',
-                context: [
-                    'ip' => $allocation->ip_string,
-                    'pool_id' => $allocation->pool_id,
-                ],
-            ));
-
-            $allocation->update([
-                'virtual_machine_id' => null,
-                'status' => 'cooling',
-                'released_at' => now(),
-            ]);
         });
     }
 
@@ -557,26 +521,6 @@ final class IpManagementService
             $occupiedLongs = $occupiedLongsByPool[$pool->id] ?? [];
             $pool->utilization = $this->computeUtilizationMetrics($pool, $allocated, $cooling, $occupiedLongs);
         }
-    }
-
-    /**
-     * List pools with live utilization metrics.
-     *
-     * @param  array{host_id?: int|null}  $filters
-     * @return Collection<int, IpPool>
-     */
-    public function listPoolsWithStats(array $filters = []): Collection
-    {
-        $query = IpPool::with(['host']);
-
-        if (isset($filters['host_id'])) {
-            $query->where('host_id', $filters['host_id']);
-        }
-
-        $pools = $query->get();
-        $this->attachUtilizationToPools($pools);
-
-        return $pools;
     }
 
     /**
@@ -1153,33 +1097,6 @@ final class IpManagementService
                     'released_at' => now(),
                 ]);
             }
-        });
-    }
-
-    /**
-     * Reassign an IP allocation to a different virtual machine or detach it.
-     */
-    public function reassignIp(IpAllocation $allocation, ?int $newVmId): IpAllocation
-    {
-        return DB::transaction(function () use ($allocation, $newVmId): IpAllocation {
-            $oldVmId = $allocation->virtual_machine_id;
-            $allocation->virtual_machine_id = $newVmId;
-            $allocation->save();
-
-            $this->logger()->record(new AuditEntry(
-                action: AuditAction::IpReassigned,
-                outcome: AuditOutcome::Success,
-                subject: $allocation,
-                tenantUserId: $allocation->user_id,
-                visibility: 'tenant',
-                context: [
-                    'ip' => $allocation->ip_string,
-                    'old_virtual_machine_id' => $oldVmId,
-                    'new_virtual_machine_id' => $newVmId,
-                ],
-            ));
-
-            return $allocation;
         });
     }
 

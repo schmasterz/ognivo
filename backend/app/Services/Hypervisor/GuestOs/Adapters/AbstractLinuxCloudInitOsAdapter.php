@@ -110,6 +110,17 @@ abstract class AbstractLinuxCloudInitOsAdapter implements GuestOsAdapterInterfac
     }
 
     /**
+     * @param  array<string>|null  $dnsServers
+     */
+    #[Override]
+    public function buildVendorData(
+        ?array $dnsServers = null,
+        string $instanceType = 'virtual-machine',
+    ): ?string {
+        return null;
+    }
+
+    /**
      * Build and serialize a Netplan v2 YAML configuration for eth0.
      *
      * @param  array<int, array<string, mixed>>  $routes
@@ -152,15 +163,13 @@ abstract class AbstractLinuxCloudInitOsAdapter implements GuestOsAdapterInterfac
     }
 
     /**
-     * Resolve DNS nameserver entries, defaulting to public resolvers when empty.
+     * Resolve DNS nameserver entries, defaulting to NetworkConstants::DEFAULT_DNS_SERVERS when empty.
      *
      * @param  array<string>|null  $dnsServers
      * @return array<int, string>
      */
     protected function resolveDnsAddresses(?array $dnsServers): array
     {
-        $dnsList = $dnsServers !== null && $dnsServers !== [] ? $dnsServers : ['1.1.1.1', '8.8.8.8'];
-
-        return array_values(array_map(static fn (string $dns): string => trim($dns), $dnsList));
+        return NetworkConstants::normalizeDnsServers($dnsServers);
     }
 }

@@ -118,9 +118,7 @@ final class AlpineOsAdapter implements GuestOsAdapterInterface
         ?array $dnsServers,
         string $instanceType,
     ): string {
-        $dnsList = $dnsServers !== null && $dnsServers !== []
-            ? array_values(array_map('trim', $dnsServers))
-            : ['1.1.1.1', '8.8.8.8'];
+        $dnsList = NetworkConstants::normalizeDnsServers($dnsServers);
 
         $subnet = [
             'type' => 'static',
@@ -159,11 +157,10 @@ final class AlpineOsAdapter implements GuestOsAdapterInterface
      *
      * @param  array<string>|null  $dnsServers
      */
+    #[Override]
     public function buildVendorData(?array $dnsServers = null, string $instanceType = 'virtual-machine'): string
     {
-        $dnsList = $dnsServers !== null && $dnsServers !== []
-            ? array_values(array_map('trim', $dnsServers))
-            : ['1.1.1.1', '8.8.8.8'];
+        $dnsList = NetworkConstants::normalizeDnsServers($dnsServers);
 
         $data = [
             'manage_resolv_conf' => true,

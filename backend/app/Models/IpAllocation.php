@@ -97,16 +97,6 @@ final class IpAllocation extends Model
     }
 
     /**
-     * Backward-compatible alias for pool relation.
-     *
-     * @return BelongsTo<IpPool, $this>
-     */
-    public function ipPool(): BelongsTo
-    {
-        return $this->pool();
-    }
-
-    /**
      * The virtual machine attached to this allocation, if any.
      *
      * @return BelongsTo<VirtualMachine, $this>
@@ -124,14 +114,6 @@ final class IpAllocation extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
-    }
-
-    /**
-     * Compatibility accessor for address string.
-     */
-    public function getAddressAttribute(): string
-    {
-        return $this->ip_string;
     }
 
     /**
@@ -167,7 +149,7 @@ final class IpAllocation extends Model
 
         $duration = $cooldownSeconds ?? $this->pool?->cooldown_seconds ?? 300;
 
-        return $this->released_at->addSeconds($duration)->isFuture();
+        return $this->released_at->copy()->addSeconds($duration)->isFuture();
     }
 
     /**
@@ -180,7 +162,7 @@ final class IpAllocation extends Model
         }
 
         $duration = $this->pool?->cooldown_seconds ?? 300;
-        $expiry = $this->released_at->addSeconds($duration);
+        $expiry = $this->released_at->copy()->addSeconds($duration);
 
         return max(0, (int) now()->diffInSeconds($expiry, false));
     }

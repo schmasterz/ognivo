@@ -5,112 +5,17 @@ import { X, Network, Server, Loader2, CheckCircle2 } from "lucide-react";
 import { api, ApiError, IpPool, HostNode, HostDiscoveredNetwork } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
 import { useModalEscape } from "@/lib/hooks/useModalEscape";
-
-type PoolNetworkMode = "routed" | "bridged" | "macvlan" | "manual";
+import {
+  PoolNetworkMode,
+  parseCidrPrefix,
+  calculateUsableRange,
+  getFieldError,
+  validateGatewayField,
+} from "./cidrUtils";
 
 interface CreateIpPoolModalProps {
   onClose: () => void;
   onSuccess: (newPool: IpPool) => void;
-}
-
-function parseIpv4ToNum(ip: string): number | null {
-  const trimmed = ip.trim();
-  const octets = trimmed.split(".");
-  if (octets.length !== 4) return null;
-  const nums: number[] = [];
-  for (const part of octets) {
-    if (!/^\d+$/.test(part)) return null;
-    if (part.length > 1 && part.startsWith("0")) return null;
-    const n = Number(part);
-    if (n < 0 || n > 255) return null;
-    nums.push(n);
-  }
-  return ((nums[0] << 24) | (nums[1] << 16) | (nums[2] << 8) | nums[3]) >>> 0;
-}
-
-function parseCidrPrefix(cidr: string): number | null {
-  const parts = cidr.trim().split("/");
-  if (parts.length !== 2 || !/^\d+$/.test(parts[1])) return null;
-  const prefix = parseInt(parts[1], 10);
-  if (isNaN(prefix) || prefix < 0 || prefix > 32) return null;
-  return prefix;
-}
-
-function parseCidrRange(cidr: string): {
-  ipStr: string;
-  prefix: number;
-  network: number;
-  broadcast: number;
-  numToIp: (n: number) => string;
-} | null {
-  const parts = cidr.trim().split("/");
-  if (parts.length !== 2 || !/^\d+$/.test(parts[1])) return null;
-  const ipStr = parts[0].trim();
-  const prefix = parseInt(parts[1], 10);
-  if (isNaN(prefix) || prefix < 16 || prefix > 32) return null;
-
-  const ipNum = parseIpv4ToNum(ipStr);
-  if (ipNum === null) return null;
-
-  const mask = prefix === 32 ? 0xffffffff : (0xffffffff << (32 - prefix)) >>> 0;
-  const network = (ipNum & mask) >>> 0;
-  const broadcast = (network | (~mask >>> 0)) >>> 0;
-
-  const numToIp = (n: number) =>
-    [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join(".");
-
-  return { ipStr, prefix, network, broadcast, numToIp };
-}
-
-function calculateUsableRange(
-  cidr: string,
-  networkMode: PoolNetworkMode
-): { first: string; last: string; gateway: string } | null {
-  const range = parseCidrRange(cidr);
-  if (!range) return null;
-
-  const { ipStr, prefix, network, broadcast, numToIp } = range;
-
-  if (prefix === 32) {
-    return {
-      gateway: "",
-      first: ipStr,
-      last: ipStr,
-    };
-  }
-
-  if (prefix === 31) {
-    return {
-      gateway: "",
-      first: numToIp(network),
-      last: numToIp(broadcast),
-    };
-  }
-
-  if (networkMode === "routed") {
-    return {
-      gateway: "",
-      first: numToIp(network + 1),
-      last: numToIp(broadcast - 1),
-    };
-  }
-
-  return {
-    gateway: numToIp(network + 1),
-    first: numToIp(network + 1),
-    last: numToIp(broadcast - 1),
-  };
-}
-
-function getFieldError(errors: Record<string, string[]>, field: string): string | null {
-  if (errors[field] && errors[field].length > 0) {
-    return errors[field][0];
-  }
-  const nestedKey = Object.keys(errors).find((k) => k.startsWith(`${field}.`));
-  if (nestedKey && errors[nestedKey]?.length > 0) {
-    return errors[nestedKey][0];
-  }
-  return null;
 }
 
 export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps) {
@@ -272,50 +177,6 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
     }
   };
 
-  const validateGatewayField = (
-    gatewayInput: string,
-    cidrInput: string,
-    mode: PoolNetworkMode
-  ): string | null => {
-    const trimmedGw = gatewayInput.trim();
-    const isL2 = mode === "bridged" || mode === "macvlan";
-    const range = parseCidrRange(cidrInput);
-    const prefix = range?.prefix ?? parseCidrPrefix(cidrInput);
-
-    if (isL2 && !trimmedGw) {
-      return t("gatewayRequiredForL2Modes");
-    }
-
-    if (mode === "manual" && prefix !== null && prefix <= 30 && !trimmedGw) {
-      return t("gatewayRequiredForManualSubnets");
-    }
-
-    if (trimmedGw !== "") {
-      const gwNum = parseIpv4ToNum(trimmedGw);
-      if (gwNum === null) {
-        return t("gatewayInvalidIpv4");
-      }
-
-      if ((gwNum >>> 16) === 0xa9fe) {
-        return "Link-local addresses (169.254.0.0/16) cannot be used as pool CIDR, gateway, or excluded IPs.";
-      }
-
-      if (range !== null) {
-        if (gwNum < range.network || gwNum > range.broadcast) {
-          return t("gatewayOutsideCidr");
-        }
-        if (
-          range.prefix <= 30 &&
-          (gwNum === range.network || gwNum === range.broadcast)
-        ) {
-          return t("gatewayNetworkOrBroadcast");
-        }
-      }
-    }
-
-    return null;
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -345,7 +206,7 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
       return;
     }
 
-    const gatewayErr = validateGatewayField(gateway, cidr, networkMode);
+    const gatewayErr = validateGatewayField(gateway, cidr, networkMode, t);
     if (gatewayErr) {
       setFieldErrors({ gateway: [gatewayErr] });
       setError(gatewayErr);

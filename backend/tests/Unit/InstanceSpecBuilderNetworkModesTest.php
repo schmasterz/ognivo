@@ -124,7 +124,7 @@ final class InstanceSpecBuilderNetworkModesTest extends TestCase
             mac: '02:54:0a:f1:4f:32',
         );
 
-        $spec = $this->builder->build($vm, $allocation, 'default', null, null, null, ['incusbr0', 'eno1']);
+        $spec = $this->builder->build($vm, $allocation, 'default', ['incusbr0', 'eno1']);
 
         $this->assertSame('container', $spec['type']);
         $this->assertArrayNotHasKey('migration.stateful', $spec['config']);
@@ -176,7 +176,7 @@ YAML;
             mac: '02:54:c0:a8:64:14',
         );
 
-        $spec = $this->builder->build($vm, $allocation, 'default', null, null, null, ['br0']);
+        $spec = $this->builder->build($vm, $allocation, 'default', ['br0']);
 
         $this->assertSame('virtual-machine', $spec['type']);
         $this->assertArrayNotHasKey('migration.stateful', $spec['config']);
@@ -226,7 +226,7 @@ YAML;
             mac: '02:54:c6:33:64:28',
         );
 
-        $spec = $this->builder->build($vm, $allocation, 'default', null, null, null, ['eno1']);
+        $spec = $this->builder->build($vm, $allocation, 'default', ['eno1']);
 
         $this->assertSame('container', $spec['type']);
         $this->assertArrayNotHasKey('agent', $spec['devices']);
@@ -269,7 +269,7 @@ YAML;
             mac: '02:54:cb:00:71:96',
         );
 
-        $spec = $this->builder->build($vm, $allocation, 'default', null, null, null, ['bond0.100']);
+        $spec = $this->builder->build($vm, $allocation, 'default', ['bond0.100']);
 
         $this->assertSame('virtual-machine', $spec['type']);
         $this->assertArrayNotHasKey('migration.stateful', $spec['config']);
@@ -319,7 +319,7 @@ YAML;
             mac: '02:54:c6:33:64:4d',
         );
 
-        $spec = $this->builder->build($vm, $allocation, 'default', null, null, null, ['eth0']);
+        $spec = $this->builder->build($vm, $allocation, 'default', ['eth0']);
 
         $this->assertSame('container', $spec['type']);
         $this->assertArrayNotHasKey('agent', $spec['devices']);
@@ -367,7 +367,7 @@ YAML;
             mac: '02:54:cb:00:71:21',
         );
 
-        $spec = $this->builder->build($vm, $allocation, 'default', null, null, null, ['bond0']);
+        $spec = $this->builder->build($vm, $allocation, 'default', ['bond0']);
 
         $this->assertSame('virtual-machine', $spec['type']);
         $this->assertSame([
@@ -416,7 +416,7 @@ YAML;
                 dnsServers: null,
             );
 
-            $spec = $this->builder->build($vm, $allocation, 'default', null, null, null, ['eno1']);
+            $spec = $this->builder->build($vm, $allocation, 'default', ['eno1']);
 
             $this->assertSame($instanceType, $spec['type']);
             $this->assertArrayNotHasKey('eth0', $spec['devices']);
@@ -682,7 +682,7 @@ YAML), Yaml::parse($rhelYaml));
         );
 
         try {
-            $this->builder->build($vm, $allocation, 'default', null, null, null, ['eno1', 'incusbr0']);
+            $this->builder->build($vm, $allocation, 'default', ['eno1', 'incusbr0']);
             $this->fail('Expected DomainException when parent_interface is missing from available networks.');
         } catch (DomainException $e) {
             $this->assertStringContainsString('br-missing', $e->getMessage());

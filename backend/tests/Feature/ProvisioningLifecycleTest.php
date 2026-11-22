@@ -185,7 +185,7 @@ final class ProvisioningLifecycleTest extends TestCase
         // Simulate network timeout reached via database timestamp
         $vm->update(['network_wait_started_at' => now()->subSeconds(125)]);
 
-        $job = new ProvisionVmJob($vm, null, 12);
+        $job = new ProvisionVmJob($vm);
         $job->handle($manager);
 
         $vm->refresh();

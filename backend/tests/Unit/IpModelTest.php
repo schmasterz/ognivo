@@ -64,8 +64,7 @@ final class IpModelTest extends TestCase
             'network_mode' => 'routed',
         ]);
 
-        $this->assertEquals(253, $pool->total_ips);
-        $this->assertEquals(0, $pool->active_allocations_count);
+        $this->assertEquals(0, $pool->allocations()->where('status', 'allocated')->count());
     }
 
     public function test_ip_allocation_can_be_created_and_relates_to_pool_and_user(): void
@@ -117,7 +116,7 @@ final class IpModelTest extends TestCase
         $this->assertEquals(1, $vm->allocations()->count());
 
         // Test Pool active allocations
-        $this->assertEquals(1, $pool->active_allocations_count);
+        $this->assertEquals(1, $pool->allocations()->where('status', 'allocated')->count());
     }
 
     public function test_ip_allocation_scopes_active_and_cooling(): void
@@ -157,10 +156,12 @@ final class IpModelTest extends TestCase
         $this->assertEquals(1, $pool->allocations()->cooling()->count());
         $this->assertTrue($pool->allocations()->cooling()->first()->is($coolingAlloc));
 
-        // Test cooldown helper methods
+        // Test cooldown helper methods and verify released_at is not mutated in-place
+        $originalReleasedAt = $coolingAlloc->released_at->copy();
         $this->assertFalse($activeAlloc->isUnderCooldown());
         $this->assertTrue($coolingAlloc->isUnderCooldown());
         $this->assertGreaterThan(0, $coolingAlloc->getCooldownRemainingSeconds());
+        $this->assertTrue($coolingAlloc->released_at->equalTo($originalReleasedAt));
     }
 
     public function test_ip_allocation_enforces_unique_pool_id_and_address_constraint(): void

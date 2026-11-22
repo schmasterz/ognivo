@@ -50,11 +50,6 @@ final class VirtualMachine extends Model
     use HasStates;
 
     /**
-     * Ephemeral flag indicating a status transition occurred that requires WebSocket broadcast.
-     */
-    public bool $shouldBroadcastWs = false;
-
-    /**
      * The attributes that are mass assignable.
      *
      * @var list<string>
