@@ -17,6 +17,7 @@ use App\Services\IpManagementService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -926,6 +927,7 @@ final class IpManagementServiceTest extends TestCase
         } catch (PoolAllocationConflictException $e) {
             $this->assertSame($alloc->id, $e->allocationId);
             $this->assertSame('192.168.103.2', $e->ipAddress);
+            $this->assertSame('gateway', $e->field);
         }
 
         try {
@@ -934,7 +936,45 @@ final class IpManagementServiceTest extends TestCase
         } catch (PoolAllocationConflictException $e) {
             $this->assertSame($alloc->id, $e->allocationId);
             $this->assertSame('192.168.103.2', $e->ipAddress);
+            $this->assertSame('excluded_ips', $e->field);
         }
+    }
+
+    public function test_service_create_and_update_pool_validate_config_and_recalculate_range_on_cidr_change(): void
+    {
+        try {
+            $this->service->createPool(new CreateIpPoolDTO(
+                name: 'Invalid Bridged Without Gateway',
+                cidr: '10.220.0.0/24',
+                hostId: $this->host->id,
+                networkMode: 'bridged',
+                parentInterface: 'incusbr0',
+            ));
+            $this->fail('Expected ValidationException when creating a bridged pool without a gateway.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('gateway', $e->errors());
+        }
+
+        $pool = $this->service->createPool(new CreateIpPoolDTO(
+            name: 'Recalculate CIDR Range Pool',
+            cidr: '10.220.0.0/24',
+            hostId: $this->host->id,
+            gateway: '10.220.0.1',
+            networkMode: 'routed',
+            parentInterface: 'eth0',
+        ));
+
+        $this->assertSame('10.220.0.1', $pool->first_usable);
+        $this->assertSame('10.220.0.254', $pool->last_usable);
+
+        $updated = $this->service->updatePool($pool, [
+            'cidr' => '10.221.0.0/28',
+            'gateway' => '10.221.0.1',
+        ]);
+
+        $this->assertSame('10.221.0.0/28', $updated->cidr);
+        $this->assertSame('10.221.0.1', $updated->first_usable);
+        $this->assertSame('10.221.0.14', $updated->last_usable);
     }
 
     public function test_delete_pool_with_active_allocations_throws_pool_has_active_allocations_exception(): void

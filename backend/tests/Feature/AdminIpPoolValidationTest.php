@@ -617,7 +617,8 @@ final class AdminIpPoolValidationTest extends TestCase
 
         $gatewayResponse = $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
             'gateway' => '10.204.0.10',
-        ])->assertStatus(422);
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors(['gateway']);
 
         $gatewayMessage = (string) $gatewayResponse->json('message');
         $this->assertStringContainsString('10.204.0.10', $gatewayMessage);
@@ -625,7 +626,8 @@ final class AdminIpPoolValidationTest extends TestCase
 
         $excludedResponse = $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
             'excluded_ips' => ['10.204.0.5', '10.204.0.10'],
-        ])->assertStatus(422);
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors(['excluded_ips']);
 
         $excludedMessage = (string) $excludedResponse->json('message');
         $this->assertStringContainsString('10.204.0.10', $excludedMessage);
@@ -634,6 +636,60 @@ final class AdminIpPoolValidationTest extends TestCase
         $pool->refresh();
         $this->assertSame('10.204.0.1', $pool->gateway);
         $this->assertSame(['10.204.0.5'], $pool->excluded_ips);
+    }
+
+    public function test_updating_pool_mode_gateway_and_cidr_succeeds_when_only_expired_cooling_allocations_exist(): void
+    {
+        Sanctum::actingAs($this->admin);
+
+        $pool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Expired Cooling Pool',
+            'cidr' => '10.210.0.0/24',
+            'first_usable' => '10.210.0.2',
+            'last_usable' => '10.210.0.254',
+            'gateway' => '10.210.0.1',
+            'network_mode' => 'bridged',
+            'parent_interface' => 'incusbr0',
+            'cooldown_seconds' => 300,
+        ]);
+
+        IpAllocation::create([
+            'pool_id' => $pool->id,
+            'user_id' => $this->admin->id,
+            'address' => inet_pton('10.210.0.10'),
+            'ip_string' => '10.210.0.10',
+            'status' => 'cooling',
+            'allocated_at' => now()->subMinutes(15),
+            'released_at' => now()->subSeconds(600),
+        ]);
+
+        // Updating gateway on a bridged pool succeeds when only expired cooling allocations exist
+        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+            'gateway' => '10.210.0.2',
+        ])->assertOk()
+            ->assertJsonPath('pool.gateway', '10.210.0.2');
+
+        // Updating network_mode (bridged -> routed) succeeds
+        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+            'network_mode' => 'routed',
+        ])->assertOk()
+            ->assertJsonPath('pool.network_mode', 'routed');
+
+        // Updating cidr without explicit first_usable/last_usable succeeds and recalculates usable range
+        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+            'cidr' => '10.211.0.0/24',
+            'gateway' => '10.211.0.1',
+        ])->assertOk()
+            ->assertJsonPath('pool.cidr', '10.211.0.0/24')
+            ->assertJsonPath('pool.first_usable', '10.211.0.1')
+            ->assertJsonPath('pool.last_usable', '10.211.0.254');
+
+        $pool->refresh();
+        $this->assertSame('routed', $pool->network_mode);
+        $this->assertSame('10.211.0.0/24', $pool->cidr);
+        $this->assertSame('10.211.0.1', $pool->first_usable);
+        $this->assertSame('10.211.0.254', $pool->last_usable);
     }
 
     public function test_link_local_addresses_in_cidr_gateway_or_excluded_ips_return_422(): void
