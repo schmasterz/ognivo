@@ -67,21 +67,15 @@ parameters:
 			path: app/Http/Requests/Admin/UpdateIpPoolRequest.php
 
 		-
-			message: '#^Expression on left side of \?\? is not nullable\.$#'
-			identifier: nullCoalesce.expr
-			count: 1
-			path: app/Http/Resources/IpAllocationResource.php
-
-		-
 			message: '#^Strict comparison using \!\=\= between App\\Models\\Host and null will always evaluate to true\.$#'
 			identifier: notIdentical.alwaysTrue
-			count: 2
+			count: 1
 			path: app/Http/Resources/IpAllocationResource.php
 
 		-
 			message: '#^Strict comparison using \!\=\= between App\\Models\\IpPool and null will always evaluate to true\.$#'
 			identifier: notIdentical.alwaysTrue
-			count: 2
+			count: 1
 			path: app/Http/Resources/IpAllocationResource.php
 
 		-
@@ -97,30 +91,6 @@ parameters:
 			path: app/Http/Resources/IpPoolResource.php
 
 		-
-			message: '#^Cannot access offset ''allocated'' on mixed\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 1
-			path: app/Http/Resources/IpPoolResource.php
-
-		-
-			message: '#^Cannot access offset ''cooling'' on mixed\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 2
-			path: app/Http/Resources/IpPoolResource.php
-
-		-
-			message: '#^Cannot access offset ''free'' on mixed\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 1
-			path: app/Http/Resources/IpPoolResource.php
-
-		-
-			message: '#^Cannot access offset ''total'' on mixed\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 1
-			path: app/Http/Resources/IpPoolResource.php
-
-		-
 			message: '#^Strict comparison using \!\=\= between App\\Models\\Host and null will always evaluate to true\.$#'
 			identifier: notIdentical.alwaysTrue
 			count: 1
@@ -131,12 +101,6 @@ parameters:
 			identifier: ternary.alwaysTrue
 			count: 1
 			path: app/Http/Resources/IpPoolResource.php
-
-		-
-			message: '#^Cannot access offset ''free'' on mixed\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 1
-			path: app/Http/Resources/TenantIpPoolResource.php
 
 		-
 			message: '#^Cannot access property \$id on mixed\.$#'
@@ -163,12 +127,6 @@ parameters:
 			path: app/Jobs/DeleteUserWorkloadsJob.php
 
 		-
-			message: '#^Parameter \#1 \$network of method App\\Jobs\\ProvisionVmJob\:\:extractObservedIp\(\) expects array\<string, mixed\>, mixed given\.$#'
-			identifier: argument.type
-			count: 1
-			path: app/Jobs/ProvisionVmJob.php
-
-		-
 			message: '#^Class App\\Models\\DriftReport uses generic trait Illuminate\\Database\\Eloquent\\Factories\\HasFactory but does not specify its types\: TFactory$#'
 			identifier: missingType.generics
 			count: 1
@@ -190,12 +148,6 @@ parameters:
 			message: '#^Cannot cast mixed to float\.$#'
 			identifier: cast.double
 			count: 5
-			path: app/Services/HostSelector.php
-
-		-
-			message: '#^Offset ''free'' on array\{total\: int, allocated\: int, cooling\: int, free\: int, percent\: float\} on left side of \?\? always exists and is not nullable\.$#'
-			identifier: nullCoalesce.offset
-			count: 1
 			path: app/Services/HostSelector.php
 
 		-
@@ -265,12 +217,6 @@ parameters:
 			path: app/Services/IncusTrustService.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\IpPool\:\:\$utilization\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Services/IpManagementService.php
-
-		-
 			message: '#^Cannot cast mixed to int\.$#'
 			identifier: cast.int
 			count: 4
@@ -329,12 +275,6 @@ parameters:
 			identifier: nullsafe.neverNull
 			count: 1
 			path: app/Services/VmLifecycleService.php
-
-		-
-			message: '#^Offset ''free'' on array\{total\: int, allocated\: int, cooling\: int, free\: int, percent\: float\} on left side of \?\? always exists and is not nullable\.$#'
-			identifier: nullCoalesce.offset
-			count: 1
-			path: app/Services/VmProvisioningService.php
 
 		-
 			message: '#^Parameter \#1 \$array of function array_unique expects an array of values castable to string, array\<mixed\> given\.$#'

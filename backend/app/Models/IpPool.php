@@ -38,6 +38,7 @@ use Override;
  * @property string|null $description
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
+ * @property array{total: int, allocated: int, cooling: int, free: int, percent: float}|null $utilization
  * @property-read Host $host
  * @property-read Collection<int, IpAllocation> $allocations
  */
@@ -161,29 +162,6 @@ final class IpPool extends Model
     public function host(): BelongsTo
     {
         return $this->belongsTo(Host::class);
-    }
-
-    /**
-     * Calculate the total count of addressable IPs in the pool.
-     */
-    public function getTotalIpsAttribute(): int
-    {
-        $firstLong = ip2long($this->first_usable);
-        $lastLong = ip2long($this->last_usable);
-
-        if ($firstLong === false || $lastLong === false || $lastLong < $firstLong) {
-            return 0;
-        }
-
-        return ($lastLong - $firstLong) + 1;
-    }
-
-    /**
-     * Calculate current active allocation count.
-     */
-    public function getActiveAllocationsCountAttribute(): int
-    {
-        return $this->allocations()->where('status', 'allocated')->count();
     }
 
     /**

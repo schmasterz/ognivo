@@ -6,7 +6,6 @@ namespace Tests\Feature;
 
 use App\Audit\AuditContext;
 use App\DTO\Host\CreateHostDTO;
-use App\Models\Host;
 use App\Services\HostNodeService;
 use App\Services\Hypervisor\Drivers\FakeHypervisorDriver;
 use App\Services\Hypervisor\HypervisorManager;
