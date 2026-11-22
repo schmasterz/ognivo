@@ -219,7 +219,7 @@ final class IpPool extends Model
 
         if (is_array($this->excluded_ips)) {
             foreach ($this->excluded_ips as $entry) {
-                if (is_string($entry)) {
+                if ($entry !== '') {
                     $candidates[] = $entry;
                 }
             }

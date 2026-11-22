@@ -310,7 +310,7 @@ final class IpManagementService
 
         $freeCount = max(0, $rawTotal - count($unionSet));
         $effectiveOccupiedCount = max(0, $usableTotal - $freeCount);
-        $percent = $usableTotal > 0 ? round(($effectiveOccupiedCount / $usableTotal) * 100, 1) : 0.0;
+        $percent = $usableTotal > 0 ? round(((float) $effectiveOccupiedCount / (float) $usableTotal) * 100.0, 1) : 0.0;
 
         return [
             'total' => $usableTotal,

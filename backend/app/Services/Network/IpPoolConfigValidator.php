@@ -166,8 +166,7 @@ final class IpPoolConfigValidator
         }
 
         if (
-            $resolved['first_usable'] !== null
-            && $resolved['last_usable'] !== null
+            isset($resolved['first_usable'], $resolved['last_usable'])
             && $resolved['first_usable'] > $resolved['last_usable']
         ) {
             self::addError($errors, 'first_usable', 'First usable IP cannot be greater than last usable IP.');
