@@ -52,22 +52,6 @@ export const networkingApi = {
     return request<MetaPaginatedResponse<IpPool>>(`/ip-pools${query}`, { signal: options?.signal });
   },
 
-  async adminGetIpPools(
-    filters?: {
-      host_id?: number | null;
-      page?: number | null;
-      per_page?: number | null;
-    },
-    options?: { signal?: AbortSignal }
-  ): Promise<MetaPaginatedResponse<IpPool>> {
-    const params = new URLSearchParams();
-    if (filters?.host_id) params.set("host_id", String(filters.host_id));
-    if (filters?.page) params.set("page", String(filters.page));
-    if (filters?.per_page) params.set("per_page", String(filters.per_page));
-    const query = params.toString() ? `?${params.toString()}` : "";
-    return request<MetaPaginatedResponse<IpPool>>(`/admin/ip-pools${query}`, { signal: options?.signal });
-  },
-
   async adminReleaseIp(
     allocationId: number,
     forceDelete: boolean = false
