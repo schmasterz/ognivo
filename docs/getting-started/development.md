@@ -100,8 +100,8 @@ All three are enabled and attached to every demo node.
 ### 3.5 Default Network Pool (Ranged IPAM)
 
 - **Name:** `Default Public IPv4 Pool`
-- **CIDR:** `198.51.100.0/24` (usable range: `198.51.100.2` – `198.51.100.254`)
-- **Gateway:** `198.51.100.1` (excluded from allocation)
+- **CIDR:** `198.51.100.0/24` (usable range: `198.51.100.1` – `198.51.100.254`)
+- **Gateway:** `198.51.100.1` (dynamically excluded from allocation at runtime; not stored in `excluded_ips`)
 - **DNS servers:** `1.1.1.1`, `8.8.8.8`
 - **Network mode:** `routed` (`parent_interface: eth0`), IPv4, public, active
 - **Cooldown:** `300` seconds before a released IP can be reused

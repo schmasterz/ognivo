@@ -734,6 +734,7 @@ final class IpManagementTest extends TestCase
             'cidr' => '10.172.0.0/24',
             'first_usable' => '10.172.0.10',
             'last_usable' => '10.172.0.50',
+            'gateway' => '10.172.0.1',
             'network_mode' => 'manual',
             'parent_interface' => '',
         ]);
@@ -889,6 +890,7 @@ final class IpManagementTest extends TestCase
             'cidr' => '10.179.0.0/24',
             'first_usable' => '10.179.0.10',
             'last_usable' => '10.179.0.50',
+            'gateway' => '10.179.0.1',
             'network_mode' => 'manual',
             'parent_interface' => '',
         ]);

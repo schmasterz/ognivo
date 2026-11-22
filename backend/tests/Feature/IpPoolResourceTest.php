@@ -148,6 +148,32 @@ final class IpPoolResourceTest extends TestCase
         $this->assertSame('eno1', $setArray['parent_interface']);
     }
 
+    public function test_ip_pool_resource_includes_excluded_ips_without_gateway_and_omits_vlan_id(): void
+    {
+        Sanctum::actingAs($this->admin);
+
+        $createRes = $this->postJson('/api/admin/ip-pools', [
+            'name' => 'Excluded IPs Resource Pool',
+            'host_id' => $this->host->id,
+            'cidr' => '198.51.120.0/24',
+            'gateway' => '198.51.120.1',
+            'excluded_ips' => ['198.51.120.10', '198.51.120.20'],
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+        ]);
+
+        $createRes->assertCreated();
+        $createRes->assertJsonPath('pool.gateway', '198.51.120.1');
+        $createRes->assertJsonPath('pool.excluded_ips', ['198.51.120.10', '198.51.120.20']);
+        $createRes->assertJsonMissingPath('pool.vlan_id');
+
+        $listRes = $this->getJson('/api/admin/ip-pools?host_id='.$this->host->id);
+        $listRes->assertOk();
+        $listRes->assertJsonPath('data.0.gateway', '198.51.120.1');
+        $listRes->assertJsonPath('data.0.excluded_ips', ['198.51.120.10', '198.51.120.20']);
+        $listRes->assertJsonMissingPath('data.0.vlan_id');
+    }
+
     public function test_ip_pool_endpoints_return_only_meta_pagination_without_duplicate_root_keys(): void
     {
         IpPool::create([

@@ -394,7 +394,7 @@ final class AdminIpPoolValidationTest extends TestCase
             'parent_interface' => 'eno1',
         ])->assertStatus(422)
             ->assertJsonValidationErrors(['cidr'])
-            ->assertJsonPath('errors.cidr.0', 'Layer-2 pool modes require a prefix between /16 and /30.');
+            ->assertJsonPath('errors.cidr.0', 'Bridged and macvlan modes only support /16 to /30 subnets.');
 
         $this->postJson('/api/admin/ip-pools', [
             'name' => 'Bridged Slash 31',
@@ -405,7 +405,7 @@ final class AdminIpPoolValidationTest extends TestCase
             'parent_interface' => 'incusbr0',
         ])->assertStatus(422)
             ->assertJsonValidationErrors(['cidr'])
-            ->assertJsonPath('errors.cidr.0', 'Layer-2 pool modes require a prefix between /16 and /30.');
+            ->assertJsonPath('errors.cidr.0', 'Bridged and macvlan modes only support /16 to /30 subnets.');
     }
 
     public function test_creating_bridged_pool_with_invalid_gateway_returns_422(): void
@@ -470,20 +470,22 @@ final class AdminIpPoolValidationTest extends TestCase
         $bridgedResponse->assertJsonPath('pool.network_mode', 'bridged');
         $bridgedResponse->assertJsonPath('pool.gateway', '198.51.115.1');
 
-        // Routed /24 without gateway still 422; routed /24 with gateway 201; routed /32 without gateway 201
+        // Routed /24 without gateway returns 201; routed /24 with gateway 201; routed /32 without gateway 201
         $this->postJson('/api/admin/ip-pools', [
-            'name' => 'Routed 24 Missing Gateway',
+            'name' => 'Routed 24 Without Gateway',
             'host_id' => $this->host->id,
             'cidr' => '198.51.116.0/24',
             'network_mode' => 'routed',
             'parent_interface' => 'eth0',
-        ])->assertStatus(422)->assertJsonValidationErrors(['gateway']);
+        ])->assertCreated()
+            ->assertJsonPath('pool.network_mode', 'routed')
+            ->assertJsonPath('pool.gateway', null);
 
         $this->postJson('/api/admin/ip-pools', [
             'name' => 'Routed 24 Valid',
             'host_id' => $this->host->id,
-            'cidr' => '198.51.116.0/24',
-            'gateway' => '198.51.116.1',
+            'cidr' => '198.51.118.0/24',
+            'gateway' => '198.51.118.1',
             'network_mode' => 'routed',
             'parent_interface' => 'eth0',
         ])->assertCreated();
@@ -546,5 +548,200 @@ final class AdminIpPoolValidationTest extends TestCase
 
         $bridgedPool->refresh();
         $this->assertSame('10.201.0.1', $bridgedPool->gateway);
+    }
+
+    public function test_updating_bridged_or_macvlan_pool_gateway_with_allocations_returns_422(): void
+    {
+        Sanctum::actingAs($this->admin);
+
+        foreach ([
+            ['mode' => 'bridged', 'interface' => 'incusbr0', 'cidr' => '10.202.0.0/24', 'gw' => '10.202.0.1', 'newGw' => '10.202.0.2', 'allocIp' => '10.202.0.10'],
+            ['mode' => 'macvlan', 'interface' => 'eno1', 'cidr' => '10.203.0.0/24', 'gw' => '10.203.0.1', 'newGw' => '10.203.0.2', 'allocIp' => '10.203.0.10'],
+        ] as $case) {
+            $subnetPrefix = substr($case['cidr'], 0, strrpos($case['cidr'], '.') + 1);
+            $pool = IpPool::create([
+                'host_id' => $this->host->id,
+                'name' => sprintf('L2 %s Pool', $case['mode']),
+                'cidr' => $case['cidr'],
+                'first_usable' => $subnetPrefix.'2',
+                'last_usable' => $subnetPrefix.'100',
+                'gateway' => $case['gw'],
+                'network_mode' => $case['mode'],
+                'parent_interface' => $case['interface'],
+            ]);
+
+            IpAllocation::create([
+                'pool_id' => $pool->id,
+                'user_id' => $this->admin->id,
+                'address' => inet_pton($case['allocIp']),
+                'ip_string' => $case['allocIp'],
+                'status' => 'allocated',
+                'allocated_at' => now(),
+            ]);
+
+            $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+                'gateway' => $case['newGw'],
+            ])->assertStatus(422)
+                ->assertJsonValidationErrors(['gateway'])
+                ->assertJsonPath('errors.gateway.0', 'Gateway cannot be modified when allocations exist in bridged or macvlan pools.');
+
+            $pool->refresh();
+            $this->assertSame($case['gw'], $pool->gateway);
+        }
+    }
+
+    public function test_updating_gateway_or_excluded_ips_targeting_active_allocated_ip_returns_422(): void
+    {
+        Sanctum::actingAs($this->admin);
+
+        $pool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Routed Conflict Pool',
+            'cidr' => '10.204.0.0/24',
+            'first_usable' => '10.204.0.1',
+            'last_usable' => '10.204.0.100',
+            'gateway' => '10.204.0.1',
+            'excluded_ips' => ['10.204.0.5'],
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+        ]);
+
+        $allocation = IpAllocation::create([
+            'pool_id' => $pool->id,
+            'user_id' => $this->admin->id,
+            'address' => inet_pton('10.204.0.10'),
+            'ip_string' => '10.204.0.10',
+            'status' => 'allocated',
+            'allocated_at' => now(),
+        ]);
+
+        $gatewayResponse = $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+            'gateway' => '10.204.0.10',
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors(['gateway']);
+
+        $gatewayMessage = (string) $gatewayResponse->json('message');
+        $this->assertStringContainsString('10.204.0.10', $gatewayMessage);
+        $this->assertStringContainsString((string) $allocation->id, $gatewayMessage);
+
+        $excludedResponse = $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+            'excluded_ips' => ['10.204.0.5', '10.204.0.10'],
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors(['excluded_ips']);
+
+        $excludedMessage = (string) $excludedResponse->json('message');
+        $this->assertStringContainsString('10.204.0.10', $excludedMessage);
+        $this->assertStringContainsString((string) $allocation->id, $excludedMessage);
+
+        $pool->refresh();
+        $this->assertSame('10.204.0.1', $pool->gateway);
+        $this->assertSame(['10.204.0.5'], $pool->excluded_ips);
+    }
+
+    public function test_updating_pool_mode_gateway_and_cidr_succeeds_when_only_expired_cooling_allocations_exist(): void
+    {
+        Sanctum::actingAs($this->admin);
+
+        $pool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Expired Cooling Pool',
+            'cidr' => '10.210.0.0/24',
+            'first_usable' => '10.210.0.2',
+            'last_usable' => '10.210.0.254',
+            'gateway' => '10.210.0.1',
+            'network_mode' => 'bridged',
+            'parent_interface' => 'incusbr0',
+            'cooldown_seconds' => 300,
+        ]);
+
+        IpAllocation::create([
+            'pool_id' => $pool->id,
+            'user_id' => $this->admin->id,
+            'address' => inet_pton('10.210.0.10'),
+            'ip_string' => '10.210.0.10',
+            'status' => 'cooling',
+            'allocated_at' => now()->subMinutes(15),
+            'released_at' => now()->subSeconds(600),
+        ]);
+
+        // Updating gateway on a bridged pool succeeds when only expired cooling allocations exist
+        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+            'gateway' => '10.210.0.2',
+        ])->assertOk()
+            ->assertJsonPath('pool.gateway', '10.210.0.2');
+
+        // Updating network_mode (bridged -> routed) succeeds
+        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+            'network_mode' => 'routed',
+        ])->assertOk()
+            ->assertJsonPath('pool.network_mode', 'routed');
+
+        // Updating cidr without explicit first_usable/last_usable succeeds and recalculates usable range
+        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+            'cidr' => '10.211.0.0/24',
+            'gateway' => '10.211.0.1',
+        ])->assertOk()
+            ->assertJsonPath('pool.cidr', '10.211.0.0/24')
+            ->assertJsonPath('pool.first_usable', '10.211.0.1')
+            ->assertJsonPath('pool.last_usable', '10.211.0.254');
+
+        $pool->refresh();
+        $this->assertSame('routed', $pool->network_mode);
+        $this->assertSame('10.211.0.0/24', $pool->cidr);
+        $this->assertSame('10.211.0.1', $pool->first_usable);
+        $this->assertSame('10.211.0.254', $pool->last_usable);
+    }
+
+    public function test_link_local_addresses_in_cidr_gateway_or_excluded_ips_return_422(): void
+    {
+        Sanctum::actingAs($this->admin);
+
+        // Link-local CIDR
+        $this->postJson('/api/admin/ip-pools', [
+            'name' => 'Link Local CIDR',
+            'host_id' => $this->host->id,
+            'cidr' => '169.254.10.0/24',
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+        ])->assertStatus(422)->assertJsonValidationErrors(['cidr']);
+
+        // Link-local gateway
+        $this->postJson('/api/admin/ip-pools', [
+            'name' => 'Link Local Gateway',
+            'host_id' => $this->host->id,
+            'cidr' => '198.51.120.0/24',
+            'gateway' => '169.254.0.1',
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+        ])->assertStatus(422)->assertJsonValidationErrors(['gateway']);
+
+        // Link-local excluded IP
+        $this->postJson('/api/admin/ip-pools', [
+            'name' => 'Link Local Excluded',
+            'host_id' => $this->host->id,
+            'cidr' => '198.51.121.0/24',
+            'excluded_ips' => ['169.254.1.1'],
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+        ])->assertStatus(422)->assertJsonValidationErrors(['excluded_ips']);
+
+        // Link-local gateway and excluded_ips on update
+        $pool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Valid Pool For Link Local Update',
+            'cidr' => '198.51.122.0/24',
+            'first_usable' => '198.51.122.10',
+            'last_usable' => '198.51.122.100',
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+        ]);
+
+        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+            'gateway' => '169.254.0.1',
+        ])->assertStatus(422)->assertJsonValidationErrors(['gateway']);
+
+        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+            'excluded_ips' => ['169.254.10.10'],
+        ])->assertStatus(422)->assertJsonValidationErrors(['excluded_ips']);
     }
 }

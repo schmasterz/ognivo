@@ -8,6 +8,7 @@ use App\Models\Image;
 use App\Models\IpAllocation;
 use App\Models\VirtualMachine;
 use App\Services\Hypervisor\GuestOs\GuestOsResolver;
+use App\Services\Network\NetworkConstants;
 use DomainException;
 use RuntimeException;
 
@@ -137,7 +138,7 @@ class InstanceSpecBuilder
 
                 $devices[$nicName] = $nic;
 
-                // Instances require cloud-init Netplan v2 configuration for DNS nameservers and link-local default route (169.254.0.1)
+                // Instances require cloud-init Netplan v2 configuration for DNS nameservers and link-local default route (NetworkConstants::ROUTED_GUEST_GATEWAY)
                 if ($allocation !== null) {
                     $networkConfig = $osAdapter->buildRoutedNetworkConfig(
                         $effectiveMac,

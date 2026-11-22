@@ -137,11 +137,11 @@ Onboard your Incus host in **Compute Nodes** following [Host Onboarding & mTLS C
 
 | Test ID | Steps in Ognivo UI & Commands | Expected Results |
 | :--- | :--- | :--- |
-| **NET-R01** | **Create Routed Pool:** In **Networking & IPAM -> Create Subnet Pool**, select the test node, `Network Mode: Routed (L3 /32 Link-Local)`, `CIDR: 192.168.50.0/24` *(example)*, `Gateway: 192.168.50.1` *(example)*, `Host Parent Interface: <HOST_NIC>`, `Excluded Reserved IPs: 192.168.50.2, 192.168.50.250`, `Cooldown: 60`. Submit. | Pool is created (`201`). Gateway (`192.168.50.1`) and excluded IPs are excluded from usable allocations; first allocatable IP is `192.168.50.3`. |
-| **NET-R02** | **Run Preflight Check:** Click the shield (**Preflight Check**) button on the routed pool card. | Overall status is **Preflight checks passed**. All 5 checks are green (`PASS`): `Host reachable`, `Parent interface exists`, `Parent interface type matches mode`, `Pool range consistent`, `Host sysctl & proxy ARP`. |
+| **NET-R01** | **Create Routed Pool:** In **Networking & IPAM -> Create Subnet Pool**, select the test node, `Network Mode: Routed (L3 /32 Link-Local)`, `CIDR: 192.168.50.0/24` *(example)*, `Gateway` *(optional — IPAM reservation only; left blank by the UI, so `first_usable` defaults to `192.168.50.1`, or enter `192.168.50.1` to reserve it)*, `Host Parent Interface: <HOST_NIC>`, `Excluded Reserved IPs: 192.168.50.2, 192.168.50.250`, `Cooldown: 60`. Submit. | Pool is created (`201`). If `Gateway` is left empty, `first_usable` defaults to `192.168.50.1` and with `192.168.50.2, 192.168.50.250` excluded the first allocatable IP is `192.168.50.1`; if an optional reserved `Gateway: 192.168.50.1` is entered, `.1` is dynamically excluded and the first allocatable IP is `192.168.50.3`. |
+| **NET-R02** | **Run Preflight Check:** Click the shield (**Preflight Check**) button on the routed pool card. | Overall status is **Preflight checks passed**. All checks are green (`PASS`): **5** checks when `gateway` is omitted (`Host reachable`, `Parent interface exists`, `Parent interface type matches mode`, `Pool range consistent`, `Host sysctl & proxy ARP`), or **6** checks (also including `Gateway configured`) when an optional `gateway` is configured. |
 | **NET-R03** | **Provision Routed KVM VM:** Log in as tenant (or admin) and deploy a KVM **Virtual Machine** using `ubuntu/24.04` on the test node. Wait for `Running`. Verify on Incus host:<br>`incus list --project <PROJECT>`<br>`incus config show <VM_NAME> --project <PROJECT> --expanded` | VM reaches `Running`. Expanded config shows `devices.eth0` (`type: nic`, `nictype: routed`, `parent: <HOST_NIC>`, `ipv4.address: <IP>`, `hwaddr: 02:54:...`) and `config.cloud-init.network-config` matching the Routed VM Netplan YAML below. |
 | **NET-R04** | **Verify Routed VM Guest Networking:** Inside the VM (`incus exec <VM_NAME> --project <PROJECT> -- ...` or Web Console):<br>`ip -4 a`<br>`ip route`<br>`ping -c3 169.254.0.1`<br>`ping -c3 1.1.1.1`<br>`resolvectl status` | `eth0` has `<IP>/32`; default route is `default via 169.254.0.1 dev eth0 onlink`; pings and DNS (`1.1.1.1`, `8.8.8.8`) succeed (when host `ip_forward` + `proxy_arp` and upstream routing are active). |
-| **NET-R05** | **Provision & Verify Routed Container:** Deploy an LXC **Container** using `ubuntu/24.04` on the same pool. Inspect:<br>`incus config show <CT_NAME> --project <PROJECT> --expanded`<br>`incus exec <CT_NAME> --project <PROJECT> -- ip -4 a`<br>`incus exec <CT_NAME> --project <PROJECT> -- ip route`<br>`incus exec <CT_NAME> --project <PROJECT> -- ping -c3 1.1.1.1` | Container reaches `Running`. `devices.eth0` has `nictype: routed`, `parent: <HOST_NIC>`, `ipv4.address: <IP>`, `hwaddr: 02:54:...`. **`cloud-init.network-config` is NOT present** in `config`. Guest has `<IP>/32` and `default via 169.254.0.1`; connectivity succeeds. |
+| **NET-R05** | **Provision & Verify Routed Container:** Deploy an LXC **Container** using `ubuntu/24.04` on the same pool. Inspect:<br>`incus config show <CT_NAME> --project <PROJECT> --expanded`<br>`incus exec <CT_NAME> --project <PROJECT> -- ip -4 a`<br>`incus exec <CT_NAME> --project <PROJECT> -- ip route`<br>`incus exec <CT_NAME> --project <PROJECT> -- ping -c3 1.1.1.1` | Container reaches `Running`. `devices.eth0` has `nictype: routed`, `parent: <HOST_NIC>`, `ipv4.address: <IP>`, `hwaddr: 02:54:...`. **`cloud-init.network-config` IS present** in `config` (configuring `eth0` directly without `match`/`set-name`, with `<IP>/32`, point-to-point route via `169.254.0.1`, and DNS nameservers). Guest has `<IP>/32` and `default via 169.254.0.1`; connectivity succeeds. |
 
 **Expected `incus config show <VM_NAME> --project <PROJECT> --expanded` excerpt for Routed VM (`NET-R03`):**
 ```yaml
@@ -166,7 +166,6 @@ config:
               - 8.8.8.8
   limits.cpu: "2"
   limits.memory: 2048MB
-  migration.stateful: "true"
 devices:
   eth0:
     hwaddr: 02:54:xx:xx:xx:xx
@@ -175,7 +174,7 @@ devices:
     parent: <HOST_NIC>
     type: nic
 ```
-For the **Routed Container (`NET-R05`)**, `devices.eth0` has the same fields (`ipv4.address` included), while `migration.stateful` and `cloud-init.network-config` are omitted.
+For the **Routed Container (`NET-R05`)**, `devices.eth0` has the same fields (`ipv4.address` included), and `cloud-init.network-config` is also injected in `config`, configuring `eth0` directly (without `match`/`set-name`) with `<IP>/32`, the point-to-point route via `169.254.0.1`, and the pool DNS nameservers.
 
 *(Before proceeding to Mode 2, deactivate or delete the Routed test pool if staying on the same node.)*
 
@@ -218,7 +217,7 @@ devices:
     parent: <BRIDGE_NAME>
     type: nic
 ```
-*(Notice `ipv4.address` is absent on `devices.eth0`, and `migration.stateful: "true"` appears on VMs only.)*
+*(Notice `ipv4.address` is absent on `devices.eth0`.)*
 
 *(Before proceeding to Mode 3, deactivate or delete the Bridged test pool if staying on the same node.)*
 
@@ -284,7 +283,7 @@ devices:
 | **NET-NEG02** | **`macvlan` Over a Bridge (Blocking Preflight):** Create a `macvlan` pool whose `parent_interface` is a bridge (`incusbr0` or `br0`). Run **Preflight Check**. | **Preflight fails (blocking)** on `'Parent interface type matches mode'`, reporting that the bridge interface is incompatible with `macvlan` mode (`requires 'physical', 'bond', or 'vlan'`). |
 | **NET-NEG03** | **`bridged` Over a Physical NIC (Blocking Preflight):** Create a `bridged` pool whose `parent_interface` is a physical NIC (`<HOST_NIC>`). Run **Preflight Check**. | **Preflight fails (blocking)** on `'Parent interface type matches mode'`, reporting that the physical interface is incompatible with `bridged` mode (`requires 'bridge'`). |
 | **NET-NEG04** | **L2 Pool Without Gateway (`422`):** Attempt to create a `bridged` or `macvlan` pool with an empty `gateway` via UI and via `POST /api/admin/ip-pools`. | UI displays validation error `"Gateway IP is required for bridged and macvlan pool modes."` Direct API call returns **HTTP `422`** with `errors.gateway`. |
-| **NET-NEG05** | **L2 Pool With `/31` or `/32` CIDR (`422`):** Attempt to create a `bridged` or `macvlan` pool with `cidr: 192.168.50.10/32` or `192.168.50.10/31` via UI and API. | UI displays validation error for `/31` and `/32`. Direct API call returns **HTTP `422`** with `errors.cidr` (`"Layer-2 pool modes require a prefix between /16 and /30."`). |
+| **NET-NEG05** | **L2 Pool With `/31` or `/32` CIDR (`422`):** Attempt to create a `bridged` or `macvlan` pool with `cidr: 192.168.50.10/32` or `192.168.50.10/31` via UI and API. | UI displays validation error for `/31` and `/32`. Direct API call returns **HTTP `422`** with `errors.cidr` (`"Bridged and macvlan modes only support /16 to /30 subnets."`). |
 | **NET-NEG06** | **Edit `parent_interface` on Pool With Allocations:** On an active pool with at least one running VM/container (`VM_OLD`), open **Edit Pool**, verify `CIDR` and `Network Mode` are locked, change `Host Parent Interface` to another valid interface of the appropriate type, and save. Then provision a new instance (`VM_NEW`) or reinstall `VM_OLD`. Run `incus config show <VM_OLD> --project <PROJECT> --expanded` and `incus config show <VM_NEW> --project <PROJECT> --expanded`. | Save succeeds (`200`), showing the hint that changes apply only to newly created or rebuilt instances. `VM_OLD` keeps its original `devices.eth0.parent`, while `VM_NEW` (or a reinstalled instance) receives the updated `parent`. |
 
 ---

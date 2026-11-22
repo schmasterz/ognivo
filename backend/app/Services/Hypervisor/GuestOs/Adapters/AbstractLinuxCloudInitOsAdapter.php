@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Hypervisor\GuestOs\Adapters;
 
 use App\Services\Hypervisor\GuestOs\Contracts\GuestOsAdapterInterface;
+use App\Services\Network\NetworkConstants;
 use Override;
 use Symfony\Component\Yaml\Yaml;
 
@@ -21,8 +22,8 @@ abstract class AbstractLinuxCloudInitOsAdapter implements GuestOsAdapterInterfac
     protected function routedRoutes(): array
     {
         return [
-            ['to' => '169.254.0.1/32'],
-            ['to' => '0.0.0.0/0', 'via' => '169.254.0.1'],
+            ['to' => NetworkConstants::ROUTED_GUEST_GATEWAY.'/32'],
+            ['to' => '0.0.0.0/0', 'via' => NetworkConstants::ROUTED_GUEST_GATEWAY],
         ];
     }
 

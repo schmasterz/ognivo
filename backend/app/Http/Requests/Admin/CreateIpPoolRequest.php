@@ -6,7 +6,7 @@ namespace App\Http\Requests\Admin;
 
 use App\DTO\Network\CreateIpPoolDTO;
 use App\Services\IpManagementService;
-use App\Services\Network\CidrHelper;
+use App\Services\Network\IpPoolConfigValidator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -37,15 +37,14 @@ final class CreateIpPoolRequest extends FormRequest
             'network_mode' => ['nullable', 'string', Rule::in(['routed', 'bridged', 'macvlan', 'manual'])],
             'gateway' => ['nullable', 'ip'],
             'dns_servers' => ['nullable', 'array'],
-            'dns_servers.*' => ['ip'],
+            'dns_servers.*' => ['ipv4'],
             'excluded_ips' => ['nullable', 'array'],
-            'excluded_ips.*' => ['ip'],
+            'excluded_ips.*' => ['ipv4'],
             'cooldown_seconds' => ['nullable', 'integer', 'min:0', 'max:86400'],
             'ip_version' => ['nullable', 'integer'],
             'is_public' => ['nullable', 'boolean'],
             'active' => ['nullable', 'boolean'],
             'description' => ['nullable', 'string', 'max:255'],
-            'auto_generate_ips' => ['nullable', 'boolean'],
         ];
     }
 
@@ -69,95 +68,24 @@ final class CreateIpPoolRequest extends FormRequest
                 return;
             }
 
-            $parsed = CidrHelper::parse($cidr);
-            if ($parsed === null) {
-                $v->errors()->add('cidr', 'CIDR must be in format IPv4/prefix (e.g. 192.168.1.0/24).');
-
-                return;
-            }
-
-            [$ip, $prefix] = $parsed;
-
-            if ($prefix < 16 || $prefix > 32) {
-                $v->errors()->add('cidr', 'CIDR prefix length must be between 16 and 32.');
-
-                return;
-            }
-
             $rawMode = $this->input('network_mode');
             $networkMode = is_string($rawMode) && $rawMode !== '' ? $rawMode : 'routed';
-            $isL2Mode = in_array($networkMode, ['bridged', 'macvlan'], true);
-
-            if ($isL2Mode && $prefix > 30) {
-                $v->errors()->add('cidr', 'Layer-2 pool modes require a prefix between /16 and /30.');
-            }
-
-            $range = CidrHelper::subnetRange($cidr);
-            if ($range === null) {
-                $v->errors()->add('cidr', 'Invalid CIDR subnet range.');
-
+            if (! in_array($networkMode, ['routed', 'bridged', 'macvlan', 'manual'], true)) {
                 return;
             }
 
-            [$network, $broadcast] = $range;
-            $defaults = CidrHelper::calculateUsableRange($cidr);
-            if ($defaults === null) {
-                $v->errors()->add('cidr', 'Unable to calculate usable range for CIDR.');
+            $rawGateway = $this->input('gateway');
+            $gateway = is_string($rawGateway) && trim($rawGateway) !== '' ? $rawGateway : null;
+            $excludedIps = is_array($this->input('excluded_ips')) ? $this->input('excluded_ips') : [];
+            $rawFirst = $this->input('first_usable');
+            $firstUsable = is_string($rawFirst) && trim($rawFirst) !== '' ? $rawFirst : null;
+            $rawLast = $this->input('last_usable');
+            $lastUsable = is_string($rawLast) && trim($rawLast) !== '' ? $rawLast : null;
 
-                return;
-            }
-
-            $minAllowed = CidrHelper::ipToUnsigned($defaults['first']);
-            $maxAllowed = CidrHelper::ipToUnsigned($defaults['last']);
-
-            $firstUsable = $this->input('first_usable');
-            if ($firstUsable && is_string($firstUsable)) {
-                $firstLong = CidrHelper::ipToUnsigned($firstUsable);
-                if ($firstLong === null || $minAllowed === null || $maxAllowed === null || $firstLong < $minAllowed || $firstLong > $maxAllowed) {
-                    $v->errors()->add('first_usable', 'First usable IP is outside the CIDR subnet.');
-                }
-            }
-
-            $lastUsable = $this->input('last_usable');
-            if ($lastUsable && is_string($lastUsable)) {
-                $lastLong = CidrHelper::ipToUnsigned($lastUsable);
-                if ($lastLong === null || $minAllowed === null || $maxAllowed === null || $lastLong < $minAllowed || $lastLong > $maxAllowed) {
-                    $v->errors()->add('last_usable', 'Last usable IP is outside the CIDR subnet.');
-                }
-            }
-
-            if ($firstUsable && $lastUsable && is_string($firstUsable) && is_string($lastUsable)) {
-                $firstLong = CidrHelper::ipToUnsigned($firstUsable);
-                $lastLong = CidrHelper::ipToUnsigned($lastUsable);
-                if ($firstLong !== null && $lastLong !== null && $firstLong > $lastLong) {
-                    $v->errors()->add('first_usable', 'First usable IP cannot be greater than last usable IP.');
-                }
-            }
-
-            $gateway = $this->input('gateway');
-            if ($isL2Mode) {
-                if (! is_string($gateway) || trim($gateway) === '') {
-                    $v->errors()->add('gateway', 'Gateway is required for bridged and macvlan pool modes.');
-                } elseif (filter_var($gateway, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false) {
-                    $v->errors()->add('gateway', 'Gateway must be a valid IPv4 address.');
-                } else {
-                    $gwLong = CidrHelper::ipToUnsigned($gateway);
-                    if ($gwLong === null || $gwLong < $network || $gwLong > $broadcast) {
-                        $v->errors()->add('gateway', 'Gateway IP is outside the CIDR subnet.');
-                    } elseif ($prefix <= 30 && ($gwLong === $network || $gwLong === $broadcast)) {
-                        $v->errors()->add('gateway', 'Gateway IP cannot be the network or broadcast address.');
-                    }
-                }
-            } else {
-                if ($prefix <= 30 && (empty($gateway) || ! is_string($gateway))) {
-                    $v->errors()->add('gateway', 'Gateway is required for subnets /16 to /30.');
-                }
-
-                if ($gateway && is_string($gateway)) {
-                    $gwLong = CidrHelper::ipToUnsigned($gateway);
-                    if ($gwLong === null || $gwLong < $network || $gwLong > $broadcast) {
-                        $v->errors()->add('gateway', 'Gateway IP is outside the CIDR subnet.');
-                    }
+            $errors = IpPoolConfigValidator::validate($networkMode, $cidr, $gateway, $excludedIps, $firstUsable, $lastUsable);
+            foreach ($errors as $field => $messages) {
+                foreach ($messages as $msg) {
+                    $v->errors()->add($field, $msg);
                 }
             }
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Hypervisor\GuestOs\Adapters;
 
 use App\Services\Hypervisor\GuestOs\Contracts\GuestOsAdapterInterface;
+use App\Services\Network\NetworkConstants;
 use Override;
 use Symfony\Component\Yaml\Yaml;
 
@@ -78,7 +79,7 @@ final class AlpineOsAdapter implements GuestOsAdapterInterface
         return $this->buildVersion1NetworkConfig(
             macAddress: $macAddress,
             cidr: "{$ipAddress}/32",
-            gateway: '169.254.0.1',
+            gateway: NetworkConstants::ROUTED_GUEST_GATEWAY,
             dnsServers: $dnsServers,
             instanceType: $instanceType,
         );

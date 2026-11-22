@@ -19,7 +19,7 @@ In `routed` mode, instances communicate using point-to-point Layer 3 routing ove
   - `parent: <parent_interface>`
   - `ipv4.address: <assigned_ip>`
   - `hwaddr: <mac_address>` (when the IP allocation has a generated MAC address `02:54:xx:xx:xx:xx`)
-- **Cloud-Init Network Config (Virtual Machines & Containers):** For both `virtual-machine` and `container` instances in `routed` mode, `InstanceSpecBuilder` delegates to the Guest OS adapter layer (`GuestOsResolver`) to inject `cloud-init.network-config` configuring the `<assigned_ip>/32` address, point-to-point routes via the link-local gateway `169.254.0.1`, and DNS `nameservers` (from `pool.dns_servers`, defaulting to `1.1.1.1` and `8.8.8.8`):
+- **Cloud-Init Network Config (Virtual Machines & Containers):** For both `virtual-machine` and `container` instances in `routed` mode, `InstanceSpecBuilder` delegates to the Guest OS adapter layer (`GuestOsResolver`) to inject `cloud-init.network-config` configuring the `<assigned_ip>/32` address, point-to-point routes via the link-local next-hop `169.254.0.1`, and DNS `nameservers` (from `pool.dns_servers`, defaulting to `1.1.1.1` and `8.8.8.8`). Routed guests **always** use `169.254.0.1` as their default route next-hop—an optional Pool Gateway (`gateway`), if configured on the pool, is **never** injected into the guest OS configuration:
   - For **`virtual-machine`** instances, Netplan includes `match: { macaddress: ... }` and `set-name: eth0` to handle predictable interface naming (such as `enp5s0`).
   - For **`container`** instances, Netplan configures directly under `eth0:` (omitting `match` and `set-name`) to avoid `udev` unmanaged link conflicts in unprivileged LXC.
   - Modern Netplan deprecates `scope: link` for point-to-point `/32` routes; instead, routes use either `on-link: true` directly on the default route (as in Ubuntu) or an explicit host route to `169.254.0.1/32` alongside the default route (for `systemd-networkd`), depending on the guest OS strategy below. For example, the default Ubuntu Netplan v2 route block is:
@@ -29,7 +29,10 @@ In `routed` mode, instances communicate using point-to-point Layer 3 routing ove
       via: 169.254.0.1
       on-link: true
   ```
-- **Pool Rules:** CIDR prefix `/16` to `/32`. `gateway` is required for `/16` to `/30` subnets and optional for `/31` and `/32`.
+- **Pool Rules:** CIDR prefix `/16` to `/32`. A Pool Gateway (`gateway`) is **not required** (optional for all supported CIDR prefixes `/16` to `/32`).
+  - When omitted (`null`), no gateway address is reserved in the pool.
+  - When configured, `gateway` must be a valid IPv4 address within the pool CIDR (and cannot be the network or broadcast address for `/16`–`/30`, nor fall within `169.254.0.0/16`).
+  - In `routed` mode, an optional `gateway` serves **solely as an IPAM reservation**—it is dynamically excluded from IP allocation so it cannot be assigned to any instance, and is **never** used as the guest default route or injected into guest OS network configuration. It may be set, changed, or cleared at any time, provided the target address is not currently `allocated`.
 
 ### 1.1 Guest OS Routed Route Strategies
 Because Linux and BSD guest distributions ship different network renderers behind `cloud-init`, Ognivo's Guest OS adapters generate four distinct routing configurations in `routed` mode:
@@ -79,7 +82,7 @@ Because Linux and BSD guest distributions ship different network renderers behin
    ```
 
 ### Required Hypervisor Host Configuration
-Because the Incus REST API cannot modify host kernel `sysctl` parameters, operators must enable IPv4 forwarding and Proxy ARP on each hypervisor host running `routed` pools:
+Because the Incus REST API cannot modify host kernel `sysctl` parameters, operators must still configure host-side networking—IPv4 forwarding, Proxy ARP, and upstream routing or NAT—on each hypervisor host running `routed` pools, regardless of whether an optional IPAM Pool Gateway is configured. These host-side responsibilities are separate from both the optional IPAM Pool Gateway and the routed guest next-hop `169.254.0.1`:
 
 1. **IPv4 Packet Forwarding:**
    ```bash
@@ -138,7 +141,7 @@ In `bridged` mode, instances attach at Layer 2 directly to an existing Linux bri
 
 ### Bridged Pool Rules & Limitations
 - **`parent_interface`:** Required, with no default value.
-- **`gateway`:** Required. Must be a valid IPv4 address inside the pool's CIDR and cannot be the network or broadcast address (automatically added to `excluded_ips`).
+- **`gateway`:** Required. Must be a valid IPv4 address inside the pool's CIDR and cannot be the network or broadcast address (or inside `169.254.0.0/16`). It is used as the guest default route, is dynamically excluded from IP allocation (not stored in `excluded_ips`), and becomes **immutable** once any allocations exist in the pool.
 - **Prefix Length:** Must be between `/16` and `/30`. `/31` and `/32` subnets are rejected with HTTP `422`.
 - **Cloud-Init Required:** Because the static IP, prefix, gateway, and DNS are applied through `cloud-init.network-config`, the guest image must support `cloud-init`. For Linux images from `images.linuxcontainers.org` (`simplestreams`), `InstanceSpecBuilder` automatically appends `/cloud` to the alias when `cloud-init` configuration is present.
 
@@ -165,7 +168,7 @@ In `macvlan` mode, instances attach at Layer 2 directly to a physical NIC, bond,
 - **Host Cannot Talk to Guests Directly:** By Linux `macvlan` kernel design, the hypervisor host cannot communicate directly with `macvlan` guests over the shared parent interface (and guests cannot reach the host IP on that interface). Guests can still reach the upstream gateway, other LAN hosts, and external networks.
 - **Wireless NICs Generally Unsupported:** Wi-Fi interfaces in standard station mode reject arbitrary source MAC addresses and are generally unsuitable as `macvlan` parents; use a wired NIC, bond, or VLAN interface.
 - **Cloud-Init Required:** Both containers and VMs require a `cloud-init`-capable image to receive their static IPv4 address, prefix, gateway, and DNS configuration.
-- **Pool Rules:** Same Layer-2 validation as `bridged` mode: `parent_interface` is required (no default), `gateway` is required inside the CIDR and cannot be the network or broadcast address, and the CIDR prefix must be `/16` to `/30` (`/31` and `/32` are rejected with HTTP `422`).
+- **Pool Rules:** Same Layer-2 validation as `bridged` mode: `parent_interface` is required (no default), `gateway` is required inside the CIDR and cannot be the network or broadcast address (or inside `169.254.0.0/16`), and the CIDR prefix must be `/16` to `/30` (`/31` and `/32` are rejected with HTTP `422`). As in `bridged` mode, `gateway` is dynamically excluded from IP allocation (not stored in `excluded_ips`) and becomes **immutable** once any allocations exist in the pool.
 
 ---
 
@@ -179,7 +182,7 @@ In `manual` mode, guest networking is managed externally by the infrastructure o
 - **No Cloud-Init Netplan Override:** Static route/IP Netplan injection (`cloud-init.network-config`) is omitted.
 - **Provisioning Status:** Instances transition to `Running` with `network_status: 'unverified'` unless an observed IP reported by the hypervisor agent matches the allocated IP.
 - **UI Indicators:** Pools in `manual` mode display a `Manual` warning badge in **Networking & IPAM**, and VMs on `manual` pools show an **Operator-managed** network badge in the Instances table and overview tab when status is not `observed`.
-- **Pool Rules:** CIDR `/16` to `/32` (`gateway` is required for `/16` to `/30` subnets and optional for `/31` and `/32`).
+- **Pool Rules:** CIDR `/16` to `/32`. `gateway` is required for `/16` to `/30` subnets and optional for `/31` and `/32`. When configured, `gateway` must be a valid IPv4 address inside the pool CIDR (not the network or broadcast address for `/16`–`/30`, nor inside `169.254.0.0/16`), is dynamically excluded from IP allocation (not stored in `excluded_ips`), and may be changed at any time provided the target address is not currently `allocated`.
 
 ---
 
@@ -188,10 +191,10 @@ In `manual` mode, guest networking is managed externally by the infrastructure o
 ### Mode Comparison
 | Mode | `eth0` `nictype` | `ipv4.address` on NIC | `cloud-init.network-config` | Allowed CIDR | `gateway` | `parent_interface` |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `routed` | `routed` | Yes | Containers & VMs (`/32`, `via 169.254.0.1`) | `/16` – `/32` | Required for `/16`–`/30`; optional for `/31`–`/32` | Required (no default) |
-| `bridged` | `bridged` | No | Containers & VMs (`/<prefix>`, `via <gateway>`) | `/16` – `/30` | Required, inside CIDR, not network/broadcast | Required (`bridge`, no default) |
-| `macvlan` | `macvlan` | No | Containers & VMs (`/<prefix>`, `via <gateway>`) | `/16` – `/30` | Required, inside CIDR, not network/broadcast | Required (`physical`/`bond`/`vlan`, no default) |
-| `manual` | *(omitted)* | No | No | `/16` – `/32` | Required for `/16`–`/30`; optional for `/31`–`/32` | Unused (stored `""`, API `null`) |
+| `routed` | `routed` | Yes | Containers & VMs (`/32`, `via 169.254.0.1`) | `/16` – `/32` | Optional for `/16`–`/32` (IPAM reservation only; dynamically excluded if set) | Required (no default) |
+| `bridged` | `bridged` | No | Containers & VMs (`/<prefix>`, `via <gateway>`) | `/16` – `/30` | Required, inside CIDR, not network/broadcast (immutable with allocations) | Required (`bridge`, no default) |
+| `macvlan` | `macvlan` | No | Containers & VMs (`/<prefix>`, `via <gateway>`) | `/16` – `/30` | Required, inside CIDR, not network/broadcast (immutable with allocations) | Required (`physical`/`bond`/`vlan`, no default) |
+| `manual` | *(omitted)* | No | No | `/16` – `/32` | Required for `/16`–`/30`; optional for `/31`–`/32` (dynamically excluded if set) | Unused (stored `""`, API `null`) |
 
 ### Fail-Fast Behavior (No Silent Interface Substitution)
 - **Strict Validation at Pool Creation & Update:** `parent_interface` has no default value and is required for every non-manual pool (`routed`, `bridged`, `macvlan`).
@@ -199,7 +202,16 @@ In `manual` mode, guest networking is managed externally by the infrastructure o
   - If `parent_interface` is empty on a non-manual pool, `InstanceSpecBuilder` throws a `DomainException`.
   - If `parent_interface` is not present in the host's reported networks, `InstanceSpecBuilder` throws a `DomainException` (`Permanent network configuration error: Configured parent_interface "..." for network mode "..." was not found on the hypervisor host (available: ...).`). Ognivo **never** silently substitutes another interface.
   - `ProvisionVmJob` treats permanent configuration errors as non-retryable, rolls back reserved allocations via `ProvisioningCompensator`, and transitions the instance to `Failed` with the readable failure reason shown in the UI.
-- **Updating Existing Pools:** `parent_interface` can be updated even on pools that already have active or cooling allocations; the updated interface applies only to newly created or rebuilt/reinstalled instances, while running instances keep their existing device. `cidr`, `host_id`, and `network_mode` remain immutable while allocations exist.
+- **Updating Existing Pools:**
+  - `parent_interface` can be updated even on pools that already have active or cooling allocations; the updated interface applies only to newly created or rebuilt/reinstalled instances, while running instances keep their existing device.
+  - `cidr`, `host_id`, and `network_mode` remain immutable while any allocations exist.
+  - For `bridged` and `macvlan` pools, `gateway` is **immutable** once any allocations exist in the pool, because existing instances already reference it in their Cloud-init network configuration.
+  - For `routed` and `manual` pools, `gateway` may be set, changed, or cleared at any time, except that changing `gateway` (or `excluded_ips`) to an address currently in status `allocated` is rejected with HTTP `422` (naming the allocation ID and address).
+- **Dynamic IPAM Exclusions:**
+  - Across **all** network modes, any configured Pool Gateway (`gateway`) is **dynamically excluded** from IP allocation at runtime and is **never** persisted in `excluded_ips`.
+  - `excluded_ips` stores only administrator-defined exclusions.
+  - When a `gateway` is set, changed, or cleared (on pools where `gateway` is mutable), effective exclusions update immediately: the new gateway becomes unavailable for allocation, and the previous gateway address returns to circulation unless explicitly listed in `excluded_ips`.
+  - Link-local addresses in `169.254.0.0/16` are rejected for pool CIDRs, `gateway`, and `excluded_ips` (`169.254.0.1` is reserved exclusively as the routed guest link-local next-hop).
 - **Host Interface Recommendations:** When discovering host networks (`GET /api/admin/hosts/{host}/resources`), Ognivo recommends `bridged` and `routed` for `bridge` interfaces, and `routed` and `macvlan` for `physical`, `bond`, and `vlan` interfaces.
 
 ---
@@ -224,8 +236,8 @@ Before putting an IP pool into production, administrators can trigger a prefligh
    - For `routed`, accepts `physical`, `bond`, `vlan`, or `bridge` (and passes with an advisory hint for other reported types).
    - For `manual`, passes as not applicable.
    - If Incus returns no `type` (or `unknown`), the check passes as unverifiable with a hint instructing the operator to verify the interface matches the chosen mode.
-4. **`Pool range consistent`:** Validates that `first_usable` and `last_usable` (and `gateway` for non-L2 modes) fall within the CIDR subnet boundaries and `first_usable <= last_usable`.
-5. **`Gateway configured`:** Included for `bridged` and `macvlan` pools; verifies a `gateway` IP is configured and within the CIDR subnet.
+4. **`Pool range consistent`:** Validates that `first_usable` and `last_usable` (and `gateway`, when configured) fall within the CIDR subnet boundaries and `first_usable <= last_usable`.
+5. **`Gateway configured`:** Enforces the mode-specific gateway policy: required and valid within the CIDR (not network/broadcast) for `bridged` and `macvlan`; required for `/16`–`/30` and optional for `/31`–`/32` in `manual` mode; optional for `routed` pools (preflight succeeds without a gateway in `routed` mode).
 6. **`Host sysctl & proxy ARP`:** Advisory check reminding the operator that host kernel parameters (`net.ipv4.ip_forward=1`, `proxy_arp`) cannot be verified remotely via the Incus API.
 
 > [!NOTE]
@@ -243,12 +255,12 @@ Administrators can inspect every IPv4 address across a pool's usable range (`fir
   - `free` — available addresses ready for assignment
   - `allocated` — currently assigned to an instance
   - `cooling` — quarantined in cooldown after release
-  - `excluded` — excluded from allocation (including the pool gateway)
+  - `excluded` — excluded from allocation (including any dynamically excluded pool gateway)
 - **`search`:** Optional IPv4 prefix filter (max 32 characters, e.g. `10.0.1.`).
 - **`page` & `per_page`:** 1-based page number and page size (`1`–`100`, default `50`), returning canonical `meta` pagination alongside `pool` and `data`.
 
 ### State & Performance Semantics
-- **Gateway Tagging (`is_gateway`):** Addresses matching `pool.gateway` include `is_gateway: true` so operators can distinguish the gateway from manual `excluded_ips` entries.
+- **Gateway Tagging (`is_gateway`):** Addresses matching `pool.gateway` include `is_gateway: true` so operators can distinguish the dynamically excluded gateway from administrator-defined `excluded_ips` entries (the gateway itself is not stored in `excluded_ips`).
 - **Expired Cooling Rows Match `utilization.free`:** Cooling allocations whose cooldown has elapsed (`cooldown_remaining_seconds === 0`, awaiting scheduled `ipam:prune-cooling` cleanup) are treated and counted as `free`, keeping the inspector aligned with `utilization.free`.
 - **`O(page)` Gap-Jumping for `/16` Pools:** When paginating unsearched `all` or `free` views, the service skips over gaps between occupied/excluded addresses in `O(page)` rather than enumerating all host addresses in memory, keeping large `/16` subnets (65,534 usable hosts) responsive.
 

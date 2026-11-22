@@ -6,6 +6,8 @@ namespace Tests\Unit;
 
 use App\DTO\Network\CreateIpPoolDTO;
 use App\Exceptions\IpPoolExhaustedException;
+use App\Exceptions\PoolAllocationConflictException;
+use App\Exceptions\PoolHasActiveAllocationsException;
 use App\Models\Host;
 use App\Models\IpAllocation;
 use App\Models\IpPool;
@@ -15,6 +17,7 @@ use App\Services\IpManagementService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -812,5 +815,238 @@ final class IpManagementServiceTest extends TestCase
         // 6. Empty and whitespace-only searches return all allocations
         $this->assertCount(5, $this->service->listForUser($admin, ['search' => '']));
         $this->assertCount(5, $this->service->listForUser($admin, ['search' => '   ']));
+    }
+
+    public function test_routed_pool_without_gateway_allocates_from_first_usable(): void
+    {
+        $pool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Routed No Gateway Pool',
+            'cidr' => '192.168.100.0/24',
+            'first_usable' => '192.168.100.1',
+            'last_usable' => '192.168.100.10',
+            'gateway' => null,
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+        ]);
+
+        $vm1 = $this->createVm('vm-nogw-1');
+        $vm2 = $this->createVm('vm-nogw-2');
+
+        $alloc1 = $this->service->allocateIp($pool, $vm1, $this->user);
+        $alloc2 = $this->service->allocateIp($pool, $vm2, $this->user);
+
+        $this->assertSame('192.168.100.1', $alloc1->ip_string);
+        $this->assertSame('192.168.100.2', $alloc2->ip_string);
+    }
+
+    public function test_routed_pool_gateway_is_dynamically_excluded_without_persisting_in_excluded_ips(): void
+    {
+        $dto = new CreateIpPoolDTO(
+            name: 'Routed Dynamic Exclusion Pool',
+            cidr: '192.168.101.0/24',
+            hostId: $this->host->id,
+            firstUsable: '192.168.101.1',
+            lastUsable: '192.168.101.10',
+            gateway: '192.168.101.1',
+            excludedIps: ['192.168.101.3'],
+            networkMode: 'routed',
+            parentInterface: 'eth0',
+        );
+
+        $pool = $this->service->createPool($dto);
+
+        $this->assertSame(['192.168.101.3'], $pool->excluded_ips);
+        $this->assertNotContains('192.168.101.1', $pool->excluded_ips ?? []);
+
+        $vm = $this->createVm('vm-dyn-gw');
+        $alloc = $this->service->allocateIp($pool, $vm, $this->user);
+
+        $this->assertSame('192.168.101.2', $alloc->ip_string);
+
+        $stats = $this->service->getPoolUtilization($pool->fresh());
+        $this->assertSame(8, $stats['total']);
+        $this->assertSame(1, $stats['allocated']);
+        $this->assertSame(7, $stats['free']);
+    }
+
+    public function test_update_pool_changing_or_clearing_gateway_updates_allocation_availability(): void
+    {
+        $pool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Gateway Update Pool',
+            'cidr' => '192.168.102.0/29',
+            'first_usable' => '192.168.102.1',
+            'last_usable' => '192.168.102.3',
+            'gateway' => '192.168.102.1',
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+        ]);
+
+        // Change gateway from .1 to .2 -> .1 becomes free, .2 becomes dynamically excluded
+        $pool = $this->service->updatePool($pool, ['gateway' => '192.168.102.2']);
+        $this->assertSame('192.168.102.2', $pool->gateway);
+        $this->assertSame([], $pool->excluded_ips ?? []);
+
+        $vm1 = $this->createVm('vm-gw-upd-1');
+        $vm2 = $this->createVm('vm-gw-upd-2');
+        $alloc1 = $this->service->allocateIp($pool, $vm1, $this->user);
+        $alloc2 = $this->service->allocateIp($pool, $vm2, $this->user);
+
+        $this->assertSame('192.168.102.1', $alloc1->ip_string);
+        $this->assertSame('192.168.102.3', $alloc2->ip_string);
+
+        // Clear gateway -> .2 becomes immediately available
+        $pool = $this->service->updatePool($pool, ['gateway' => null]);
+        $this->assertNull($pool->gateway);
+
+        $vm3 = $this->createVm('vm-gw-upd-3');
+        $alloc3 = $this->service->allocateIp($pool, $vm3, $this->user);
+        $this->assertSame('192.168.102.2', $alloc3->ip_string);
+    }
+
+    public function test_update_pool_targeting_allocated_ip_in_gateway_or_excluded_ips_throws_conflict_exception(): void
+    {
+        $pool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Conflict Exception Pool',
+            'cidr' => '192.168.103.0/24',
+            'first_usable' => '192.168.103.1',
+            'last_usable' => '192.168.103.20',
+            'gateway' => '192.168.103.1',
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+        ]);
+
+        $vm = $this->createVm('vm-conflict');
+        $alloc = $this->service->allocateIp($pool, $vm, $this->user); // .2
+
+        try {
+            $this->service->updatePool($pool, ['gateway' => '192.168.103.2']);
+            $this->fail('Expected PoolAllocationConflictException when setting gateway to an allocated IP.');
+        } catch (PoolAllocationConflictException $e) {
+            $this->assertSame($alloc->id, $e->allocationId);
+            $this->assertSame('192.168.103.2', $e->ipAddress);
+            $this->assertSame('gateway', $e->field);
+        }
+
+        try {
+            $this->service->updatePool($pool, ['excluded_ips' => ['192.168.103.2']]);
+            $this->fail('Expected PoolAllocationConflictException when adding an allocated IP to excluded_ips.');
+        } catch (PoolAllocationConflictException $e) {
+            $this->assertSame($alloc->id, $e->allocationId);
+            $this->assertSame('192.168.103.2', $e->ipAddress);
+            $this->assertSame('excluded_ips', $e->field);
+        }
+    }
+
+    public function test_service_create_and_update_pool_validate_config_and_recalculate_range_on_cidr_change(): void
+    {
+        try {
+            $this->service->createPool(new CreateIpPoolDTO(
+                name: 'Invalid Bridged Without Gateway',
+                cidr: '10.220.0.0/24',
+                hostId: $this->host->id,
+                networkMode: 'bridged',
+                parentInterface: 'incusbr0',
+            ));
+            $this->fail('Expected ValidationException when creating a bridged pool without a gateway.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('gateway', $e->errors());
+        }
+
+        $pool = $this->service->createPool(new CreateIpPoolDTO(
+            name: 'Recalculate CIDR Range Pool',
+            cidr: '10.220.0.0/24',
+            hostId: $this->host->id,
+            gateway: '10.220.0.1',
+            networkMode: 'routed',
+            parentInterface: 'eth0',
+        ));
+
+        $this->assertSame('10.220.0.1', $pool->first_usable);
+        $this->assertSame('10.220.0.254', $pool->last_usable);
+
+        $updated = $this->service->updatePool($pool, [
+            'cidr' => '10.221.0.0/28',
+            'gateway' => '10.221.0.1',
+        ]);
+
+        $this->assertSame('10.221.0.0/28', $updated->cidr);
+        $this->assertSame('10.221.0.1', $updated->first_usable);
+        $this->assertSame('10.221.0.14', $updated->last_usable);
+    }
+
+    public function test_delete_pool_with_active_allocations_throws_pool_has_active_allocations_exception(): void
+    {
+        $pool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Delete Active Pool',
+            'cidr' => '192.168.104.0/29',
+            'first_usable' => '192.168.104.1',
+            'last_usable' => '192.168.104.6',
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+        ]);
+
+        $vm = $this->createVm('vm-del-active');
+        $this->service->allocateIp($pool, $vm, $this->user);
+
+        try {
+            $this->service->deletePool($pool);
+            $this->fail('Expected PoolHasActiveAllocationsException.');
+        } catch (PoolHasActiveAllocationsException $e) {
+            $this->assertSame(422, $e->getCode());
+        }
+
+        $this->assertDatabaseHas('ip_pools', ['id' => $pool->id]);
+    }
+
+    public function test_utilization_does_not_double_count_excluded_address_that_is_allocated_or_cooling(): void
+    {
+        $pool = IpPool::create([
+            'host_id' => $this->host->id,
+            'name' => 'Overlap Utilization Pool',
+            'cidr' => '192.168.105.0/29',
+            'first_usable' => '192.168.105.1',
+            'last_usable' => '192.168.105.5', // 5 raw IPs: .1..5
+            'gateway' => '192.168.105.1',
+            'excluded_ips' => ['192.168.105.2'], // 2 excluded (.1, .2) -> 3 usable (.3, .4, .5)
+            'network_mode' => 'routed',
+            'parent_interface' => 'eth0',
+            'cooldown_seconds' => 120,
+        ]);
+
+        // Excluded address .2 has an allocated row; usable address .3 is cooling
+        IpAllocation::create([
+            'pool_id' => $pool->id,
+            'user_id' => $this->user->id,
+            'address' => inet_pton('192.168.105.2'),
+            'ip_string' => '192.168.105.2',
+            'status' => 'allocated',
+            'allocated_at' => now(),
+        ]);
+
+        IpAllocation::create([
+            'pool_id' => $pool->id,
+            'user_id' => $this->user->id,
+            'address' => inet_pton('192.168.105.3'),
+            'ip_string' => '192.168.105.3',
+            'status' => 'cooling',
+            'allocated_at' => now()->subMinutes(5),
+            'released_at' => now()->subSeconds(10),
+        ]);
+
+        // Free addresses are .4 and .5 (2 free, not 3 - 2 = 1)
+        $stats = $this->service->getPoolUtilization($pool);
+        $this->assertSame(3, $stats['total']);
+        $this->assertSame(1, $stats['allocated']);
+        $this->assertSame(1, $stats['cooling']);
+        $this->assertSame(2, $stats['free']);
+        $this->assertSame(33.3, $stats['percent']);
+
+        // Batch utilization path produces identical metrics
+        $this->service->attachUtilizationToPools([$pool]);
+        $this->assertSame($stats, $pool->utilization);
     }
 }
