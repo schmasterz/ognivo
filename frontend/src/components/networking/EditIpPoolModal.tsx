@@ -184,12 +184,15 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
         return t("gatewayInvalidIpv4");
       }
 
+      if ((gwNum >>> 16) === 0xa9fe) {
+        return "Link-local addresses (169.254.0.0/16) cannot be used as pool CIDR, gateway, or excluded IPs.";
+      }
+
       if (range !== null) {
         if (gwNum < range.network || gwNum > range.broadcast) {
           return t("gatewayOutsideCidr");
         }
         if (
-          (isL2 || mode === "routed") &&
           range.prefix <= 30 &&
           (gwNum === range.network || gwNum === range.broadcast)
         ) {
@@ -199,6 +202,40 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
     }
 
     return null;
+  };
+
+  const handleModeChange = (mode: string) => {
+    setNetworkMode(mode);
+    clearFieldError("network_mode");
+    clearFieldError("gateway");
+    clearFieldError("cidr");
+    clearFieldError("parent_interface");
+
+    if (mode !== "manual" && discoveredNetworks.length > 0 && !isCustomInterface) {
+      const currentNet = discoveredNetworks.find((n) => n.name === parentInterface);
+      if (
+        !parentInterface ||
+        (currentNet &&
+          !currentNet.recommended_modes.includes(mode as "routed" | "bridged" | "macvlan"))
+      ) {
+        const preferred =
+          discoveredNetworks.find((n) =>
+            n.recommended_modes.includes(mode as "routed" | "bridged" | "macvlan")
+          ) || (parentInterface ? undefined : discoveredNetworks[0]);
+        if (preferred) {
+          setParentInterface(preferred.name);
+        }
+      }
+    }
+
+    if (mode !== "routed" && !gateway.trim()) {
+      const range = parseCidrRange(pool.cidr || pool.subnet || "");
+      if (range && range.prefix <= 30) {
+        const numToIp = (n: number) =>
+          [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join(".");
+        setGateway(numToIp(range.network + 1));
+      }
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -256,7 +293,7 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
         ...(isGatewayLocked ? {} : { gateway: gateway.trim() || null }),
         first_usable: firstUsable.trim() || undefined,
         last_usable: lastUsable.trim() || undefined,
-        ...(networkMode !== "manual" ? { parent_interface: trimmedParentInterface } : {}),
+        parent_interface: networkMode === "manual" ? "" : trimmedParentInterface,
         ...(hasAllocations
           ? {}
           : {
@@ -376,19 +413,18 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
               <select
                 value={networkMode}
                 disabled={hasAllocations}
-                onChange={(e) => {
-                  setNetworkMode(e.target.value);
-                  clearFieldError("network_mode");
-                  clearFieldError("gateway");
-                  clearFieldError("cidr");
-                }}
+                onChange={(e) => handleModeChange(e.target.value)}
                 className={`w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
                   networkModeError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
                 } text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 disabled:opacity-60`}
               >
                 <option value="routed">{t("modeRoutedOption")}</option>
-                <option value="bridged">{t("modeBridgedOption")}</option>
-                <option value="macvlan">{t("modeMacvlanOption")}</option>
+                <option value="bridged" disabled={cidrPrefix === 31 || cidrPrefix === 32}>
+                  {t("modeBridgedOption")}
+                </option>
+                <option value="macvlan" disabled={cidrPrefix === 31 || cidrPrefix === 32}>
+                  {t("modeMacvlanOption")}
+                </option>
                 <option value="manual">{t("modeManual")}</option>
               </select>
               {networkModeError && (

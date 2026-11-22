@@ -97,7 +97,7 @@ function calculateUsableRange(
 
   return {
     gateway: numToIp(network + 1),
-    first: numToIp(network + 2),
+    first: numToIp(network + 1),
     last: numToIp(broadcast - 1),
   };
 }
@@ -136,6 +136,7 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
 
   const networkModeRef = useRef(networkMode);
   const parentInterfaceRef = useRef(parentInterface);
+  const lastAutoRangeRef = useRef<{ first: string; last: string; gateway: string } | null>(null);
   useEffect(() => {
     networkModeRef.current = networkMode;
     parentInterfaceRef.current = parentInterface;
@@ -233,6 +234,7 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
         setGateway(nextCalc.gateway);
       }
     }
+    lastAutoRangeRef.current = nextCalc ?? lastAutoRangeRef.current;
 
     if (discoveredNetworks.length > 0 && mode !== "manual" && !isCustomInterface) {
       const preferred = discoveredNetworks.find((n) => n.recommended_modes.includes(mode));
@@ -243,7 +245,7 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
   };
 
   const handleCidrChange = (val: string) => {
-    const prevCalc = calculateUsableRange(cidr, networkMode);
+    const prevAuto = lastAutoRangeRef.current ?? calculateUsableRange(cidr, networkMode);
     setCidr(val);
     clearFieldError("cidr");
     clearFieldError("gateway");
@@ -251,23 +253,22 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
     if (calculated) {
       if (
         !firstUsable ||
-        (prevCalc && firstUsable === prevCalc.first) ||
-        firstUsable === calculated.first ||
-        firstUsable.startsWith(val.split(".")[0])
+        (prevAuto && firstUsable === prevAuto.first) ||
+        firstUsable === calculated.first
       ) {
         setFirstUsable(calculated.first);
       }
       if (
         !lastUsable ||
-        (prevCalc && lastUsable === prevCalc.last) ||
-        lastUsable === calculated.last ||
-        lastUsable.startsWith(val.split(".")[0])
+        (prevAuto && lastUsable === prevAuto.last) ||
+        lastUsable === calculated.last
       ) {
         setLastUsable(calculated.last);
       }
-      if (networkMode !== "routed" && (!gateway || (prevCalc && gateway === prevCalc.gateway))) {
+      if (networkMode !== "routed" && (!gateway || (prevAuto && gateway === prevAuto.gateway))) {
         setGateway(calculated.gateway);
       }
+      lastAutoRangeRef.current = calculated;
     }
   };
 
@@ -295,12 +296,15 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
         return t("gatewayInvalidIpv4");
       }
 
+      if ((gwNum >>> 16) === 0xa9fe) {
+        return "Link-local addresses (169.254.0.0/16) cannot be used as pool CIDR, gateway, or excluded IPs.";
+      }
+
       if (range !== null) {
         if (gwNum < range.network || gwNum > range.broadcast) {
           return t("gatewayOutsideCidr");
         }
         if (
-          (isL2 || mode === "routed") &&
           range.prefix <= 30 &&
           (gwNum === range.network || gwNum === range.broadcast)
         ) {
@@ -667,7 +671,7 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
                   setFirstUsable(e.target.value);
                   clearFieldError("first_usable");
                 }}
-                placeholder={networkMode === "routed" ? "203.0.113.1" : "203.0.113.2"}
+                placeholder="203.0.113.1"
                 className={`w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
                   firstUsableError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
                 } text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono`}
