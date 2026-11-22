@@ -8,6 +8,7 @@ use App\Models\IpPool;
 use App\Services\IpManagementService;
 use App\Services\Network\CidrHelper;
 use App\Services\Network\IpPoolConfigValidator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -31,9 +32,9 @@ final class UpdateIpPoolRequest extends FormRequest
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:255'],
             'dns_servers' => ['nullable', 'array'],
-            'dns_servers.*' => ['ip'],
+            'dns_servers.*' => ['ipv4'],
             'excluded_ips' => ['nullable', 'array'],
-            'excluded_ips.*' => ['ip'],
+            'excluded_ips.*' => ['ipv4'],
             'cooldown_seconds' => ['nullable', 'integer', 'min:0', 'max:86400'],
             'active' => ['nullable', 'boolean'],
             'is_public' => ['nullable', 'boolean'],
@@ -59,7 +60,22 @@ final class UpdateIpPoolRequest extends FormRequest
                 return;
             }
 
-            $hasAllocations = $pool->allocations()->count() > 0;
+            $cooldownLimit = now()->subSeconds($pool->cooldown_seconds);
+            $activeOrCoolingQuery = $pool->allocations()
+                ->where(function (Builder $query) use ($cooldownLimit): void {
+                    $query->where('status', 'allocated')
+                        ->orWhere(function (Builder $sub) use ($cooldownLimit): void {
+                            $sub->where('status', 'cooling')
+                                ->where('released_at', '>', $cooldownLimit);
+                        });
+                });
+
+            $hasAllocations = (clone $activeOrCoolingQuery)->count() > 0;
+
+            $rawGateway = $this->input('gateway');
+            $effectiveGateway = $this->has('gateway')
+                ? (is_string($rawGateway) && trim($rawGateway) !== '' ? $rawGateway : null)
+                : $pool->gateway;
 
             // Enforce immutability of cidr, host_id, network_mode, and L2 gateway when allocations exist
             if ($hasAllocations) {
@@ -72,7 +88,7 @@ final class UpdateIpPoolRequest extends FormRequest
                 if ($this->has('network_mode') && $this->input('network_mode') !== null && $this->input('network_mode') !== $pool->network_mode) {
                     $v->errors()->add('network_mode', 'Network mode cannot be modified when allocations exist in the pool.');
                 }
-                if ($this->has('gateway') && $this->input('gateway') !== $pool->gateway && ($pool->network_mode === 'bridged' || $pool->network_mode === 'macvlan')) {
+                if ($this->has('gateway') && $effectiveGateway !== $pool->gateway && ($pool->network_mode === 'bridged' || $pool->network_mode === 'macvlan')) {
                     $v->errors()->add('gateway', 'Gateway cannot be modified when allocations exist in bridged or macvlan pools.');
                 }
             }
@@ -88,15 +104,13 @@ final class UpdateIpPoolRequest extends FormRequest
             }
 
             $effectiveCidr = (string) ($this->input('cidr') ?: $pool->cidr);
-            $rawGateway = $this->input('gateway');
-            $effectiveGateway = $this->has('gateway')
-                ? (is_string($rawGateway) && trim($rawGateway) !== '' ? $rawGateway : null)
-                : $pool->gateway;
             $effectiveExcluded = $this->has('excluded_ips')
                 ? (is_array($this->input('excluded_ips')) ? $this->input('excluded_ips') : [])
                 : ($pool->excluded_ips ?? []);
-            $effectiveFirst = (string) ($this->input('first_usable') ?: $pool->first_usable);
-            $effectiveLast = (string) ($this->input('last_usable') ?: $pool->last_usable);
+            $cidrChanged = $effectiveCidr !== $pool->cidr;
+            $calculatedRange = $cidrChanged ? CidrHelper::calculateUsableRange($effectiveCidr) : null;
+            $effectiveFirst = (string) ($this->input('first_usable') ?: ($calculatedRange !== null ? $calculatedRange['first'] : $pool->first_usable));
+            $effectiveLast = (string) ($this->input('last_usable') ?: ($calculatedRange !== null ? $calculatedRange['last'] : $pool->last_usable));
 
             if (in_array($effectiveMode, ['routed', 'bridged', 'macvlan', 'manual'], true)) {
                 $errors = IpPoolConfigValidator::validate(
@@ -119,9 +133,7 @@ final class UpdateIpPoolRequest extends FormRequest
             $lastLong = CidrHelper::ipToUnsigned($effectiveLast);
 
             if ($firstLong !== null && $lastLong !== null) {
-                $allocations = $pool->allocations()
-                    ->whereIn('status', ['allocated', 'cooling'])
-                    ->get(['ip_string']);
+                $allocations = $activeOrCoolingQuery->get(['ip_string']);
 
                 foreach ($allocations as $alloc) {
                     $allocLong = CidrHelper::ipToUnsigned($alloc->ip_string);

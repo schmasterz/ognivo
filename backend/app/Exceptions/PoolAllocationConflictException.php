@@ -13,6 +13,7 @@ final class PoolAllocationConflictException extends Exception
     public function __construct(
         public readonly int $allocationId,
         public readonly string $ipAddress,
+        public readonly string $field = 'gateway',
         string $message = '',
     ) {
         $msg = $message !== ''
@@ -26,7 +27,7 @@ final class PoolAllocationConflictException extends Exception
         return response()->json([
             'message' => $this->getMessage(),
             'errors' => [
-                'gateway' => [$this->getMessage()],
+                $this->field => [$this->getMessage()],
             ],
         ], 422);
     }
