@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, Server, Layers, Globe, Loader2 } from "lucide-react";
+import { X, Layers, Globe, Loader2 } from "lucide-react";
 import { api, HostNode, ImageItem, RemoteImageValidationResult } from "@/lib/api";
 import { useModalEscape } from "@/lib/hooks/useModalEscape";
 

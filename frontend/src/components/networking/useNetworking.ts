@@ -28,6 +28,8 @@ export function useNetworking({
   isAdmin = false,
 }: UseNetworkingParams = {}) {
   const normalizedStatus = normalizeIpStatusFilter(status);
+  const filterKey = JSON.stringify([sessionUserId, userId, hostId, normalizedStatus, search]);
+  const [prevFilterKey, setPrevFilterKey] = useState<string>(filterKey);
   const [ipsPage, setIpsPage] = useState<number>(1);
   const [poolsPage, setPoolsPage] = useState<number>(1);
   const [poolsPerPage, setPoolsPerPageState] = useState<number>(perPage);
@@ -38,12 +40,11 @@ export function useNetworking({
   }, []);
 
   // Reset pagination to page 1 on filter changes
-  useEffect(() => {
-    queueMicrotask(() => {
-      setIpsPage(1);
-      setPoolsPage(1);
-    });
-  }, [sessionUserId, userId, hostId, normalizedStatus, search]);
+  if (prevFilterKey !== filterKey) {
+    setPrevFilterKey(filterKey);
+    setIpsPage(1);
+    setPoolsPage(1);
+  }
 
   const poolsEnabled = enabled && isAdmin;
 

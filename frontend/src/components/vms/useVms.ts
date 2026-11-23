@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { api, VirtualMachine, VmNetworkPrimary } from "@/lib/api";
 import { useCachedFetch } from "@/lib/hooks/useCachedFetch";
 
@@ -23,15 +23,15 @@ export function useVms({
   perPage = 10,
   enabled = true,
 }: UseVmsParams = {}) {
+  const filterKey = JSON.stringify([sessionUserId, userId, hostId, status, search]);
+  const [prevFilterKey, setPrevFilterKey] = useState<string>(filterKey);
   const [page, setPage] = useState<number>(1);
-  const [localVms, setLocalVms] = useState<VirtualMachine[]>([]);
 
   // Reset to page 1 whenever search or filters change
-  useEffect(() => {
-    queueMicrotask(() => {
-      setPage(1);
-    });
-  }, [sessionUserId, userId, hostId, status, search]);
+  if (prevFilterKey !== filterKey) {
+    setPrevFilterKey(filterKey);
+    setPage(1);
+  }
 
   const cacheKey = useMemo(() => {
     if (!enabled) return null;
@@ -64,14 +64,16 @@ export function useVms({
     ttlMs: 10000,
   });
 
+  const [prevVmsRes, setPrevVmsRes] = useState(vmsRes);
+  const [localVms, setLocalVms] = useState<VirtualMachine[]>(() => vmsRes?.data ?? []);
+
   // Keep local VMs state synchronized with fetched response
-  useEffect(() => {
+  if (prevVmsRes !== vmsRes) {
+    setPrevVmsRes(vmsRes);
     if (vmsRes?.data) {
-      queueMicrotask(() => {
-        setLocalVms(vmsRes.data);
-      });
+      setLocalVms(vmsRes.data);
     }
-  }, [vmsRes]);
+  }
 
   const meta = useMemo(() => {
     return {

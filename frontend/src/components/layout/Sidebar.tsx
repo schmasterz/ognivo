@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import {
   Server,
   Globe,
@@ -125,7 +126,8 @@ export function Sidebar({
 
             <nav className="space-y-1.5">
               {/* Workloads */}
-              <button
+              <Link
+                href="/instances"
                 onClick={() => handleNavClick("vms")}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition ${
                   activeTab === "vms"
@@ -146,10 +148,11 @@ export function Sidebar({
                 >
                   {counts.vms}
                 </span>
-              </button>
+              </Link>
 
               {/* Snapshots */}
-              <button
+              <Link
+                href="/snapshots"
                 onClick={() => handleNavClick("snapshots")}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition ${
                   activeTab === "snapshots"
@@ -172,10 +175,11 @@ export function Sidebar({
                     {counts.snapshots}
                   </span>
                 )}
-              </button>
+              </Link>
 
               {/* Networking */}
-              <button
+              <Link
+                href="/networking"
                 onClick={() => handleNavClick("networking")}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition ${
                   activeTab === "networking"
@@ -196,11 +200,12 @@ export function Sidebar({
                 >
                   {counts.ips}
                 </span>
-              </button>
+              </Link>
 
               {/* Activity Log (Tenant Only) */}
               {!isAdmin && (
-                <button
+                <Link
+                  href="/activity"
                   onClick={() => handleNavClick("activity")}
                   className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition ${
                     activeTab === "activity"
@@ -212,7 +217,7 @@ export function Sidebar({
                     <Activity className="w-4 h-4" />
                     <span>{t("menuActivity")}</span>
                   </div>
-                </button>
+                </Link>
               )}
             </nav>
           </div>
@@ -227,7 +232,8 @@ export function Sidebar({
 
               <nav className="space-y-1.5">
                 {/* Users & Quotas Tab */}
-                <button
+                <Link
+                  href="/users"
                   onClick={() => handleNavClick("users")}
                   className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition ${
                     activeTab === "users"
@@ -248,10 +254,11 @@ export function Sidebar({
                   >
                     {counts.users}
                   </span>
-                </button>
+                </Link>
 
                 {/* Audit Log Tab */}
-                <button
+                <Link
+                  href="/audit"
                   onClick={() => handleNavClick("audit")}
                   className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition ${
                     activeTab === "audit"
@@ -263,10 +270,11 @@ export function Sidebar({
                     <Shield className="w-4 h-4 text-purple-400" />
                     <span>{t("menuAuditLog")}</span>
                   </div>
-                </button>
+                </Link>
 
                 {/* Compute Nodes Tab */}
-                <button
+                <Link
+                  href="/nodes"
                   onClick={() => handleNavClick("nodes")}
                   className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition ${
                     activeTab === "nodes"
@@ -289,7 +297,7 @@ export function Sidebar({
                       {counts.nodes}
                     </span>
                   )}
-                </button>
+                </Link>
 
                 {/* OS Images Catalog Action */}
                 {onOpenImages && (

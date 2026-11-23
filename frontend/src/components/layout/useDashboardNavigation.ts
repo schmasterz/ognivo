@@ -1,6 +1,14 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useRef,
+  useMemo,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { VirtualMachine } from "@/lib/api";
 
@@ -55,21 +63,17 @@ export function useDashboardNavigation({
   const pathname = usePathname();
   const router = useRouter();
 
-  // Active navigation section initialized synchronously from current route
-  const [activeTab, setActiveTab] = useState<TabType>(() => {
-    const initialPath =
-      pathname ||
-      (typeof window !== "undefined" ? window.location.pathname : "/");
-    return resolveTabFromPathname(initialPath, authLoading ? true : isAdmin);
-  });
+  // Active navigation section derived reactively from Next.js pathname
+  const activeTab = useMemo(
+    () => resolveTabFromPathname(pathname || "/", authLoading ? true : isAdmin),
+    [pathname, authLoading, isAdmin]
+  );
 
   const [detailsVm, setDetailsVm] = useState<{
     vm: VirtualMachine;
     initialTab?: string;
   } | null>(null);
-  const pendingVmDeepLinkRef = useRef<{ vmId: string; vmTab?: string } | null>(
-    null
-  );
+  const handledDeepLinkRef = useRef<string | null>(null);
 
   const handleSetDetailsVm = useCallback(
     (target: { vm: VirtualMachine; initialTab?: string } | null) => {
@@ -77,6 +81,7 @@ export function useDashboardNavigation({
       if (typeof window === "undefined") return;
       const params = new URLSearchParams(window.location.search);
       if (target) {
+        handledDeepLinkRef.current = `${target.vm.id}:${target.initialTab ?? ""}`;
         params.set("vm", String(target.vm.id));
         if (target.initialTab) {
           params.set("vm_tab", target.initialTab);
@@ -89,65 +94,52 @@ export function useDashboardNavigation({
           "",
           qs ? `${window.location.pathname}?${qs}` : window.location.pathname
         );
-      } else if (params.has("vm") || params.has("vm_tab")) {
-        params.delete("vm");
-        params.delete("vm_tab");
-        const qs = params.toString();
-        window.history.replaceState(
-          null,
-          "",
-          qs ? `${window.location.pathname}?${qs}` : window.location.pathname
-        );
+      } else {
+        handledDeepLinkRef.current = null;
+        if (params.has("vm") || params.has("vm_tab")) {
+          params.delete("vm");
+          params.delete("vm_tab");
+          const qs = params.toString();
+          window.history.replaceState(
+            null,
+            "",
+            qs ? `${window.location.pathname}?${qs}` : window.location.pathname
+          );
+        }
       }
     },
     []
   );
 
-  // Synchronize activeTab and VM deep-link query params with Next.js pathname and browser navigation
+  // Resolve ?vm=<id>&vm_tab=<tab> deep link once VMs are loaded
   useEffect(() => {
-    const handleLocationChange = () => {
-      const currentPath =
-        pathname ||
-        (typeof window !== "undefined" ? window.location.pathname : "/");
-      setActiveTab(
-        resolveTabFromPathname(currentPath, authLoading ? true : isAdmin)
-      );
+    if (typeof window === "undefined" || vms.length === 0) return;
 
-      if (typeof window !== "undefined") {
-        const params = new URLSearchParams(window.location.search);
-        const vmParam = params.get("vm");
-        const vmTabParam = params.get("vm_tab") || undefined;
-        if (vmParam) {
-          pendingVmDeepLinkRef.current = { vmId: vmParam, vmTab: vmTabParam };
-        }
-      }
-    };
+    const params = new URLSearchParams(window.location.search);
+    const vmParam = params.get("vm");
+    if (!vmParam) {
+      handledDeepLinkRef.current = null;
+      return;
+    }
 
-    handleLocationChange();
-    window.addEventListener("popstate", handleLocationChange);
-    return () => window.removeEventListener("popstate", handleLocationChange);
-  }, [pathname, isAdmin, authLoading]);
-
-  // Resolve pending ?vm=<id>&vm_tab=<tab> deep link once VMs are loaded
-  useEffect(() => {
-    const pending = pendingVmDeepLinkRef.current;
-    if (!pending || vms.length === 0) return;
+    const vmTabParam = params.get("vm_tab") || undefined;
+    const deepLinkKey = `${vmParam}:${vmTabParam ?? ""}`;
+    if (handledDeepLinkRef.current === deepLinkKey) return;
 
     const matchedVm = vms.find(
-      (v) => String(v.id) === pending.vmId || v.name === pending.vmId
+      (v) => String(v.id) === vmParam || v.name === vmParam
     );
-    if (matchedVm) {
-      pendingVmDeepLinkRef.current = null;
-      const timer = setTimeout(() => {
-        setDetailsVm({ vm: matchedVm, initialTab: pending.vmTab });
-      }, 0);
-      return () => clearTimeout(timer);
-    }
-  }, [vms]);
+    if (!matchedVm) return;
+
+    const timer = setTimeout(() => {
+      handledDeepLinkRef.current = deepLinkKey;
+      setDetailsVm({ vm: matchedVm, initialTab: vmTabParam });
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [vms, pathname]);
 
   const handleTabChange = useCallback(
     (tab: TabType) => {
-      setActiveTab(tab);
       const pathMap: Record<TabType, string> = {
         vms: "/instances",
         snapshots: "/snapshots",
@@ -162,6 +154,15 @@ export function useDashboardNavigation({
       }
     },
     [router]
+  );
+
+  const setActiveTab: Dispatch<SetStateAction<TabType>> = useCallback(
+    (action) => {
+      const nextTab =
+        typeof action === "function" ? action(activeTab) : action;
+      handleTabChange(nextTab);
+    },
+    [activeTab, handleTabChange]
   );
 
   const handleAuditNavigate = useCallback(
