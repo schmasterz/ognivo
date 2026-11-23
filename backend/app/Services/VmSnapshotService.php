@@ -26,6 +26,7 @@ use App\States\Vm\Suspended;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Service orchestrating virtual machine snapshot creation, restoration, deletion,
@@ -70,6 +71,7 @@ class VmSnapshotService
      * @throws InvalidSnapshotNameException
      * @throws DuplicateSnapshotNameException
      * @throws SnapshotQuotaExceededException
+     * @throws ValidationException
      */
     public function create(
         VirtualMachine $vm,
@@ -87,6 +89,7 @@ class VmSnapshotService
             $this->assertValidVmStateForCreate($vm);
             $this->assertValidSnapshotName($snapshotName);
             $this->assertValidSource($source);
+            $this->assertHostReachable($vm);
 
             $lock = Cache::lock(sprintf('vm_snapshot_create:%d', $vm->id), 10);
 
@@ -168,6 +171,7 @@ class VmSnapshotService
      *
      * @throws InvalidSnapshotStateException
      * @throws InvalidVmStateException
+     * @throws ValidationException
      */
     public function restore(
         VmSnapshot|VirtualMachine $snapshotOrVm,
@@ -189,6 +193,7 @@ class VmSnapshotService
             }
 
             $this->assertValidVmStateForRestore($vm, $targetSnapshot);
+            $this->assertHostReachable($vm);
 
             $targetSnapshot->status = VmSnapshot::STATUS_RESTORING;
             $targetSnapshot->error = null;
@@ -375,6 +380,34 @@ class VmSnapshotService
         });
 
         return $vm->snapshots()->orderBy('id')->get();
+    }
+
+    /**
+     * Validate that the compute node hosting the VM is reachable.
+     *
+     * @throws ValidationException
+     */
+    private function assertHostReachable(VirtualMachine $vm): void
+    {
+        if ($vm->relationLoaded('host')) {
+            $host = $vm->host;
+        } else {
+            $host = $vm->host()->first();
+        }
+
+        if ($host !== null && $host->status === 'unreachable') {
+            $exception = ValidationException::withMessages([
+                'host' => ['The compute node hosting this virtual machine is currently unreachable.'],
+            ]);
+            $exception->errorBag = 'default';
+            $exception->response = response()->json([
+                'message' => 'Host Unreachable',
+                'errors' => [
+                    'host' => ['The compute node hosting this virtual machine is currently unreachable.'],
+                ],
+            ], 422);
+            throw $exception;
+        }
     }
 
     /**

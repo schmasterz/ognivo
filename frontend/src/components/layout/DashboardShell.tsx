@@ -126,9 +126,9 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           vms: vmsMeta.total,
           snapshots:
             adminStats?.total_snapshots ?? quotaData?.usage?.snapshots ?? 0,
-          ips: ipsMeta.total,
-          pools: poolsMeta.total,
-          users: usersMeta.total,
+          ips: adminStats?.total_ips ?? quotaData?.usage?.ips ?? ipsMeta.total,
+          pools: adminStats?.total_pools ?? poolsMeta.total,
+          users: adminStats?.total_users ?? usersMeta.total,
           quotaGroups: quotaGroups.length,
           nodes: hosts.length,
         }}

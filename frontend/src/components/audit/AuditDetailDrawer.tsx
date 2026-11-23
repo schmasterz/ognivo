@@ -19,6 +19,7 @@ import {
 import { AuditEntry, AdminAuditEntry } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
 import { useModalEscape } from "@/lib/hooks/useModalEscape";
+import { formatAuditType } from "./AuditTable";
 
 interface AuditDetailDrawerProps {
   entry: AuditEntry | AdminAuditEntry | null;
@@ -201,11 +202,11 @@ export function AuditDetailDrawer({
                         onClick={handleSubjectClick}
                         className="text-blue-600 dark:text-blue-400 hover:underline flex items-center space-x-1 font-semibold group"
                       >
-                        <span>{entry.subject_label || `${entry.subject_type} #${entry.subject_id}`}</span>
+                        <span>{entry.subject_label || `${formatAuditType(entry.subject_type)} #${entry.subject_id}`}</span>
                         <ExternalLink className="w-3 h-3 group-hover:translate-x-0.5 transition" />
                       </button>
                     ) : (
-                      <span>{entry.subject_label || `${entry.subject_type} #${entry.subject_id}`}</span>
+                      <span>{entry.subject_label || `${formatAuditType(entry.subject_type)} #${entry.subject_id}`}</span>
                     )
                   ) : (
                     <span className="text-gray-400">—</span>
@@ -224,8 +225,8 @@ export function AuditDetailDrawer({
                     <span>
                       {adminEntry.actor_label ||
                         (adminEntry.actor_id
-                          ? `${adminEntry.actor_type} #${adminEntry.actor_id}`
-                          : adminEntry.actor_type)}
+                          ? `${formatAuditType(adminEntry.actor_type)} #${adminEntry.actor_id}`
+                          : formatAuditType(adminEntry.actor_type))}
                     </span>
                   ) : (
                     <span>

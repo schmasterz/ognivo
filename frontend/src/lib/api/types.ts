@@ -153,6 +153,7 @@ export interface QuotaResponse {
     ram_mb: number;
     disk_gb: number;
     snapshots?: number;
+    ips?: number;
   };
   available: {
     vms: number;
@@ -160,6 +161,7 @@ export interface QuotaResponse {
     ram_mb: number;
     disk_gb: number;
     snapshots?: number;
+    ips?: number;
   };
   filters?: {
     host_id?: number | null;
@@ -422,6 +424,7 @@ export interface AdminStats {
   total_ips: number;
   allocated_ips: number;
   total_snapshots?: number;
+  total_pools?: number;
 }
 
 export interface SmtpSettings {

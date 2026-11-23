@@ -23,6 +23,42 @@ export interface AuditTablePaginationProps {
   onPerPageChange: (perPage: number) => void;
 }
 
+/**
+ * Formats an audit subject or actor type into a user-friendly label,
+ * stripping internal PHP namespaces such as App\Models\ or App\Services\.
+ */
+export function formatAuditType(type?: string | null): string {
+  if (!type) return "";
+  // If it contains backslashes or starts with App\, take the basename/strip namespace
+  const clean = type.split("\\").pop() ?? type;
+  // Format common types into friendly names, or return the clean class name
+  switch (clean.toLowerCase()) {
+    case "virtualmachine":
+    case "virtual_machine":
+    case "vm":
+      return "Virtual Machine";
+    case "user":
+      return "User";
+    case "ippool":
+    case "ip_pool":
+      return "IP Pool";
+    case "ipallocation":
+    case "ip_allocation":
+      return "IP Allocation";
+    case "host":
+    case "hostnode":
+      return "Host Node";
+    case "vmsnapshot":
+    case "snapshot":
+      return "Snapshot";
+    case "quotagroup":
+      return "Quota Group";
+    default:
+      // Strip any lingering namespace or internal prefix
+      return clean.replace(/^App[_\\]/, "");
+  }
+}
+
 interface AuditTableProps {
   entries: (AuditEntry | AdminAuditEntry)[];
   isAdmin: boolean;
@@ -257,12 +293,12 @@ export function AuditTable({
 
                   {/* Subject */}
                   <td className="px-3 py-3">
-                    <div className="font-medium text-gray-900 dark:text-gray-200 truncate max-w-[150px]" title={entry.subject_label || entry.subject_type || ""}>
-                      {entry.subject_label || (entry.subject_type ? `${entry.subject_type} #${entry.subject_id}` : "—")}
+                    <div className="font-medium text-gray-900 dark:text-gray-200 truncate max-w-[150px]" title={entry.subject_label || formatAuditType(entry.subject_type) || ""}>
+                      {entry.subject_label || (entry.subject_type ? `${formatAuditType(entry.subject_type)} #${entry.subject_id}` : "—")}
                     </div>
                     {entry.subject_type && (
                       <div className="text-[10px] text-gray-400 font-mono">
-                        {entry.subject_type} {entry.subject_id ? `#${entry.subject_id}` : ""}
+                        {formatAuditType(entry.subject_type)} {entry.subject_id ? `#${entry.subject_id}` : ""}
                       </div>
                     )}
                   </td>
@@ -272,7 +308,7 @@ export function AuditTable({
                     {isAdmin && adminEntry ? (
                       <div>
                         <div className="font-medium text-gray-900 dark:text-gray-200">
-                          {adminEntry.actor_label || adminEntry.actor_type}
+                          {adminEntry.actor_label || formatAuditType(adminEntry.actor_type)}
                         </div>
                         {adminEntry.actor_id && (
                           <div className="text-[10px] font-mono text-gray-400">
