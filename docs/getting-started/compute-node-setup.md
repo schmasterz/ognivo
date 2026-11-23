@@ -135,7 +135,7 @@ sudo apt install -y genisoimage iptables-persistent
 ### Why each package is required
 
 1. **`genisoimage` (or `xorriso` / `mkisofs`):**
-   Incus requires `genisoimage` or `mkisofs` on the host to generate the `agent:config` ISO device attached to KVM virtual machines. This ISO delivers cloud-init / `incus-agent` bootstrap configuration into guest VMs across diverse Linux guest distributions and Windows—**specifically including RHEL, AlmaLinux, Rocky Linux, Alpine, and Windows VM bootstrapping**.
+   Incus requires `genisoimage` or `mkisofs` on the host to generate the `agent:config` ISO device attached to KVM virtual machines. This ISO delivers cloud-init / `incus-agent` bootstrap configuration into guest VMs across diverse Linux guest distributions—**specifically including RHEL, AlmaLinux, Rocky Linux, and Alpine** (with Windows VM bootstrapping planned for a future release).
 
    > [!IMPORTANT]
    > Without `genisoimage` (or `mkisofs`) installed on the compute node, starting affected KVM virtual machines fails with:
@@ -206,7 +206,7 @@ sudo netfilter-persistent save
 ### Automated Guest OS Compatibility
 
 > [!NOTE]
-> Compute node operators do **not** need to maintain custom Incus profiles or run manual CLI tweaks for non-SecureBoot guest operating systems (such as Alpine, Arch, Gentoo, openEuler, or BSD). Ognivo's Guest OS adapter layer automatically injects `security.secureboot: "false"` into the instance specification when provisioning those virtual machines.
+> Compute node operators do **not** need to maintain custom Incus profiles or run manual CLI tweaks for non-SecureBoot guest operating systems (such as Alpine, Arch, Gentoo, openEuler, or future BSD support). Ognivo's Guest OS adapter layer automatically injects `security.secureboot: "false"` into the instance specification when provisioning those virtual machines.
 
 ---
 
