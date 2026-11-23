@@ -453,9 +453,6 @@ export function ImageSelectionDrawer({
               >
                 <option value="all">{t("filterAllOsTypes")}</option>
                 <option value="linux">Linux</option>
-                <option value="windows">Windows</option>
-                <option value="bsd">BSD</option>
-                <option value="other">Other</option>
               </select>
 
               <select

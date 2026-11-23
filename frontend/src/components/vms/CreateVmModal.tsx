@@ -159,9 +159,12 @@ export function CreateVmModal({
         })
         .then((res) => {
           if (cancelled) return;
-          setAvailableImages(res.data);
-          if (res.data.length > 0) {
-            setOsImage((prev) => (res.data.some((img) => img.name === prev) ? prev : res.data[0].name));
+          const linuxImages = res.data.filter((img) => img.os_type === "linux");
+          setAvailableImages(linuxImages);
+          if (linuxImages.length > 0) {
+            setOsImage((prev) => (linuxImages.some((img) => img.name === prev) ? prev : linuxImages[0].name));
+          } else {
+            setOsImage("");
           }
         })
         .catch(console.error)
@@ -349,14 +352,18 @@ export function CreateVmModal({
                   <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
                   <span>Loading compatible OS images...</span>
                 </div>
-              ) : availableImages.length === 0 ? (
-                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-600 dark:text-amber-400">
-                  {instanceType === "container"
-                    ? "No Linux container images available on this compute node."
-                    : "No approved images available on this compute node."}
-                </div>
-              ) : (
-                availableImages.map((os) => (
+              ) : (() => {
+                const linuxImages = availableImages.filter((img) => img.os_type === "linux");
+                if (linuxImages.length === 0) {
+                  return (
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-600 dark:text-amber-400">
+                      {instanceType === "container"
+                        ? "No Linux container images available on this compute node."
+                        : "No approved Linux images available on this compute node."}
+                    </div>
+                  );
+                }
+                return linuxImages.map((os) => (
                   <label
                     key={os.id}
                     className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition ${
@@ -392,8 +399,8 @@ export function CreateVmModal({
                       {os.os_type}
                     </span>
                   </label>
-                ))
-              )}
+                ));
+              })()}
             </div>
           </div>
 

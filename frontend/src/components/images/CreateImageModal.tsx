@@ -228,7 +228,7 @@ export function CreateImageModal({
               Operating System Family
             </label>
             <div className="grid grid-cols-4 gap-2">
-              {(["linux", "windows", "bsd", "other"] as const).map((type) => (
+              {(["linux"] as const).map((type) => (
                 <button
                   key={type}
                   type="button"
@@ -243,15 +243,9 @@ export function CreateImageModal({
                 </button>
               ))}
             </div>
-            {osType !== "linux" ? (
-              <p className="text-[11px] text-amber-500 mt-1.5">
-                Note: Non-Linux images can only run on Virtual Machines (KVM), not in LXC containers.
-              </p>
-            ) : (
-              <p className="text-[11px] text-emerald-500 mt-1.5">
-                Compatible with both Virtual Machines (KVM) and Lightweight Containers (LXC).
-              </p>
-            )}
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
+              Linux images can run on both Virtual Machines (KVM) and Lightweight Containers (LXC).
+            </p>
           </div>
 
           {/* Source Server & Protocol */}

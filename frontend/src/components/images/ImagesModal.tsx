@@ -262,9 +262,6 @@ export function ImagesModal({ onClose, hosts }: ImagesModalProps) {
             >
               <option value="all">All OS Types</option>
               <option value="linux">Linux (VM & Containers)</option>
-              <option value="windows">Windows (VM Only)</option>
-              <option value="bsd">BSD</option>
-              <option value="other">Other</option>
             </select>
           </div>
 
