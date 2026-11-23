@@ -19,7 +19,11 @@ import { useDashboardConfirmActions } from "./useDashboardConfirmActions";
 import { useDashboardData } from "./useDashboardData";
 import { useDashboardRealtime } from "./useDashboardRealtime";
 import { TabType, useDashboardNavigation } from "./useDashboardNavigation";
-import { useDashboardModals } from "./useDashboardModals";
+import {
+  useDashboardModals,
+  useDashboardModalActions,
+  createDashboardModalsHandle,
+} from "./useDashboardModals";
 import { useI18n } from "@/lib/i18n/I18nContext";
 import { useToast } from "@/lib/toast/ToastContext";
 import { useAuth } from "@/lib/auth/AuthContext";
@@ -250,7 +254,11 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const { confirmDialog, setConfirmDialog, requestConfirm } = useConfirmDialog(
     toast.error
   );
-  const modals = useDashboardModals();
+  const modalActions = useDashboardModalActions();
+  const modals = useMemo<ReturnType<typeof useDashboardModals>>(
+    () => createDashboardModalsHandle(modalActions),
+    [modalActions]
+  );
 
   const {
     handleRequestVmAction,
