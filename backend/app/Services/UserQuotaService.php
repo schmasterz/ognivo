@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Models\IpAllocation;
 use App\Models\QuotaGroup;
 use App\Models\SystemSetting;
 use App\Models\User;
@@ -169,8 +170,8 @@ final class UserQuotaService
      * @return array{
      *     user: array{id: int, name: string, email: string},
      *     quota: UserQuota,
-     *     usage: array{vms: int, cpu_cores: int, ram_mb: int, disk_gb: int, snapshots: int},
-     *     available: array{vms: int, cpu_cores: int, ram_mb: int, disk_gb: int, snapshots: int},
+     *     usage: array{vms: int, cpu_cores: int, ram_mb: int, disk_gb: int, snapshots: int, ips: int},
+     *     available: array{vms: int, cpu_cores: int, ram_mb: int, disk_gb: int, snapshots: int, ips: int},
      *     filters: array{host_id: int|null, status: string|null, search: string|null}
      * }
      */
@@ -233,6 +234,9 @@ final class UserQuotaService
         $cpuUsed = (int) $usage->cpu;
         $ramUsed = (int) $usage->ram;
         $diskUsed = (int) $usage->disk;
+        $ipsUsed = (int) IpAllocation::where('user_id', $targetUser->id)
+            ->where('status', 'allocated')
+            ->count();
 
         $hasVmFilters = isset($filters['host_id'])
             || isset($filters['vm_id'])
@@ -252,6 +256,7 @@ final class UserQuotaService
         $maxRam = (int) $quota->max_ram_mb;
         $maxStorage = (int) $quota->max_storage_gb;
         $maxSnapshots = $quota->max_snapshots;
+        $maxIps = (int) $quota->max_ips;
         $effectiveMaxSnapshots = isset($filters['vm_id'])
             ? (int) $maxSnapshots
             : $this->effectiveSnapshotLimit($targetUser, (int) $maxSnapshots, null, $vmsUsed);
@@ -272,6 +277,7 @@ final class UserQuotaService
                 'ram_mb' => $ramUsed,
                 'disk_gb' => $diskUsed,
                 'snapshots' => $snapshotsUsed,
+                'ips' => $ipsUsed,
             ],
             'available' => [
                 'vms' => $maxVms === -1 ? -1 : max(0, $maxVms - $vmsUsed),
@@ -279,6 +285,7 @@ final class UserQuotaService
                 'ram_mb' => $maxRam === -1 ? -1 : max(0, $maxRam - $ramUsed),
                 'disk_gb' => $maxStorage === -1 ? -1 : max(0, $maxStorage - $diskUsed),
                 'snapshots' => $snapshotsAvailable,
+                'ips' => $maxIps === -1 ? -1 : max(0, $maxIps - $ipsUsed),
             ],
             'filters' => [
                 'host_id' => $filters['host_id'] ?? null,

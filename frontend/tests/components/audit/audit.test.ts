@@ -1,5 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import vm from "node:vm";
+import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
 // Mock minimal DOM window / history environment if not in browser
 interface MockWindow {
@@ -36,6 +40,62 @@ import {
 } from "../../../src/components/audit/auditUrl.ts";
 import type { AuditEntry, AdminAuditEntry, AuditFilters } from "../../../src/lib/api/types.ts";
 import { dictionaries } from "../../../src/lib/i18n/dictionaries.ts";
+
+/**
+ * Loads `formatAuditType` from AuditTable.tsx via TypeScript transpilation so
+ * Node's native test runner can exercise the exact component helper without JSX/alias resolution.
+ */
+function loadFormatAuditType(): (type?: string | null) => string {
+  const auditTablePath = fileURLToPath(
+    new URL("../../../src/components/audit/AuditTable.tsx", import.meta.url),
+  );
+  const sourceText = fs.readFileSync(auditTablePath, "utf8");
+  const sourceFile = ts.createSourceFile(
+    "AuditTable.tsx",
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+
+  let snippet: string | undefined;
+  const visit = (node: ts.Node) => {
+    if (snippet) return;
+    if (ts.isFunctionDeclaration(node) && node.name?.text === "formatAuditType") {
+      snippet = sourceText.slice(node.getStart(sourceFile), node.getEnd());
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+
+  if (!snippet) {
+    throw new Error("formatAuditType declaration not found in AuditTable.tsx");
+  }
+
+  const transpiled = ts.transpileModule(snippet, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2020,
+      strict: false,
+    },
+  });
+
+  const exportsObj: Record<string, unknown> = {};
+  const moduleObj: { exports: unknown } = { exports: exportsObj };
+  const wrapper = vm.runInThisContext(
+    `(function(exports, module) {\n${transpiled.outputText}\n})`,
+  ) as (exportsArg: Record<string, unknown>, moduleArg: { exports: unknown }) => void;
+  wrapper(exportsObj, moduleObj);
+
+  const fn = exportsObj.formatAuditType;
+  if (typeof fn !== "function") {
+    throw new Error("Failed to load formatAuditType from AuditTable.tsx");
+  }
+  return fn as (type?: string | null) => string;
+}
+
+const formatAuditType = loadFormatAuditType();
 
 describe("Audit Frontend Unit & Integration Tests", () => {
   describe("1. Filter-to-URL Synchronization & Recovery", () => {
@@ -378,6 +438,45 @@ describe("Audit Frontend Unit & Integration Tests", () => {
       const d = new Date(rawDate);
       const utcString = d.toISOString();
       assert.equal(utcString, "2026-11-05T14:30:00.123Z");
+    });
+  });
+
+  describe("5. Audit Type Formatting & Namespace Sanitization", () => {
+    it("formats namespaced and friendly model types cleanly", () => {
+      assert.equal(formatAuditType("App\\Models\\VirtualMachine"), "Virtual Machine");
+      assert.equal(formatAuditType("App\\Models\\User"), "User");
+      assert.equal(formatAuditType("App\\Services\\CustomService"), "CustomService");
+    });
+
+    it("formats additional known audit entity types into friendly labels", () => {
+      assert.equal(formatAuditType("vm"), "Virtual Machine");
+      assert.equal(formatAuditType("virtual_machine"), "Virtual Machine");
+      assert.equal(formatAuditType("App\\Models\\IpPool"), "IP Pool");
+      assert.equal(formatAuditType("ip_allocation"), "IP Allocation");
+      assert.equal(formatAuditType("App\\Models\\HostNode"), "Host Node");
+      assert.equal(formatAuditType("App\\Models\\VmSnapshot"), "Snapshot");
+      assert.equal(formatAuditType("App\\Models\\QuotaGroup"), "Quota Group");
+    });
+
+    it("never returns strings containing App\\ or App\\\\ for any input", () => {
+      const inputs = [
+        null,
+        undefined,
+        "",
+        "App\\Models\\VirtualMachine",
+        "App\\Models\\User",
+        "App\\Services\\CustomService",
+        "App\\\\Models\\\\VirtualMachine",
+        "App_InternalService",
+        "App\\",
+        "Domain\\Audit\\EventSource",
+      ];
+
+      for (const input of inputs) {
+        const formatted = formatAuditType(input);
+        assert.ok(!formatted.includes("App\\"), `Unexpected App\\ in output for ${String(input)}: ${formatted}`);
+        assert.ok(!formatted.includes("App\\\\"), `Unexpected App\\\\ in output for ${String(input)}: ${formatted}`);
+      }
     });
   });
 });

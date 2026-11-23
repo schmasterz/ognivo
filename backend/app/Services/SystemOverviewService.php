@@ -8,6 +8,7 @@ use App\DTO\Cast;
 use App\Mail\SmtpTestMail;
 use App\Models\Host;
 use App\Models\IpAllocation;
+use App\Models\IpPool;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\Models\VirtualMachine;
@@ -36,6 +37,7 @@ final class SystemOverviewService
      *     allocated_disk_gb: int,
      *     total_ips: int,
      *     allocated_ips: int,
+     *     total_pools: int,
      *     total_snapshots: int
      * }
      */
@@ -83,6 +85,7 @@ final class SystemOverviewService
         $activeHosts = (int) Host::where('is_active', true)->count();
         $totalIps = (int) IpAllocation::count();
         $allocatedIps = (int) IpAllocation::where('status', 'allocated')->count();
+        $totalPools = (int) IpPool::count();
 
         $snapshotQuery = VmSnapshot::whereNotIn('status', [VmSnapshot::STATUS_FAILED, VmSnapshot::STATUS_DELETING]);
         if (isset($filters['user_id'])) {
@@ -103,6 +106,7 @@ final class SystemOverviewService
             'allocated_disk_gb' => (int) $vmStats->total_disk,
             'total_ips' => $totalIps,
             'allocated_ips' => $allocatedIps,
+            'total_pools' => $totalPools,
             'total_snapshots' => $totalSnapshots,
         ];
     }
