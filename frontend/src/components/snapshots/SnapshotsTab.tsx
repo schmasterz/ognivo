@@ -512,6 +512,9 @@ export function SnapshotsTab({
                     vmOptions.find((v) => v.id === snap.virtual_machine_id) ||
                     vms.find((v) => v.id === snap.virtual_machine_id) ||
                     snap.virtual_machine;
+                  const isHostUnreachable =
+                    (targetVm as { host?: { status?: string } } | undefined)?.host?.status ===
+                    "unreachable";
                   const isTransitioning = ["creating", "restoring", "deleting"].includes(
                     snap.status?.toLowerCase() || ""
                   );
@@ -595,8 +598,8 @@ export function SnapshotsTab({
                           {/* Restore Button */}
                           <button
                             onClick={() => setRestoreTarget(snap)}
-                            disabled={!isReady || isTransitioning || actionLoading}
-                            title={t("confirmRestoreSnapshotBtn")}
+                            disabled={!isReady || isTransitioning || actionLoading || isHostUnreachable}
+                            title={isHostUnreachable ? t("hostUnreachableTooltip") : t("confirmRestoreSnapshotBtn")}
                             className="p-1.5 rounded-lg bg-gray-100 hover:bg-indigo-500/20 dark:bg-gray-800 dark:hover:bg-indigo-500/20 text-gray-600 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             <RotateCcw className="w-3.5 h-3.5" />

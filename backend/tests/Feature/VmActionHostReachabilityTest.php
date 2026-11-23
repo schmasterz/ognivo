@@ -8,6 +8,7 @@ use App\Http\Resources\TenantHostResource;
 use App\Models\Host;
 use App\Models\User;
 use App\Models\VirtualMachine;
+use App\Models\VmSnapshot;
 use App\Services\Hypervisor\HypervisorManager;
 use App\States\Vm\Running;
 use App\States\Vm\Stopped;
@@ -207,6 +208,71 @@ final class VmActionHostReachabilityTest extends TestCase
                 'action' => 'delete',
                 'force' => true,
             ]);
+
+        $response->assertStatus(422)
+            ->assertJson([
+                'message' => 'Host Unreachable',
+                'errors' => [
+                    'host' => ['The compute node hosting this virtual machine is currently unreachable.'],
+                ],
+            ]);
+    }
+
+    public function test_vm_snapshot_create_blocked_when_host_is_unreachable(): void
+    {
+        $vm = VirtualMachine::create([
+            'user_id' => $this->tenant->id,
+            'host_id' => $this->unreachableHost->id,
+            'name' => 'unreachable-test-vm-snap-create',
+            'incus_project' => 'default',
+            'instance_type' => 'virtual-machine',
+            'status' => Running::class,
+            'cpu_cores' => 1,
+            'ram_mb' => 1024,
+            'disk_gb' => 10,
+            'os_image' => 'ubuntu:24.04',
+        ]);
+
+        $response = $this->actingAs($this->tenant)
+            ->postJson("/api/vms/{$vm->id}/snapshots", [
+                'name' => 'snap-fail-host',
+            ]);
+
+        $response->assertStatus(422)
+            ->assertJson([
+                'message' => 'Host Unreachable',
+                'errors' => [
+                    'host' => ['The compute node hosting this virtual machine is currently unreachable.'],
+                ],
+            ]);
+    }
+
+    public function test_vm_snapshot_restore_blocked_when_host_is_unreachable(): void
+    {
+        $vm = VirtualMachine::create([
+            'user_id' => $this->tenant->id,
+            'host_id' => $this->unreachableHost->id,
+            'name' => 'unreachable-test-vm-snap-restore',
+            'incus_project' => 'default',
+            'instance_type' => 'virtual-machine',
+            'status' => Running::class,
+            'cpu_cores' => 1,
+            'ram_mb' => 1024,
+            'disk_gb' => 10,
+            'os_image' => 'ubuntu:24.04',
+        ]);
+
+        $snapshot = VmSnapshot::create([
+            'virtual_machine_id' => $vm->id,
+            'user_id' => $this->tenant->id,
+            'name' => 'snap-ready-restore',
+            'status' => 'ready',
+            'source' => 'manual',
+            'size_bytes' => 1024,
+        ]);
+
+        $response = $this->actingAs($this->tenant)
+            ->postJson("/api/vms/{$vm->id}/snapshots/{$snapshot->id}/restore");
 
         $response->assertStatus(422)
             ->assertJson([

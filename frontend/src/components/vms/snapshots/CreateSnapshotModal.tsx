@@ -54,6 +54,7 @@ export function CreateSnapshotModal({
 
   const isUnlimited = maxSnapshots === -1;
   const isQuotaExceeded = !isUnlimited && remaining <= 0;
+  const isHostUnreachable = vm.host?.status === "unreachable";
 
   const handleNameChange = (val: string) => {
     const clean = val.toLowerCase().trim();
@@ -74,6 +75,8 @@ export function CreateSnapshotModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (isHostUnreachable) return;
 
     if (!name.trim()) {
       setNameError(t("snapshotNameInvalid"));
@@ -172,6 +175,13 @@ export function CreateSnapshotModal({
             </div>
           </div>
 
+          {/* Unreachable Host Notice */}
+          {isHostUnreachable && (
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-600 dark:text-amber-400">
+              {t("hostUnreachableTooltip")}
+            </div>
+          )}
+
           {/* Quota Error / General Error */}
           {(isQuotaExceeded || serverError) && (
             <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs flex items-start space-x-2">
@@ -223,7 +233,8 @@ export function CreateSnapshotModal({
             </button>
             <button
               type="submit"
-              disabled={loading || !name.trim() || !!nameError || isQuotaExceeded}
+              disabled={loading || !name.trim() || !!nameError || isQuotaExceeded || isHostUnreachable}
+              title={isHostUnreachable ? t("hostUnreachableTooltip") : undefined}
               className="flex items-center space-x-2 px-5 py-2 rounded-xl text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/25 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (

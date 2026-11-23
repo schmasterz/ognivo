@@ -297,6 +297,7 @@ export function VmSnapshotsTab({ vm, user, isAdmin }: VmSnapshotsTabProps) {
 
   const isUnlimited = meta.max_snapshots === -1;
   const isQuotaReached = !isUnlimited && meta.remaining <= 0;
+  const isHostUnreachable = vm.host?.status === "unreachable";
 
   return (
     <div className="space-y-4">
@@ -339,8 +340,16 @@ export function VmSnapshotsTab({ vm, user, isAdmin }: VmSnapshotsTabProps) {
           {/* Create Snapshot Button */}
           <button
             onClick={() => setCreateModalOpen(true)}
-            disabled={isQuotaReached || isTransitioningAny}
-            title={isQuotaReached ? t("snapshotQuotaExceeded") : isTransitioningAny ? t("snapshotActionInProgress") : undefined}
+            disabled={isQuotaReached || isTransitioningAny || isHostUnreachable}
+            title={
+              isHostUnreachable
+                ? t("hostUnreachableTooltip")
+                : isQuotaReached
+                ? t("snapshotQuotaExceeded")
+                : isTransitioningAny
+                ? t("snapshotActionInProgress")
+                : undefined
+            }
             className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/20 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -446,8 +455,8 @@ export function VmSnapshotsTab({ vm, user, isAdmin }: VmSnapshotsTabProps) {
                           {/* Restore Action */}
                           <button
                             onClick={() => setRestoreTarget(snapshot)}
-                            disabled={!isReady || isTransitioningAny || actionLoading}
-                            title={t("restoreSnapshot")}
+                            disabled={!isReady || isTransitioningAny || actionLoading || isHostUnreachable}
+                            title={isHostUnreachable ? t("hostUnreachableTooltip") : t("restoreSnapshot")}
                             className="p-1.5 rounded-lg bg-zinc-100 hover:bg-indigo-500/20 dark:bg-zinc-800 dark:hover:bg-indigo-500/20 text-zinc-600 dark:text-zinc-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             <RotateCcw className="w-3.5 h-3.5" />
