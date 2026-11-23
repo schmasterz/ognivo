@@ -9,8 +9,8 @@ COMPOSE_PROD := docker compose $(COMPOSE_PROD_FILES) --env-file .env.production
 help:
 	@echo "Available commands:"
 	@echo "  make secrets     - Idempotently generate missing secrets and audit keys in .env.development and .env.production"
-	@echo "  make build-dev   - Build development images (backend:dev, frontend:dev)"
-	@echo "  make build-prod  - Build production images (backend:prod, frontend:prod)"
+	@echo "  make build-dev   - Build development images (backend, frontend, console-proxy)"
+	@echo "  make build-prod  - Build production images (backend, frontend, console-proxy)"
 	@echo "  make build-all   - Build both development and production images"
 	@echo "  make up-dev      - Start the development environment (hot-reload enabled)"
 	@echo "  make up-prod     - Start the production environment (isolated, HTTPS)"

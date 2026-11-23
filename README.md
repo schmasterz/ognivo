@@ -265,7 +265,7 @@ Ognivo is only useful once it manages a hypervisor.
 incus config set core.https_address <host-ip>:8443
 
 # Create a one-time trust token for the panel
-incus config trust add token ognivo-panel
+incus config trust add ognivo-panel
 ```
 
 **In the Ognivo admin UI:**

@@ -57,7 +57,7 @@ Because Linux and BSD guest distributions ship different network renderers behin
    *(Note: `BsdOsAdapter` targets `vtnet0` directly on KVM virtual machines without `match`/`set-name` interface renaming, and `eth0` on containers.)*
 
    > [!NOTE]
-   > BSD routing and guest support (`BsdOsAdapter`) are experimental / roadmap features and are not available for provisioning in `1.0-alpha.1`. Only Linux guest workloads are supported in `1.0-alpha.1`.
+   > BSD routing and guest support (`BsdOsAdapter`) are experimental / roadmap features and are not available for provisioning in `1.0.0-alpha.1`. Only Linux guest workloads are supported in `1.0.0-alpha.1`.
 
 3. **RHEL / SUSE Style (`RhelOsAdapter`, `SuseOsAdapter`):**
    Generates a single Netplan v2 default route without `on-link` for `sysconfig`/`NetworkManager` parser compatibility:

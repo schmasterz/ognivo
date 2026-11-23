@@ -39,6 +39,7 @@ stateDiagram-v2
 2. **Stable VM State Required:** Snapshots can only be created or restored when the VM is in `running`, `stopped`, or `suspended` status.
 3. **Single Active Operation per VM:** Concurrent snapshot mutations on the same VM are rejected with `409 Conflict` and serialized in the queue worker via `WithoutOverlapping("vm:{$id}")` and `Cache::lock("vm:{$id}", 30)`.
 4. **Quota Calculation:** Active quota usage counts snapshots in `creating`, `ready`, `restoring`, and `deleting` states. Snapshots in `failed` status do not consume quota headroom.
+5. **Compute Node Reachability Required:** Snapshots can only be created or restored when the VM's host compute node is reachable. If `host->status === 'unreachable'`, the API rejects the request immediately with HTTP `422 Unprocessable Entity` (`Host Unreachable`).
 
 ---
 

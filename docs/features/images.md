@@ -42,7 +42,7 @@ An image is usable on a node only if it is both **enabled** and **attached** to 
 | `name` | Yes | Up to 255 characters, **unique** | Technical image identifier / alias on the remote image server, for example `debian/12`, `almalinux/10`, `ubuntu/24.04`. See [Name and remote identifier](#21-name-and-remote-identifier) |
 | `source` | Yes | Up to 500 characters | Image server URL, for example `https://images.linuxcontainers.org` |
 | `protocol` | No | Up to 50 characters, default `simplestreams` | Passed to Incus as the image source protocol |
-| `os_type` | No | `linux` (only `linux` in `1.0-alpha.1`; `windows`, `bsd`, and `other` are reserved for future roadmap releases). Default `linux` | For `1.0-alpha.1`, only `linux` is available in the UI and supported for provisioning; containers and VMs are Linux-only, with non-Linux OS families planned for future releases |
+| `os_type` | No | `linux` (only `linux` in `1.0.0-alpha.1`; `windows`, `bsd`, and `other` are reserved for future roadmap releases). Default `linux` | For `1.0.0-alpha.1`, only `linux` is available in the UI and supported for provisioning; containers and VMs are Linux-only, with non-Linux OS families planned for future releases |
 | `enabled` | No | Boolean, default `true` | Global on/off switch |
 
 When saving or updating an image, Ognivo verifies that the technical name exists and is reachable on the remote server (`simplestreams`, `incus`, or `lxd`). You can test reachability beforehand with the **Test Remote** button in the web panel or via `POST /api/admin/images/validate`. For offline or isolated lab networks, validation can be bypassed by passing `skip_remote_validation: true`.
@@ -72,7 +72,7 @@ When an instance is created, Ognivo sends Incus a source built from the catalog 
 }
 ```
 
-The instance type is `container` or `virtual-machine`. In `1.0-alpha.1`, all guest instances (both containers and virtual machines) must use Linux images. Non-Linux guest operating systems (such as Windows and BSD) are scheduled for future releases.
+The instance type is `container` or `virtual-machine`. In `1.0.0-alpha.1`, all guest instances (both containers and virtual machines) must use Linux images. Non-Linux guest operating systems (such as Windows and BSD) are scheduled for future releases.
 
 ### 2.3 Guest OS Family Abstraction & Cloud-Init Adapters
 
@@ -87,15 +87,15 @@ When provisioning an instance, Ognivo resolves the catalog image to an OS-specif
 | `ArchOsAdapter` | Arch Linux, CachyOS | `arch` | `arch` | Two-route format for `systemd-networkd`; sets `security.secureboot: "false"` on VMs |
 | `SuseOsAdapter` | openSUSE Leap/Tumbleweed, SLES | `suse` | `opensuse` | Single route |
 | `GentooOsAdapter` | Gentoo Linux | `gentoo` | `gentoo` | Two-route format for `systemd-networkd`; sets `security.secureboot: "false"` on VMs |
-| `BsdOsAdapter` | FreeBSD, OpenBSD, NetBSD | `bsd` | `freebsd` | *(Roadmap / not supported in `1.0-alpha.1`)* Primary interface is `vtnet0` on VMs (omitting udev renaming, while keeping the Incus NIC device key as `eth0` to override the project's default profile); attaches `cloud-init:config` (`cidata`) alongside `agent:config` on VMs; injects `/etc/rc.conf.d/routing` for FreeBSD `nuageinit` compatibility in routed mode; sets `security.secureboot: "false"` on VMs |
+| `BsdOsAdapter` | FreeBSD, OpenBSD, NetBSD | `bsd` | `freebsd` | *(Roadmap / not supported in `1.0.0-alpha.1`)* Primary interface is `vtnet0` on VMs (omitting udev renaming, while keeping the Incus NIC device key as `eth0` to override the project's default profile); attaches `cloud-init:config` (`cidata`) alongside `agent:config` on VMs; injects `/etc/rc.conf.d/routing` for FreeBSD `nuageinit` compatibility in routed mode; sets `security.secureboot: "false"` on VMs |
 
 > [!NOTE]
-> While `BsdOsAdapter` exists in the codebase as foundational architecture for guest abstraction, only Linux guest adapters are officially supported and available for provisioning in `1.0-alpha.1`. Windows, BSD, and other non-Linux guest operating systems are planned for future roadmap releases.
+> While `BsdOsAdapter` exists in the codebase as foundational architecture for guest abstraction, only Linux guest adapters are officially supported and available for provisioning in `1.0.0-alpha.1`. Windows, BSD, and other non-Linux guest operating systems are planned for future roadmap releases.
 
 #### KVM VM Devices & SecureBoot
 
 - **SecureBoot handling:** Ognivo automatically sets `security.secureboot: "false"` on KVM virtual machines for images lacking signed Microsoft/UEFI bootloaders (Alpine, Arch, Gentoo, openEuler, and future BSD support) to prevent Incus hypervisor startup rejection.
-- **Agent & cloud-init config drives:** KVM virtual machines automatically receive an `agent:config` virtual CD-ROM device (named `agent`) to deliver cloud-init configuration and `incus-agent` credentials. For future BSD virtual machine support (`BsdOsAdapter`, not available in `1.0-alpha.1`), Ognivo also includes foundational support to attach a `cloud-init:config` (`cidata`) virtual CD-ROM device (named `cloud-init`) alongside `agent:config` so FreeBSD `nuageinit` receives cloud-init configuration, and inject `/etc/rc.conf.d/routing` in routed mode while keeping the Incus NIC device key as `eth0` to override the project's default profile. `migration.stateful: true` is omitted to avoid Incus device conflicts.
+- **Agent & cloud-init config drives:** KVM virtual machines automatically receive an `agent:config` virtual CD-ROM device (named `agent`) to deliver cloud-init configuration and `incus-agent` credentials. For future BSD virtual machine support (`BsdOsAdapter`, not available in `1.0.0-alpha.1`), Ognivo also includes foundational support to attach a `cloud-init:config` (`cidata`) virtual CD-ROM device (named `cloud-init`) alongside `agent:config` so FreeBSD `nuageinit` receives cloud-init configuration, and inject `/etc/rc.conf.d/routing` in routed mode while keeping the Incus NIC device key as `eth0` to override the project's default profile. `migration.stateful: true` is omitted to avoid Incus device conflicts.
 
 ---
 

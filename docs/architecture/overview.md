@@ -9,7 +9,7 @@
 The platform is built as a decoupled, containerized stack:
 - **Backend API:** **Laravel 13** (PHP 8.5-FPM) using immutable `readonly` DTOs, constructor-injected domain services, Eloquent Policies, Spatie Model States (`VmState`), and a pluggable hypervisor driver layer (`HypervisorDriverInterface`).
 - **Frontend Web App:** **Next.js 16** (App Router, React 19, TypeScript, Tailwind CSS v4) organized with Route Groups (`(auth)` and `(dashboard)`), scoped domain contexts, bilingual i18n (`en` / `bg`), Dark/Light/OS themes, and real-time Echo WebSocket synchronization.
-- **Console Proxy:** A standalone **Node.js 22** microservice (`console-proxy`) that redeems single-use 60-second Redis tickets (`GETDEL`) and pipes `xterm.js` WebSocket frames over mTLS to Incus/LXD.
+- **Console Proxy:** A standalone **Node.js 26** microservice (`console-proxy`) that redeems single-use 60-second Redis tickets (`GETDEL`) and pipes `xterm.js` WebSocket frames over mTLS to Incus/LXD.
 - **Data & Messaging:** **MySQL 8.4 LTS** (transactional state + privilege-separated audit tables), **Redis 7 Alpine** (queues, distributed locks, cache, console tickets), and **Laravel Reverb** (real-time WebSocket broadcasting).
 
 ```mermaid
@@ -21,7 +21,7 @@ flowchart TB
         Frontend["Next.js 16 Server<br/>(:3000)"]
         Backend["Laravel 13 PHP-FPM<br/>(:9000)"]
         Reverb["Laravel Reverb WS<br/>(:8080)"]
-        ConsoleProxy["console-proxy (Node 22)<br/>(:8085)"]
+        ConsoleProxy["console-proxy (Node 26)<br/>(:8085)"]
         Queue["queue-worker<br/>(php artisan queue:work)"]
         Scheduler["scheduler<br/>(php artisan schedule:work)"]
         IncusEvents["incus-events<br/>(php artisan incus:listen)"]
@@ -62,7 +62,7 @@ flowchart TB
 2. **`UserQuota` & `QuotaGroup`** — Tiered resource plans and per-user limits for VMs, vCPU cores, RAM, disk, public IPs, and snapshots (`-1` denotes unlimited `∞`). Editing a `QuotaGroup` automatically synchronizes all assigned users.
 3. **`Host`** — Hypervisor cluster nodes (`incus`, `lxd`, or `fake` driver), capacity boundaries, pinned TLS certificate fingerprint, and `needs_retrust` status.
 4. **`VirtualMachine`** — Customer workloads (KVM VMs and LXC containers) managed via `VmState` (`Provisioning`, `Running`, `Stopped`, `Suspended`, `Deleting`, `Deleted`, `Failed`). Dispatches `VirtualMachineStatusUpdated` on state/IP mutations.
-5. **`VmSnapshot`** — Point-in-time snapshots (`creating`, `ready`, `restoring`, `deleting`, `failed`) with `stateful` flag and `source` discriminator (`manual`, `scheduled`).
+5. **`VmSnapshot`** — Crash-consistent point-in-time disk captures (`creating`, `ready`, `restoring`, `deleting`, `failed`) with `source` discriminator (`manual`, `scheduled`).
 6. **`IpPool` & `IpAllocation`** — Ranged IPv4 subnet pools (`routed`, `bridged`, `macvlan`, or `manual` mode) and individual IP allocations (`allocated`, `cooling`).
 7. **`Image`** — Curated OS image catalog synchronized with hypervisor image servers.
 8. **`PanelCertificate`** — Self-signed `secp384r1` mTLS client certificate and encrypted private key (`active`, `retiring`).
