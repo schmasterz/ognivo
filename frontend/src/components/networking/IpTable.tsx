@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Globe,
   Trash2,
@@ -91,6 +91,156 @@ function CoolingBadge({ ip }: CoolingBadgeProps) {
   );
 }
 
+type TranslateFn = ReturnType<typeof useI18n>["t"];
+
+function getIpStatusBadge(ip: IpAllocation, t: TranslateFn) {
+  if (ip.status === "allocated") {
+    return (
+      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 mr-1.5" />
+        {t("statusFloating")}
+      </span>
+    );
+  }
+
+  if (ip.status === "cooling" || ip.status === "released") {
+    return <CoolingBadge ip={ip} />;
+  }
+
+  return (
+    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-400">
+      {ip.status}
+    </span>
+  );
+}
+
+interface IpTableRowProps {
+  ip: IpAllocation;
+  isAdmin?: boolean;
+  isCopied: boolean;
+  onCopy: (address: string) => void;
+  onRequestRelease?: (ip: IpAllocation) => void;
+}
+
+/**
+ * Memoized table row for a single IP allocation so cooling timer ticks or status
+ * updates only re-render the affected row.
+ */
+export const IpTableRow = React.memo(function IpTableRow({
+  ip,
+  isAdmin,
+  isCopied,
+  onCopy,
+  onRequestRelease,
+}: IpTableRowProps) {
+  const { t } = useI18n();
+  const hasVm = ip.virtual_machine_id !== null;
+
+  return (
+    <tr className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition group">
+      {/* IP & MAC Address */}
+      <td className="px-4 sm:px-6 py-3.5">
+        <div className="flex items-center space-x-2">
+          <span className="font-mono font-semibold text-gray-900 dark:text-white">
+            {ip.address || ip.ip_string}
+          </span>
+          <button
+            onClick={() => onCopy(ip.address || ip.ip_string || "")}
+            title={t("copyIp")}
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"
+          >
+            {isCopied ? (
+              <Check className="w-3.5 h-3.5 text-emerald-500" />
+            ) : (
+              <Copy className="w-3.5 h-3.5" />
+            )}
+          </button>
+        </div>
+        {ip.mac_address && (
+          <div className="text-[11px] font-mono text-gray-400 mt-0.5 flex items-center space-x-1">
+            <Cpu className="w-3 h-3 text-gray-400" />
+            <span>{ip.mac_address}</span>
+          </div>
+        )}
+      </td>
+
+      {/* Owner Column (Admin only) */}
+      {isAdmin && (
+        <td className="px-4 sm:px-6 py-3.5 text-xs whitespace-nowrap">
+          {ip.user ? (
+            <div>
+              <div className="font-semibold text-gray-900 dark:text-white">{ip.user.name}</div>
+              <div className="text-gray-400 text-[11px]">{ip.user.email}</div>
+            </div>
+          ) : (
+            <span className="text-gray-400 italic">{t("unassignedOwner")}</span>
+          )}
+        </td>
+      )}
+
+      {/* Status */}
+      <td className="px-4 sm:px-6 py-3.5 whitespace-nowrap">
+        <div>{getIpStatusBadge(ip, t)}</div>
+      </td>
+
+      {/* Subnet Pool (Admin only) */}
+      {isAdmin && (
+        <td className="px-4 sm:px-6 py-3.5 whitespace-nowrap">
+          <div className="text-xs font-mono text-gray-800 dark:text-gray-200">
+            {ip.pool?.cidr || ip.pool?.subnet || "-"}
+          </div>
+          {ip.pool?.host && (
+            <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium flex items-center space-x-1 mt-0.5">
+              <Server className="w-2.5 h-2.5 flex-shrink-0" />
+              <span>
+                {ip.pool.parent_interface
+                  ? `${ip.pool.host.name} (${ip.pool.parent_interface})`
+                  : ip.pool.host.name}
+              </span>
+            </div>
+          )}
+        </td>
+      )}
+
+      {/* Attached Workload */}
+      <td className="px-4 sm:px-6 py-3.5 whitespace-nowrap">
+        {hasVm && ip.virtual_machine ? (
+          <div className="flex items-center space-x-2">
+            <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
+              <Server className="w-3.5 h-3.5" />
+            </div>
+            <div>
+              <div className="font-semibold text-gray-900 dark:text-white text-xs">
+                {ip.virtual_machine.name}
+              </div>
+              <div className="text-[10px] text-gray-500 capitalize">
+                {ip.virtual_machine.status}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <span className="text-gray-400 italic text-xs">
+            {t("noInstanceAttached")}
+          </span>
+        )}
+      </td>
+
+      {/* Emergency Release Action (Admin only) */}
+      {isAdmin && (
+        <td className="sticky right-0 z-10 px-4 sm:px-6 py-3.5 text-right bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800 border-l border-gray-200/80 dark:border-gray-800/80 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)] transition-colors">
+          <button
+            onClick={() => onRequestRelease?.(ip)}
+            title={ip.status === "allocated" ? t("forceReleaseAllocation") : t("dismissCooledIp")}
+            className="p-1.5 rounded-lg bg-gray-100 hover:bg-red-500/20 dark:bg-gray-800 dark:hover:bg-red-500/20 text-gray-600 dark:text-gray-300 hover:text-red-500 transition"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </td>
+      )}
+    </tr>
+  );
+});
+
 export function IpTable({
   ips,
   loading,
@@ -109,32 +259,11 @@ export function IpTable({
   const [preflightTarget, setPreflightTarget] = useState<IpPool | null>(null);
   const [inspectingPool, setInspectingPool] = useState<IpPool | null>(null);
 
-  const handleCopy = (address: string) => {
+  const handleCopy = useCallback((address: string) => {
     navigator.clipboard.writeText(address);
     setCopiedIp(address);
     setTimeout(() => setCopiedIp(null), 2000);
-  };
-
-  const getStatusBadge = (ip: IpAllocation) => {
-    if (ip.status === "allocated") {
-      return (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 mr-1.5" />
-          {t("statusFloating")}
-        </span>
-      );
-    }
-
-    if (ip.status === "cooling" || ip.status === "released") {
-      return <CoolingBadge ip={ip} />;
-    }
-
-    return (
-      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-400">
-        {ip.status}
-      </span>
-    );
-  };
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -371,114 +500,16 @@ export function IpTable({
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-800/60">
-                {ips.map((ip) => {
-                  const hasVm = ip.virtual_machine_id !== null;
-                  const isCopied = copiedIp === ip.address;
-
-                  return (
-                    <tr key={ip.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition group">
-                      {/* IP & MAC Address */}
-                      <td className="px-4 sm:px-6 py-3.5">
-                        <div className="flex items-center space-x-2">
-                          <span className="font-mono font-semibold text-gray-900 dark:text-white">
-                            {ip.address || ip.ip_string}
-                          </span>
-                          <button
-                            onClick={() => handleCopy(ip.address || ip.ip_string || "")}
-                            title={t("copyIp")}
-                            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"
-                          >
-                            {isCopied ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-500" />
-                            ) : (
-                              <Copy className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        </div>
-                        {ip.mac_address && (
-                          <div className="text-[11px] font-mono text-gray-400 mt-0.5 flex items-center space-x-1">
-                            <Cpu className="w-3 h-3 text-gray-400" />
-                            <span>{ip.mac_address}</span>
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Owner Column (Admin only) */}
-                      {isAdmin && (
-                        <td className="px-4 sm:px-6 py-3.5 text-xs whitespace-nowrap">
-                          {ip.user ? (
-                            <div>
-                              <div className="font-semibold text-gray-900 dark:text-white">{ip.user.name}</div>
-                              <div className="text-gray-400 text-[11px]">{ip.user.email}</div>
-                            </div>
-                          ) : (
-                            <span className="text-gray-400 italic">{t("unassignedOwner")}</span>
-                          )}
-                        </td>
-                      )}
-
-                      {/* Status */}
-                      <td className="px-4 sm:px-6 py-3.5 whitespace-nowrap">
-                        <div>{getStatusBadge(ip)}</div>
-                      </td>
-
-                      {/* Subnet Pool (Admin only) */}
-                      {isAdmin && (
-                        <td className="px-4 sm:px-6 py-3.5 whitespace-nowrap">
-                          <div className="text-xs font-mono text-gray-800 dark:text-gray-200">
-                            {ip.pool?.cidr || ip.pool?.subnet || "-"}
-                          </div>
-                          {ip.pool?.host && (
-                            <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium flex items-center space-x-1 mt-0.5">
-                              <Server className="w-2.5 h-2.5 flex-shrink-0" />
-                              <span>
-                                {ip.pool.parent_interface
-                                  ? `${ip.pool.host.name} (${ip.pool.parent_interface})`
-                                  : ip.pool.host.name}
-                              </span>
-                            </div>
-                          )}
-                        </td>
-                      )}
-
-                      {/* Attached Workload */}
-                      <td className="px-4 sm:px-6 py-3.5 whitespace-nowrap">
-                        {hasVm && ip.virtual_machine ? (
-                          <div className="flex items-center space-x-2">
-                            <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                              <Server className="w-3.5 h-3.5" />
-                            </div>
-                            <div>
-                              <div className="font-semibold text-gray-900 dark:text-white text-xs">
-                                {ip.virtual_machine.name}
-                              </div>
-                              <div className="text-[10px] text-gray-500 capitalize">
-                                {ip.virtual_machine.status}
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-gray-400 italic text-xs">
-                            {t("noInstanceAttached")}
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Emergency Release Action (Admin only) */}
-                      {isAdmin && (
-                        <td className="sticky right-0 z-10 px-4 sm:px-6 py-3.5 text-right bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800 border-l border-gray-200/80 dark:border-gray-800/80 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)] transition-colors">
-                          <button
-                            onClick={() => onRequestRelease?.(ip)}
-                            title={ip.status === "allocated" ? t("forceReleaseAllocation") : t("dismissCooledIp")}
-                            className="p-1.5 rounded-lg bg-gray-100 hover:bg-red-500/20 dark:bg-gray-800 dark:hover:bg-red-500/20 text-gray-600 dark:text-gray-300 hover:text-red-500 transition"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })}
+                {ips.map((ip) => (
+                  <IpTableRow
+                    key={ip.id}
+                    ip={ip}
+                    isAdmin={isAdmin}
+                    isCopied={copiedIp === ip.address}
+                    onCopy={handleCopy}
+                    onRequestRelease={onRequestRelease}
+                  />
+                ))}
               </tbody>
             </table>
           </div>
