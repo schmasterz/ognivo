@@ -44,6 +44,13 @@ export function resolveSidebarCounts(input: SidebarCountInput) {
   };
 }
 
+/**
+ * Models the networking badge count selection used in Sidebar.
+ */
+export function resolveNetworkingBadgeCount(isAdmin: boolean, counts: { pools: number; ips: number }) {
+  return isAdmin ? counts.pools : counts.ips;
+}
+
 describe("resolveSidebarCounts", () => {
   it("resolves ips, users, pools, and snapshots from adminStats when sub-tabs are uninitialized", () => {
     const counts = resolveSidebarCounts({
@@ -212,5 +219,17 @@ describe("resolveSidebarCounts", () => {
 
     assert.equal(counts.quotaGroups, 3);
     assert.equal(counts.nodes, 4);
+  });
+});
+
+describe("resolveNetworkingBadgeCount", () => {
+  it("returns counts.pools when isAdmin is true", () => {
+    assert.equal(resolveNetworkingBadgeCount(true, { pools: 4, ips: 32 }), 4);
+    assert.equal(resolveNetworkingBadgeCount(true, { pools: 4, ips: 0 }), 4);
+  });
+
+  it("returns counts.ips when isAdmin is false", () => {
+    assert.equal(resolveNetworkingBadgeCount(false, { pools: 4, ips: 3 }), 3);
+    assert.equal(resolveNetworkingBadgeCount(false, { pools: 0, ips: 3 }), 3);
   });
 });

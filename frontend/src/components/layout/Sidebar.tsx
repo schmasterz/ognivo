@@ -198,7 +198,7 @@ export function Sidebar({
                       : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400"
                   }`}
                 >
-                  {counts.ips}
+                  {isAdmin ? counts.pools : counts.ips}
                 </span>
               </Link>
 
