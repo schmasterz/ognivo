@@ -4,30 +4,7 @@ All notable changes to **Ognivo** are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Added
-- **IP Pool Address Inspector (`GET /api/admin/ip-pools/{ipPool}/addresses` & `PoolDetailModal`):** Added paginated inspection of a pool's usable IPv4 range by state (`all`, `free`, `allocated`, `cooling`, `excluded` including gateway tag) and IPv4 prefix `search`, using O(page) gap-jumping over occupied/excluded addresses for `/16` pools, exposed in the Admin UI via `PoolDetailModal` (Eye button, clickable pool name, and `Free: N` badge).
-- **Manual Incus Network Test Guide:** Added [`docs/testing/manual-incus-network-tests.md`](docs/testing/manual-incus-network-tests.md) with host preparation, per-mode (`routed`, `bridged`, `macvlan`, `manual`) provisioning and guest checks, negative/validation cases, and a copyable results checklist.
-- **`GET /ips` Query Parameter Validation:** Added `ListIpAllocationsRequest` validating `user_id`, `host_id`, `pool_id`, `status` (`allocated` or `cooling`), `search`, `per_page`, and `page`.
-- **Operator-Managed Badge for Manual-Pool VMs:** Displayed an **Operator-managed** badge and tooltip in `VmTable` and `VmOverviewTab` for instances in `manual` pools whose network status is not `observed`.
-
-### Changed
-- **Canonical `meta` Pagination on IPAM Endpoints:** Removed duplicate root-level pagination keys (`current_page`, `last_page`, `per_page`, `total`) from `GET /api/ips`, `GET /api/ip-pools`, and `GET /api/admin/ip-pools` in favor of the `meta` pagination object (`MetaPaginatedResponse<T>`).
-- **Networking Tab Pool Mode Badges & Status Filters:** Added distinct pool card mode badges (`routed`, `bridged`, `macvlan`, `manual`) and dedicated `allocated` / `cooling` status filter options in `FilterToolbar` on the Networking tab.
-- **Bridged & Macvlan Modes Documented and Hardened:** Documented `bridged` and `macvlan` networking in [`docs/features/networking.md`](docs/features/networking.md) and hardened L2 pool validation and provisioning: no silent interface fallback, mandatory `gateway` and `/16`–`/30` prefix for L2 modes, and preflight checks verifying `Gateway configured` and `Parent interface type matches mode`.
-- **Translated Pool Mode Descriptions:** Added localized English and Bulgarian descriptions (`modeRoutedDesc`, `modeBridgedDesc`, `modeMacvlanDesc`) in the IP pool modals.
-- **IPAM Pool Utilization & Numeric Ordering:** Pool utilization is now computed via SQL aggregates instead of loading allocations in application code, IP allocation listings are ordered by pool and then numerically by IPv4 address, and `ip_allocations` adds composite indexes `idx_ip_alloc_pool_status` and `idx_ip_alloc_user_status`.
-- **UI Cooling IP Refresh:** Cooling IP entries in the UI now use a single scheduled refresh when the cooldown expires instead of polling every 5 seconds.
-- **Strict `parent_interface` Validation:** `parent_interface` no longer silently defaults to `eth0`; it is required for all non-manual pools (`routed`, `bridged`, `macvlan`), while `manual` pools store an empty string and return `null` in API responses.
-- **Mutable `parent_interface` on Allocated Pools:** `parent_interface` can now be changed on IP pools that already have allocations (applies only to newly created or rebuilt instances, not already running ones); `cidr`, `host_id`, and `network_mode` remain immutable while allocations exist.
-- **Classified IP Allocations Search:** The allocations `search` filter now matches IPv4 terms and MAC addresses by prefix (`term%`) and non-IP/non-MAC text (user name/email, VM name, pool name) by substring (`%term%`) with escaped `LIKE` wildcards.
-
-### Fixed
-- **Side-Effect-Free `GET /ips`:** `GET /ips` no longer deletes expired `cooling` allocation rows on read; expired rows are removed exclusively by the scheduled `ipam:prune-cooling` command and are reported as `released` with `cooldown_remaining_seconds` `0` until pruned.
-- **Networking Tab Status Filter Normalization:** Updated the Networking tab (`useNetworking` / `normalizeIpStatusFilter`) to ignore unsupported `status` filters rather than forwarding invalid values to `GET /api/ips`.
-
-## [1.0.0-alpha.1] - 2026-11-14
+## [1.0.0-alpha.1] - 2026-11-23
 
 > **Pre-Release Notice (Alpha):**
 > `v1.0.0-alpha.1` is the first public alpha preview of the **Ognivo 1.0.0** control plane. All core `1.0.0` subsystems are implemented and available for evaluation, staging deployments, and community feedback. While comprehensive automated test suites and security controls are in place, database schemas, internal APIs, and configuration keys may still evolve prior to the final `1.0.0` General Availability (GA) release. **Do not use in mission-critical production without external backups.**
@@ -44,6 +21,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Atomic Provisioning & Compensation:** Race-free resource reservation using database row locks (`lockForUpdate`) and Redis mutexes, backed by automatic compensating rollbacks (`ProvisioningCompensator`) if hypervisor creation fails.
 - **Per-Tenant Hypervisor Isolation:** Automatic provisioning and quota synchronization of dedicated Incus/LXD projects (`proj-{uuid}`) per tenant.
 - **OS Image Catalog & Cloud-Init Networking:** Admin-managed image allowlist (any Incus image server) and automated Cloud-Init Netplan network configuration for Manual pools and for virtual machines on Routed pools.
+- **Linux-Only Guest OS Catalog:** Restrict guest instance images in the UI and provisioning flow to Linux operating systems for the 1.0.0-alpha.1 release (Windows, BSD, and non-Linux guest families reserved for roadmap releases).
+- **Compute Node Reachability Guard:** Preflight reachability enforcement blocking VM actions and snapshot operations with HTTP 422 (Host Unreachable) when the hypervisor compute node is unreachable.
 
 #### Cryptographic Hypervisor Management & Drift Reconciliation
 - **mTLS Onboarding & Trust Pinning:** Automated `secp384r1` X.509 client certificate generation, one-time trust token onboarding, SPKI public-key pinning (`CURLOPT_PINNEDPUBLICKEY` / `sha256//...` TOFU + re-trust workflow), and zero-downtime certificate rotation.
@@ -58,12 +37,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Strict Tenant Terminal Privacy:** Policy-level guardrails (`VirtualMachinePolicy::viewConsole`) prevent administrators, even during active user impersonation, from accessing customer guest terminals.
 
 #### Point-in-Time Snapshots
-- **Stateful & Stateless Snapshots:** Asynchronous snapshot creation, restoration, and deletion with per-VM concurrency locks and real-time WebSocket progress transitions.
+- **Crash-Consistent Disk Snapshots:** Asynchronous crash-consistent block storage snapshot creation, restoration, and deletion with per-VM concurrency locks and real-time WebSocket progress transitions.
 - **Pluggable Backup Architecture:** Built around `BackupTargetInterface` with local hypervisor snapshot support, per-VM and global snapshot management views, and tier quota enforcement.
 
 #### Ranged IPAM & Multi-Mode Networking
-- **IPv4 Subnet Pools:** Support for both **Routed** (Layer 3 `/32` point-to-point with Cloud-Init Netplan) and **Manual** networking modes (IPv6 pools are planned for a future release).
-- **IP Lifecycle & Preflight Verification:** Dedicated IP allocation lifecycle, allocation cooldown quarantine windows, and automated hypervisor network preflight checks.
+- **Ranged Multi-Mode IPv4 Subnet Pools:** Support for Routed (L3 point-to-point Netplan /32), Bridged (L2 Linux or Incus bridge), Macvlan (L2 direct NIC), and Manual networking modes (IPv6 pools are planned for a future release).
+- **IP Pool Address Inspector:** Paginated inspection of usable IPv4 ranges by state (all, free, allocated, cooling, excluded) with O(page) gap-jumping over large ranges.
+- **IP Lifecycle & Quarantine:** Side-effect-free IP allocation listings ordered numerically by IPv4, cooldown quarantine window with background scheduler pruning (ipam:prune-cooling), and preflight hypervisor network verification.
+- **Hardened L2/L3 Pool Validation & Mutability:** Strict `parent_interface` enforcement (required for `routed`, `bridged`, and `macvlan`; nullable for `manual`), mandatory `gateway` and `/16`–`/30` prefix for L2 modes with preflight gateway/interface-type checks, and mutable `parent_interface` on pools with existing allocations (for newly created or rebuilt instances).
+- **IPAM API Contracts, Indexing & Search:** Validated `GET /api/ips` filters (`ListIpAllocationsRequest`), canonical `meta` pagination (`MetaPaginatedResponse<T>`) across IPAM endpoints, SQL-aggregated pool utilization with composite indexes (`idx_ip_alloc_pool_status`, `idx_ip_alloc_user_status`), and prefix/substring-classified allocation search.
 
 #### Multi-Tenant Quotas, Identity & Access Control
 - **Reusable Quota Groups:** Tiered resource plans (vCPU, RAM, disk, instances, public IPs, snapshots, including unlimited tiers) with instant propagation to all assigned tenants and hypervisor projects.
@@ -76,7 +58,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Real-Time Dashboard & Turnkey Operations
 - **Reactive Next.js 16 Interface:** Live status updates via Laravel Reverb WebSockets, bilingual localization (**English** & **Bulgarian**), **Dark / Light / System** themes, and runtime SMTP testing.
+- **Frontend Performance & Reactive Navigation:** Active tab derived reactively from pathname, table row memoization (VmTable and IpTable), dynamic modal imports, and accurate global sidebar counts from admin cluster statistics.
+- **Networking & Pool Inspection UI:** Distinct pool mode badges, normalized `allocated`/`cooling` status filters, `PoolDetailModal` address browser, **Operator-managed** badges for manual-pool VMs, bilingual English/Bulgarian pool mode descriptions, and single-shot scheduled refresh on cooling IP expiry.
 - **Turnkey Docker Topologies:** One-command development (`make up-dev`) and hardened HTTPS production (`make up-prod`) stacks, OpenAPI v3 documentation (`/docs/api`), and automated pre-deployment checks (`php artisan app:check-production-config`).
+- **Networking Documentation & Test Guides:** Added [`docs/features/networking.md`](docs/features/networking.md) covering `routed`, `bridged`, `macvlan`, and `manual` modes alongside [`docs/testing/manual-incus-network-tests.md`](docs/testing/manual-incus-network-tests.md) with step-by-step verification checklists.
 
 ### Roadmap to `1.0.0` Stable
 - **Alpha Phase (`1.0.0-alpha.x`):** Stress testing with multiple independent Incus/LXD compute nodes, edge-case bug fixes, instance access provisioning, and operator UX refinements.

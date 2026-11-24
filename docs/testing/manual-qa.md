@@ -115,7 +115,7 @@ curl -s http://localhost/api/vms/1/snapshots \
 curl -s -X POST http://localhost/api/vms/1/snapshots \
   -H "Authorization: Bearer <USER_TOKEN>" \
   -H "Content-Type: application/json" \
-  -d '{"name": "daily-backup-01", "stateful": false}'
+  -d '{"name": "daily-backup-01"}'
 
 # Restore a ready snapshot (202 Accepted)
 curl -s -X POST http://localhost/api/vms/1/snapshots/1/restore \

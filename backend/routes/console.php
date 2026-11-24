@@ -26,6 +26,7 @@ Schedule::call(fn (IpManagementService $service) => $service->pruneExpiredCoolin
 Schedule::command('audit:seal')->everyMinute()->withoutOverlapping();
 Schedule::command('audit:verify')->hourly();
 Schedule::command('audit:prune')->daily();
+Schedule::command('images:verify-catalog')->daily();
 Schedule::command('hosts:sync-resources')->hourly()->withoutOverlapping();
 
 if (app()->environment('testing')) {

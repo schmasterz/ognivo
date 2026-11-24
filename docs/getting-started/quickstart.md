@@ -84,6 +84,8 @@ Wait ~20–30 seconds on the very first run for MySQL initialization and migrati
 | **Administrator** | `admin@ognivo.local` | `password` | **Enterprise Unlimited** (`∞` resources) |
 | **Customer** | `customer@ognivo.local` | `password` | **Standard Tier** (`3` VMs, `6` vCPU, `8 GB` RAM) |
 
+![Ognivo Web Panel](../assets/dashboard-overview.png)
+
 > [!CAUTION]
 > **Local Machine Only:** The development stack (`make up-dev`) seeds well-known demo credentials and enables debug tooling. Never run `make up-dev` on a public internet-facing server — always use `make up-prod` for remote or production deployments.
 

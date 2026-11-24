@@ -57,7 +57,7 @@ Because Linux and BSD guest distributions ship different network renderers behin
    *(Note: `BsdOsAdapter` targets `vtnet0` directly on KVM virtual machines without `match`/`set-name` interface renaming, and `eth0` on containers.)*
 
    > [!NOTE]
-   > BSD routing and guest support (`BsdOsAdapter`) are experimental / roadmap features and are not available for provisioning in `1.0-alpha.1`. Only Linux guest workloads are supported in `1.0-alpha.1`.
+   > BSD routing and guest support (`BsdOsAdapter`) are experimental / roadmap features and are not available for provisioning in `1.0.0-alpha.1`. Only Linux guest workloads are supported in `1.0.0-alpha.1`.
 
 3. **RHEL / SUSE Style (`RhelOsAdapter`, `SuseOsAdapter`):**
    Generates a single Netplan v2 default route without `on-link` for `sysconfig`/`NetworkManager` parser compatibility:
@@ -251,6 +251,8 @@ Before putting an IP pool into production, administrators can trigger a prefligh
 ## 8. Pool Address & Free-IP Inspector
 
 Administrators can inspect every IPv4 address across a pool's usable range (`first_usable` through `last_usable`) via `GET /api/admin/ip-pools/{ipPool}/addresses` and the **PoolDetailModal** in the Admin UI (**Networking & IPAM** — accessible via the Eye button, clickable pool name, or `Free: N` badge on any pool card).
+
+![IPAM Pool Address Inspector](../assets/ipam-pool-inspector.png)
 
 ### Query Parameters & Filtering
 - **`state`:** Filters addresses by effective state:
