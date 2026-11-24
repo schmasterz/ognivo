@@ -33,6 +33,9 @@ final readonly class UpdateHostDTO
         public ?string $serverPublicKeyPin = null,
         public ?bool $autoAttachImages = null,
         public ?ImageSelectionDTO $images = null,
+        public ?float $cpuOvercommit = null,
+        public ?float $ramOvercommit = null,
+        public ?float $diskOvercommit = null,
     ) {}
 
     /**
@@ -60,6 +63,9 @@ final readonly class UpdateHostDTO
             serverPublicKeyPin: Cast::stringOrNull($data['server_public_key_pin'] ?? null),
             autoAttachImages: Cast::boolOrNull($data['auto_attach_images'] ?? null),
             images: $images !== null ? ImageSelectionDTO::fromArray($images) : null,
+            cpuOvercommit: isset($data['cpu_overcommit']) && is_numeric($data['cpu_overcommit']) ? (float) $data['cpu_overcommit'] : null,
+            ramOvercommit: isset($data['ram_overcommit']) && is_numeric($data['ram_overcommit']) ? (float) $data['ram_overcommit'] : null,
+            diskOvercommit: isset($data['disk_overcommit']) && is_numeric($data['disk_overcommit']) ? (float) $data['disk_overcommit'] : null,
         );
     }
 }

@@ -50,6 +50,8 @@ final class HostNodeController extends Controller
     public function listActive(Request $request): JsonResponse
     {
         $hosts = $this->hostNodeService->listActive();
+        $this->attachCommittedUsage($hosts);
+
         /** @var User|null $user */
         $user = $request->user();
         $isAdmin = $user !== null && $user->hasRole('admin');
@@ -84,24 +86,7 @@ final class HostNodeController extends Controller
 
         /** @var list<Host> $hosts */
         $hosts = $paginator->items();
-
-        /** @var list<int> $hostIds */
-        $hostIds = array_values(array_unique(array_filter(
-            array_map(fn (Host $host): int => Cast::int($host->id), $hosts),
-            fn (int $id): bool => $id > 0
-        )));
-
-        if ($hostIds !== []) {
-            $guard = app(HostCapacityGuard::class);
-            $usages = $guard->getCommittedUsageForHostIds($hostIds);
-
-            foreach ($hosts as $host) {
-                $host->setAttribute(
-                    'precomputed_committed_usage',
-                    $usages[$host->id] ?? ['cpu' => 0, 'ram' => 0, 'disk' => 0]
-                );
-            }
-        }
+        $this->attachCommittedUsage($hosts);
 
         return response()->json([
             'data' => HostNodeResource::collection($paginator->items()),
@@ -137,26 +122,7 @@ final class HostNodeController extends Controller
         $expectedFingerprint = isset($validated['expected_fingerprint']) && is_string($validated['expected_fingerprint']) ? trim($validated['expected_fingerprint']) : '';
         $driver = isset($validated['driver']) && is_string($validated['driver']) ? $validated['driver'] : 'incus';
 
-        $extraAttributes = [
-            'driver' => $driver,
-            'region' => isset($validated['region']) && is_string($validated['region']) ? $validated['region'] : null,
-            'is_active' => (bool) ($validated['is_active'] ?? true),
-            'auto_attach_images' => (bool) ($validated['auto_attach_images'] ?? true),
-            'settings' => isset($validated['settings']) && is_array($validated['settings']) ? $validated['settings'] : null,
-        ];
-
-        if (isset($validated['total_cpu_cores']) && is_numeric($validated['total_cpu_cores'])) {
-            $extraAttributes['total_cpu_cores'] = (int) $validated['total_cpu_cores'];
-            $extraAttributes['capacity_source'] = 'manual';
-        }
-        if (isset($validated['total_ram_mb']) && is_numeric($validated['total_ram_mb'])) {
-            $extraAttributes['total_ram_mb'] = (int) $validated['total_ram_mb'];
-            $extraAttributes['capacity_source'] = 'manual';
-        }
-        if (isset($validated['total_storage_gb']) && is_numeric($validated['total_storage_gb'])) {
-            $extraAttributes['total_storage_gb'] = (int) $validated['total_storage_gb'];
-            $extraAttributes['capacity_source'] = 'manual';
-        }
+        $extraAttributes = $this->buildOnboardingAttributes($validated, $driver);
 
         $dto = $request->toDTO();
 
@@ -208,19 +174,13 @@ final class HostNodeController extends Controller
             'total_cpu_cores' => ['nullable', 'integer', 'min:1'],
             'total_ram_mb' => ['nullable', 'integer', 'min:1024'],
             'total_storage_gb' => ['nullable', 'integer', 'min:10'],
+            'cpu_overcommit' => ['nullable', 'numeric', 'min:1', 'max:16'],
+            'ram_overcommit' => ['nullable', 'numeric', 'min:1', 'max:4'],
+            'disk_overcommit' => ['nullable', 'numeric', 'min:1', 'max:4'],
             'settings' => ['nullable', 'array'],
         ], ImageSelectionRules::rules()));
 
-        $extraAttributes = [
-            'driver' => isset($validated['driver']) && is_string($validated['driver']) ? $validated['driver'] : 'incus',
-            'region' => isset($validated['region']) && is_string($validated['region']) ? $validated['region'] : null,
-            'is_active' => (bool) ($validated['is_active'] ?? true),
-            'auto_attach_images' => (bool) ($validated['auto_attach_images'] ?? true),
-            'total_cpu_cores' => isset($validated['total_cpu_cores']) && is_numeric($validated['total_cpu_cores']) ? (int) $validated['total_cpu_cores'] : 32,
-            'total_ram_mb' => isset($validated['total_ram_mb']) && is_numeric($validated['total_ram_mb']) ? (int) $validated['total_ram_mb'] : 65536,
-            'total_storage_gb' => isset($validated['total_storage_gb']) && is_numeric($validated['total_storage_gb']) ? (int) $validated['total_storage_gb'] : 2000,
-            'settings' => isset($validated['settings']) && is_array($validated['settings']) ? $validated['settings'] : null,
-        ];
+        $extraAttributes = $this->buildOnboardingAttributes($validated);
 
         $host = $this->trustService->addHostWithToken(Cast::string($validated['name'] ?? ''), Cast::string($validated['token'] ?? ''), $extraAttributes);
 
@@ -254,19 +214,13 @@ final class HostNodeController extends Controller
             'total_cpu_cores' => ['nullable', 'integer', 'min:1'],
             'total_ram_mb' => ['nullable', 'integer', 'min:1024'],
             'total_storage_gb' => ['nullable', 'integer', 'min:10'],
+            'cpu_overcommit' => ['nullable', 'numeric', 'min:1', 'max:16'],
+            'ram_overcommit' => ['nullable', 'numeric', 'min:1', 'max:4'],
+            'disk_overcommit' => ['nullable', 'numeric', 'min:1', 'max:4'],
             'settings' => ['nullable', 'array'],
         ], ImageSelectionRules::rules()));
 
-        $extraAttributes = [
-            'driver' => isset($validated['driver']) && is_string($validated['driver']) ? $validated['driver'] : 'incus',
-            'region' => isset($validated['region']) && is_string($validated['region']) ? $validated['region'] : null,
-            'is_active' => (bool) ($validated['is_active'] ?? true),
-            'auto_attach_images' => (bool) ($validated['auto_attach_images'] ?? true),
-            'total_cpu_cores' => isset($validated['total_cpu_cores']) && is_numeric($validated['total_cpu_cores']) ? (int) $validated['total_cpu_cores'] : 32,
-            'total_ram_mb' => isset($validated['total_ram_mb']) && is_numeric($validated['total_ram_mb']) ? (int) $validated['total_ram_mb'] : 65536,
-            'total_storage_gb' => isset($validated['total_storage_gb']) && is_numeric($validated['total_storage_gb']) ? (int) $validated['total_storage_gb'] : 2000,
-            'settings' => isset($validated['settings']) && is_array($validated['settings']) ? $validated['settings'] : null,
-        ];
+        $extraAttributes = $this->buildOnboardingAttributes($validated);
 
         $host = $this->trustService->addHostWithCertificate(
             Cast::string($validated['name'] ?? ''),
@@ -422,5 +376,76 @@ final class HostNodeController extends Controller
                 'message' => 'Failed to synchronize compute node capacity: '.$e->getMessage(),
             ], 502);
         }
+    }
+
+    /**
+     * Precompute committed VM usage across a collection of hosts to avoid N+1 queries in resources.
+     *
+     * @param  iterable<int, Host>  $hosts
+     */
+    private function attachCommittedUsage(iterable $hosts): void
+    {
+        $hostList = [];
+        $hostIds = [];
+
+        foreach ($hosts as $host) {
+            $hostList[] = $host;
+            $id = Cast::int($host->id);
+            if ($id > 0) {
+                $hostIds[] = $id;
+            }
+        }
+
+        $hostIds = array_values(array_unique($hostIds));
+        if ($hostIds === []) {
+            return;
+        }
+
+        $guard = app(HostCapacityGuard::class);
+        $usages = $guard->getCommittedUsageForHostIds($hostIds);
+
+        foreach ($hostList as $host) {
+            $host->setAttribute(
+                'precomputed_committed_usage',
+                $usages[$host->id] ?? ['cpu' => 0, 'ram' => 0, 'disk' => 0]
+            );
+        }
+    }
+
+    /**
+     * Build extra host attributes from validated onboarding request input without injecting placeholder totals.
+     *
+     * @param  array<string, mixed>  $validated
+     * @return array<string, mixed>
+     */
+    private function buildOnboardingAttributes(array $validated, ?string $driver = null): array
+    {
+        $resolvedDriver = $driver ?? (isset($validated['driver']) && is_string($validated['driver']) ? $validated['driver'] : 'incus');
+
+        $extraAttributes = [
+            'driver' => $resolvedDriver,
+            'region' => isset($validated['region']) && is_string($validated['region']) ? $validated['region'] : null,
+            'is_active' => (bool) ($validated['is_active'] ?? true),
+            'auto_attach_images' => (bool) ($validated['auto_attach_images'] ?? true),
+            'cpu_overcommit' => isset($validated['cpu_overcommit']) && is_numeric($validated['cpu_overcommit']) ? (float) $validated['cpu_overcommit'] : 1.0,
+            'ram_overcommit' => isset($validated['ram_overcommit']) && is_numeric($validated['ram_overcommit']) ? (float) $validated['ram_overcommit'] : 1.0,
+            'disk_overcommit' => isset($validated['disk_overcommit']) && is_numeric($validated['disk_overcommit']) ? (float) $validated['disk_overcommit'] : 1.0,
+            'settings' => isset($validated['settings']) && is_array($validated['settings']) ? $validated['settings'] : null,
+        ];
+
+        if (isset($validated['total_cpu_cores']) && is_numeric($validated['total_cpu_cores'])) {
+            $extraAttributes['total_cpu_cores'] = (int) $validated['total_cpu_cores'];
+            $extraAttributes['capacity_source'] = 'manual';
+        }
+        if (isset($validated['total_ram_mb']) && is_numeric($validated['total_ram_mb'])) {
+            $extraAttributes['total_ram_mb'] = (int) $validated['total_ram_mb'];
+            $extraAttributes['capacity_source'] = 'manual';
+        }
+        if (isset($validated['total_storage_gb']) && is_numeric($validated['total_storage_gb'])) {
+            $extraAttributes['total_storage_gb'] = (int) $validated['total_storage_gb'];
+            $extraAttributes['capacity_source'] = 'manual';
+        }
+
+        return $extraAttributes;
     }
 }

@@ -9,9 +9,12 @@ use App\Audit\AuditEntry;
 use App\Audit\AuditLogger;
 use App\Audit\AuditOutcome;
 use App\Audit\AuditRedactor;
+use App\DTO\Cast;
 use App\DTO\Host\CreateHostDTO;
+use App\DTO\Host\HostResourcesDTO;
 use App\DTO\Host\UpdateHostDTO;
 use App\Models\Host;
+use App\Services\Hypervisor\Drivers\FakeHypervisorDriver;
 use App\Services\Hypervisor\HypervisorGateway;
 use App\Services\Hypervisor\HypervisorManager;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -19,6 +22,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 /**
  * Service managing Incus / LXD host cluster nodes and multi-region infrastructure.
@@ -51,7 +55,22 @@ final class HostNodeService
     public function listActive(): Collection
     {
         return Host::where('is_active', true)
-            ->select(['id', 'name', 'region', 'endpoint_url', 'driver', 'is_active', 'total_cpu_cores', 'total_ram_mb', 'total_storage_gb'])
+            ->select([
+                'id',
+                'name',
+                'region',
+                'endpoint_url',
+                'driver',
+                'status',
+                'is_active',
+                'total_cpu_cores',
+                'total_ram_mb',
+                'total_storage_gb',
+                'capacity_source',
+                'cpu_overcommit',
+                'ram_overcommit',
+                'disk_overcommit',
+            ])
             ->orderBy('name')
             ->get();
     }
@@ -130,6 +149,24 @@ final class HostNodeService
 
         $hasManualCapacity = $dto->totalCpuCores > 0 && $dto->totalRamMb > 0 && $dto->totalStorageGb > 0;
 
+        if ($hasManualCapacity) {
+            $candidateHost = new Host([
+                'name' => $dto->name,
+                'endpoint_url' => $dto->endpointUrl,
+                'server_certificate' => $dto->serverCertificate,
+                'server_fingerprint' => $dto->serverFingerprint,
+                'server_public_key_pin' => $pin,
+                'driver' => $dto->driver,
+            ]);
+
+            $this->validateManualCapacityAgainstPhysical(
+                $candidateHost,
+                $dto->totalCpuCores,
+                $dto->totalRamMb,
+                $dto->totalStorageGb,
+            );
+        }
+
         return DB::transaction(function () use ($dto, $pin, $hasManualCapacity): Host {
             /** @var Host $host */
             $host = Host::create([
@@ -145,6 +182,9 @@ final class HostNodeService
                 'total_cpu_cores' => $hasManualCapacity ? $dto->totalCpuCores : 0,
                 'total_ram_mb' => $hasManualCapacity ? $dto->totalRamMb : 0,
                 'total_storage_gb' => $hasManualCapacity ? $dto->totalStorageGb : 0,
+                'cpu_overcommit' => $dto->cpuOvercommit,
+                'ram_overcommit' => $dto->ramOvercommit,
+                'disk_overcommit' => $dto->diskOvercommit,
                 'capacity_source' => $hasManualCapacity ? 'manual' : 'unknown',
                 'settings' => $dto->settings,
                 'auto_attach_images' => $dto->autoAttachImages,
@@ -209,6 +249,9 @@ final class HostNodeService
             'total_cpu_cores' => $dto->totalCpuCores ?? $host->total_cpu_cores,
             'total_ram_mb' => $dto->totalRamMb ?? $host->total_ram_mb,
             'total_storage_gb' => $dto->totalStorageGb ?? $host->total_storage_gb,
+            'cpu_overcommit' => $dto->cpuOvercommit ?? $host->cpu_overcommit,
+            'ram_overcommit' => $dto->ramOvercommit ?? $host->ram_overcommit,
+            'disk_overcommit' => $dto->diskOvercommit ?? $host->disk_overcommit,
             'settings' => $dto->settings ?? $host->settings,
             'auto_attach_images' => $dto->autoAttachImages ?? $host->auto_attach_images,
         ];
@@ -239,6 +282,13 @@ final class HostNodeService
             || ($dto->totalStorageGb !== null && $dto->totalStorageGb !== $host->total_storage_gb);
 
         if ($totalsEdited) {
+            $this->validateManualCapacityAgainstPhysical(
+                $host,
+                Cast::int($attributes['total_cpu_cores']),
+                Cast::int($attributes['total_ram_mb']),
+                Cast::int($attributes['total_storage_gb']),
+            );
+
             $attributes['capacity_source'] = 'manual';
         }
 
@@ -372,5 +422,80 @@ final class HostNodeService
         ));
 
         return $host->fresh(['ipPools', 'virtualMachines']) ?? $host;
+    }
+
+    /**
+     * Validate explicitly supplied manual capacity caps against the host's physical hardware resources.
+     *
+     * @throws ValidationException
+     */
+    private function validateManualCapacityAgainstPhysical(Host $host, int $reqCpu, int $reqRam, int $reqDisk): void
+    {
+        $physical = $this->resolvePhysicalCapacityBaseline($host);
+        if ($physical === null) {
+            return;
+        }
+
+        /** @var array<string, list<string>> $errors */
+        $errors = [];
+
+        if ($reqCpu > 0 && $physical->cpuCores > 0 && $reqCpu > $physical->cpuCores) {
+            $errors['total_cpu_cores'] = [
+                __('messages.host.capacity_exceeds_physical', [
+                    'resource' => 'vCPU',
+                    'max' => $physical->cpuCores.' cores',
+                ]),
+            ];
+        }
+
+        if ($reqRam > 0 && $physical->ramMb > 0 && $reqRam > $physical->ramMb) {
+            $errors['total_ram_mb'] = [
+                __('messages.host.capacity_exceeds_physical', [
+                    'resource' => 'RAM',
+                    'max' => $physical->ramMb.' MB',
+                ]),
+            ];
+        }
+
+        if ($reqDisk > 0 && $physical->storageGb > 0 && $reqDisk > $physical->storageGb) {
+            $errors['total_storage_gb'] = [
+                __('messages.host.capacity_exceeds_physical', [
+                    'resource' => 'Storage',
+                    'max' => $physical->storageGb.' GB',
+                ]),
+            ];
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
+    }
+
+    private function resolvePhysicalCapacityBaseline(Host $host): ?HostResourcesDTO
+    {
+        $fallbackDiscovered = $host->exists
+            && $host->capacity_source === 'discovered'
+            && $host->total_cpu_cores > 0
+            && $host->total_ram_mb > 0
+            && $host->total_storage_gb > 0
+                ? new HostResourcesDTO(
+                    cpuCores: $host->total_cpu_cores,
+                    ramMb: $host->total_ram_mb,
+                    storageGb: $host->total_storage_gb,
+                    storagePool: 'default',
+                )
+                : null;
+
+        try {
+            $driver = app(HypervisorManager::class)->driverForHost($host);
+
+            if ($driver instanceof FakeHypervisorDriver && $driver->hostResources === null && ! isset($driver->actionCallbacks['getHostResources'])) {
+                return $fallbackDiscovered;
+            }
+
+            return $driver->getHostResources($host);
+        } catch (Throwable) {
+            return $fallbackDiscovered;
+        }
     }
 }

@@ -8,6 +8,7 @@ use App\Audit\AuditAction;
 use App\Audit\AuditEntry;
 use App\Audit\AuditLogger;
 use App\Audit\AuditOutcome;
+use App\DTO\Cast;
 use App\DTO\Incus\IncusConnectionResult;
 use App\Models\Host;
 use App\Services\Hypervisor\GatewayMode;
@@ -18,6 +19,7 @@ use App\Services\Hypervisor\TlsPeerCertificateFetcherInterface;
 use Carbon\Carbon;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 use RuntimeException;
 use Throwable;
@@ -77,11 +79,8 @@ final class IncusTrustService
             'capacity_synced_at' => null,
         ], $extraAttributes));
 
-        // Run connection check to confirm
-        $this->connectionChecker->check($host);
-
-        // Discover compute & storage capacity from the hypervisor
-        $this->discoverAndSetHostCapacity($host);
+        // Verify connectivity and discover/validate compute & storage capacity
+        $this->verifyAndDiscoverCapacity($host, $extraAttributes);
 
         $parsedEndpointHost = parse_url((string) $host->endpoint_url, PHP_URL_HOST);
 
@@ -347,10 +346,8 @@ final class IncusTrustService
             'capacity_synced_at' => null,
         ], $extraAttributes));
 
-        $this->connectionChecker->check($host);
-
-        // Discover compute & storage capacity from the hypervisor
-        $this->discoverAndSetHostCapacity($host);
+        // Verify connectivity and discover/validate compute & storage capacity
+        $this->verifyAndDiscoverCapacity($host, $extraAttributes);
 
         $parsedCertHost = parse_url((string) $host->endpoint_url, PHP_URL_HOST);
 
@@ -457,13 +454,67 @@ final class IncusTrustService
 
     /**
      * Discover compute cores, memory and storage pool capacity from hypervisor and update host.
+     *
+     * @param  array<string, mixed>|null  $manualRequest
+     *
+     * @throws ValidationException When explicit manual capacity exceeds physical hypervisor resources
      */
-    public function discoverAndSetHostCapacity(Host $host): void
+    public function discoverAndSetHostCapacity(Host $host, ?array $manualRequest = null): void
     {
+        $reqCpu = $manualRequest !== null ? Cast::int($manualRequest['total_cpu_cores'] ?? 0) : 0;
+        $reqRam = $manualRequest !== null ? Cast::int($manualRequest['total_ram_mb'] ?? 0) : 0;
+        $reqDisk = $manualRequest !== null ? Cast::int($manualRequest['total_storage_gb'] ?? 0) : 0;
+
         try {
             $manager = $this->hypervisorManager ?? app(HypervisorManager::class);
             $driver = $manager->driverForHost($host);
             $resources = $driver->getHostResources($host);
+
+            if ($manualRequest !== null) {
+                /** @var array<string, list<string>> $errors */
+                $errors = [];
+
+                if ($resources->cpuCores > 0 && $reqCpu > $resources->cpuCores) {
+                    $errors['total_cpu_cores'] = [
+                        __('messages.host.capacity_exceeds_physical', [
+                            'resource' => 'vCPU',
+                            'max' => $resources->cpuCores.' cores',
+                        ]),
+                    ];
+                }
+
+                if ($resources->ramMb > 0 && $reqRam > $resources->ramMb) {
+                    $errors['total_ram_mb'] = [
+                        __('messages.host.capacity_exceeds_physical', [
+                            'resource' => 'RAM',
+                            'max' => $resources->ramMb.' MB',
+                        ]),
+                    ];
+                }
+
+                if ($resources->storageGb > 0 && $reqDisk > $resources->storageGb) {
+                    $errors['total_storage_gb'] = [
+                        __('messages.host.capacity_exceeds_physical', [
+                            'resource' => 'Storage',
+                            'max' => $resources->storageGb.' GB',
+                        ]),
+                    ];
+                }
+
+                if ($errors !== []) {
+                    throw ValidationException::withMessages($errors);
+                }
+
+                $host->update([
+                    'total_cpu_cores' => $reqCpu > 0 ? $reqCpu : $resources->cpuCores,
+                    'total_ram_mb' => $reqRam > 0 ? $reqRam : $resources->ramMb,
+                    'total_storage_gb' => $reqDisk > 0 ? $reqDisk : $resources->storageGb,
+                    'capacity_source' => 'manual',
+                    'capacity_synced_at' => now(),
+                ]);
+
+                return;
+            }
 
             $host->update([
                 'total_cpu_cores' => $resources->cpuCores,
@@ -473,7 +524,24 @@ final class IncusTrustService
                 'capacity_synced_at' => now(),
             ]);
         } catch (Throwable $e) {
+            if ($e instanceof ValidationException) {
+                throw $e;
+            }
+
             Log::warning(sprintf('Resource discovery failed for host [%s] (%s): %s', $host->name, $host->endpoint_url, $e->getMessage()));
+
+            if ($manualRequest !== null && $reqCpu > 0 && $reqRam > 0 && $reqDisk > 0) {
+                $host->update([
+                    'total_cpu_cores' => $reqCpu,
+                    'total_ram_mb' => $reqRam,
+                    'total_storage_gb' => $reqDisk,
+                    'capacity_source' => 'manual',
+                    'capacity_synced_at' => null,
+                ]);
+
+                return;
+            }
+
             $host->update([
                 'total_cpu_cores' => 0,
                 'total_ram_mb' => 0,
@@ -481,6 +549,31 @@ final class IncusTrustService
                 'capacity_source' => 'unknown',
                 'capacity_synced_at' => null,
             ]);
+        }
+    }
+
+    /**
+     * Run connection check and discover/validate host capacity, removing the newly created host on validation failure.
+     *
+     * @param  array<string, mixed>  $extraAttributes
+     *
+     * @throws ValidationException
+     */
+    private function verifyAndDiscoverCapacity(Host $host, array $extraAttributes): void
+    {
+        $hasManualCapacity = ($extraAttributes['capacity_source'] ?? null) === 'manual'
+            || (isset($extraAttributes['total_cpu_cores']) && Cast::int($extraAttributes['total_cpu_cores']) > 0)
+            || (isset($extraAttributes['total_ram_mb']) && Cast::int($extraAttributes['total_ram_mb']) > 0)
+            || (isset($extraAttributes['total_storage_gb']) && Cast::int($extraAttributes['total_storage_gb']) > 0);
+
+        try {
+            $this->connectionChecker->check($host);
+            $this->discoverAndSetHostCapacity($host, $hasManualCapacity ? $extraAttributes : null);
+        } catch (ValidationException $e) {
+            $host->images()->detach();
+            $host->delete();
+
+            throw $e;
         }
     }
 }

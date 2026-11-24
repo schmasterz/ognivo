@@ -58,6 +58,7 @@ return [
         'insufficient_capacity' => 'The selected compute node does not have sufficient capacity for this request.',
         'no_capacity' => 'No compute node has sufficient capacity to fulfill this request.',
         'capacity_unknown' => 'The compute node capacity is unknown or unverified; synchronization required.',
+        'capacity_exceeds_physical' => 'Manual capacity (:resource) cannot exceed the physical hardware capacity of the compute node (:max). Use per-node overcommit multipliers instead.',
     ],
     'ip' => [
         'reassigned' => 'IP address reassigned successfully.',

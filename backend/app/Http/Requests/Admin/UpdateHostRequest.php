@@ -40,6 +40,9 @@ final class UpdateHostRequest extends FormRequest
             'total_cpu_cores' => ['nullable', 'integer', 'min:1'],
             'total_ram_mb' => ['nullable', 'integer', 'min:1024'],
             'total_storage_gb' => ['nullable', 'integer', 'min:10'],
+            'cpu_overcommit' => ['nullable', 'numeric', 'min:1', 'max:16'],
+            'ram_overcommit' => ['nullable', 'numeric', 'min:1', 'max:4'],
+            'disk_overcommit' => ['nullable', 'numeric', 'min:1', 'max:4'],
             'settings' => ['nullable', 'array'],
         ], ImageSelectionRules::rules());
     }
