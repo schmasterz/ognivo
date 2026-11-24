@@ -32,6 +32,9 @@ use Override;
  * @property int $total_cpu_cores
  * @property int $total_ram_mb
  * @property int $total_storage_gb
+ * @property float $cpu_overcommit
+ * @property float $ram_overcommit
+ * @property float $disk_overcommit
  * @property string|null $capacity_source
  * @property Carbon|null $capacity_synced_at
  * @property array<string, mixed>|null $settings
@@ -60,6 +63,9 @@ final class Host extends Model
         'total_cpu_cores',
         'total_ram_mb',
         'total_storage_gb',
+        'cpu_overcommit',
+        'ram_overcommit',
+        'disk_overcommit',
         'capacity_source',
         'capacity_synced_at',
         'settings',
@@ -77,6 +83,9 @@ final class Host extends Model
      */
     protected $attributes = [
         'is_active' => true,
+        'cpu_overcommit' => 1.0,
+        'ram_overcommit' => 1.0,
+        'disk_overcommit' => 1.0,
         'capacity_source' => 'unknown',
         'auto_attach_images' => true,
     ];
@@ -102,6 +111,9 @@ final class Host extends Model
         'total_cpu_cores',
         'total_ram_mb',
         'total_storage_gb',
+        'cpu_overcommit',
+        'ram_overcommit',
+        'disk_overcommit',
         'capacity_source',
         'capacity_synced_at',
         'settings',
@@ -135,6 +147,9 @@ final class Host extends Model
             'total_cpu_cores' => 'integer',
             'total_ram_mb' => 'integer',
             'total_storage_gb' => 'integer',
+            'cpu_overcommit' => 'float',
+            'ram_overcommit' => 'float',
+            'disk_overcommit' => 'float',
             'capacity_source' => 'string',
             'capacity_synced_at' => 'datetime',
             'settings' => 'array',
