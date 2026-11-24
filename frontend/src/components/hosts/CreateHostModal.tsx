@@ -40,9 +40,13 @@ export function CreateHostModal({ onClose, onSuccess }: CreateHostModalProps) {
   const [region] = useState("");
   const [driver, setDriver] = useState<"incus" | "lxd" | "fake">("incus");
   const [isActive, setIsActive] = useState(true);
+  const [autoDiscoverCapacity, setAutoDiscoverCapacity] = useState(true);
   const [totalCpuCores, setTotalCpuCores] = useState(64);
   const [totalRamGb, setTotalRamGb] = useState(256);
   const [totalStorageGb, setTotalStorageGb] = useState(4000);
+  const [cpuOvercommit, setCpuOvercommit] = useState(1.0);
+  const [ramOvercommit, setRamOvercommit] = useState(1.0);
+  const [diskOvercommit, setDiskOvercommit] = useState(1.0);
 
   // Token Mode
   const [token, setToken] = useState("");
@@ -95,7 +99,14 @@ export function CreateHostModal({ onClose, onSuccess }: CreateHostModalProps) {
 
   // Validation
   const isNameValid = name.trim().length >= 2 && /^[a-z0-9-]+$/.test(name.trim());
-  const isCapacityValid = totalCpuCores >= 1 && totalRamGb >= 1 && totalStorageGb >= 10;
+  const isCapacityValid =
+    (autoDiscoverCapacity || (totalCpuCores >= 1 && totalRamGb >= 1 && totalStorageGb >= 10)) &&
+    cpuOvercommit >= 1 &&
+    cpuOvercommit <= 16 &&
+    ramOvercommit >= 1 &&
+    ramOvercommit <= 4 &&
+    diskOvercommit >= 1 &&
+    diskOvercommit <= 4;
   const selectionValidation = canSaveSelection(imageSelection, imageCounts);
 
   const isValidUrl = (urlStr: string): boolean => {
@@ -167,9 +178,12 @@ export function CreateHostModal({ onClose, onSuccess }: CreateHostModalProps) {
           driver,
           region: region.trim() || undefined,
           is_active: isActive,
-          total_cpu_cores: totalCpuCores,
-          total_ram_mb: totalRamGb * 1024,
-          total_storage_gb: totalStorageGb,
+          total_cpu_cores: autoDiscoverCapacity ? undefined : totalCpuCores,
+          total_ram_mb: autoDiscoverCapacity ? undefined : totalRamGb * 1024,
+          total_storage_gb: autoDiscoverCapacity ? undefined : totalStorageGb,
+          cpu_overcommit: cpuOvercommit,
+          ram_overcommit: ramOvercommit,
+          disk_overcommit: diskOvercommit,
           auto_attach_images: autoAttachImages,
           images: imagesPayload,
         });
@@ -182,9 +196,12 @@ export function CreateHostModal({ onClose, onSuccess }: CreateHostModalProps) {
           driver,
           region: region.trim() || undefined,
           is_active: isActive,
-          total_cpu_cores: totalCpuCores,
-          total_ram_mb: totalRamGb * 1024,
-          total_storage_gb: totalStorageGb,
+          total_cpu_cores: autoDiscoverCapacity ? undefined : totalCpuCores,
+          total_ram_mb: autoDiscoverCapacity ? undefined : totalRamGb * 1024,
+          total_storage_gb: autoDiscoverCapacity ? undefined : totalStorageGb,
+          cpu_overcommit: cpuOvercommit,
+          ram_overcommit: ramOvercommit,
+          disk_overcommit: diskOvercommit,
           auto_attach_images: autoAttachImages,
           images: imagesPayload,
         });
@@ -511,44 +528,130 @@ export function CreateHostModal({ onClose, onSuccess }: CreateHostModalProps) {
             <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
               {t("nodeCapacity")}
             </h3>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  {t("vCpuCores")}
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  value={totalCpuCores}
-                  onChange={(e) => setTotalCpuCores(parseInt(e.target.value, 10) || 1)}
-                  className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs text-gray-900 dark:text-white"
-                />
-              </div>
 
-              <div>
-                <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  RAM (GB)
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  value={totalRamGb}
-                  onChange={(e) => setTotalRamGb(parseInt(e.target.value, 10) || 1)}
-                  className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs text-gray-900 dark:text-white"
-                />
-              </div>
+            <label className="flex items-center space-x-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={autoDiscoverCapacity}
+                onChange={(e) => setAutoDiscoverCapacity(e.target.checked)}
+                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span className="text-xs font-medium text-gray-800 dark:text-gray-200">
+                {t("autoDiscoverCapacity")}
+              </span>
+            </label>
 
+            {!autoDiscoverCapacity && (
+              <>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      {t("vCpuCores")}
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={totalCpuCores}
+                      onChange={(e) => setTotalCpuCores(parseInt(e.target.value, 10) || 1)}
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs text-gray-900 dark:text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      RAM (GB)
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={totalRamGb}
+                      onChange={(e) => setTotalRamGb(parseInt(e.target.value, 10) || 1)}
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs text-gray-900 dark:text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      Storage (GB)
+                    </label>
+                    <input
+                      type="number"
+                      min={10}
+                      value={totalStorageGb}
+                      onChange={(e) => setTotalStorageGb(parseInt(e.target.value, 10) || 10)}
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs text-gray-900 dark:text-white"
+                    />
+                  </div>
+                </div>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                  {t("manualCapacityCapHint")}
+                </p>
+              </>
+            )}
+
+            <div className="pt-2 border-t border-gray-200 dark:border-gray-700/60 space-y-2.5">
               <div>
-                <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  Storage (GB)
-                </label>
-                <input
-                  type="number"
-                  min={10}
-                  value={totalStorageGb}
-                  onChange={(e) => setTotalStorageGb(parseInt(e.target.value, 10) || 10)}
-                  className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs text-gray-900 dark:text-white"
-                />
+                <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
+                  {t("overcommitMultipliers")}
+                </h4>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                  {t("overcommitHint")}
+                </p>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">
+                    {t("cpuOvercommit")}
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min={1}
+                    max={16}
+                    value={cpuOvercommit}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      setCpuOvercommit(Number.isNaN(val) ? 1.0 : val);
+                    }}
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs text-gray-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">
+                    {t("ramOvercommit")}
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min={1}
+                    max={4}
+                    value={ramOvercommit}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      setRamOvercommit(Number.isNaN(val) ? 1.0 : val);
+                    }}
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs text-gray-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">
+                    {t("diskOvercommit")}
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min={1}
+                    max={4}
+                    value={diskOvercommit}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      setDiskOvercommit(Number.isNaN(val) ? 1.0 : val);
+                    }}
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs text-gray-900 dark:text-white"
+                  />
+                </div>
               </div>
             </div>
           </div>

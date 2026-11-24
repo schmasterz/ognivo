@@ -317,18 +317,33 @@ export function NodesTable({
                             <span className="font-mono font-semibold text-gray-900 dark:text-white">
                               {committedCpu} / {host.total_cpu_cores}
                             </span>
+                            {(host.cpu_overcommit ?? 1) > 1 && (
+                              <span className="ml-1 text-[10px] text-indigo-500 font-mono">
+                                ({host.cpu_overcommit}x)
+                              </span>
+                            )}
                           </div>
                           <div>
                             <span className="text-[10px] text-gray-400 block">RAM</span>
                             <span className="font-mono font-semibold text-gray-900 dark:text-white">
                               {committedRamGb} / {totalRamGb} GB
                             </span>
+                            {(host.ram_overcommit ?? 1) > 1 && (
+                              <span className="ml-1 text-[10px] text-indigo-500 font-mono">
+                                ({host.ram_overcommit}x)
+                              </span>
+                            )}
                           </div>
                           <div>
                             <span className="text-[10px] text-gray-400 block">Storage</span>
                             <span className="font-mono font-semibold text-gray-900 dark:text-white">
                               {committedDisk} / {host.total_storage_gb} GB
                             </span>
+                            {(host.disk_overcommit ?? 1) > 1 && (
+                              <span className="ml-1 text-[10px] text-indigo-500 font-mono">
+                                ({host.disk_overcommit}x)
+                              </span>
+                            )}
                           </div>
                         </div>
                       </td>

@@ -37,6 +37,12 @@ export interface PanelCertificateInfo {
   pending_retrust_hosts_count: number;
 }
 
+export interface HostMaxInstanceLimits {
+  cpu_cores: number;
+  ram_mb: number;
+  disk_gb: number;
+}
+
 export interface TenantHost {
   id: number;
   name: string;
@@ -44,6 +50,7 @@ export interface TenantHost {
   driver: "incus" | "lxd" | "fake" | string;
   is_active: boolean;
   status?: "ok" | "unreachable" | string;
+  max_instance?: HostMaxInstanceLimits;
 }
 
 export interface HostDiscoveredNetwork {
@@ -70,6 +77,8 @@ export interface HostResourceCapacityMetrics {
   total: number;
   committed: number;
   free: number;
+  overcommit?: number;
+  max_allocatable?: number;
 }
 
 export interface HostCapacityDetails {
@@ -91,6 +100,9 @@ export interface HostNode extends TenantHost {
   total_cpu_cores: number;
   total_ram_mb: number;
   total_storage_gb: number;
+  cpu_overcommit?: number;
+  ram_overcommit?: number;
+  disk_overcommit?: number;
   capacity_source?: "discovered" | "manual" | "unknown" | string;
   capacity_synced_at?: string | null;
   capacity?: HostCapacityDetails;

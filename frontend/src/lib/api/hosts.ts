@@ -58,6 +58,9 @@ export const hostsApi = {
     total_cpu_cores?: number;
     total_ram_mb?: number;
     total_storage_gb?: number;
+    cpu_overcommit?: number;
+    ram_overcommit?: number;
+    disk_overcommit?: number;
     settings?: Record<string, unknown> | null;
     auto_attach_images?: boolean;
     images?: ImageSelectionPayload;
@@ -80,6 +83,9 @@ export const hostsApi = {
       total_cpu_cores?: number;
       total_ram_mb?: number;
       total_storage_gb?: number;
+      cpu_overcommit?: number;
+      ram_overcommit?: number;
+      disk_overcommit?: number;
       settings?: Record<string, unknown> | null;
       auto_attach_images?: boolean;
       images?: ImageSelectionPayload;
@@ -142,6 +148,9 @@ export const hostsApi = {
     total_cpu_cores?: number;
     total_ram_mb?: number;
     total_storage_gb?: number;
+    cpu_overcommit?: number;
+    ram_overcommit?: number;
+    disk_overcommit?: number;
     settings?: Record<string, unknown> | null;
     auto_attach_images?: boolean;
     images?: ImageSelectionPayload;
@@ -162,6 +171,9 @@ export const hostsApi = {
     total_cpu_cores?: number;
     total_ram_mb?: number;
     total_storage_gb?: number;
+    cpu_overcommit?: number;
+    ram_overcommit?: number;
+    disk_overcommit?: number;
     settings?: Record<string, unknown> | null;
     auto_attach_images?: boolean;
     images?: ImageSelectionPayload;
