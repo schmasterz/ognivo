@@ -124,13 +124,10 @@ The development example (`.env.development.example`) differs from the production
 | `RUN_SEEDERS` | `true` when `APP_ENV` is not `production`, otherwise never | `false` | `true` | Seeders run only when `APP_ENV` is not `production`, so an unset value seeds demo data in development. Must be `false` in production (enforced on boot) |
 
 ### Provisioning & Capacity
-Read by `HostSelector` (placement) and `HostCapacityGuard` (hard capacity limits). A host accepts a new VM only if `committed + requested <= total * overcommit - reserve` holds for CPU, RAM, and disk. Committed usage sums all VMs whose status is not `failed` or `deleted`, including those still provisioning.
+Read by `HostSelector` (placement) and `HostCapacityGuard` (hard capacity limits). Overcommit multipliers (`cpu_overcommit`, `ram_overcommit`, `disk_overcommit`, default `1.0x`) are configured **per compute node** in the Compute Nodes UI or API rather than via global environment variables. A node accepts a new instance only if both `committed + requested <= (total * overcommit) - reserve` and `requested <= total - reserve` (single-instance physical hardware cap) hold for CPU, RAM, and disk. Committed usage sums all VMs whose status is not `failed` or `deleted`, including those still provisioning.
 
 | Variable | Code default | In `.env.production.example` | Description |
 | :--- | :--- | :--- | :--- |
-| `PROVISION_CPU_OVERCOMMIT` | `1.0` | `1.0` | CPU overcommit multiplier (`1.0` = none) |
-| `PROVISION_RAM_OVERCOMMIT` | `1.0` | `1.0` | RAM overcommit multiplier. Keep at `1.0` unless swap/zram is monitored |
-| `PROVISION_DISK_OVERCOMMIT` | `1.0` | `1.0` | Disk overcommit multiplier. Raise only with thin provisioning and pool-usage alerts |
 | `PROVISION_HOST_CPU_RESERVE_CORES` | `0` | `1` | CPU cores reserved for the host OS |
 | `PROVISION_HOST_RAM_RESERVE_MB` | `1024` | `2048` | RAM reserved for the host OS and Incus |
 | `PROVISION_HOST_DISK_RESERVE_GB` | `0` | `20` | Disk reserved for snapshots, images, and logs |

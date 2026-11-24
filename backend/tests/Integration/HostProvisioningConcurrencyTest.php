@@ -15,9 +15,6 @@ test('two concurrent provisioning requests from different users where only one f
     skipUnlessRealInfrastructure();
 
     config([
-        'provisioning.cpu_overcommit' => 1.0,
-        'provisioning.ram_overcommit' => 1.0,
-        'provisioning.disk_overcommit' => 1.0,
         'provisioning.host_cpu_reserve_cores' => 0,
         'provisioning.host_ram_reserve_mb' => 0,
         'provisioning.host_disk_reserve_gb' => 0,
@@ -100,9 +97,6 @@ test('two concurrent provisioning requests from different users where only one f
         'REDIS_HOST' => (string) config('database.redis.default.host', '127.0.0.1'),
         'REDIS_PORT' => (string) config('database.redis.default.port', 6379),
         'REDIS_CLIENT' => (string) env('REDIS_CLIENT', 'predis'),
-        'PROVISION_CPU_OVERCOMMIT' => '1.0',
-        'PROVISION_RAM_OVERCOMMIT' => '1.0',
-        'PROVISION_DISK_OVERCOMMIT' => '1.0',
         'PROVISION_HOST_CPU_RESERVE_CORES' => '0',
         'PROVISION_HOST_RAM_RESERVE_MB' => '0',
         'PROVISION_HOST_DISK_RESERVE_GB' => '0',

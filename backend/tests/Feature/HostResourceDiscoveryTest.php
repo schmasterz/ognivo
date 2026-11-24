@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\DTO\Host\HostResourcesDTO;
 use App\DTO\Host\UpdateHostDTO;
 use App\Models\Host;
 use App\Models\User;
@@ -184,12 +185,43 @@ final class HostResourceDiscoveryTest extends TestCase
         $service->update($host, new UpdateHostDTO(
             name: 'discovered-host-renamed',
             endpointUrl: $host->endpoint_url,
-            totalCpuCores: 24,
+            totalCpuCores: 12,
         ));
 
         $host->refresh();
-        $this->assertSame(24, $host->total_cpu_cores);
+        $this->assertSame(12, $host->total_cpu_cores);
         $this->assertSame('manual', $host->capacity_source);
+    }
+
+    public function test_manual_capacity_exceeding_physical_hardware_is_rejected_with_validation_error(): void
+    {
+        $fakeDriver = new FakeHypervisorDriver;
+        $fakeDriver->hostResources = new HostResourcesDTO(16, 32768, 500, 'default');
+        HypervisorManager::fake($fakeDriver);
+
+        $host = Host::create([
+            'name' => 'physical-cap-host',
+            'endpoint_url' => 'https://10.99.99.5:8443',
+            'driver' => 'fake',
+            'total_cpu_cores' => 16,
+            'total_ram_mb' => 32768,
+            'total_storage_gb' => 500,
+            'capacity_source' => 'discovered',
+        ]);
+
+        $response = $this->actingAs($this->admin, 'sanctum')
+            ->putJson("/api/admin/hosts/{$host->id}", [
+                'name' => 'physical-cap-host',
+                'endpoint_url' => $host->endpoint_url,
+                'total_cpu_cores' => 24,
+            ]);
+
+        $response->assertUnprocessable()
+            ->assertJsonValidationErrors(['total_cpu_cores']);
+
+        $host->refresh();
+        $this->assertSame(16, $host->total_cpu_cores);
+        $this->assertSame('discovered', $host->capacity_source);
     }
 
     public function test_admin_api_endpoint_sync_resources(): void

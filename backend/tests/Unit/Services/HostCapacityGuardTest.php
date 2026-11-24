@@ -24,9 +24,6 @@ final class HostCapacityGuardTest extends TestCase
         $this->guard = new HostCapacityGuard;
 
         config([
-            'provisioning.cpu_overcommit' => 1.0,
-            'provisioning.ram_overcommit' => 1.0,
-            'provisioning.disk_overcommit' => 1.0,
             'provisioning.host_cpu_reserve_cores' => 0,
             'provisioning.host_ram_reserve_mb' => 0,
             'provisioning.host_disk_reserve_gb' => 0,
@@ -94,11 +91,7 @@ final class HostCapacityGuardTest extends TestCase
 
     public function test_overcommit_multipliers_scale_capacity(): void
     {
-        config([
-            'provisioning.cpu_overcommit' => 2.0,
-            'provisioning.ram_overcommit' => 1.5,
-            'provisioning.disk_overcommit' => 1.25,
-        ]);
+        $user = User::factory()->create();
 
         $host = Host::create([
             'name' => 'overcommit-host',
@@ -106,14 +99,57 @@ final class HostCapacityGuardTest extends TestCase
             'total_cpu_cores' => 4,
             'total_ram_mb' => 4000,
             'total_storage_gb' => 100,
+            'cpu_overcommit' => 2.0,
+            'ram_overcommit' => 1.5,
+            'disk_overcommit' => 1.25,
             'capacity_source' => 'discovered',
         ]);
 
-        // Effective limits: CPU 8, RAM 6000, Disk 125
-        $this->assertTrue($this->guard->canFit($host, 8, 6000, 125));
-        $this->assertFalse($this->guard->canFit($host, 9, 6000, 125));
-        $this->assertFalse($this->guard->canFit($host, 8, 6001, 125));
-        $this->assertFalse($this->guard->canFit($host, 8, 6000, 126));
+        // Overcommitted pool limits: CPU 8.0, RAM 6000.0, Disk 125.0
+        $this->assertSame([
+            'cpu' => 8.0,
+            'ram' => 6000.0,
+            'disk' => 125.0,
+        ], $this->guard->getMaxAllocatable($host));
+
+        // With 0 committed VMs, single-instance limit is capped at physical capacity (4 / 4000 / 100)
+        $this->assertSame([
+            'cpu' => 4,
+            'ram' => 4000,
+            'disk' => 100,
+        ], $this->guard->getMaxAllocatableForSingleInstance($host));
+
+        // A single VM exceeding physical hardware limits is rejected even though pool overcommit > 1.0
+        $this->assertFalse($this->guard->canFit($host, 5, 1000, 50));
+        $this->assertFalse($this->guard->canFit($host, 8, 1000, 50));
+        $this->assertFalse($this->guard->canFit($host, 2, 4001, 50));
+        $this->assertFalse($this->guard->canFit($host, 2, 1000, 101));
+
+        // Multiple VMs within the single-instance physical cap can utilize the overcommitted pool
+        VirtualMachine::create([
+            'user_id' => $user->id,
+            'host_id' => $host->id,
+            'name' => 'overcommit-vm-1',
+            'incus_project' => 'default',
+            'instance_type' => 'virtual-machine',
+            'status' => 'running',
+            'cpu_cores' => 4,
+            'ram_mb' => 3000,
+            'disk_gb' => 60,
+            'os_image' => 'ubuntu:24.04',
+        ]);
+
+        // Remaining pool: 4 CPU, 3000 RAM, 65 Disk (all within physical limits 4 / 4000 / 100)
+        $this->assertSame([
+            'cpu' => 4,
+            'ram' => 3000,
+            'disk' => 65,
+        ], $this->guard->getMaxAllocatableForSingleInstance($host));
+
+        $this->assertTrue($this->guard->canFit($host, 4, 3000, 65));
+        $this->assertFalse($this->guard->canFit($host, 5, 3000, 65));
+        $this->assertFalse($this->guard->canFit($host, 4, 3001, 65));
+        $this->assertFalse($this->guard->canFit($host, 4, 3000, 66));
     }
 
     public function test_reserves_reduce_allocatable_capacity(): void
