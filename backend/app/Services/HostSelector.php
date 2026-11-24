@@ -210,15 +210,6 @@ class HostSelector
             ->get()
             ->keyBy('host_id');
 
-        $cpuOvercommit = (float) config('provisioning.cpu_overcommit', 1.0);
-        if ($cpuOvercommit <= 0) {
-            $cpuOvercommit = 1.0;
-        }
-        $ramOvercommit = (float) config('provisioning.ram_overcommit', 1.0);
-        if ($ramOvercommit <= 0) {
-            $ramOvercommit = 1.0;
-        }
-
         $scored = [];
         foreach ($hosts as $host) {
             $usage = $usages->get($host->id);
@@ -226,17 +217,21 @@ class HostSelector
             $committedRam = (float) ($usage->ram ?? 0);
             $committedDisk = (float) ($usage->disk ?? 0);
 
+            $cpuOvercommit = (float) ($host->cpu_overcommit > 0 ? $host->cpu_overcommit : 1.0);
+            $ramOvercommit = (float) ($host->ram_overcommit > 0 ? $host->ram_overcommit : 1.0);
+            $diskOvercommit = (float) ($host->disk_overcommit > 0 ? $host->disk_overcommit : 1.0);
+
             $hasTotals = ($host->total_cpu_cores > 0 || $host->total_ram_mb > 0 || $host->total_storage_gb > 0);
 
             if ($hasTotals) {
                 $cpuScore = $host->total_cpu_cores > 0
-                    ? ($committedCpu / ($host->total_cpu_cores * $cpuOvercommit))
+                    ? ($committedCpu / ((float) $host->total_cpu_cores * $cpuOvercommit))
                     : 0.0;
                 $ramScore = $host->total_ram_mb > 0
-                    ? ($committedRam / ($host->total_ram_mb * $ramOvercommit))
+                    ? ($committedRam / ((float) $host->total_ram_mb * $ramOvercommit))
                     : 0.0;
                 $diskScore = $host->total_storage_gb > 0
-                    ? ($committedDisk / (float) $host->total_storage_gb)
+                    ? ($committedDisk / ((float) $host->total_storage_gb * $diskOvercommit))
                     : 0.0;
 
                 $load = ($cpuScore + $ramScore + $diskScore) / 3.0;

@@ -104,29 +104,65 @@ final class HostCapacityGuard
      */
     public function getMaxAllocatable(Host $host): array
     {
-        $cpuOvercommit = Cast::float(config('provisioning.cpu_overcommit', 1.0), 1.0);
-        if ($cpuOvercommit <= 0.0) {
-            $cpuOvercommit = 1.0;
-        }
+        $cpuOvercommit = $this->normalizeOvercommit($host->cpu_overcommit);
+        $ramOvercommit = $this->normalizeOvercommit($host->ram_overcommit);
+        $diskOvercommit = $this->normalizeOvercommit($host->disk_overcommit);
 
-        $ramOvercommit = Cast::float(config('provisioning.ram_overcommit', 1.0), 1.0);
-        if ($ramOvercommit <= 0.0) {
-            $ramOvercommit = 1.0;
-        }
-
-        $diskOvercommit = Cast::float(config('provisioning.disk_overcommit', 1.0), 1.0);
-        if ($diskOvercommit <= 0.0) {
-            $diskOvercommit = 1.0;
-        }
-
-        $cpuReserve = (float) Cast::int(config('provisioning.host_cpu_reserve_cores', 0), 0);
-        $ramReserve = (float) Cast::int(config('provisioning.host_ram_reserve_mb', 1024), 1024);
-        $diskReserve = (float) Cast::int(config('provisioning.host_disk_reserve_gb', 0), 0);
+        $reserves = $this->getHostReserves();
 
         return [
-            'cpu' => ((float) $host->total_cpu_cores * $cpuOvercommit) - $cpuReserve,
-            'ram' => ((float) $host->total_ram_mb * $ramOvercommit) - $ramReserve,
-            'disk' => ((float) $host->total_storage_gb * $diskOvercommit) - $diskReserve,
+            'cpu' => ((float) $host->total_cpu_cores * $cpuOvercommit) - (float) $reserves['cpu'],
+            'ram' => ((float) $host->total_ram_mb * $ramOvercommit) - (float) $reserves['ram'],
+            'disk' => ((float) $host->total_storage_gb * $diskOvercommit) - (float) $reserves['disk'],
+        ];
+    }
+
+    /**
+     * Get the maximum physical resources a single instance can request on this host
+     * (physical total minus host reserve, without overcommit).
+     *
+     * @return array{cpu: int, ram: int, disk: int}
+     */
+    public function getSingleInstancePhysicalLimit(Host $host): array
+    {
+        if (! $this->hasKnownCapacity($host)) {
+            return ['cpu' => 0, 'ram' => 0, 'disk' => 0];
+        }
+
+        $reserves = $this->getHostReserves();
+
+        return [
+            'cpu' => max(0, (int) $host->total_cpu_cores - $reserves['cpu']),
+            'ram' => max(0, (int) $host->total_ram_mb - $reserves['ram']),
+            'disk' => max(0, (int) $host->total_storage_gb - $reserves['disk']),
+        ];
+    }
+
+    /**
+     * Compute the maximum resources a single new instance can currently request on this host,
+     * bounded by both remaining overcommitted pool capacity and physical single-node hardware limits.
+     *
+     * @param  array{cpu: int, ram: int, disk: int}|null  $committed
+     * @return array{cpu: int, ram: int, disk: int}
+     */
+    public function getMaxAllocatableForSingleInstance(Host $host, ?array $committed = null): array
+    {
+        if (! $this->hasKnownCapacity($host)) {
+            return ['cpu' => 0, 'ram' => 0, 'disk' => 0];
+        }
+
+        $committed ??= $this->getCommittedUsage($host);
+        $maxPool = $this->getMaxAllocatable($host);
+        $physicalLimit = $this->getSingleInstancePhysicalLimit($host);
+
+        $freePoolCpu = max(0, (int) floor($maxPool['cpu'] - (float) $committed['cpu']));
+        $freePoolRam = max(0, (int) floor($maxPool['ram'] - (float) $committed['ram']));
+        $freePoolDisk = max(0, (int) floor($maxPool['disk'] - (float) $committed['disk']));
+
+        return [
+            'cpu' => min($physicalLimit['cpu'], $freePoolCpu),
+            'ram' => min($physicalLimit['ram'], $freePoolRam),
+            'disk' => min($physicalLimit['disk'], $freePoolDisk),
         ];
     }
 
@@ -139,6 +175,11 @@ final class HostCapacityGuard
             return false;
         }
 
+        $physicalLimit = $this->getSingleInstancePhysicalLimit($host);
+        if ($requestedCpu > $physicalLimit['cpu'] || $requestedRam > $physicalLimit['ram'] || $requestedDisk > $physicalLimit['disk']) {
+            return false;
+        }
+
         $committed = $this->getCommittedUsage($host, $lock);
         $max = $this->getMaxAllocatable($host);
 
@@ -147,6 +188,25 @@ final class HostCapacityGuard
         $fitsDisk = ($committed['disk'] + $requestedDisk) <= $max['disk'];
 
         return $fitsCpu && $fitsRam && $fitsDisk;
+    }
+
+    private function normalizeOvercommit(mixed $value): float
+    {
+        $overcommit = Cast::float($value, 1.0);
+
+        return $overcommit > 0.0 ? $overcommit : 1.0;
+    }
+
+    /**
+     * @return array{cpu: int, ram: int, disk: int}
+     */
+    private function getHostReserves(): array
+    {
+        return [
+            'cpu' => Cast::int(config('provisioning.host_cpu_reserve_cores', 0), 0),
+            'ram' => Cast::int(config('provisioning.host_ram_reserve_mb', 1024), 1024),
+            'disk' => Cast::int(config('provisioning.host_disk_reserve_gb', 0), 0),
+        ];
     }
 
     /**
