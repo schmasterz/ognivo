@@ -74,6 +74,8 @@ When an instance is created, Ognivo sends Incus a source built from the catalog 
 
 The instance type is `container` or `virtual-machine`. In `1.0.0-alpha.1`, all guest instances (both containers and virtual machines) must use Linux images. Non-Linux guest operating systems (such as Windows and BSD) are scheduled for future releases.
 
+![Instance Provisioning Modal](../assets/provision-instance-modal.png)
+
 ### 2.3 Guest OS Family Abstraction & Cloud-Init Adapters
 
 When provisioning an instance, Ognivo resolves the catalog image to an OS-specific adapter via `GuestOsResolver` and the pluggable `GuestOsAdapterInterface` layer (`backend/app/Services/Hypervisor/GuestOs/`). Each adapter tailors cloud-init network configuration, default login username resolution, and VM hypervisor flags to match the target distribution's network stack and bootloader requirements:

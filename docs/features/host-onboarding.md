@@ -55,6 +55,8 @@ eyJjbGllbnRfbmFtZSI6InBhbmVsIiwiZmluZ2VycHJpbnQiOiI5YjkzNWY5...
 3. Enter the Node Name, paste the generated token into the **Trust Token** field, and configure CPU/RAM/Storage capacity.
 4. Click **Connect with token**.
 
+![Compute Nodes Management](../assets/compute-nodes-mtls.png)
+
 #### Backend Cryptographic Flow
 1. Decodes and validates the Base64 token structure (`client_name`, `fingerprint`, `addresses`, `secret`, `expires_at`).
 2. Connects to the first reachable address, extracts the remote peer certificate during the TLS handshake (`TlsPeerCertificateFetcher`), and computes its SHA-256 fingerprint.

@@ -252,6 +252,8 @@ Before putting an IP pool into production, administrators can trigger a prefligh
 
 Administrators can inspect every IPv4 address across a pool's usable range (`first_usable` through `last_usable`) via `GET /api/admin/ip-pools/{ipPool}/addresses` and the **PoolDetailModal** in the Admin UI (**Networking & IPAM** — accessible via the Eye button, clickable pool name, or `Free: N` badge on any pool card).
 
+![IPAM Pool Address Inspector](../assets/ipam-pool-inspector.png)
+
 ### Query Parameters & Filtering
 - **`state`:** Filters addresses by effective state:
   - `all` *(default)* — entire usable range in numeric IPv4 order

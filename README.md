@@ -17,6 +17,8 @@ Ognivo lets you offer VPS-style hosting on your own **Incus** hypervisors. Custo
 
 *Ognivo* (Огниво) is the Bulgarian word for a flint-and-steel fire starter.
 
+![Ognivo Dashboard Overview](docs/assets/dashboard-overview.png)
+
 ## Contents
 
 - [Why Ognivo?](#why-ognivo)
@@ -55,6 +57,20 @@ It is an open-source alternative to hosting panels such as SolusVM and Virtualiz
 | LXD driver            | Best-effort compatibility, see [Supported versions](#supported-versions)                                                                             | Experimental |
 
 Details for each area live in [`docs/`](docs/README.md).
+
+### Screenshots
+
+**Instance provisioning**
+
+![Ognivo Instance Provisioning](docs/assets/provision-instance-modal.png)
+
+**Compute nodes & mTLS onboarding**
+
+![Ognivo Compute Nodes Management](docs/assets/compute-nodes-mtls.png)
+
+**IPAM pool address inspector**
+
+![Ognivo IPAM Pool Address Inspector](docs/assets/ipam-pool-inspector.png)
 
 ### Tenant privacy
 
