@@ -475,9 +475,9 @@ final class ResourceSensibleProvisioningAndTenantIsolationTest extends TestCase
         $expectedLowerId = min($host1->id, $host2->id);
         $this->assertSame($expectedLowerId, $selected->id);
 
-        // Test overcommit factor calculation
-        config(['provisioning.cpu_overcommit' => 2.0]);
-        $this->assertSame(2.0, (float) config('provisioning.cpu_overcommit'));
+        // Test per-host overcommit factor update
+        $host1->update(['cpu_overcommit' => 2.0]);
+        $this->assertSame(2.0, $host1->fresh()->cpu_overcommit);
     }
 
     public function test_customer_calling_ip_pools_and_ips_never_receives_infrastructure_internals(): void

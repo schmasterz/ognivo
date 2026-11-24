@@ -52,7 +52,7 @@ eyJjbGllbnRfbmFtZSI6InBhbmVsIiwiZmluZ2VycHJpbnQiOiI5YjkzNWY5...
 #### Step 2: Onboard Node in the Web UI
 1. Open **Compute Nodes** in the Admin sidebar.
 2. Click **Create Node** and select the **Connect with token** tab.
-3. Enter the Node Name, paste the generated token into the **Trust Token** field, and configure CPU/RAM/Storage capacity.
+3. Enter the Node Name and paste the generated token into the **Trust Token** field. Hardware CPU, RAM, and storage capacity are auto-discovered from the hypervisor by default; optionally configure a manual capacity cap (`<=` physical hardware) or per-node **Overcommit Multipliers** (`cpu_overcommit`, `ram_overcommit`, `disk_overcommit`).
 4. Click **Connect with token**.
 
 ![Compute Nodes Management](../assets/compute-nodes-mtls.png)
@@ -95,7 +95,7 @@ Copy the 64-character SHA-256 `certificate_fingerprint` value from the `environm
 
 #### Step 4: Register the Node in the Web UI
 1. In **Create Node**, select the **Add with certificate** tab.
-2. Enter the Node Name, Endpoint URL (e.g., `https://192.168.1.100:8443`), and the Expected Fingerprint.
+2. Enter the Node Name, Endpoint URL (e.g., `https://192.168.1.100:8443`), and the Expected Fingerprint. Capacity is auto-discovered from the hypervisor by default unless an optional manual capacity cap is supplied, and per-node overcommit multipliers default to `1.0x`.
 3. Click **Verify connection** to test reachability, fingerprint matching, and mTLS client authentication.
 4. Click **Add with certificate**.
 
@@ -122,9 +122,12 @@ The **Verify connection** action (`POST /api/admin/hosts/verify-connection` or `
 
 ---
 
-## 4. Capacity Discovery & Cluster Endpoints
+## 4. Capacity Discovery, Manual Caps, Overcommit & Cluster Endpoints
 
-Upon successful onboarding, the panel queries `GET /1.0/resources` and `GET /1.0/storage-pools/{pool}/resources` to automatically discover compute threads, memory, and storage pool capacity.
+By default when onboarding a node, the panel queries `GET /1.0/resources` and `GET /1.0/storage-pools/{pool}/resources` to automatically discover physical compute threads, memory, and storage pool capacity (`capacity_source = discovered`).
+
+- **Manual Capacity Caps:** Administrators may optionally set a manual capacity cap (`total_cpu_cores`, `total_ram_mb`, `total_storage_gb`) that is less than or equal to the node's physical hardware resources to reserve capacity for non-panel workloads. Attempting to set manual capacity above the hypervisor's physical resources is rejected with HTTP 422.
+- **Per-Node Overcommit Multipliers:** Each compute node defines its own `cpu_overcommit` (`1.0x–16.0x`), `ram_overcommit` (`1.0x–4.0x`), and `disk_overcommit` (`1.0x–4.0x`) multipliers (default `1.0x`). Overcommit expands the aggregate pool available across multiple instances, while any single instance remains strictly bounded by the node's physical capacity minus host reserves.
 
 > [!NOTE]
 > For an Incus or LXD **cluster endpoint**, the resource discovery values describe the specific cluster member that answered the REST API request. Ognivo treats each endpoint as one compute node and does not aggregate resources across a cluster, so onboard individual cluster members as separate nodes if you need to use them.

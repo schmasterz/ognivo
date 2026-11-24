@@ -52,6 +52,11 @@ final class HostNodeResource extends JsonResource
         }
 
         $max = $guard->getMaxAllocatable($host);
+        $maxInstance = $guard->getMaxAllocatableForSingleInstance($host, $committed);
+
+        $cpuOvercommit = Cast::float($host->cpu_overcommit, 1.0);
+        $ramOvercommit = Cast::float($host->ram_overcommit, 1.0);
+        $diskOvercommit = Cast::float($host->disk_overcommit, 1.0);
 
         $freeCpu = max(0, (int) floor((float) $max['cpu'] - (float) $committed['cpu']));
         $freeRam = max(0, (int) floor((float) $max['ram'] - (float) $committed['ram']));
@@ -74,8 +79,16 @@ final class HostNodeResource extends JsonResource
             'total_cpu_cores' => $host->total_cpu_cores,
             'total_ram_mb' => $host->total_ram_mb,
             'total_storage_gb' => $host->total_storage_gb,
+            'cpu_overcommit' => $cpuOvercommit,
+            'ram_overcommit' => $ramOvercommit,
+            'disk_overcommit' => $diskOvercommit,
             'capacity_source' => $host->capacity_source ?? 'unknown',
             'capacity_synced_at' => $host->capacity_synced_at?->toISOString(),
+            'max_instance' => [
+                'cpu_cores' => $maxInstance['cpu'],
+                'ram_mb' => $maxInstance['ram'],
+                'disk_gb' => $maxInstance['disk'],
+            ],
             'capacity' => [
                 'source' => $host->capacity_source ?? 'unknown',
                 'synced_at' => $host->capacity_synced_at?->toISOString(),
@@ -83,16 +96,22 @@ final class HostNodeResource extends JsonResource
                     'total' => $host->total_cpu_cores,
                     'committed' => $committed['cpu'],
                     'free' => $freeCpu,
+                    'overcommit' => $cpuOvercommit,
+                    'max_allocatable' => max(0, (int) floor((float) $max['cpu'])),
                 ],
                 'ram' => [
                     'total' => $host->total_ram_mb,
                     'committed' => $committed['ram'],
                     'free' => $freeRam,
+                    'overcommit' => $ramOvercommit,
+                    'max_allocatable' => max(0, (int) floor((float) $max['ram'])),
                 ],
                 'disk' => [
                     'total' => $host->total_storage_gb,
                     'committed' => $committed['disk'],
                     'free' => $freeDisk,
+                    'overcommit' => $diskOvercommit,
+                    'max_allocatable' => max(0, (int) floor((float) $max['disk'])),
                 ],
             ],
             'settings' => $host->settings,

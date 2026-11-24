@@ -243,14 +243,6 @@
     <DocblockTypeContradiction>
       <code><![CDATA[in_array($host->status, ['fingerprint_mismatch', 'not_trusted', 'unreachable'], true)]]></code>
     </DocblockTypeContradiction>
-    <InvalidOperand>
-      <code><![CDATA[$committedRam / 1024]]></code>
-      <code><![CDATA[$host->total_cpu_cores * $cpuOvercommit]]></code>
-      <code><![CDATA[$host->total_ram_mb * $ramOvercommit]]></code>
-    </InvalidOperand>
-    <RedundantCast>
-      <code><![CDATA[(float) ($committedCpu + ($committedRam / 1024) + $committedDisk)]]></code>
-    </RedundantCast>
     <RiskyTruthyFalsyComparison>
       <code><![CDATA[app()->environment('local', 'testing')]]></code>
       <code><![CDATA[app()->environment('local', 'testing')]]></code>

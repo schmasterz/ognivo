@@ -174,6 +174,7 @@ test('customer requests never leak host secrets or infrastructure keys across en
         'driver',
         'status',
         'is_active',
+        'max_instance',
     ]);
 
     // 3. GET /api/vms

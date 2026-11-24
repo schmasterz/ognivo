@@ -145,12 +145,6 @@ parameters:
 			path: app/Models/IpPool.php
 
 		-
-			message: '#^Cannot cast mixed to float\.$#'
-			identifier: cast.double
-			count: 5
-			path: app/Services/HostSelector.php
-
-		-
 			message: '#^Call to function is_array\(\) with array\<string, mixed\> will always evaluate to true\.$#'
 			identifier: function.alreadyNarrowedType
 			count: 1

@@ -4,6 +4,19 @@ All notable changes to **Ognivo** are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-alpha.2] - 2026-12-01
+
+### Added
+- **Per-Node Overcommit Multipliers:** Moved CPU (`1.0x`–`16.0x`), RAM (`1.0x`–`4.0x`), and storage (`1.0x`–`4.0x`) overcommit multipliers from global environment variables to per-host database columns (`hosts.cpu_overcommit`, `hosts.ram_overcommit`, `hosts.disk_overcommit`), configurable in the **Create Compute Node** and **Edit Compute Node** modals and displayed in the **Compute Nodes** table.
+- **Dynamic Per-Node Instance Limits in Provisioning Modal:** Exposed `max_instance` (`cpu_cores`, `ram_mb`, `disk_gb`) on `GET /api/hosts` (`TenantHostResource` and `HostNodeResource`) and updated `CreateVmModal` to dynamically cap and clamp vCPU, RAM, and storage inputs to the selected node's available single-instance capacity alongside user quota limits.
+
+### Changed
+- **Single-Instance Physical Hardware Cap:** `HostCapacityGuard` now enforces that a single virtual machine or container cannot request more vCPU cores, RAM, or disk than the compute node's physical capacity (minus host reserves), even when per-node overcommit multipliers exceed `1.0x`.
+- **Auto-Discovered Onboarding Capacity & Physical Cap Validation:** Onboarding a compute node now auto-discovers hardware capacity from the hypervisor by default instead of pre-filling placeholder values. Manual capacity overrides act strictly as a cap (`<=` physical hypervisor resources); values exceeding physical hardware capacity are rejected with HTTP 422 (`messages.host.capacity_exceeds_physical`).
+
+### Removed
+- **Global Overcommit Environment Variables:** Removed deprecated `PROVISION_CPU_OVERCOMMIT`, `PROVISION_RAM_OVERCOMMIT`, and `PROVISION_DISK_OVERCOMMIT` from `backend/config/provisioning.php`, `.env.development.example`, and `.env.production.example` in favor of per-node overcommit configuration.
+
 ## [1.0.0-alpha.1] - 2026-11-23
 
 > **Pre-Release Notice (Alpha):**

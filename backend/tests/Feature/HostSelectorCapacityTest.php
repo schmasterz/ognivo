@@ -28,9 +28,6 @@ final class HostSelectorCapacityTest extends TestCase
         $this->selector = app(HostSelector::class);
 
         config([
-            'provisioning.cpu_overcommit' => 1.0,
-            'provisioning.ram_overcommit' => 1.0,
-            'provisioning.disk_overcommit' => 1.0,
             'provisioning.host_cpu_reserve_cores' => 0,
             'provisioning.host_ram_reserve_mb' => 0,
             'provisioning.host_disk_reserve_gb' => 0,
@@ -167,5 +164,49 @@ final class HostSelectorCapacityTest extends TestCase
             'ram_mb' => 4096,
             'disk_gb' => 50,
         ]);
+    }
+
+    public function test_select_respects_per_host_overcommit_and_single_instance_physical_cap(): void
+    {
+        $hostA = $this->createHost('host-a-overcommit', cpu: 4, ram: 16384, disk: 500);
+        $hostA->update(['cpu_overcommit' => 2.0]);
+
+        $user = User::factory()->create();
+
+        // Existing VM consumes 4 of the 8 overcommitted CPU cores
+        VirtualMachine::create([
+            'user_id' => $user->id,
+            'host_id' => $hostA->id,
+            'name' => 'existing-overcommit-vm',
+            'incus_project' => 'default',
+            'instance_type' => 'virtual-machine',
+            'status' => 'running',
+            'cpu_cores' => 4,
+            'ram_mb' => 2048,
+            'disk_gb' => 20,
+            'os_image' => 'ubuntu:24.04',
+        ]);
+
+        // A 4-core VM fits: committed 4 + requested 4 <= 8, and requested 4 <= physical 4
+        $selectedFit = $this->selector->select([
+            'os_image' => 'ubuntu:24.04',
+            'cpu_cores' => 4,
+            'ram_mb' => 2048,
+            'disk_gb' => 20,
+        ]);
+        $this->assertNotNull($selectedFit);
+        $this->assertSame($hostA->id, $selectedFit->id);
+
+        // Remove existing VM so pool has all 8 overcommitted cores free, then request a 6-core VM
+        VirtualMachine::where('host_id', $hostA->id)->delete();
+
+        // A single 6-core VM exceeds the 4-core physical cap even though 6 <= 8
+        $selectedTooLarge = $this->selector->select([
+            'os_image' => 'ubuntu:24.04',
+            'cpu_cores' => 6,
+            'ram_mb' => 2048,
+            'disk_gb' => 20,
+        ]);
+        $this->assertNull($selectedTooLarge);
     }
 }

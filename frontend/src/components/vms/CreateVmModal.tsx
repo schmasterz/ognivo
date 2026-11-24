@@ -20,6 +20,18 @@ interface CreateVmModalProps {
   onSuccess: () => void;
 }
 
+/**
+ * Returns true if the host has no known max_instance limits or can fit minimum instance requirements (1 vCPU, 1024 MB RAM, 5 GB Disk).
+ */
+function hostFitsMinimum(host: HostNode): boolean {
+  if (host.max_instance === undefined) return true;
+  return (
+    host.max_instance.cpu_cores >= 1 &&
+    host.max_instance.ram_mb >= 1024 &&
+    host.max_instance.disk_gb >= 5
+  );
+}
+
 export function CreateVmModal({
   isOpen,
   onClose,
@@ -129,7 +141,9 @@ export function CreateVmModal({
 
         if (hostsRes.data.length > 0) {
           const candidate =
-            hostsRes.data.find((h) => freeMap[h.id]) || hostsRes.data[0];
+            hostsRes.data.find((h) => freeMap[h.id] && hostFitsMinimum(h)) ||
+            hostsRes.data.find((h) => freeMap[h.id]) ||
+            hostsRes.data[0];
           setSelectedHostId((prev) => prev ?? candidate.id);
         }
       } catch (err) {
@@ -178,9 +192,48 @@ export function CreateVmModal({
     }
   }, [isOpen, selectedHostId, instanceType]);
 
-  if (!isOpen) return null;
-
   const available = quotaData?.available;
+
+  let nodeMaxCpu: number | null = null;
+  let nodeMaxRamGb: number | null = null;
+  let nodeMaxDiskGb: number | null = null;
+
+  if (selectedHostId !== null) {
+    const selectedHost = hosts.find((h) => h.id === selectedHostId);
+    if (selectedHost?.max_instance) {
+      nodeMaxCpu = selectedHost.max_instance.cpu_cores;
+      nodeMaxRamGb = Math.floor(selectedHost.max_instance.ram_mb / 1024);
+      nodeMaxDiskGb = selectedHost.max_instance.disk_gb;
+    }
+  } else {
+    const eligibleHosts = hosts.filter(
+      (h) => (hostHasFreeMap[h.id] ?? true) && h.max_instance && h.max_instance.cpu_cores >= 1
+    );
+    if (eligibleHosts.length > 0) {
+      nodeMaxCpu = Math.max(...eligibleHosts.map((h) => h.max_instance!.cpu_cores));
+      nodeMaxRamGb = Math.max(...eligibleHosts.map((h) => Math.floor(h.max_instance!.ram_mb / 1024)));
+      nodeMaxDiskGb = Math.max(...eligibleHosts.map((h) => h.max_instance!.disk_gb));
+    }
+  }
+
+  const quotaMaxCpu = available?.cpu_cores !== undefined && available.cpu_cores > 0 ? available.cpu_cores : 64;
+  const quotaMaxRamGb = available?.ram_mb !== undefined && available.ram_mb > 0 ? Math.floor(available.ram_mb / 1024) : 128;
+  const quotaMaxDiskGb = available?.disk_gb !== undefined && available.disk_gb > 0 ? available.disk_gb : 2000;
+
+  const effectiveMaxCpu = Math.max(1, Math.min(64, quotaMaxCpu, ...(nodeMaxCpu !== null && nodeMaxCpu > 0 ? [nodeMaxCpu] : [])));
+  const effectiveMaxRamGb = Math.max(1, Math.min(128, quotaMaxRamGb, ...(nodeMaxRamGb !== null && nodeMaxRamGb > 0 ? [nodeMaxRamGb] : [])));
+  const effectiveMaxDiskGb = Math.max(5, Math.min(2000, quotaMaxDiskGb, ...(nodeMaxDiskGb !== null && nodeMaxDiskGb > 0 ? [nodeMaxDiskGb] : [])));
+
+  useEffect(() => {
+    if (!isOpen) return;
+    queueMicrotask(() => {
+      setCpuCores((prev) => Math.min(prev, effectiveMaxCpu));
+      setRamGb((prev) => Math.min(prev, effectiveMaxRamGb));
+      setDiskGb((prev) => Math.min(prev, effectiveMaxDiskGb));
+    });
+  }, [isOpen, effectiveMaxCpu, effectiveMaxRamGb, effectiveMaxDiskGb]);
+
+  if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -331,9 +384,10 @@ export function CreateVmModal({
                 {hosts.map((h) => {
                   const hasFree = hostHasFreeMap[h.id] ?? false;
                   const isExhausted = !hasFree;
+                  const noCapacity = h.max_instance !== undefined && !hostFitsMinimum(h);
                   return (
-                    <option key={h.id} value={h.id} disabled={isExhausted}>
-                      {h.name} {h.region ? `(${h.region})` : ""} {isExhausted ? "(Exhausted)" : ""}
+                    <option key={h.id} value={h.id} disabled={isExhausted || noCapacity}>
+                      {h.name}{h.region ? ` (${h.region})` : ""}{isExhausted ? " (Exhausted)" : ""}{noCapacity ? ` ${t("noCapacityBadge")}` : ""}
                     </option>
                   );
                 })}
@@ -409,17 +463,28 @@ export function CreateVmModal({
             <div>
               <label className="text-xs font-medium text-gray-700 dark:text-gray-300 flex items-center justify-between mb-1">
                 <span>{t("cpuCores")}</span>
-                <span className="text-[10px] text-gray-400">
-                  {t("avail")}: {available?.cpu_cores === -1 ? "∞" : (available?.cpu_cores ?? "-")}
+                <span
+                  className="text-[10px] text-gray-400"
+                  title={nodeMaxCpu !== null ? `${t("nodeMax")}: ${nodeMaxCpu}` : undefined}
+                >
+                  {t("avail")}:{" "}
+                  {nodeMaxCpu !== null &&
+                  (available?.cpu_cores === -1 ||
+                    available?.cpu_cores === undefined ||
+                    nodeMaxCpu < available.cpu_cores)
+                    ? effectiveMaxCpu
+                    : available?.cpu_cores === -1
+                      ? "∞"
+                      : (available?.cpu_cores ?? "-")}
                 </span>
               </label>
               <div className="relative">
                 <input
                   type="number"
                   min={1}
-                  max={available?.cpu_cores !== undefined && available.cpu_cores > 0 ? available.cpu_cores : 64}
+                  max={effectiveMaxCpu}
                   value={cpuCores}
-                  onChange={(e) => setCpuCores(Math.max(1, parseInt(e.target.value) || 1))}
+                  onChange={(e) => setCpuCores(Math.min(effectiveMaxCpu, Math.max(1, parseInt(e.target.value, 10) || 1)))}
                   className="w-full bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 pl-8"
                 />
                 <Cpu className="w-4 h-4 text-emerald-500 absolute left-2.5 top-2.5" />
@@ -429,17 +494,30 @@ export function CreateVmModal({
             <div>
               <label className="text-xs font-medium text-gray-700 dark:text-gray-300 flex items-center justify-between mb-1">
                 <span>{t("ramGb")}</span>
-                <span className="text-[10px] text-gray-400">
-                  {t("avail")}: {available?.ram_mb === -1 ? "∞" : (available ? Math.round(available.ram_mb / 1024) : "-")}
+                <span
+                  className="text-[10px] text-gray-400"
+                  title={nodeMaxRamGb !== null ? `${t("nodeMax")}: ${nodeMaxRamGb}` : undefined}
+                >
+                  {t("avail")}:{" "}
+                  {nodeMaxRamGb !== null &&
+                  (available?.ram_mb === -1 ||
+                    available?.ram_mb === undefined ||
+                    nodeMaxRamGb < Math.floor(available.ram_mb / 1024))
+                    ? effectiveMaxRamGb
+                    : available?.ram_mb === -1
+                      ? "∞"
+                      : available
+                        ? Math.floor(available.ram_mb / 1024)
+                        : "-"}
                 </span>
               </label>
               <div className="relative">
                 <input
                   type="number"
                   min={1}
-                  max={available?.ram_mb !== undefined && available.ram_mb > 0 ? Math.round(available.ram_mb / 1024) : 128}
+                  max={effectiveMaxRamGb}
                   value={ramGb}
-                  onChange={(e) => setRamGb(Math.max(1, parseInt(e.target.value) || 1))}
+                  onChange={(e) => setRamGb(Math.min(effectiveMaxRamGb, Math.max(1, parseInt(e.target.value, 10) || 1)))}
                   className="w-full bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 pl-8"
                 />
                 <Layers className="w-4 h-4 text-purple-500 absolute left-2.5 top-2.5" />
@@ -449,17 +527,28 @@ export function CreateVmModal({
             <div>
               <label className="text-xs font-medium text-gray-700 dark:text-gray-300 flex items-center justify-between mb-1">
                 <span>{t("diskGb")}</span>
-                <span className="text-[10px] text-gray-400">
-                  {t("avail")}: {available?.disk_gb === -1 ? "∞" : (available?.disk_gb ?? "-")}
+                <span
+                  className="text-[10px] text-gray-400"
+                  title={nodeMaxDiskGb !== null ? `${t("nodeMax")}: ${nodeMaxDiskGb}` : undefined}
+                >
+                  {t("avail")}:{" "}
+                  {nodeMaxDiskGb !== null &&
+                  (available?.disk_gb === -1 ||
+                    available?.disk_gb === undefined ||
+                    nodeMaxDiskGb < available.disk_gb)
+                    ? effectiveMaxDiskGb
+                    : available?.disk_gb === -1
+                      ? "∞"
+                      : (available?.disk_gb ?? "-")}
                 </span>
               </label>
               <div className="relative">
                 <input
                   type="number"
                   min={5}
-                  max={available?.disk_gb !== undefined && available.disk_gb > 0 ? available.disk_gb : 2000}
+                  max={effectiveMaxDiskGb}
                   value={diskGb}
-                  onChange={(e) => setDiskGb(Math.max(5, parseInt(e.target.value) || 5))}
+                  onChange={(e) => setDiskGb(Math.min(effectiveMaxDiskGb, Math.max(5, parseInt(e.target.value, 10) || 5)))}
                   className="w-full bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 pl-8"
                 />
                 <HardDrive className="w-4 h-4 text-amber-500 absolute left-2.5 top-2.5" />

@@ -9,19 +9,6 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Compute & Storage Overcommit Multipliers
-    |--------------------------------------------------------------------------
-    |
-    | Factors by which available host resources can be committed across VMs.
-    | 1.0 represents strictly no overcommit.
-    |
-    */
-    'cpu_overcommit' => (float) env('PROVISION_CPU_OVERCOMMIT', 1.0),
-    'ram_overcommit' => (float) env('PROVISION_RAM_OVERCOMMIT', 1.0),
-    'disk_overcommit' => (float) env('PROVISION_DISK_OVERCOMMIT', 1.0),
-
-    /*
-    |--------------------------------------------------------------------------
     | Host Capacity Reserves
     |--------------------------------------------------------------------------
     |

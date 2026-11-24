@@ -31,6 +31,9 @@ final readonly class CreateHostDTO
         public ?string $serverPublicKeyPin = null,
         public bool $autoAttachImages = true,
         public ?ImageSelectionDTO $images = null,
+        public float $cpuOvercommit = 1.0,
+        public float $ramOvercommit = 1.0,
+        public float $diskOvercommit = 1.0,
     ) {}
 
     /**
@@ -58,6 +61,9 @@ final readonly class CreateHostDTO
             serverPublicKeyPin: Cast::stringOrNull($data['server_public_key_pin'] ?? null),
             autoAttachImages: Cast::bool($data['auto_attach_images'] ?? true, true),
             images: $images !== null ? ImageSelectionDTO::fromArray($images) : null,
+            cpuOvercommit: Cast::float($data['cpu_overcommit'] ?? 1.0, 1.0),
+            ramOvercommit: Cast::float($data['ram_overcommit'] ?? 1.0, 1.0),
+            diskOvercommit: Cast::float($data['disk_overcommit'] ?? 1.0, 1.0),
         );
     }
 }
