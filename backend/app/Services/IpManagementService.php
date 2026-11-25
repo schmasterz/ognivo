@@ -84,8 +84,9 @@ final class IpManagementService
                                 ->where('released_at', '>', $cooldownLimit);
                         });
                 })
+                ->select('ip_string')
                 ->orderBy('address', 'asc')
-                ->cursor(['ip_string']);
+                ->cursor();
 
             // 4. Search for the lowest free gap across the usable address range
             $candidateLong = null;

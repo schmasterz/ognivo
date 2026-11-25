@@ -36,10 +36,6 @@
     <PossiblyFalseArgument>
       <code><![CDATA[json_encode($event)]]></code>
     </PossiblyFalseArgument>
-    <TypeDoesNotContainType>
-      <code><![CDATA[$this->shouldStop]]></code>
-      <code><![CDATA[$this->shouldStop]]></code>
-    </TypeDoesNotContainType>
   </file>
   <file src="app/Console/Commands/ReencryptSecretsCommand.php">
     <LessSpecificReturnStatement>

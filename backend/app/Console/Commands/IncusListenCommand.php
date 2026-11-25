@@ -279,6 +279,7 @@ class IncusListenCommand extends Command
             $status = 0;
             $res = pcntl_waitpid($pid, $status, WNOHANG);
             if ($res === $pid || $res === -1) {
+                /** @var int $status */
                 $exitCode = function_exists('pcntl_wexitstatus') ? pcntl_wexitstatus($status) : 0;
                 $isNormalExit = function_exists('pcntl_wifexited') && pcntl_wifexited($status) && $exitCode === 0;
 

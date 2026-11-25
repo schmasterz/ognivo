@@ -44,18 +44,18 @@ dataset('jobQueueRouting', [
 function instantiateJobForRoutingTest(string $jobClass): object
 {
     return match ($jobClass) {
-        ExecuteVmActionJob::class => new ExecuteVmActionJob(new VirtualMachine(), 'start'),
+        ExecuteVmActionJob::class => new ExecuteVmActionJob(new VirtualMachine, 'start'),
         CollectHostMetricsJob::class => new CollectHostMetricsJob(1),
-        DeliverWebhookJob::class => new DeliverWebhookJob(new WebhookDelivery()),
+        DeliverWebhookJob::class => new DeliverWebhookJob(new WebhookDelivery),
         PurgeVmMetricsJob::class => new PurgeVmMetricsJob(1),
-        WarnExpiringPanelCertificateJob::class => new WarnExpiringPanelCertificateJob(),
-        ProvisionVmJob::class => new ProvisionVmJob(new VirtualMachine()),
-        ReinstallVmJob::class => new ReinstallVmJob(new VirtualMachine()),
-        CreateSnapshotJob::class => new CreateSnapshotJob(new VmSnapshot()),
-        RestoreSnapshotJob::class => new RestoreSnapshotJob(new VmSnapshot()),
-        DeleteSnapshotJob::class => new DeleteSnapshotJob(new VmSnapshot()),
-        SuspendUserWorkloadsJob::class => new SuspendUserWorkloadsJob(new User()),
-        DeleteUserWorkloadsJob::class => new DeleteUserWorkloadsJob(new User()),
+        WarnExpiringPanelCertificateJob::class => new WarnExpiringPanelCertificateJob,
+        ProvisionVmJob::class => new ProvisionVmJob(new VirtualMachine),
+        ReinstallVmJob::class => new ReinstallVmJob(new VirtualMachine),
+        CreateSnapshotJob::class => new CreateSnapshotJob(new VmSnapshot),
+        RestoreSnapshotJob::class => new RestoreSnapshotJob(new VmSnapshot),
+        DeleteSnapshotJob::class => new DeleteSnapshotJob(new VmSnapshot),
+        SuspendUserWorkloadsJob::class => new SuspendUserWorkloadsJob(new User),
+        DeleteUserWorkloadsJob::class => new DeleteUserWorkloadsJob(new User),
         default => throw new InvalidArgumentException("Unexpected job class: {$jobClass}"),
     };
 }
@@ -68,18 +68,18 @@ function instantiateJobForRoutingTest(string $jobClass): object
 function dispatchJobForRoutingTest(string $jobClass): void
 {
     match ($jobClass) {
-        ExecuteVmActionJob::class => ExecuteVmActionJob::dispatch(new VirtualMachine(), 'start'),
+        ExecuteVmActionJob::class => ExecuteVmActionJob::dispatch(new VirtualMachine, 'start'),
         CollectHostMetricsJob::class => CollectHostMetricsJob::dispatch(1),
-        DeliverWebhookJob::class => DeliverWebhookJob::dispatch(new WebhookDelivery()),
+        DeliverWebhookJob::class => DeliverWebhookJob::dispatch(new WebhookDelivery),
         PurgeVmMetricsJob::class => PurgeVmMetricsJob::dispatch(1),
         WarnExpiringPanelCertificateJob::class => WarnExpiringPanelCertificateJob::dispatch(),
-        ProvisionVmJob::class => ProvisionVmJob::dispatch(new VirtualMachine()),
-        ReinstallVmJob::class => ReinstallVmJob::dispatch(new VirtualMachine()),
-        CreateSnapshotJob::class => CreateSnapshotJob::dispatch(new VmSnapshot()),
-        RestoreSnapshotJob::class => RestoreSnapshotJob::dispatch(new VmSnapshot()),
-        DeleteSnapshotJob::class => DeleteSnapshotJob::dispatch(new VmSnapshot()),
-        SuspendUserWorkloadsJob::class => SuspendUserWorkloadsJob::dispatch(new User()),
-        DeleteUserWorkloadsJob::class => DeleteUserWorkloadsJob::dispatch(new User()),
+        ProvisionVmJob::class => ProvisionVmJob::dispatch(new VirtualMachine),
+        ReinstallVmJob::class => ReinstallVmJob::dispatch(new VirtualMachine),
+        CreateSnapshotJob::class => CreateSnapshotJob::dispatch(new VmSnapshot),
+        RestoreSnapshotJob::class => RestoreSnapshotJob::dispatch(new VmSnapshot),
+        DeleteSnapshotJob::class => DeleteSnapshotJob::dispatch(new VmSnapshot),
+        SuspendUserWorkloadsJob::class => SuspendUserWorkloadsJob::dispatch(new User),
+        DeleteUserWorkloadsJob::class => DeleteUserWorkloadsJob::dispatch(new User),
         default => throw new InvalidArgumentException("Unexpected job class: {$jobClass}"),
     };
 }

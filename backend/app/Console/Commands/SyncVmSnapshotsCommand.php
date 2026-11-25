@@ -14,7 +14,7 @@ use Throwable;
 /**
  * Artisan command to synchronize snapshots for virtual machines from hypervisor backup targets.
  */
-class SyncVmSnapshotsCommand extends Command
+final class SyncVmSnapshotsCommand extends Command
 {
     /**
      * The name and signature of the console command.
@@ -41,7 +41,8 @@ class SyncVmSnapshotsCommand extends Command
      */
     public function handle(): int
     {
-        $hostArg = $this->argument('host');
+        $rawHost = $this->argument('host');
+        $hostArg = is_string($rawHost) ? $rawHost : null;
         $query = VirtualMachine::query()
             ->whereNotIn('status', ['deleted']);
 

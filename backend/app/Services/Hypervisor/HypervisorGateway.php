@@ -40,9 +40,9 @@ class HypervisorGateway
      */
     public function getHandlerForHost(Host $host): CurlMultiHandler
     {
-        $key = ($host->id ?? 'transient').':'.$host->endpoint_url.':'.($host->server_public_key_pin ?? '');
+        $key = ($host->exists ? (string) $host->id : 'transient').':'.$host->endpoint_url.':'.($host->server_public_key_pin ?? '');
 
-        return $this->handlers[$key] ??= new CurlMultiHandler();
+        return $this->handlers[$key] ??= new CurlMultiHandler;
     }
 
     /**
@@ -58,7 +58,7 @@ class HypervisorGateway
      */
     public function resetHostHandler(Host $host): void
     {
-        $prefix = (string) ($host->id ?? 'transient').':';
+        $prefix = ($host->exists ? (string) $host->id : 'transient').':';
         foreach (array_keys($this->handlers) as $key) {
             if (str_starts_with((string) $key, $prefix)) {
                 unset($this->handlers[$key]);
@@ -144,7 +144,7 @@ class HypervisorGateway
 
         if (defined('CURLOPT_SSLCERT_BLOB') && defined('CURLOPT_SSLKEY_BLOB')) {
             $options['curl'][CURLOPT_SSLCERT_BLOB] = $clientCert->certificate;
-            $options['curl'][CURLOPT_SSLKEY_BLOB] = ($clientCert->id === $certService->getActiveCertificate()?->id && method_exists($certService, 'getActivePrivateKey'))
+            $options['curl'][CURLOPT_SSLKEY_BLOB] = ($clientCert->id === $certService->getActiveCertificate()?->id)
                 ? ($certService->getActivePrivateKey() ?? $clientCert->private_key)
                 : $clientCert->private_key;
         } else {
