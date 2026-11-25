@@ -1,11 +1,12 @@
 /**
  * Core HTTP Request Engine and Error Handling for LXD/Incus API Client.
  */
+import { getRuntimeConfig } from "@/lib/config";
 
 export const API_BASE =
   typeof window !== "undefined"
-    ? "/api"
-    : process.env.NEXT_PUBLIC_API_URL || "http://webserver/api";
+    ? (getRuntimeConfig().api_base_url || "/api/v1")
+    : process.env.NEXT_PUBLIC_API_URL || "http://webserver/api/v1";
 
 let currentLocale: string | null = null;
 
