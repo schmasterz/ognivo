@@ -241,8 +241,8 @@ docker exec ognivo-nginx nginx -s reload
 
 ### Back up what cannot be regenerated
 
-- **`.env.production`**, especially `APP_KEY` and `AUDIT_HMAC_KEY`. Losing `APP_KEY` makes encrypted data (the panel's mTLS key, node tokens, the SMTP password) unreadable.
-- The MySQL data volume (`ognivo_db_data`).
+- **`.env.production`**, especially `APP_KEY` (plus any active `APP_PREVIOUS_KEYS`) and `AUDIT_HMAC_KEY`. Losing `APP_KEY` (or any still-needed previous keys) makes encrypted data (the panel mTLS private key, compute node tokens, the SMTP password) permanently unrecoverable.
+- The MySQL data volume (`ognivo_db_data`). A database backup/restore requires the matching `APP_KEY` (and `APP_PREVIOUS_KEYS` if secrets have not completed migration). To rotate keys safely, follow [configuration.md — APP_KEY Rotation Procedure](../operations/configuration.md#6-app_key-rotation-procedure).
 - `docker/certs/` if you installed your own certificate.
 
 ---
@@ -313,6 +313,8 @@ If a release changes database privileges, the notes will tell you to re-apply th
 ```bash
 docker exec -it ognivo-backend php artisan audit:grants --force
 ```
+
+If an upgrade or operational procedure requires rotating `APP_KEY` or re-encrypting stored secrets, follow [configuration.md — APP_KEY Rotation Procedure](../operations/configuration.md#6-app_key-rotation-procedure).
 
 ### Remove everything
 

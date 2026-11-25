@@ -240,7 +240,7 @@ docker exec ognivo-nginx nginx -s reload
 ```
 
 > [!IMPORTANT]
-> Back up `.env.production`, especially `APP_KEY` and `AUDIT_HMAC_KEY`. Losing `APP_KEY` makes encrypted data (panel certificate key, node tokens, SMTP password) unreadable. See [Upgrading and backups](#upgrading-and-backups).
+> Back up `.env.production`, especially `APP_KEY` (and any active `APP_PREVIOUS_KEYS`) and `AUDIT_HMAC_KEY`. Losing `APP_KEY` makes encrypted data (panel certificate key, node tokens, SMTP password) permanently unrecoverable, and database restores require the matching `APP_KEY` (and `APP_PREVIOUS_KEYS` if unmigrated). See [Upgrading and backups](#upgrading-and-backups) and [docs/operations/configuration.md#6-app_key-rotation-procedure](docs/operations/configuration.md#6-app_key-rotation-procedure).
 
 Firewall: expose only `80` and `443` to the internet. The panel host must be able to reach each Incus node on port `8443`.
 
@@ -341,7 +341,7 @@ Planned work is tracked [`CHANGELOG.md`](CHANGELOG.md). Current priorities: fini
 
 - **MySQL grants:** the users `ognivo_user`, `audit_writer` and `audit_maintenance` are created at first install and not modified on upgrade. When a release changes privileges, re-apply them with `php artisan audit:grants --force`.
 
-- **What to back up:** the MySQL volume, `.env.production`, `docker/certs/`. Details in [Installation — Back up your secrets](docs/getting-started/installation.md#back-up-your-secrets).
+- **What to back up:** the MySQL volume, `.env.production`, `docker/certs/`. Database restores require the matching `APP_KEY` (and `APP_PREVIOUS_KEYS` if secrets are unmigrated); for key rotation, see [docs/operations/configuration.md#6-app_key-rotation-procedure](docs/operations/configuration.md#6-app_key-rotation-procedure). Details in [Installation — Back up what cannot be regenerated](docs/getting-started/installation.md#back-up-what-cannot-be-regenerated).
 
 ## Security
 

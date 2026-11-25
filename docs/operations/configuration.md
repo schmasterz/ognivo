@@ -62,7 +62,7 @@ The development example (`.env.development.example`) differs from the production
 | `APP_NAME` | `Ognivo` | `"Ognivo"` | Application name shown in UI and emails |
 | `APP_ENV` | `production` | `production` | Runtime environment (`local` or `production`). `production` enables `app:check-production-config` on container start |
 | `APP_KEY` | *(none)* | generated | Primary AES-256-CBC key encrypting mTLS keys, host tokens, and the stored SMTP password |
-| `APP_PREVIOUS_KEYS` | *(none)* | commented out | Comma-separated previous `APP_KEY` values (full value including the `base64:` prefix) used during key rotation |
+| `APP_PREVIOUS_KEYS` | *(none)* | commented out | Comma-separated previous `APP_KEY` values (full value including the `base64:` prefix) used during key rotation. Must stay set until `php artisan app:reencrypt-secrets --status` reports `0` secrets on a previous key and exits `0` |
 | `APP_DEBUG` | `false` | `false` | Must be `false` in production (enforced on boot) |
 | `APP_URL` | `http://localhost` | `https://panel.example.com` | Canonical public URL of the panel. Also the default for `REVERB_ALLOWED_ORIGINS` |
 | `APP_LOCALE` | `en` | commented out (`en`) | Default locale (`en` or `bg`) for code running outside an HTTP request: queue workers (e.g. queued emails) and console commands. API responses choose the locale per request (`?lang=`, `X-Locale`, then `Accept-Language`) and fall back to `en`, independent of this value |
@@ -252,12 +252,20 @@ The check does **not** validate every security-relevant setting. Review these yo
 
 ## 6. `APP_KEY` Rotation Procedure
 
-`APP_KEY` encrypts `panel_certificates.private_key`, `hosts.token`, and the SMTP password stored in `system_settings` (`smtp_settings`). `app:reencrypt-secrets` re-encrypts every model attribute cast as `encrypted` plus the SMTP password. Because Docker Compose injects `.env.production` (or `.env.development`) variables at container creation time, rotating `APP_KEY` requires recreating the containers (`make up-prod` / `make up-dev`) before and after re-encrypting database secrets:
+`APP_KEY` encrypts `panel_certificates.private_key`, `hosts.token`, user secrets / password pre-hashes, and the SMTP password stored in `system_settings` (`smtp_settings`). Because Docker Compose injects `.env.production` (or `.env.development`) variables at container creation time, rotating `APP_KEY` requires recreating the containers (`make up-prod` / `make up-dev`) before and after re-encrypting database secrets.
+
+### Prerequisites
+
+> [!IMPORTANT]
+> Before rotating keys, take a full backup of the production database (`mysqldump` or volume snapshot) and back up the current `.env.production` (or `.env.development`) file.
+
+### Canonical 6-Step Procedure
 
 1. **Move the current key to `APP_PREVIOUS_KEYS`** in `.env.production` (or `.env.development`):
    ```ini
    APP_PREVIOUS_KEYS="base64:PreviousKeyHere..."
    ```
+
 2. **Generate and set a new `APP_KEY`:**
    ```bash
    openssl rand -base64 32
@@ -265,16 +273,42 @@ The check does **not** validate every security-relevant setting. Review these yo
    ```ini
    APP_KEY="base64:NewGeneratedKeyHere..."
    ```
+
 3. **Apply the updated environment variables to the running containers:**
    ```bash
    make up-prod   # or: make up-dev
    ```
-4. **Re-encrypt all database secrets with the new key:**
+
+4. **Re-encrypt all database secrets:**
    ```bash
-   docker exec -it ognivo-backend php artisan app:reencrypt-secrets
+   docker exec -it ognivo-backend php artisan app:reencrypt-secrets --include-users
    # development container: ognivo-backend-dev
    ```
-5. **Verify hypervisor connectivity** in the Admin UI (**Verify connection** on hosts) and send the SMTP test email from the admin panel.
-6. **Clear `APP_PREVIOUS_KEYS=""`** in `.env.production` and run `make up-prod` again so the old key is removed from the container environment.
+   User secrets and password pre-hashes are also re-encrypted lazily on access or login; passing `--include-users` forces scanning and re-encrypting them immediately. You can run the command with `--dry-run` beforehand to simulate re-encryption without persisting changes.
 
-`AUDIT_HMAC_KEY` is rotated separately through `AUDIT_HMAC_KEY_ID` and `AUDIT_PREVIOUS_HMAC_KEYS` (JSON or comma-separated `id:key` pairs); see [security-and-audit.md](../architecture/security-and-audit.md#3-audit-environment-variables).
+5. **Verify key migration status and connectivity:**
+   ```bash
+   docker exec -it ognivo-backend php artisan app:reencrypt-secrets --status
+   # development container: ognivo-backend-dev
+   ```
+   Confirm that `--status` reports `0` secrets on a previous key and exits `0`. Then verify hypervisor connectivity in the Admin UI (**Compute Nodes** -> **Verify connection**) and send an SMTP test email from the Admin panel (**Settings** -> **Send test email**).
+
+6. **Clear `APP_PREVIOUS_KEYS` (ONLY when `--status` reports `0`):**
+   Clear `APP_PREVIOUS_KEYS=""` in `.env.production` (or `.env.development`) and run `make up-prod` (or `make up-dev`) again so the old key is purged from the container environment.
+
+> [!WARNING]
+> If you rely on lazy migration instead of running `--include-users`, keep `APP_PREVIOUS_KEYS` set until all users have logged in and migrated. Removing `APP_PREVIOUS_KEYS` earlier makes any remaining unmigrated secrets or passwords undecryptable.
+
+### Rollback Procedure
+
+If `app:reencrypt-secrets --status` reports a non-zero count, or if decryption errors appear after removing the old key, restore the old key into `APP_PREVIOUS_KEYS` in `.env.production` (or `.env.development`) and redeploy with `make up-prod` (or `make up-dev`). Nothing is lost as long as the old key remains available in `APP_PREVIOUS_KEYS`.
+
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+| :--- | :--- | :--- |
+| "The MAC is invalid" / `Illuminate\Contracts\Encryption\DecryptException` | `APP_PREVIOUS_KEYS` is missing the key used to encrypt the record, or the key was corrupted during copy-paste. | Restore the previous key into `APP_PREVIOUS_KEYS`, verify the format (`base64:...`), and restart containers with `make up-prod` (or `make up-dev`). |
+| `--status` reports non-zero records on previous keys | Incomplete re-encryption or unmigrated user secrets. | Re-run `docker exec -it ognivo-backend php artisan app:reencrypt-secrets --include-users` (or `ognivo-backend-dev` in development). Do **not** clear `APP_PREVIOUS_KEYS` until `--status` exits `0`. |
+| `app:reencrypt-secrets` exits with code `1` | Decryption error on one or more model attributes or the stored SMTP password. | Inspect container logs, verify `APP_PREVIOUS_KEYS`, and run with `--dry-run` to locate the failing model record. |
+
+`AUDIT_HMAC_KEY` is rotated separately through `AUDIT_HMAC_KEY_ID` and `AUDIT_PREVIOUS_HMAC_KEYS` (JSON or comma-separated `id:key` pairs); see [security-and-audit.md](../architecture/security-and-audit.md#4-hmac-sealing-key-rotation-procedure).
