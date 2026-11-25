@@ -12,6 +12,14 @@ This document describes Ognivo's defense-in-depth security controls, database pr
 - **Rate Limiting on Hypervisor Mutations:** Destructive and state-changing actions (`POST /api/vms/{id}/action`, snapshot mutations) are protected by `throttle:vm-actions` (10 requests/minute per customer).
 - **Internal Network Isolation:** In production, MySQL (`3306`), Redis (`6379`), Reverb (`8080`), `console-proxy` (`8085`), and Next.js (`3000`) are bound exclusively to the internal Docker network; only Nginx (`80`/`443`) is published to the host.
 
+### 1.1 Cryptographic Boundaries & Data Classification
+
+For key rotation steps, follow the canonical runbook in [configuration.md — APP_KEY Rotation Procedure](../operations/configuration.md#6-app_key-rotation-procedure).
+
+- **Symmetrically Encrypted with `APP_KEY` (AES-256-CBC):** `PanelCertificate::private_key` (panel mTLS private key), `Host::token` (hypervisor trust tokens), and `system_settings.smtp_settings['password']` (SMTP authentication password). Ephemeral console tickets are encrypted with HKDF derived from `APP_KEY`. Losing `APP_KEY` renders this data permanently unrecoverable.
+- **Hashed with per-user salt & `APP_KEY` pepper (one-way):** User passwords (`User::$password`) are NOT symmetrically encrypted; they use a per-user Base62 salt (`password_salt`) and an HMAC-SHA256 pre-hash peppered with `APP_KEY`, followed by Bcrypt (`Hash::make(...)`). They cannot be decrypted or re-encrypted offline without the user's plaintext password; during key rotation they are upgraded lazily upon user authentication as long as the old key is retained in `APP_PREVIOUS_KEYS` (or scanned via `--include-users`).
+- **Signed with HMAC (`AUDIT_HMAC_KEY`):** Audit seals (`audit_seals`) use SHA-256 hash chaining signed with `AUDIT_HMAC_KEY` (`AUDIT_HMAC_KEY_ID`). This is rotated separately using `AUDIT_PREVIOUS_HMAC_KEYS` as described in [Section 4](#4-hmac-sealing-key-rotation-procedure).
+
 ---
 
 ## 2. Tamper-Evident Audit Architecture

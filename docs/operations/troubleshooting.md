@@ -13,12 +13,14 @@ Production configuration check failed! Refusing to start with unsafe defaults.
 
 **Cause:** `.env.production` contains a placeholder (`CHANGE_ME`), a default password (`secret_password`), `APP_DEBUG=true`, `RUN_SEEDERS=true`, or wildcard `*` in `REVERB_ALLOWED_ORIGINS`. See the full check list in [configuration.md](configuration.md#5-production-safety-enforcement-appcheck-production-config).
 
-**Fix:** Regenerate missing secrets and restart:
+**Fix:** Update the offending settings in `.env.production` directly (for example `APP_DEBUG=false`, `RUN_SEEDERS=false`, `REVERB_ALLOWED_ORIGINS`, `APP_URL`, or any default passwords), run `make secrets` to idempotently populate missing or `CHANGE_ME` secrets, and restart the production stack:
 ```bash
-rm -f .env.production
 make secrets
 make up-prod
 ```
+
+> [!CAUTION]
+> Do not delete `.env.production` on an existing install, as this regenerates `APP_KEY` and renders existing encrypted data unrecoverable.
 
 ---
 
@@ -77,3 +79,12 @@ docker logs -f ognivo-console-proxy-dev
 docker logs -f ognivo-frontend-dev
 ```
 *(Omit the `-dev` suffix when inspecting production containers. See [commands.md](commands.md#5-container-names-reference) for all container names.)*
+
+---
+
+## 6. Encryption & Key Rotation Issues
+
+| Symptom | Cause | Fix |
+| :--- | :--- | :--- |
+| `Illuminate\Contracts\Encryption\DecryptException: The MAC is invalid` | `APP_PREVIOUS_KEYS` is missing or does not include the key that encrypted the database record. | Follow the rollback and recovery procedure in [configuration.md#6-app_key-rotation-procedure](configuration.md#6-app_key-rotation-procedure). |
+| `app:reencrypt-secrets --status` reports undecryptable rows or exits 1 | Incomplete rotation, wrong previous key, or database restore without the matching `APP_KEY`. | Check container environment variables, ensure `APP_PREVIOUS_KEYS` has all previous keys, and consult [configuration.md#6-app_key-rotation-procedure](configuration.md#6-app_key-rotation-procedure). |
