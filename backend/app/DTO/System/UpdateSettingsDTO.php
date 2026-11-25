@@ -29,6 +29,11 @@ final readonly class UpdateSettingsDTO
         public ?bool $allowContainers = null,
         public ?array $smtp = null,
         public ?string $frontendUrl = null,
+        public ?bool $metricsEnabled = null,
+        public ?int $metricsIntervalSeconds = null,
+        public ?int $metricsRetentionRawHours = null,
+        public ?int $metricsRetention5mDays = null,
+        public ?int $metricsRetention1hDays = null,
     ) {}
 
     /**
@@ -55,6 +60,11 @@ final readonly class UpdateSettingsDTO
             allowContainers: isset($data['allow_containers']) ? Cast::bool($data['allow_containers']) : null,
             smtp: $smtp,
             frontendUrl: isset($data['frontend_url']) ? Cast::string($data['frontend_url']) : null,
+            metricsEnabled: isset($data['metrics_enabled']) ? Cast::bool($data['metrics_enabled']) : null,
+            metricsIntervalSeconds: isset($data['metrics_interval_seconds']) ? Cast::int($data['metrics_interval_seconds']) : null,
+            metricsRetentionRawHours: isset($data['metrics_retention_raw_hours']) ? Cast::int($data['metrics_retention_raw_hours']) : null,
+            metricsRetention5mDays: isset($data['metrics_retention_5m_days']) ? Cast::int($data['metrics_retention_5m_days']) : null,
+            metricsRetention1hDays: isset($data['metrics_retention_1h_days']) ? Cast::int($data['metrics_retention_1h_days']) : null,
         );
     }
 }

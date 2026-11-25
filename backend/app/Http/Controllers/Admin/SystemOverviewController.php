@@ -53,13 +53,7 @@ final class SystemOverviewController extends Controller
     public function getSettings(Request $request): JsonResponse
     {
         return response()->json([
-            'settings' => [
-                'registration_enabled' => $this->overviewService->isRegistrationEnabled(),
-                'allow_virtual_machines' => $this->overviewService->isVmEnabled(),
-                'allow_containers' => $this->overviewService->isContainerEnabled(),
-                'frontend_url' => $this->overviewService->getFrontendUrl(),
-                'smtp' => $this->overviewService->getSmtpSettings(),
-            ],
+            'settings' => $this->settingsPayload(),
         ]);
     }
 
@@ -85,17 +79,67 @@ final class SystemOverviewController extends Controller
         if ($dto->smtp !== null) {
             $this->overviewService->setSmtpSettings($dto->smtp);
         }
+        if ($dto->metricsEnabled !== null) {
+            $this->overviewService->setMetricsEnabled($dto->metricsEnabled);
+        }
+        if ($dto->metricsIntervalSeconds !== null) {
+            $this->overviewService->setMetricsIntervalSeconds($dto->metricsIntervalSeconds);
+        }
+        if (
+            $dto->metricsRetentionRawHours !== null
+            || $dto->metricsRetention5mDays !== null
+            || $dto->metricsRetention1hDays !== null
+        ) {
+            $this->overviewService->setMetricsRetention(
+                $dto->metricsRetentionRawHours,
+                $dto->metricsRetention5mDays,
+                $dto->metricsRetention1hDays,
+            );
+        }
 
         return response()->json([
             'message' => __('messages.admin.settings_updated'),
-            'settings' => [
-                'registration_enabled' => $this->overviewService->isRegistrationEnabled(),
-                'allow_virtual_machines' => $this->overviewService->isVmEnabled(),
-                'allow_containers' => $this->overviewService->isContainerEnabled(),
-                'frontend_url' => $this->overviewService->getFrontendUrl(),
-                'smtp' => $this->overviewService->getSmtpSettings(),
-            ],
+            'settings' => $this->settingsPayload(),
         ]);
+    }
+
+    /**
+     * Build the standardized admin settings response payload.
+     *
+     * @return array{
+     *     registration_enabled: bool,
+     *     allow_virtual_machines: bool,
+     *     allow_containers: bool,
+     *     frontend_url: string,
+     *     smtp: array{
+     *         enabled: bool,
+     *         host: string|null,
+     *         port: int,
+     *         encryption: string,
+     *         username: string|null,
+     *         has_password: bool,
+     *         from_address: string|null,
+     *         from_name: string|null
+     *     },
+     *     metrics_enabled: bool,
+     *     metrics_interval_seconds: int,
+     *     metrics_retention: array{raw_hours: int, rollup_5m_days: int, rollup_1h_days: int},
+     *     metrics_available_ranges: list<string>
+     * }
+     */
+    private function settingsPayload(): array
+    {
+        return [
+            'registration_enabled' => $this->overviewService->isRegistrationEnabled(),
+            'allow_virtual_machines' => $this->overviewService->isVmEnabled(),
+            'allow_containers' => $this->overviewService->isContainerEnabled(),
+            'frontend_url' => $this->overviewService->getFrontendUrl(),
+            'smtp' => $this->overviewService->getSmtpSettings(),
+            'metrics_enabled' => $this->overviewService->isMetricsEnabled(),
+            'metrics_interval_seconds' => $this->overviewService->getMetricsIntervalSeconds(),
+            'metrics_retention' => $this->overviewService->getMetricsRetention(),
+            'metrics_available_ranges' => $this->overviewService->getMetricsAvailableRanges(),
+        ];
     }
 
     /**

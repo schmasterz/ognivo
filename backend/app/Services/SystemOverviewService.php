@@ -13,6 +13,7 @@ use App\Models\SystemSetting;
 use App\Models\User;
 use App\Models\VirtualMachine;
 use App\Models\VmSnapshot;
+use App\Services\Metrics\VmMetricsConfigService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Crypt;
@@ -344,5 +345,94 @@ final class SystemOverviewService
         Mail::mailer('smtp')
             ->to($recipientEmail)
             ->send(new SmtpTestMail($smtp['host'], $smtp['port'], $fromAddress, $fromName));
+    }
+
+    /**
+     * Check if instance metrics collection and query API are enabled.
+     */
+    public function isMetricsEnabled(): bool
+    {
+        return app(VmMetricsConfigService::class)->isEnabled();
+    }
+
+    /**
+     * Update instance metrics enabled toggle.
+     */
+    public function setMetricsEnabled(bool $enabled): void
+    {
+        SystemSetting::updateOrCreate(
+            ['key' => 'metrics.enabled'],
+            ['value' => $enabled]
+        );
+    }
+
+    /**
+     * Retrieve the configured metrics collection interval in seconds.
+     */
+    public function getMetricsIntervalSeconds(): int
+    {
+        return app(VmMetricsConfigService::class)->intervalSeconds();
+    }
+
+    /**
+     * Update the metrics collection interval in seconds, clamped to [30, 300].
+     */
+    public function setMetricsIntervalSeconds(int $seconds): void
+    {
+        SystemSetting::updateOrCreate(
+            ['key' => 'metrics.interval_seconds'],
+            ['value' => max(30, min(300, $seconds))]
+        );
+    }
+
+    /**
+     * Retrieve configured metrics retention periods across raw, 5m, and 1h tiers.
+     *
+     * @return array{raw_hours: int, rollup_5m_days: int, rollup_1h_days: int}
+     */
+    public function getMetricsRetention(): array
+    {
+        $config = app(VmMetricsConfigService::class);
+
+        return [
+            'raw_hours' => $config->rawRetentionHours(),
+            'rollup_5m_days' => $config->rollup5mRetentionDays(),
+            'rollup_1h_days' => $config->rollup1hRetentionDays(),
+        ];
+    }
+
+    /**
+     * Update metrics tier retention durations while enforcing per-tier minimums.
+     */
+    public function setMetricsRetention(?int $rawHours, ?int $rollup5mDays, ?int $rollup1hDays): void
+    {
+        if ($rawHours !== null) {
+            SystemSetting::updateOrCreate(
+                ['key' => 'metrics.retention.raw_hours'],
+                ['value' => max(VmMetricsConfigService::MIN_RAW_RETENTION_HOURS, $rawHours)]
+            );
+        }
+        if ($rollup5mDays !== null) {
+            SystemSetting::updateOrCreate(
+                ['key' => 'metrics.retention.rollup_5m_days'],
+                ['value' => max(VmMetricsConfigService::MIN_ROLLUP_5M_RETENTION_DAYS, $rollup5mDays)]
+            );
+        }
+        if ($rollup1hDays !== null) {
+            SystemSetting::updateOrCreate(
+                ['key' => 'metrics.retention.rollup_1h_days'],
+                ['value' => max(VmMetricsConfigService::MIN_ROLLUP_1H_RETENTION_DAYS, $rollup1hDays)]
+            );
+        }
+    }
+
+    /**
+     * Retrieve the list of metrics UI ranges supported under current retention settings.
+     *
+     * @return list<string>
+     */
+    public function getMetricsAvailableRanges(): array
+    {
+        return app(VmMetricsConfigService::class)->availableRanges();
     }
 }
