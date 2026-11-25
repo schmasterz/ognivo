@@ -1,10 +1,11 @@
 "use client";
 
-import { Box, Camera, RotateCcw } from "lucide-react";
+import { Activity, Box, Camera, RotateCcw } from "lucide-react";
 import { registerVmTab, registerVmAction, VmActionContext } from "@/lib/registry/vmRegistry";
 import { vmsApi } from "@/lib/api/vms";
 import { VirtualMachine } from "@/lib/api/types";
 import { VmOverviewTab } from "./VmOverviewTab";
+import { VmMetricsTab } from "./metrics/VmMetricsTab";
 import { VmSnapshotsTab } from "./snapshots/VmSnapshotsTab";
 
 declare module "@/lib/registry/vmRegistry" {
@@ -38,6 +39,16 @@ export function registerVmBuiltins(): void {
     order: 10,
     icon: Box,
     component: VmOverviewTab,
+  });
+
+  // 1.5. Metrics Tab (order 15)
+  registerVmTab({
+    id: "metrics",
+    label: "Metrics",
+    order: 15,
+    icon: Activity,
+    visible: ({ metricsEnabled }) => Boolean(metricsEnabled),
+    component: VmMetricsTab,
   });
 
   // 2. Snapshots Tab (order 20)

@@ -305,6 +305,47 @@ export function NodesTable({
                               <span>{new Date(host.last_checked_at).toLocaleString()}</span>
                             </div>
                           )}
+
+                          {host.metrics_health &&
+                          (host.metrics_health.consecutive_failures > 0 ||
+                            host.metrics_health.last_error) ? (
+                            <span
+                              title={
+                                [
+                                  host.metrics_health.last_error,
+                                  host.metrics_health.last_success_at
+                                    ? `Last OK: ${new Date(
+                                        host.metrics_health.last_success_at
+                                      ).toLocaleString()}`
+                                    : null,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" — ") || undefined
+                              }
+                              className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20"
+                            >
+                              <AlertTriangle className="w-3 h-3 mr-1 shrink-0" />
+                              <span>
+                                {t("hostMetricsError", {
+                                  count: host.metrics_health.consecutive_failures,
+                                })}
+                              </span>
+                            </span>
+                          ) : host.metrics_health?.last_success_at ? (
+                            <span
+                              title={new Date(
+                                host.metrics_health.last_success_at
+                              ).toLocaleString()}
+                              className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                            >
+                              <Activity className="w-3 h-3 mr-1 shrink-0" />
+                              <span>
+                                {t("hostMetricsOk", {
+                                  ms: host.metrics_health.last_duration_ms ?? 0,
+                                })}
+                              </span>
+                            </span>
+                          ) : null}
                         </div>
                       </td>
 

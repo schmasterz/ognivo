@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { VirtualMachine, User } from "@/lib/api";
 import { vmsApi } from "@/lib/api/vms";
+import { useAuth } from "@/lib/auth/AuthContext";
 import { useI18n } from "@/lib/i18n/I18nContext";
 import { useToast } from "@/lib/toast/ToastContext";
 import { ConfirmModal, ConfirmVariant } from "@/components/ui/ConfirmModal";
@@ -45,6 +46,8 @@ export function VmDetailsModal({
 }: VmDetailsModalProps) {
   const { t } = useI18n();
   const { toast } = useToast();
+  const auth = useAuth();
+  const metricsEnabled = Boolean(auth.systemSettings?.metrics_enabled);
 
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -130,8 +133,8 @@ export function VmDetailsModal({
   };
 
   const tabContext = useMemo(
-    () => (vm ? { vm, user, isAdmin } : undefined),
-    [vm, user, isAdmin]
+    () => (vm ? { vm, user, isAdmin, metricsEnabled } : undefined),
+    [vm, user, isAdmin, metricsEnabled]
   );
 
   const registeredTabs = useVmTabs(tabContext);
@@ -198,9 +201,10 @@ export function VmDetailsModal({
 
   const getTabLabel = (tab: (typeof registeredTabs)[0]) => {
     if (typeof tab.label === "function") {
-      return tab.label({ vm, user, isAdmin });
+      return tab.label({ vm, user, isAdmin, metricsEnabled });
     }
     if (tab.id === "overview") return t("tabOverview");
+    if (tab.id === "metrics") return t("tabMetrics");
     if (tab.id === "snapshots") return t("tabSnapshots");
     return tab.label;
   };
