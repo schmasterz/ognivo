@@ -10,6 +10,7 @@ use App\Models\Host;
 use App\Models\PanelCertificate;
 use App\Models\VirtualMachine;
 use App\Services\PanelCertificateService;
+use GuzzleHttp\Handler\CurlMultiHandler;
 use GuzzleHttp\Promise\PromiseInterface;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
@@ -25,11 +26,45 @@ use Throwable;
  */
 class HypervisorGateway
 {
+    /** @var array<string, CurlMultiHandler> */
+    protected array $handlers = [];
+
     public function __construct(
         protected readonly ?PanelCertificateService $certService = null,
         protected readonly ?TlsPeerCertificateFetcherInterface $tlsPeerFetcher = null,
         protected readonly ?HypervisorManager $manager = null,
     ) {}
+
+    /**
+     * Get or create a reusable CurlMultiHandler for the given host to enable HTTP keep-alive and TLS connection pooling.
+     */
+    public function getHandlerForHost(Host $host): CurlMultiHandler
+    {
+        $key = ($host->id ?? 'transient').':'.$host->endpoint_url.':'.($host->server_public_key_pin ?? '');
+
+        return $this->handlers[$key] ??= new CurlMultiHandler();
+    }
+
+    /**
+     * Clear all cached cURL handlers.
+     */
+    public function resetHandlers(): void
+    {
+        $this->handlers = [];
+    }
+
+    /**
+     * Reset the cached cURL handler for a specific host.
+     */
+    public function resetHostHandler(Host $host): void
+    {
+        $prefix = (string) ($host->id ?? 'transient').':';
+        foreach (array_keys($this->handlers) as $key) {
+            if (str_starts_with((string) $key, $prefix)) {
+                unset($this->handlers[$key]);
+            }
+        }
+    }
 
     /**
      * Compute curl pinned public key format ("sha256//<base64>") from an X.509 certificate PEM.
@@ -109,7 +144,9 @@ class HypervisorGateway
 
         if (defined('CURLOPT_SSLCERT_BLOB') && defined('CURLOPT_SSLKEY_BLOB')) {
             $options['curl'][CURLOPT_SSLCERT_BLOB] = $clientCert->certificate;
-            $options['curl'][CURLOPT_SSLKEY_BLOB] = $clientCert->private_key;
+            $options['curl'][CURLOPT_SSLKEY_BLOB] = ($clientCert->id === $certService->getActiveCertificate()?->id && method_exists($certService, 'getActivePrivateKey'))
+                ? ($certService->getActivePrivateKey() ?? $clientCert->private_key)
+                : $clientCert->private_key;
         } else {
             // Fallback for environments where BLOB constants are undefined:
             // Create temporary files with mode 0600
@@ -163,6 +200,7 @@ class HypervisorGateway
                             || (defined('CURLE_SSL_PINNEDPUBKEYNOTMATCH') && $reason->getCode() === CURLE_SSL_PINNEDPUBKEYNOTMATCH);
 
                         if ($isPinMismatch) {
+                            $this->resetHostHandler($host);
                             $host->status = 'fingerprint_mismatch';
                             if ($host->exists) {
                                 $host->save();
@@ -186,6 +224,8 @@ class HypervisorGateway
                 });
             };
         });
+
+        $request->setHandler($this->getHandlerForHost($host));
 
         return $request;
     }
