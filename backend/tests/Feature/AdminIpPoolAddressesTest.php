@@ -102,7 +102,7 @@ beforeEach(function (): void {
 test('returns all addresses in numeric order with states and embedded allocation details', function (): void {
     Sanctum::actingAs($this->admin);
 
-    $response = $this->getJson("/api/admin/ip-pools/{$this->pool->id}/addresses");
+    $response = $this->getJson("/api/v1/admin/ip-pools/{$this->pool->id}/addresses");
 
     $response->assertOk()
         ->assertJsonStructure([
@@ -201,7 +201,7 @@ test('filters addresses by each state and matches free count with pool utilizati
     Sanctum::actingAs($this->admin);
 
     // 15 total raw - 3 excluded (.1, .2, .15) = 12 usable; minus 1 allocated (.3) and 1 active cooling (.4) = 10 free (including expired cooling .5)
-    $freeResponse = $this->getJson("/api/admin/ip-pools/{$this->pool->id}/addresses?state=free");
+    $freeResponse = $this->getJson("/api/v1/admin/ip-pools/{$this->pool->id}/addresses?state=free");
     $freeResponse->assertOk()
         ->assertJsonPath('meta.total', 10)
         ->assertJsonPath('pool.utilization.free', 10);
@@ -211,19 +211,19 @@ test('filters addresses by each state and matches free count with pool utilizati
         ->and(array_unique(array_column($freeItems, 'state')))->toBe(['free'])
         ->and(array_column($freeItems, 'ip'))->toContain('192.168.10.5');
 
-    $allocatedResponse = $this->getJson("/api/admin/ip-pools/{$this->pool->id}/addresses?state=allocated");
+    $allocatedResponse = $this->getJson("/api/v1/admin/ip-pools/{$this->pool->id}/addresses?state=allocated");
     $allocatedResponse->assertOk()
         ->assertJsonPath('meta.total', 1)
         ->assertJsonPath('data.0.ip', '192.168.10.3')
         ->assertJsonPath('data.0.state', 'allocated');
 
-    $coolingResponse = $this->getJson("/api/admin/ip-pools/{$this->pool->id}/addresses?state=cooling");
+    $coolingResponse = $this->getJson("/api/v1/admin/ip-pools/{$this->pool->id}/addresses?state=cooling");
     $coolingResponse->assertOk()
         ->assertJsonPath('meta.total', 1)
         ->assertJsonPath('data.0.ip', '192.168.10.4')
         ->assertJsonPath('data.0.state', 'cooling');
 
-    $excludedResponse = $this->getJson("/api/admin/ip-pools/{$this->pool->id}/addresses?state=excluded");
+    $excludedResponse = $this->getJson("/api/v1/admin/ip-pools/{$this->pool->id}/addresses?state=excluded");
     $excludedResponse->assertOk()
         ->assertJsonPath('meta.total', 3);
 
@@ -241,7 +241,7 @@ test('filters addresses by each state and matches free count with pool utilizati
 test('filters addresses by ipv4 prefix search', function (): void {
     Sanctum::actingAs($this->admin);
 
-    $response = $this->getJson("/api/admin/ip-pools/{$this->pool->id}/addresses?search=192.168.10.1");
+    $response = $this->getJson("/api/v1/admin/ip-pools/{$this->pool->id}/addresses?search=192.168.10.1");
     $response->assertOk()
         ->assertJsonPath('meta.total', 7);
 
@@ -256,7 +256,7 @@ test('filters addresses by ipv4 prefix search', function (): void {
     ]);
 
     // Combined with state=free (excludes .1 gateway and .15 excluded)
-    $freePrefixResponse = $this->getJson("/api/admin/ip-pools/{$this->pool->id}/addresses?state=free&search=192.168.10.1");
+    $freePrefixResponse = $this->getJson("/api/v1/admin/ip-pools/{$this->pool->id}/addresses?state=free&search=192.168.10.1");
     $freePrefixResponse->assertOk()
         ->assertJsonPath('meta.total', 5);
 
@@ -350,12 +350,12 @@ test('paginates a /16 pool for state=all and state=free quickly with exact total
         ->and($freePage2['meta']['to'])->toBe(100);
 
     // Also verify via HTTP endpoint
-    $this->getJson("/api/admin/ip-pools/{$largePool->id}/addresses?state=all&per_page=50&page=2")
+    $this->getJson("/api/v1/admin/ip-pools/{$largePool->id}/addresses?state=all&per_page=50&page=2")
         ->assertOk()
         ->assertJsonPath('meta.total', 65534)
         ->assertJsonPath('data.0.ip', '10.10.0.51');
 
-    $this->getJson("/api/admin/ip-pools/{$largePool->id}/addresses?state=free&per_page=50&page=2")
+    $this->getJson("/api/v1/admin/ip-pools/{$largePool->id}/addresses?state=free&per_page=50&page=2")
         ->assertOk()
         ->assertJsonPath('meta.total', 65530)
         ->assertJsonPath('data.0.ip', '10.10.0.55');
@@ -364,20 +364,20 @@ test('paginates a /16 pool for state=all and state=free quickly with exact total
 test('validates query parameters and enforces admin access', function (): void {
     Sanctum::actingAs($this->admin);
 
-    $this->getJson("/api/admin/ip-pools/{$this->pool->id}/addresses?state=invalid")
+    $this->getJson("/api/v1/admin/ip-pools/{$this->pool->id}/addresses?state=invalid")
         ->assertStatus(422)
         ->assertJsonValidationErrors(['state']);
 
-    $this->getJson("/api/admin/ip-pools/{$this->pool->id}/addresses?per_page=101")
+    $this->getJson("/api/v1/admin/ip-pools/{$this->pool->id}/addresses?per_page=101")
         ->assertStatus(422)
         ->assertJsonValidationErrors(['per_page']);
 
-    $this->getJson("/api/admin/ip-pools/{$this->pool->id}/addresses?page=0")
+    $this->getJson("/api/v1/admin/ip-pools/{$this->pool->id}/addresses?page=0")
         ->assertStatus(422)
         ->assertJsonValidationErrors(['page']);
 
     Sanctum::actingAs($this->tenant);
 
-    $this->getJson("/api/admin/ip-pools/{$this->pool->id}/addresses")
+    $this->getJson("/api/v1/admin/ip-pools/{$this->pool->id}/addresses")
         ->assertStatus(403);
 });

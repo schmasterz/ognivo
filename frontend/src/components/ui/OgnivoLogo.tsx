@@ -1,4 +1,10 @@
-import React from "react";
+"use client";
+
+import React, { useSyncExternalStore } from "react";
+import {
+  getBrandLogo,
+  subscribeThemeRegistry,
+} from "@/lib/theming/themeRegistry";
 
 export interface OgnivoLogoProps extends React.SVGProps<SVGSVGElement> {
   variant?: "mark" | "full";
@@ -10,6 +16,16 @@ export function OgnivoLogo({
   className = "w-6 h-6",
   ...props
 }: OgnivoLogoProps) {
+  const customLogo = useSyncExternalStore(
+    subscribeThemeRegistry,
+    getBrandLogo,
+    () => null
+  );
+
+  if (customLogo) {
+    return React.createElement(customLogo, { className });
+  }
+
   // "mark" crops only the flame geometric symbol on top:
   // "full" includes the symbol and the wordmark "OGNIVO":
   const viewBox = variant === "mark" ? "235 20 530 460" : "0 0 998 719";

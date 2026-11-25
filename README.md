@@ -55,6 +55,7 @@ It is an open-source alternative to hosting panels such as SolusVM and Virtualiz
 | Quotas                | Reusable plans and tiers, race-free provisioning with row locks and Redis mutexes                                                                    | Alpha        |
 | Audit log             | Separate audit DB connection, `INSERT`/`SELECT`-only grants in production, SHA-256 hash chain with HMAC seals, PII pseudonymisation                  | Alpha        |
 | Real-time UI          | Laravel Reverb WebSockets, drift detection, English and Bulgarian UI, light/dark/system themes                                                       | Alpha        |
+| Extensions & Integrations | 17 typed domain events, pluggable service contracts (DNS, billing, notification, backup), webhooks with HMAC-SHA256, service tokens, UI slot/nav registry, and idempotency keys | Alpha        |
 | LXD driver            | Best-effort compatibility, see [Supported versions](#supported-versions)                                                                             | Experimental |
 
 Details for each area live in [`docs/`](docs/README.md).
@@ -98,7 +99,7 @@ flowchart TB
 
   Browser -->|"HTTPS / HTTP"| Nginx
   Nginx -->|"/"| Frontend
-  Nginx -->|"/api, /sanctum, /docs"| Backend
+  Nginx -->|"/api/v1, /sanctum, /docs"| Backend
   Nginx -->|"/app/{key} (WSS)"| Reverb
   Nginx -->|"/console?ticket=... (WSS)"| ConsoleProxy
 
@@ -197,7 +198,7 @@ Run these on the server that will host the panel.
 make secrets
 ```
 
-**2. Set your domain** in `.env.production` *before* building. The `NEXT_PUBLIC_*` values are baked into the frontend image at build time.
+**2. Set your domain** in `.env.production`. Frontend configuration is runtime-driven (Node.js reads container environment variables upon request and feeds `<ConfigProvider>` and `GET /api/v1/config`), so changing variables later only requires restarting or recreating the containers (`make up-prod` or `docker compose restart frontend`), without `make build-prod`.
 
 ```ini
 APP_URL=https://panel.example.com
@@ -315,6 +316,7 @@ Alternative flow with a pre-trusted certificate and full details: [Host Onboardi
 | Operations                | [Production deployment](docs/operations/production.md), [Configuration reference](docs/operations/configuration.md), [Commands](docs/operations/commands.md), [Scheduled tasks](docs/operations/commands.md#34-scheduled-tasks), [Troubleshooting](docs/operations/troubleshooting.md) |
 | Reference                 | [Interactive OpenAPI & Manual QA](docs/testing/manual-qa.md#25-interactive-openapi-documentation) (interactive OpenAPI at `/docs/api` on a running panel)                                                                                                                                                                                                                                                                                     |
 | Testing                   | [Automated testing](docs/testing/automated-testing.md), [Manual QA & API scenarios](docs/testing/manual-qa.md), [Manual Incus network tests](docs/testing/manual-incus-network-tests.md) |
+| Extensions                | [Extension architecture & manifest](docs/extensions/index.md), [Domain events](docs/extensions/events-catalog.md), [Service contracts](docs/extensions/service-contracts.md), [Frontend slots & theming](docs/extensions/frontend-slots.md), [Webhooks & service tokens](docs/extensions/webhooks-and-tokens.md), [Idempotency](docs/extensions/idempotency.md), [Stability policy](docs/extensions/stability-policy.md) |
 
 ## Known limitations
 

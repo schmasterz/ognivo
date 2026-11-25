@@ -99,7 +99,7 @@ final class NetworkProvisioningIntegrationTest extends TestCase
         // 1. Create a /29 routed IP pool via API
         Sanctum::actingAs($this->admin);
 
-        $poolRes = $this->postJson('/api/admin/ip-pools', [
+        $poolRes = $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Sofia DMZ /29 Pool',
             'host_id' => $this->host->id,
             'cidr' => '203.0.113.64/29', // Network .64, Gateway .65, Usable .66 to .70 (5 usable addresses)

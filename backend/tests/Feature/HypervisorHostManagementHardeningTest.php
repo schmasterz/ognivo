@@ -52,7 +52,7 @@ final class HypervisorHostManagementHardeningTest extends TestCase
     {
         Host::query()->delete();
 
-        $response = $this->actingAs($this->customer)->postJson('/api/vms', [
+        $response = $this->actingAs($this->customer)->postJson('/api/v1/vms', [
             'name' => 'no-host-vm',
             'cpu_cores' => 1,
             'ram_mb' => 1024,
@@ -139,7 +139,7 @@ final class HypervisorHostManagementHardeningTest extends TestCase
         $this->app->detectEnvironment(static fn (): string => 'production');
         config(['app.allow_fake_driver' => false]);
 
-        $response = $this->actingAs($this->admin)->postJson('/api/admin/hosts', [
+        $response = $this->actingAs($this->admin)->postJson('/api/v1/admin/hosts', [
             'name' => 'prod-rejected-node',
             'endpoint_url' => 'https://127.0.0.1:8443',
             'driver' => 'fake',
@@ -162,7 +162,7 @@ final class HypervisorHostManagementHardeningTest extends TestCase
             'is_active' => true,
         ]);
 
-        $response = $this->actingAs($this->admin)->putJson("/api/admin/hosts/{$host->id}", [
+        $response = $this->actingAs($this->admin)->putJson("/api/v1/admin/hosts/{$host->id}", [
             'name' => 'prod-incus-node',
             'endpoint_url' => 'https://127.0.0.1:8443',
             'driver' => 'fake',

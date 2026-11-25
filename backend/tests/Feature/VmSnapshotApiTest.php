@@ -178,7 +178,7 @@ final class VmSnapshotApiTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->customerA)
-            ->getJson("/api/vms/{$this->vmA->id}/snapshots");
+            ->getJson("/api/v1/vms/{$this->vmA->id}/snapshots");
 
         $response->assertOk()
             ->assertJsonCount(2, 'data')
@@ -204,7 +204,7 @@ final class VmSnapshotApiTest extends TestCase
 
         // Admin can also view any tenant's VM snapshots
         $this->actingAs($this->admin)
-            ->getJson("/api/vms/{$this->vmA->id}/snapshots")
+            ->getJson("/api/v1/vms/{$this->vmA->id}/snapshots")
             ->assertOk()
             ->assertJsonCount(2, 'data');
     }
@@ -215,7 +215,7 @@ final class VmSnapshotApiTest extends TestCase
         Event::fake();
 
         $response = $this->actingAs($this->customerA)
-            ->postJson("/api/vms/{$this->vmA->id}/snapshots", [
+            ->postJson("/api/v1/vms/{$this->vmA->id}/snapshots", [
                 'name' => 'pre-release-v1',
             ]);
 
@@ -248,7 +248,7 @@ final class VmSnapshotApiTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->customerA)
-            ->postJson("/api/vms/{$this->vmA->id}/snapshots/{$snapshot->id}/restore");
+            ->postJson("/api/v1/vms/{$this->vmA->id}/snapshots/{$snapshot->id}/restore");
 
         $response->assertStatus(202)
             ->assertJsonPath('snapshot.id', $snapshot->id)
@@ -264,7 +264,7 @@ final class VmSnapshotApiTest extends TestCase
 
         // Restoring a non-ready snapshot returns 409 Conflict
         $conflictRes = $this->actingAs($this->customerA)
-            ->postJson("/api/vms/{$this->vmA->id}/snapshots/{$snapshot->id}/restore");
+            ->postJson("/api/v1/vms/{$this->vmA->id}/snapshots/{$snapshot->id}/restore");
         $conflictRes->assertStatus(409);
     }
 
@@ -280,7 +280,7 @@ final class VmSnapshotApiTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->customerA)
-            ->deleteJson("/api/vms/{$this->vmA->id}/snapshots/{$snapshot->id}");
+            ->deleteJson("/api/v1/vms/{$this->vmA->id}/snapshots/{$snapshot->id}");
 
         $response->assertStatus(202)
             ->assertJsonPath('snapshot.id', $snapshot->id)
@@ -310,43 +310,43 @@ final class VmSnapshotApiTest extends TestCase
         ]);
 
         // Unauthenticated requests get 401
-        $this->getJson("/api/vms/{$this->vmA->id}/snapshots")->assertStatus(401);
-        $this->postJson("/api/vms/{$this->vmA->id}/snapshots", ['name' => 'unauth'])->assertStatus(401);
-        $this->postJson("/api/vms/{$this->vmA->id}/snapshots/{$snapA->id}/restore")->assertStatus(401);
-        $this->deleteJson("/api/vms/{$this->vmA->id}/snapshots/{$snapA->id}")->assertStatus(401);
+        $this->getJson("/api/v1/vms/{$this->vmA->id}/snapshots")->assertStatus(401);
+        $this->postJson("/api/v1/vms/{$this->vmA->id}/snapshots", ['name' => 'unauth'])->assertStatus(401);
+        $this->postJson("/api/v1/vms/{$this->vmA->id}/snapshots/{$snapA->id}/restore")->assertStatus(401);
+        $this->deleteJson("/api/v1/vms/{$this->vmA->id}/snapshots/{$snapA->id}")->assertStatus(401);
 
         // 1. Customer A cannot list, create, restore, or delete on Customer B's VM -> 403 Forbidden
         $this->actingAs($this->customerA)
-            ->getJson("/api/vms/{$this->vmB->id}/snapshots")
+            ->getJson("/api/v1/vms/{$this->vmB->id}/snapshots")
             ->assertStatus(403);
 
         $this->actingAs($this->customerA)
-            ->postJson("/api/vms/{$this->vmB->id}/snapshots", ['name' => 'intruder-snap'])
+            ->postJson("/api/v1/vms/{$this->vmB->id}/snapshots", ['name' => 'intruder-snap'])
             ->assertStatus(403);
 
         // Even with an invalid name or duplicate name on Customer B's VM, Customer A gets 403 (never 422)
         $this->actingAs($this->customerA)
-            ->postJson("/api/vms/{$this->vmB->id}/snapshots", ['name' => 'bravo-private-snap'])
+            ->postJson("/api/v1/vms/{$this->vmB->id}/snapshots", ['name' => 'bravo-private-snap'])
             ->assertStatus(403);
         $this->actingAs($this->customerA)
-            ->postJson("/api/vms/{$this->vmB->id}/snapshots", ['name' => 'INVALID NAME!'])
-            ->assertStatus(403);
-
-        $this->actingAs($this->customerA)
-            ->postJson("/api/vms/{$this->vmB->id}/snapshots/{$snapB->id}/restore")
+            ->postJson("/api/v1/vms/{$this->vmB->id}/snapshots", ['name' => 'INVALID NAME!'])
             ->assertStatus(403);
 
         $this->actingAs($this->customerA)
-            ->deleteJson("/api/vms/{$this->vmB->id}/snapshots/{$snapB->id}")
+            ->postJson("/api/v1/vms/{$this->vmB->id}/snapshots/{$snapB->id}/restore")
+            ->assertStatus(403);
+
+        $this->actingAs($this->customerA)
+            ->deleteJson("/api/v1/vms/{$this->vmB->id}/snapshots/{$snapB->id}")
             ->assertStatus(403);
 
         // 2. Customer A cannot target Customer B's snapshot via Customer A's own VM URL -> 404 Not Found
         $this->actingAs($this->customerA)
-            ->postJson("/api/vms/{$this->vmA->id}/snapshots/{$snapB->id}/restore")
+            ->postJson("/api/v1/vms/{$this->vmA->id}/snapshots/{$snapB->id}/restore")
             ->assertStatus(404);
 
         $this->actingAs($this->customerA)
-            ->deleteJson("/api/vms/{$this->vmA->id}/snapshots/{$snapB->id}")
+            ->deleteJson("/api/v1/vms/{$this->vmA->id}/snapshots/{$snapB->id}")
             ->assertStatus(404);
 
         // 3. Snapshot belonging to a different VM owned by the same user also returns 404
@@ -364,11 +364,11 @@ final class VmSnapshotApiTest extends TestCase
         ]);
 
         $this->actingAs($this->customerA)
-            ->postJson("/api/vms/{$vmA2->id}/snapshots/{$snapA->id}/restore")
+            ->postJson("/api/v1/vms/{$vmA2->id}/snapshots/{$snapA->id}/restore")
             ->assertStatus(404);
 
         $this->actingAs($this->customerA)
-            ->deleteJson("/api/vms/{$vmA2->id}/snapshots/{$snapA->id}")
+            ->deleteJson("/api/v1/vms/{$vmA2->id}/snapshots/{$snapA->id}")
             ->assertStatus(404);
 
         // Verify snapB and snapA remain completely untouched
@@ -408,7 +408,7 @@ final class VmSnapshotApiTest extends TestCase
 
         // 4th active snapshot must be rejected with 422
         $exceededRes = $this->actingAs($this->customerA)
-            ->postJson("/api/vms/{$this->vmA->id}/snapshots", [
+            ->postJson("/api/v1/vms/{$this->vmA->id}/snapshots", [
                 'name' => 'snap-4',
             ]);
 
@@ -425,7 +425,7 @@ final class VmSnapshotApiTest extends TestCase
         $this->customerA->quota()->update(['max_snapshots' => -1]);
 
         $unlimitedRes = $this->actingAs($this->customerA)
-            ->postJson("/api/vms/{$this->vmA->id}/snapshots", [
+            ->postJson("/api/v1/vms/{$this->vmA->id}/snapshots", [
                 'name' => 'snap-4',
             ]);
 
@@ -450,7 +450,7 @@ final class VmSnapshotApiTest extends TestCase
 
         foreach ($invalidNames as $badName) {
             $res = $this->actingAs($this->customerA)
-                ->postJson("/api/vms/{$this->vmA->id}/snapshots", [
+                ->postJson("/api/v1/vms/{$this->vmA->id}/snapshots", [
                     'name' => $badName,
                 ]);
 
@@ -460,14 +460,14 @@ final class VmSnapshotApiTest extends TestCase
 
         // Create a valid snapshot (including underscores) and a max-length 63-char snapshot
         $this->actingAs($this->customerA)
-            ->postJson("/api/vms/{$this->vmA->id}/snapshots", [
+            ->postJson("/api/v1/vms/{$this->vmA->id}/snapshots", [
                 'name' => 'valid-snap_01',
             ])
             ->assertStatus(202);
 
         // Duplicate name on the same VM must fail with 422
         $this->actingAs($this->customerA)
-            ->postJson("/api/vms/{$this->vmA->id}/snapshots", [
+            ->postJson("/api/v1/vms/{$this->vmA->id}/snapshots", [
                 'name' => 'valid-snap_01',
             ])
             ->assertStatus(422)
@@ -475,13 +475,13 @@ final class VmSnapshotApiTest extends TestCase
 
         // Same name (and max-length 63-char name) on a different VM is allowed
         $this->actingAs($this->customerB)
-            ->postJson("/api/vms/{$this->vmB->id}/snapshots", [
+            ->postJson("/api/v1/vms/{$this->vmB->id}/snapshots", [
                 'name' => 'valid-snap_01',
             ])
             ->assertStatus(202);
 
         $this->actingAs($this->customerB)
-            ->postJson("/api/vms/{$this->vmB->id}/snapshots", [
+            ->postJson("/api/v1/vms/{$this->vmB->id}/snapshots", [
                 'name' => str_repeat('a', 63),
             ])
             ->assertStatus(202);
@@ -512,7 +512,7 @@ final class VmSnapshotApiTest extends TestCase
             $this->vmA->update(['status' => $badState]);
 
             $this->actingAs($this->customerA)
-                ->postJson("/api/vms/{$this->vmA->id}/snapshots", [
+                ->postJson("/api/v1/vms/{$this->vmA->id}/snapshots", [
                     'name' => 'snap-bad-state',
                 ])
                 ->assertStatus(409);
@@ -524,7 +524,7 @@ final class VmSnapshotApiTest extends TestCase
             ]);
 
             $this->actingAs($this->customerA)
-                ->postJson("/api/vms/{$this->vmA->id}/snapshots/{$readySnap->id}/restore")
+                ->postJson("/api/v1/vms/{$this->vmA->id}/snapshots/{$readySnap->id}/restore")
                 ->assertStatus(409);
         }
 
@@ -550,7 +550,7 @@ final class VmSnapshotApiTest extends TestCase
             'name' => 'q-snap-failed',
         ]);
 
-        $response = $this->actingAs($this->customerA)->getJson('/api/quota');
+        $response = $this->actingAs($this->customerA)->getJson('/api/v1/quota');
 
         $response->assertOk()
             ->assertJsonPath('quota.max_snapshots', 3)
@@ -558,7 +558,7 @@ final class VmSnapshotApiTest extends TestCase
             ->assertJsonPath('available.snapshots', 1);
 
         // Unlimited snapshots (-1) reports -1 available
-        $adminQuotaRes = $this->actingAs($this->admin)->getJson('/api/quota');
+        $adminQuotaRes = $this->actingAs($this->admin)->getJson('/api/v1/quota');
         $adminQuotaRes->assertOk()
             ->assertJsonPath('quota.max_snapshots', -1)
             ->assertJsonPath('available.snapshots', -1);
@@ -574,13 +574,13 @@ final class VmSnapshotApiTest extends TestCase
         Sanctum::actingAs($this->customerA);
 
         for ($i = 1; $i <= 10; $i++) {
-            $this->postJson("/api/vms/{$this->vmA->id}/snapshots", [
+            $this->postJson("/api/v1/vms/{$this->vmA->id}/snapshots", [
                 'name' => "rate-snap-{$i}",
             ])->assertStatus(202);
         }
 
         // 11th mutating request is throttled with 429
-        $throttledRes = $this->postJson("/api/vms/{$this->vmA->id}/snapshots", [
+        $throttledRes = $this->postJson("/api/v1/vms/{$this->vmA->id}/snapshots", [
             'name' => 'rate-snap-11',
         ]);
 
@@ -591,7 +591,7 @@ final class VmSnapshotApiTest extends TestCase
         // Admin is exempt from rate limiting
         Sanctum::actingAs($this->admin);
         for ($i = 1; $i <= 12; $i++) {
-            $this->postJson("/api/vms/{$this->vmB->id}/snapshots", [
+            $this->postJson("/api/v1/vms/{$this->vmB->id}/snapshots", [
                 'name' => "admin-rate-snap-{$i}",
             ])->assertStatus(202);
         }
@@ -609,11 +609,11 @@ final class VmSnapshotApiTest extends TestCase
         ]);
 
         $listRes = $this->actingAs($this->customerA)
-            ->getJson("/api/vms/{$this->vmA->id}/snapshots");
+            ->getJson("/api/v1/vms/{$this->vmA->id}/snapshots");
         $listRes->assertOk();
 
         $createRes = $this->actingAs($this->customerA)
-            ->postJson("/api/vms/{$this->vmA->id}/snapshots", ['name' => 'sec-check-snap']);
+            ->postJson("/api/v1/vms/{$this->vmA->id}/snapshots", ['name' => 'sec-check-snap']);
         $createRes->assertStatus(202);
 
         foreach ([$listRes->getContent(), $createRes->getContent()] as $rawJson) {
@@ -636,9 +636,9 @@ final class VmSnapshotApiTest extends TestCase
         $docRes->assertOk();
 
         $paths = array_keys((array) $docRes->json('paths'));
-        $this->assertContains('/vms/{vm}/snapshots', $paths);
-        $this->assertContains('/vms/{vm}/snapshots/{snapshot}/restore', $paths);
-        $this->assertContains('/vms/{vm}/snapshots/{snapshot}', $paths);
+        $this->assertContains('/v1/vms/{vm}/snapshots', $paths);
+        $this->assertContains('/v1/vms/{vm}/snapshots/{snapshot}/restore', $paths);
+        $this->assertContains('/v1/vms/{vm}/snapshots/{snapshot}', $paths);
     }
 
     public function test_restore_of_non_ready_snapshot_states_is_strictly_rejected_with_409(): void
@@ -661,7 +661,7 @@ final class VmSnapshotApiTest extends TestCase
             ]);
 
             $response = $this->actingAs($this->customerA)
-                ->postJson("/api/vms/{$this->vmA->id}/snapshots/{$snap->id}/restore");
+                ->postJson("/api/v1/vms/{$this->vmA->id}/snapshots/{$snap->id}/restore");
 
             $response->assertStatus(409)
                 ->assertJsonPath('message', fn (string $msg): bool => str_contains($msg, $status));
@@ -683,7 +683,7 @@ final class VmSnapshotApiTest extends TestCase
         ]);
 
         $this->actingAs($this->customerA)
-            ->postJson("/api/vms/{$this->vmA->id}/snapshots", [
+            ->postJson("/api/v1/vms/{$this->vmA->id}/snapshots", [
                 'name' => 'snap-concurrent-create',
             ])
             ->assertStatus(409)
@@ -697,7 +697,7 @@ final class VmSnapshotApiTest extends TestCase
         ]);
 
         $this->actingAs($this->customerA)
-            ->postJson("/api/vms/{$this->vmA->id}/snapshots/{$snapB->id}/restore")
+            ->postJson("/api/v1/vms/{$this->vmA->id}/snapshots/{$snapB->id}/restore")
             ->assertStatus(409)
             ->assertJsonPath('message', fn (string $msg): bool => str_contains(strtolower($msg), 'another snapshot operation'));
 
@@ -705,7 +705,7 @@ final class VmSnapshotApiTest extends TestCase
         $snapA->update(['status' => VmSnapshot::STATUS_CREATING]);
 
         $this->actingAs($this->customerA)
-            ->postJson("/api/vms/{$this->vmA->id}/snapshots/{$snapB->id}/restore")
+            ->postJson("/api/v1/vms/{$this->vmA->id}/snapshots/{$snapB->id}/restore")
             ->assertStatus(409)
             ->assertJsonPath('message', fn (string $msg): bool => str_contains(strtolower($msg), 'another snapshot operation'));
 
@@ -713,7 +713,7 @@ final class VmSnapshotApiTest extends TestCase
         $snapA->update(['status' => VmSnapshot::STATUS_DELETING]);
 
         $this->actingAs($this->customerA)
-            ->postJson("/api/vms/{$this->vmA->id}/snapshots/{$snapB->id}/restore")
+            ->postJson("/api/v1/vms/{$this->vmA->id}/snapshots/{$snapB->id}/restore")
             ->assertStatus(409)
             ->assertJsonPath('message', fn (string $msg): bool => str_contains(strtolower($msg), 'another snapshot operation'));
 
@@ -721,7 +721,7 @@ final class VmSnapshotApiTest extends TestCase
         $snapA->update(['status' => VmSnapshot::STATUS_RESTORING]);
 
         $this->actingAs($this->customerA)
-            ->deleteJson("/api/vms/{$this->vmA->id}/snapshots/{$snapA->id}")
+            ->deleteJson("/api/v1/vms/{$this->vmA->id}/snapshots/{$snapA->id}")
             ->assertStatus(409)
             ->assertJsonPath('message', fn (string $msg): bool => str_contains(strtolower($msg), 'currently restoring'));
 
@@ -742,13 +742,13 @@ final class VmSnapshotApiTest extends TestCase
         ]);
 
         $this->actingAs($this->admin)
-            ->getJson("/api/vms/{$this->vmA->id}/snapshots")
+            ->getJson("/api/v1/vms/{$this->vmA->id}/snapshots")
             ->assertOk()
             ->assertJsonCount(1, 'data');
 
         // 2. Admin creates snapshot on tenant VM
         $this->actingAs($this->admin)
-            ->postJson("/api/vms/{$this->vmA->id}/snapshots", ['name' => 'admin-taken-snap'])
+            ->postJson("/api/v1/vms/{$this->vmA->id}/snapshots", ['name' => 'admin-taken-snap'])
             ->assertStatus(202)
             ->assertJsonPath('snapshot.name', 'admin-taken-snap');
 
@@ -757,7 +757,7 @@ final class VmSnapshotApiTest extends TestCase
 
         // 3. Admin restores snapshot on tenant VM
         $this->actingAs($this->admin)
-            ->postJson("/api/vms/{$this->vmA->id}/snapshots/{$snap->id}/restore")
+            ->postJson("/api/v1/vms/{$this->vmA->id}/snapshots/{$snap->id}/restore")
             ->assertStatus(202);
 
         // Reset status to ready so admin can delete
@@ -765,7 +765,7 @@ final class VmSnapshotApiTest extends TestCase
 
         // 4. Admin deletes snapshot on tenant VM
         $this->actingAs($this->admin)
-            ->deleteJson("/api/vms/{$this->vmA->id}/snapshots/{$snap->id}")
+            ->deleteJson("/api/v1/vms/{$this->vmA->id}/snapshots/{$snap->id}")
             ->assertStatus(202);
 
         Queue::assertPushed(CreateSnapshotJob::class);

@@ -50,7 +50,7 @@ final class ForbidImpersonationActions
         $path = $request->path();
 
         // 1. Password changes
-        if (($request->is('api/me') || $request->is('api/user/password') || $request->is('api/reset-password')) && $request->filled('password')) {
+        if (($request->is('api/v1/me') || $request->is('api/v1/user/password') || $request->is('api/v1/reset-password')) && $request->filled('password')) {
             $this->auditLogger->recordIndependent(new AuditEntry(
                 action: AuditAction::AuthPasswordChanged,
                 outcome: AuditOutcome::Denied,
@@ -67,7 +67,7 @@ final class ForbidImpersonationActions
         }
 
         // 2. Email changes
-        if ($request->is('api/me') && $request->filled('email')) {
+        if ($request->is('api/v1/me') && $request->filled('email')) {
             $newEmail = $request->string('email')->trim()->value();
             if (strcasecmp($user->email, $newEmail) !== 0) {
                 $this->auditLogger->recordIndependent(new AuditEntry(
@@ -87,7 +87,7 @@ final class ForbidImpersonationActions
         }
 
         // 3. Creating API credentials
-        if (($request->is('api/tokens*') || $request->is('api/api-credentials*')) && $request->isMethod('POST')) {
+        if (($request->is('api/v1/tokens*') || $request->is('api/v1/api-credentials*')) && $request->isMethod('POST')) {
             $this->auditLogger->recordIndependent(new AuditEntry(
                 action: AuditAction::AuthTokensRevoked,
                 outcome: AuditOutcome::Denied,
@@ -105,7 +105,7 @@ final class ForbidImpersonationActions
         }
 
         // 4. Token management (GET, DELETE, etc. on tokens endpoints)
-        if ($request->is('api/tokens*') || $request->is('api/api-credentials*')) {
+        if ($request->is('api/v1/tokens*') || $request->is('api/v1/api-credentials*')) {
             $this->auditLogger->recordIndependent(new AuditEntry(
                 action: AuditAction::AuthTokensRevoked,
                 outcome: AuditOutcome::Denied,
@@ -123,9 +123,9 @@ final class ForbidImpersonationActions
         }
 
         // 5. Console ticket issuing
-        if ($request->is('api/vms/*/console-ticket')
-            || $request->is('api/vms/*/console/ticket')
-            || ($request->is('api/vms/*/console') && $request->isMethod('POST'))
+        if ($request->is('api/v1/vms/*/console-ticket')
+            || $request->is('api/v1/vms/*/console/ticket')
+            || ($request->is('api/v1/vms/*/console') && $request->isMethod('POST'))
             || $request->input('action') === 'console.ticket') {
             $vm = $request->route('virtualMachine');
             $this->auditLogger->recordIndependent(new AuditEntry(
@@ -145,7 +145,7 @@ final class ForbidImpersonationActions
         }
 
         // 6. Deleting the account
-        if ($request->isMethod('DELETE') && ($request->is('api/me') || $request->is('api/admin/users*') || $request->is('api/users*'))) {
+        if ($request->isMethod('DELETE') && ($request->is('api/v1/me') || $request->is('api/v1/admin/users*') || $request->is('api/v1/users*'))) {
             $this->auditLogger->recordIndependent(new AuditEntry(
                 action: AuditAction::UserDeleted,
                 outcome: AuditOutcome::Denied,

@@ -45,7 +45,7 @@ An image is usable on a node only if it is both **enabled** and **attached** to 
 | `os_type` | No | `linux` (only `linux` in `1.0.0-alpha.1`; `windows`, `bsd`, and `other` are reserved for future roadmap releases). Default `linux` | For `1.0.0-alpha.1`, only `linux` is available in the UI and supported for provisioning; containers and VMs are Linux-only, with non-Linux OS families planned for future releases |
 | `enabled` | No | Boolean, default `true` | Global on/off switch |
 
-When saving or updating an image, Ognivo verifies that the technical name exists and is reachable on the remote server (`simplestreams`, `incus`, or `lxd`). You can test reachability beforehand with the **Test Remote** button in the web panel or via `POST /api/admin/images/validate`. For offline or isolated lab networks, validation can be bypassed by passing `skip_remote_validation: true`.
+When saving or updating an image, Ognivo verifies that the technical name exists and is reachable on the remote server (`simplestreams`, `incus`, or `lxd`). You can test reachability beforehand with the **Test Remote** button in the web panel or via `POST /api/v1/admin/images/validate`. For offline or isolated lab networks, validation can be bypassed by passing `skip_remote_validation: true`.
 
 ### 2.1 Name and remote identifier
 
@@ -115,17 +115,17 @@ All catalog endpoints require an administrator token.
 
 | Method and path | Purpose |
 | :--- | :--- |
-| `GET /api/admin/images` | List the catalog (see below) |
-| `POST /api/admin/images` | Create an image. Optional `host_ids` sets exactly which nodes it is attached to |
-| `POST /api/admin/images/validate` | Pre-flight test reachability and architecture compatibility on the remote server |
-| `GET /api/admin/images/{id}` | Show one image with its nodes |
-| `PUT /api/admin/images/{id}` | Update fields. If `host_ids` is sent, the image's node list is replaced with it |
-| `DELETE /api/admin/images/{id}` | Remove the image from the catalog |
+| `GET /api/v1/admin/images` | List the catalog (see below) |
+| `POST /api/v1/admin/images` | Create an image. Optional `host_ids` sets exactly which nodes it is attached to |
+| `POST /api/v1/admin/images/validate` | Pre-flight test reachability and architecture compatibility on the remote server |
+| `GET /api/v1/admin/images/{id}` | Show one image with its nodes |
+| `PUT /api/v1/admin/images/{id}` | Update fields. If `host_ids` is sent, the image's node list is replaced with it |
+| `DELETE /api/v1/admin/images/{id}` | Remove the image from the catalog |
 
 **Create example:**
 
 ```bash
-curl -X POST http://localhost/api/admin/images \
+curl -X POST http://localhost/api/v1/admin/images \
   -H "Authorization: Bearer <ADMIN_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -142,7 +142,7 @@ You can also include `"skip_remote_validation": true` in the payload to bypass r
 
 **Which nodes get the image.** If you omit `host_ids`, the new image is attached to every node that has **auto-attach** on. If you send `host_ids`, the image ends up attached to **exactly** those nodes, and auto-attach does not add others.
 
-**List parameters** for `GET /api/admin/images`:
+**List parameters** for `GET /api/v1/admin/images`:
 
 | Parameter | Description |
 | :--- | :--- |
@@ -197,7 +197,7 @@ If you remove images that existing instances on that node use, the panel shows h
 
 ### Through the API
 
-`POST /api/admin/hosts` (and the token and certificate onboarding variants) and `PUT /api/admin/hosts/{id}` accept two fields:
+`POST /api/v1/admin/hosts` (and the token and certificate onboarding variants) and `PUT /api/v1/admin/hosts/{id}` accept two fields:
 
 | Field | Description |
 | :--- | :--- |
@@ -240,7 +240,7 @@ A `delta` with no operations changes nothing.
 **Preview the impact before detaching:**
 
 ```http
-POST /api/admin/hosts/{host}/images/preview-detach
+POST /api/v1/admin/hosts/{host}/images/preview-detach
 ```
 
 The body is `{ "images": { ... } }` as above (required). The response lists how many images would be attached and detached and which existing instances (deleted ones are not counted) would be affected, without changing anything:
@@ -274,7 +274,7 @@ At most 50 images are listed, most-used first. Instances in the `deleted` state 
 
 ## 6. What Tenants See
 
-`GET /api/images` lists enabled images for the signed-in user. Two optional filters are used by the "Create instance" dialog:
+`GET /api/v1/images` lists enabled images for the signed-in user. Two optional filters are used by the "Create instance" dialog:
 
 | Parameter | Effect |
 | :--- | :--- |

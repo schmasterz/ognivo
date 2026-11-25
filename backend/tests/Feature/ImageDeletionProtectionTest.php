@@ -45,7 +45,7 @@ test('deleting an image used by active virtual machines fails with 422', functio
         'status' => Deleted::class,
     ]);
 
-    $response = $this->actingAs($this->admin)->deleteJson("/api/admin/images/{$image->id}");
+    $response = $this->actingAs($this->admin)->deleteJson("/api/v1/admin/images/{$image->id}");
 
     $response->assertStatus(422)
         ->assertJsonValidationErrors(['image']);
@@ -70,7 +70,7 @@ test('deleting an image referenced only by deleted virtual machines succeeds wit
         'status' => Deleted::class,
     ]);
 
-    $response = $this->actingAs($this->admin)->deleteJson("/api/admin/images/{$image->id}");
+    $response = $this->actingAs($this->admin)->deleteJson("/api/v1/admin/images/{$image->id}");
 
     $response->assertStatus(200);
 
@@ -83,7 +83,7 @@ test('deleting an image with no virtual machines succeeds with 200', function ()
         'alias' => 'Alpine Unused',
     ]);
 
-    $response = $this->actingAs($this->admin)->deleteJson("/api/admin/images/{$image->id}");
+    $response = $this->actingAs($this->admin)->deleteJson("/api/v1/admin/images/{$image->id}");
 
     $response->assertStatus(200);
 
@@ -125,7 +125,7 @@ test('admin image index returns active_vms_count excluding deleted virtual machi
         'status' => Deleted::class,
     ]);
 
-    $response = $this->actingAs($this->admin)->getJson('/api/admin/images');
+    $response = $this->actingAs($this->admin)->getJson('/api/v1/admin/images');
 
     $response->assertStatus(200);
 

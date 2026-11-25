@@ -47,15 +47,15 @@ it('isolates cached and uncached metrics behind 404 for other tenants (AC-4, FR-
 
     // Populate the shared response cache entry as Tenant B.
     Sanctum::actingAs($tenantB);
-    $this->getJson("/api/vms/{$vmB->id}/metrics?range=1h")->assertOk();
+    $this->getJson("/api/v1/vms/{$vmB->id}/metrics?range=1h")->assertOk();
 
     // Switch to Tenant A and verify indistinguishable 404 responses for Tenant B's cached VM and a nonexistent VM.
     config(['app.debug' => false]);
     $this->app['auth']->forgetGuards();
     Sanctum::actingAs($tenantA);
 
-    $otherResponse = $this->getJson("/api/vms/{$vmB->id}/metrics?range=1h");
-    $missingResponse = $this->getJson('/api/vms/999999/metrics?range=1h');
+    $otherResponse = $this->getJson("/api/v1/vms/{$vmB->id}/metrics?range=1h");
+    $missingResponse = $this->getJson('/api/v1/vms/999999/metrics?range=1h');
 
     $otherResponse->assertNotFound();
     $missingResponse->assertNotFound();
@@ -65,7 +65,7 @@ it('isolates cached and uncached metrics behind 404 for other tenants (AC-4, FR-
         ->and(array_keys($otherResponse->json()))->toBe(array_keys($missingResponse->json()));
 
     // Invalid query parameters on another tenant's VM must still fail authorization/existence with 404, not 422.
-    $this->getJson("/api/vms/{$vmB->id}/metrics?range=999d")->assertNotFound();
+    $this->getJson("/api/v1/vms/{$vmB->id}/metrics?range=999d")->assertNotFound();
 });
 
 it('selects the expected storage tier and caps points at 500 across all five ranges (AC-6, FR-8)', function (): void {
@@ -89,7 +89,7 @@ it('selects the expected storage tier and caps points at 500 across all five ran
     ];
 
     foreach ($expectedTiers as $range => $expectedTier) {
-        $response = $this->getJson("/api/vms/{$vm->id}/metrics?range={$range}")->assertOk();
+        $response = $this->getJson("/api/v1/vms/{$vm->id}/metrics?range={$range}")->assertOk();
 
         expect($response->json('tier'))->toBe($expectedTier)
             ->and(count($response->json('series.cpu.points')))->toBeLessThanOrEqual(500);
@@ -133,17 +133,17 @@ it('returns 503 when metrics are disabled without discarding previously collecte
     config(['metrics.enabled' => false]);
     Sanctum::actingAs($owner);
 
-    $this->getJson("/api/vms/{$vm->id}/metrics")
+    $this->getJson("/api/v1/vms/{$vm->id}/metrics")
         ->assertStatus(503)
         ->assertJsonPath('code', 'metrics_disabled');
 
-    $this->getJson('/api/settings/public')
+    $this->getJson('/api/v1/settings/public')
         ->assertOk()
         ->assertJsonPath('metrics_enabled', false);
 
     config(['metrics.enabled' => true]);
 
-    $response = $this->getJson("/api/vms/{$vm->id}/metrics")->assertOk();
+    $response = $this->getJson("/api/v1/vms/{$vm->id}/metrics")->assertOk();
     $matchingPoint = collect($response->json('series.cpu.points'))->firstWhere('ts', $sampleTs);
 
     expect($matchingPoint)->not->toBeNull()
@@ -167,11 +167,11 @@ it('returns 404 for deleted instances even for owner or admin (AC-9, FR-12)', fu
     ]);
 
     Sanctum::actingAs($owner);
-    $this->getJson("/api/vms/{$vm->id}/metrics")->assertNotFound();
+    $this->getJson("/api/v1/vms/{$vm->id}/metrics")->assertNotFound();
 
     $this->app['auth']->forgetGuards();
     Sanctum::actingAs($admin);
-    $this->getJson("/api/vms/{$vm->id}/metrics")->assertNotFound();
+    $this->getJson("/api/v1/vms/{$vm->id}/metrics")->assertNotFound();
 });
 
 it('fills the tail seam of 24h rollup queries from raw samples (AC-14, FR-8)', function (): void {
@@ -204,7 +204,7 @@ it('fills the tail seam of 24h rollup queries from raw samples (AC-14, FR-8)', f
     ]);
 
     Sanctum::actingAs($owner);
-    $response = $this->getJson("/api/vms/{$vm->id}/metrics?range=24h")->assertOk();
+    $response = $this->getJson("/api/v1/vms/{$vm->id}/metrics?range=24h")->assertOk();
 
     $points = $response->json('series.cpu.points');
     $lastPoint = $points[count($points) - 1];
@@ -243,7 +243,7 @@ it('distinguishes gap nulls from unavailable guest-agent nulls (AC-13, AC-16, FR
     ]);
 
     Sanctum::actingAs($owner);
-    $response = $this->getJson("/api/vms/{$vm->id}/metrics?range=1h")->assertOk();
+    $response = $this->getJson("/api/v1/vms/{$vm->id}/metrics?range=1h")->assertOk();
 
     $cpuPoints = collect($response->json('series.cpu.points'));
     $memoryPoints = collect($response->json('series.memory.points'));
@@ -283,15 +283,15 @@ it('validates query parameters and enforces per-user rate limiting (AC-17, FR-8,
 
     Sanctum::actingAs($owner);
 
-    $this->getJson("/api/vms/{$vm->id}/metrics?metrics=gpu")
+    $this->getJson("/api/v1/vms/{$vm->id}/metrics?metrics=gpu")
         ->assertUnprocessable()
         ->assertJsonValidationErrors(['metrics.0']);
 
-    $this->getJson("/api/vms/{$vm->id}/metrics?range=90d")
+    $this->getJson("/api/v1/vms/{$vm->id}/metrics?range=90d")
         ->assertUnprocessable()
         ->assertJsonValidationErrors(['range']);
 
-    $this->getJson("/api/vms/{$vm->id}/metrics?max_points=501")
+    $this->getJson("/api/v1/vms/{$vm->id}/metrics?max_points=501")
         ->assertUnprocessable()
         ->assertJsonValidationErrors(['max_points']);
 
@@ -310,10 +310,10 @@ it('validates query parameters and enforces per-user rate limiting (AC-17, FR-8,
     Sanctum::actingAs($rateLimitedUser);
 
     for ($i = 0; $i < 3; $i++) {
-        $this->getJson("/api/vms/{$rateLimitedVm->id}/metrics?range=1h")->assertOk();
+        $this->getJson("/api/v1/vms/{$rateLimitedVm->id}/metrics?range=1h")->assertOk();
     }
 
-    $this->getJson("/api/vms/{$rateLimitedVm->id}/metrics?range=1h")->assertStatus(429);
+    $this->getJson("/api/v1/vms/{$rateLimitedVm->id}/metrics?range=1h")->assertStatus(429);
 });
 
 it('serves concurrent requests from shared cache and supports ETag 304 Not Modified (AC-18, FR-8, NFR-9)', function (): void {
@@ -349,12 +349,12 @@ it('serves concurrent requests from shared cache and supports ETag 304 Not Modif
     DB::flushQueryLog();
     DB::enableQueryLog();
 
-    $firstResponse = $this->getJson("/api/vms/{$vm->id}/metrics?range=1h")->assertOk();
+    $firstResponse = $this->getJson("/api/v1/vms/{$vm->id}/metrics?range=1h")->assertOk();
     $firstRequestSampleQueries = $countSampleSelects(DB::getQueryLog());
 
     DB::flushQueryLog();
     for ($i = 0; $i < 19; $i++) {
-        $this->getJson("/api/vms/{$vm->id}/metrics?range=1h")->assertOk();
+        $this->getJson("/api/v1/vms/{$vm->id}/metrics?range=1h")->assertOk();
     }
     $cachedRequestsSampleQueries = $countSampleSelects(DB::getQueryLog());
     DB::disableQueryLog();
@@ -366,7 +366,7 @@ it('serves concurrent requests from shared cache and supports ETag 304 Not Modif
     expect($etag)->not->toBeEmpty();
 
     $notModifiedResponse = $this->withHeader('If-None-Match', (string) $etag)
-        ->getJson("/api/vms/{$vm->id}/metrics?range=1h");
+        ->getJson("/api/v1/vms/{$vm->id}/metrics?range=1h");
 
     $notModifiedResponse->assertStatus(304);
     expect($notModifiedResponse->getContent())->toBe('');
@@ -387,7 +387,7 @@ it('enforces minimum retention in admin settings and hides unavailable ranges fr
     ]);
 
     Sanctum::actingAs($admin);
-    $this->putJson('/api/admin/settings', [
+    $this->putJson('/api/v1/admin/settings', [
         'metrics_retention_1h_days' => 20,
     ])
         ->assertUnprocessable()
@@ -398,11 +398,11 @@ it('enforces minimum retention in admin settings and hides unavailable ranges fr
     $this->app['auth']->forgetGuards();
     Sanctum::actingAs($owner);
 
-    $this->getJson('/api/settings/public')
+    $this->getJson('/api/v1/settings/public')
         ->assertOk()
         ->assertJsonPath('metrics_available_ranges', ['1h', '6h', '24h', '7d']);
 
-    $this->getJson("/api/vms/{$vm->id}/metrics?range=30d")
+    $this->getJson("/api/v1/vms/{$vm->id}/metrics?range=30d")
         ->assertUnprocessable()
         ->assertJsonValidationErrors(['range']);
 });

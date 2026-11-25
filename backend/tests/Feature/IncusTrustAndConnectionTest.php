@@ -168,7 +168,7 @@ describe('Panel Certificate Generation & Lifecycle', function () {
         expect(PanelCertificate::count())->toBe(0);
 
         // Add a fake host via store endpoint
-        $res = $this->actingAs($this->admin)->postJson('/api/admin/hosts', [
+        $res = $this->actingAs($this->admin)->postJson('/api/v1/admin/hosts', [
             'name' => 'auto-cert-host',
             'endpoint_url' => 'https://127.0.0.1:8443',
             'driver' => 'fake',
@@ -183,7 +183,7 @@ describe('Panel Certificate Generation & Lifecycle', function () {
         $cert = $service->generate(365);
 
         // Admin download
-        $res = $this->actingAs($this->admin)->get('/api/admin/incus/certificate/download');
+        $res = $this->actingAs($this->admin)->get('/api/v1/admin/incus/certificate/download');
         $res->assertOk();
         $res->assertHeader('Content-Type', 'application/x-x509-ca-cert');
         $res->assertHeader('Content-Disposition', 'attachment; filename="incus-panel.crt"');
@@ -193,12 +193,12 @@ describe('Panel Certificate Generation & Lifecycle', function () {
             ->and($body)->not->toContain('PRIVATE KEY');
 
         // Customer download is 403 Forbidden
-        $custRes = $this->actingAs($this->customer)->get('/api/admin/incus/certificate/download');
+        $custRes = $this->actingAs($this->customer)->get('/api/v1/admin/incus/certificate/download');
         $custRes->assertForbidden();
     });
 
     test('unauthenticated download without Accept header returns 401 JSON instead of 500', function () {
-        $res = $this->get('/api/admin/incus/certificate/download');
+        $res = $this->get('/api/v1/admin/incus/certificate/download');
 
         $res->assertUnauthorized()
             ->assertExactJson(['message' => 'Unauthenticated.']);
@@ -556,7 +556,7 @@ describe('Security & Admin Authorization', function () {
             ->and($json)->not->toContain($cert->private_key);
 
         // Admin certificate show endpoint never exposes private key
-        $res = $this->actingAs($this->admin)->getJson('/api/admin/incus/certificate');
+        $res = $this->actingAs($this->admin)->getJson('/api/v1/admin/incus/certificate');
         $res->assertOk();
         $resContent = $res->getContent();
         expect($resContent)->not->toContain('private_key')
@@ -582,7 +582,7 @@ describe('Security & Admin Authorization', function () {
 
         // 1. Add host (connect-token)
         $this->actingAs($this->customer)
-            ->postJson('/api/admin/hosts/connect-token', [
+            ->postJson('/api/v1/admin/hosts/connect-token', [
                 'name' => 'hacked-node',
                 'token' => 'invalid-token',
             ])
@@ -590,7 +590,7 @@ describe('Security & Admin Authorization', function () {
 
         // 2. Add host (add-certificate)
         $this->actingAs($this->customer)
-            ->postJson('/api/admin/hosts/add-certificate', [
+            ->postJson('/api/v1/admin/hosts/add-certificate', [
                 'name' => 'hacked-node',
                 'address' => '127.0.0.1:8443',
                 'expected_fingerprint' => '1111111111111111111111111111111111111111111111111111111111111111',
@@ -599,22 +599,22 @@ describe('Security & Admin Authorization', function () {
 
         // 3. Verify connection
         $this->actingAs($this->customer)
-            ->postJson("/api/admin/hosts/{$host->id}/verify-connection")
+            ->postJson("/api/v1/admin/hosts/{$host->id}/verify-connection")
             ->assertForbidden();
 
         // 4. Download certificate
         $this->actingAs($this->customer)
-            ->get('/api/admin/incus/certificate/download')
+            ->get('/api/v1/admin/incus/certificate/download')
             ->assertForbidden();
 
         // 5. Rotate certificate
         $this->actingAs($this->customer)
-            ->postJson('/api/admin/incus/certificate/rotate')
+            ->postJson('/api/v1/admin/incus/certificate/rotate')
             ->assertForbidden();
 
         // 6. Retrust host
         $this->actingAs($this->customer)
-            ->postJson("/api/admin/hosts/{$host->id}/retrust", ['token' => 'some-token'])
+            ->postJson("/api/v1/admin/hosts/{$host->id}/retrust", ['token' => 'some-token'])
             ->assertForbidden();
     });
 });
@@ -658,7 +658,7 @@ describe('Certificate Rotation, Retrust Flow & Workability', function () {
         ]);
 
         // 1. Rotate certificate
-        $rotateRes = $this->actingAs($this->admin)->postJson('/api/admin/incus/certificate/rotate');
+        $rotateRes = $this->actingAs($this->admin)->postJson('/api/v1/admin/incus/certificate/rotate');
         $rotateRes->assertOk();
         $rotateRes->assertJsonPath('pending_retrust_hosts_count', 2);
 
@@ -669,7 +669,7 @@ describe('Certificate Rotation, Retrust Flow & Workability', function () {
             ->and($host2->needs_retrust)->toBeTrue();
 
         // Verify revokeOld fails while hosts need retrust
-        $revokeFailRes = $this->actingAs($this->admin)->postJson('/api/admin/incus/certificate/revoke-old');
+        $revokeFailRes = $this->actingAs($this->admin)->postJson('/api/v1/admin/incus/certificate/revoke-old');
         $revokeFailRes->assertStatus(500);
 
         // 2. Setup mocks for trust tokens
@@ -721,7 +721,7 @@ describe('Certificate Rotation, Retrust Flow & Workability', function () {
         ]);
 
         // Retrust host 1 via POST /api/admin/hosts/{host}/retrust
-        $retrust1Res = $this->actingAs($this->admin)->postJson("/api/admin/hosts/{$host1->id}/retrust", [
+        $retrust1Res = $this->actingAs($this->admin)->postJson("/api/v1/admin/hosts/{$host1->id}/retrust", [
             'token' => $token1,
         ]);
         $retrust1Res->assertOk();
@@ -734,7 +734,7 @@ describe('Certificate Rotation, Retrust Flow & Workability', function () {
         expect(Host::where('needs_retrust', true)->count())->toBe(1);
 
         // Retrust host 2 via POST /api/admin/hosts/{host}/retrust
-        $retrust2Res = $this->actingAs($this->admin)->postJson("/api/admin/hosts/{$host2->id}/retrust", [
+        $retrust2Res = $this->actingAs($this->admin)->postJson("/api/v1/admin/hosts/{$host2->id}/retrust", [
             'token' => $token2,
         ]);
         $retrust2Res->assertOk();
@@ -747,7 +747,7 @@ describe('Certificate Rotation, Retrust Flow & Workability', function () {
         expect(Host::where('needs_retrust', true)->count())->toBe(0);
 
         // 3. Now revoke-old succeeds!
-        $revokeRes = $this->actingAs($this->admin)->postJson('/api/admin/incus/certificate/revoke-old');
+        $revokeRes = $this->actingAs($this->admin)->postJson('/api/v1/admin/incus/certificate/revoke-old');
         $revokeRes->assertOk();
         $revokeRes->assertJsonPath('message', 'Old certificate revoked successfully.');
         expect($revokeRes->json('cleanup_instruction'))->toContain('incus config trust remove');
@@ -852,7 +852,7 @@ describe('Certificate Rotation, Retrust Flow & Workability', function () {
             ], 200),
         ]);
 
-        $response = $this->actingAs($this->admin)->postJson('/api/admin/hosts', [
+        $response = $this->actingAs($this->admin)->postJson('/api/v1/admin/hosts', [
             'name' => 'lxd-production-node',
             'token' => $token,
             'driver' => 'lxd',

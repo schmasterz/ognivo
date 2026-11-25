@@ -41,7 +41,7 @@ final class EmailVerificationTest extends TestCase
         Notification::fake();
         SystemSetting::updateOrCreate(['key' => 'frontend_url'], ['value' => 'https://panel.example.com']);
 
-        $res = $this->postJson('/api/register', [
+        $res = $this->postJson('/api/v1/register', [
             'name' => 'John Doe',
             'email' => 'john.doe@example.com',
             'password' => 'SecurePass123!@#',
@@ -71,7 +71,7 @@ final class EmailVerificationTest extends TestCase
             'email_verified_at' => null,
         ]);
 
-        $res = $this->postJson('/api/login', [
+        $res = $this->postJson('/api/v1/login', [
             'email' => 'pending@example.com',
             'password' => 'password123',
         ]);
@@ -87,7 +87,7 @@ final class EmailVerificationTest extends TestCase
             'status' => 'suspended',
         ]);
 
-        $resSuspended = $this->postJson('/api/login', [
+        $resSuspended = $this->postJson('/api/v1/login', [
             'email' => 'suspended@example.com',
             'password' => 'password123',
         ]);
@@ -98,7 +98,7 @@ final class EmailVerificationTest extends TestCase
             'status' => 'inactive',
         ]);
 
-        $resInactive = $this->postJson('/api/login', [
+        $resInactive = $this->postJson('/api/v1/login', [
             'email' => 'inactive@example.com',
             'password' => 'password123',
         ]);
@@ -118,7 +118,7 @@ final class EmailVerificationTest extends TestCase
         $expires = now()->addHours(24)->timestamp;
         $signature = hash_hmac('sha256', "verify:{$id}:{$hash}:{$expires}", (string) config('app.key'));
 
-        $res = $this->postJson('/api/email/verify', [
+        $res = $this->postJson('/api/v1/email/verify', [
             'id' => $id,
             'hash' => $hash,
             'expires' => $expires,
@@ -133,7 +133,7 @@ final class EmailVerificationTest extends TestCase
         $this->assertNotNull($user->email_verified_at);
 
         // Now user can log in
-        $loginRes = $this->postJson('/api/login', [
+        $loginRes = $this->postJson('/api/v1/login', [
             'email' => 'verify.me@example.com',
             'password' => 'password123',
         ]);
@@ -154,7 +154,7 @@ final class EmailVerificationTest extends TestCase
         $expires = now()->subMinutes(10)->timestamp; // Expired!
         $signature = hash_hmac('sha256', "verify:{$id}:{$hash}:{$expires}", (string) config('app.key'));
 
-        $res = $this->postJson('/api/email/verify', [
+        $res = $this->postJson('/api/v1/email/verify', [
             'id' => $id,
             'hash' => $hash,
             'expires' => $expires,
@@ -178,7 +178,7 @@ final class EmailVerificationTest extends TestCase
         $expires = now()->addHours(24)->timestamp;
         $signature = 'invalid-signature-12345';
 
-        $res = $this->postJson('/api/email/verify', [
+        $res = $this->postJson('/api/v1/email/verify', [
             'id' => $id,
             'hash' => $hash,
             'expires' => $expires,
@@ -202,7 +202,7 @@ final class EmailVerificationTest extends TestCase
         $expires = now()->addHours(24)->timestamp;
         $signature = hash_hmac('sha256', "verify:{$id}:{$hash}:{$expires}", (string) config('app.key'));
 
-        $res = $this->postJson('/api/email/verify', [
+        $res = $this->postJson('/api/v1/email/verify', [
             'id' => $id,
             'hash' => $hash,
             'expires' => $expires,
@@ -223,7 +223,7 @@ final class EmailVerificationTest extends TestCase
             'email_verified_at' => null,
         ]);
 
-        $res = $this->postJson('/api/email/resend-verification', [
+        $res = $this->postJson('/api/v1/email/resend-verification', [
             'email' => 'resend@example.com',
         ]);
 
@@ -237,7 +237,7 @@ final class EmailVerificationTest extends TestCase
     {
         Notification::fake();
 
-        $res = $this->postJson('/api/email/resend-verification', [
+        $res = $this->postJson('/api/v1/email/resend-verification', [
             'email' => 'unknown@example.com',
         ]);
 

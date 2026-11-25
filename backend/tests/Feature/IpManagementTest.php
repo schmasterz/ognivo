@@ -90,15 +90,15 @@ final class IpManagementTest extends TestCase
         Sanctum::actingAs($this->tenant);
 
         // Floating IP creation is retired
-        $resFloat = $this->postJson('/api/ips/floating', ['notes' => 'Floating test']);
+        $resFloat = $this->postJson('/api/v1/ips/floating', ['notes' => 'Floating test']);
         $this->assertContains($resFloat->status(), [404, 405]);
 
         // PTR update is retired in v1.0
-        $resPtr = $this->putJson('/api/ips/1/ptr', ['hostname' => 'vm.example.com']);
+        $resPtr = $this->putJson('/api/v1/ips/1/ptr', ['hostname' => 'vm.example.com']);
         $this->assertContains($resPtr->status(), [404, 405]);
 
         // Reassign route is retired
-        $resReassign = $this->postJson('/api/ips/1/reassign', ['virtual_machine_id' => 1]);
+        $resReassign = $this->postJson('/api/v1/ips/1/reassign', ['virtual_machine_id' => 1]);
         $this->assertContains($resReassign->status(), [404, 405]);
     }
 
@@ -107,27 +107,27 @@ final class IpManagementTest extends TestCase
         Sanctum::actingAs($this->admin);
 
         // 1. Missing host_id
-        $this->postJson('/api/admin/ip-pools', [
+        $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'No Host Pool',
             'cidr' => '198.51.100.0/24',
         ])->assertStatus(422)->assertJsonValidationErrors(['host_id']);
 
         // 2. Invalid CIDR format
-        $this->postJson('/api/admin/ip-pools', [
+        $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Bad CIDR Pool',
             'host_id' => $this->host->id,
             'cidr' => 'invalid-cidr-string',
         ])->assertStatus(422)->assertJsonValidationErrors(['cidr']);
 
         // 3. CIDR prefix out of bounds (<16 or >32)
-        $this->postJson('/api/admin/ip-pools', [
+        $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Bad Prefix Pool',
             'host_id' => $this->host->id,
             'cidr' => '10.0.0.0/8',
         ])->assertStatus(422)->assertJsonValidationErrors(['cidr']);
 
         // IPv6 rejected with 422
-        $this->postJson('/api/admin/ip-pools', [
+        $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'IPv6 Pool',
             'host_id' => $this->host->id,
             'cidr' => '2001:db8::/32',
@@ -135,7 +135,7 @@ final class IpManagementTest extends TestCase
         ])->assertStatus(422)->assertJsonValidationErrors(['ip_version']);
 
         // 4. first_usable outside CIDR
-        $this->postJson('/api/admin/ip-pools', [
+        $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Outside First IP',
             'host_id' => $this->host->id,
             'cidr' => '198.51.100.0/24',
@@ -143,7 +143,7 @@ final class IpManagementTest extends TestCase
         ])->assertStatus(422)->assertJsonValidationErrors(['first_usable']);
 
         // 5. last_usable outside CIDR
-        $this->postJson('/api/admin/ip-pools', [
+        $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Outside Last IP',
             'host_id' => $this->host->id,
             'cidr' => '198.51.100.0/24',
@@ -151,7 +151,7 @@ final class IpManagementTest extends TestCase
         ])->assertStatus(422)->assertJsonValidationErrors(['last_usable']);
 
         // 6. first_usable > last_usable
-        $this->postJson('/api/admin/ip-pools', [
+        $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Inverted Range',
             'host_id' => $this->host->id,
             'cidr' => '198.51.100.0/24',
@@ -160,7 +160,7 @@ final class IpManagementTest extends TestCase
         ])->assertStatus(422)->assertJsonValidationErrors(['first_usable']);
 
         // 7. gateway outside CIDR
-        $this->postJson('/api/admin/ip-pools', [
+        $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Outside Gateway',
             'host_id' => $this->host->id,
             'cidr' => '198.51.100.0/24',
@@ -172,7 +172,7 @@ final class IpManagementTest extends TestCase
     {
         Sanctum::actingAs($this->admin);
 
-        $response = $this->postJson('/api/admin/ip-pools', [
+        $response = $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Tokyo Edge Routed',
             'host_id' => $this->host->id,
             'cidr' => '198.51.100.0/24',
@@ -238,7 +238,7 @@ final class IpManagementTest extends TestCase
         DB::flushQueryLog();
         DB::enableQueryLog();
 
-        $response = $this->getJson('/api/admin/ip-pools?host_id='.$this->host->id);
+        $response = $this->getJson('/api/v1/admin/ip-pools?host_id='.$this->host->id);
         $response->assertOk();
         $response->assertJsonCount(3, 'data');
 
@@ -298,7 +298,7 @@ final class IpManagementTest extends TestCase
         ]);
 
         Sanctum::actingAs($this->tenant);
-        $response = $this->getJson('/api/ips');
+        $response = $this->getJson('/api/v1/ips');
         $response->assertOk();
         $response->assertJsonCount(1, 'data');
         $response->assertJsonPath('data.0.address', '203.0.113.10');
@@ -337,11 +337,11 @@ final class IpManagementTest extends TestCase
 
         // Customer cannot access emergency release
         Sanctum::actingAs($this->tenant);
-        $this->deleteJson(sprintf('/api/admin/ips/%d/release', $alloc->id))->assertStatus(403);
+        $this->deleteJson(sprintf('/api/v1/admin/ips/%d/release', $alloc->id))->assertStatus(403);
 
         // Admin can release it
         Sanctum::actingAs($this->admin);
-        $response = $this->deleteJson(sprintf('/api/admin/ips/%d/release', $alloc->id));
+        $response = $this->deleteJson(sprintf('/api/v1/admin/ips/%d/release', $alloc->id));
         $response->assertOk();
 
         $alloc->refresh();
@@ -359,7 +359,7 @@ final class IpManagementTest extends TestCase
         Sanctum::actingAs($this->admin);
 
         // /32 accepted: first = last = address, gateway optional
-        $res32 = $this->postJson('/api/admin/ip-pools', [
+        $res32 = $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Single Host Pool 32',
             'host_id' => $this->host->id,
             'cidr' => '198.51.100.55/32',
@@ -371,7 +371,7 @@ final class IpManagementTest extends TestCase
         $res32->assertJsonPath('pool.last_usable', '198.51.100.55');
 
         // /31 accepted: RFC 3021, both addresses usable, gateway optional
-        $res31 = $this->postJson('/api/admin/ip-pools', [
+        $res31 = $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'P2P Pool 31',
             'host_id' => $this->host->id,
             'cidr' => '198.51.100.60/31',
@@ -383,7 +383,7 @@ final class IpManagementTest extends TestCase
         $res31->assertJsonPath('pool.last_usable', '198.51.100.61');
 
         // /30 accepted: usable .65 and .66 (.64 network and .67 broadcast excluded)
-        $res30 = $this->postJson('/api/admin/ip-pools', [
+        $res30 = $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Small Subnet Pool 30',
             'host_id' => $this->host->id,
             'cidr' => '198.51.100.64/30',
@@ -396,7 +396,7 @@ final class IpManagementTest extends TestCase
         $res30->assertJsonPath('pool.last_usable', '198.51.100.66');
 
         // /16 accepted (lower boundary)
-        $res16 = $this->postJson('/api/admin/ip-pools', [
+        $res16 = $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Large Subnet Pool 16',
             'host_id' => $this->host->id,
             'cidr' => '172.20.0.0/16',
@@ -409,7 +409,7 @@ final class IpManagementTest extends TestCase
         $res16->assertJsonPath('pool.last_usable', '172.20.255.254');
 
         // /17 accepted
-        $res17 = $this->postJson('/api/admin/ip-pools', [
+        $res17 = $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Subnet Pool 17',
             'host_id' => $this->host->id,
             'cidr' => '172.21.0.0/17',
@@ -420,7 +420,7 @@ final class IpManagementTest extends TestCase
         $res17->assertStatus(201);
 
         // /8 rejected
-        $this->postJson('/api/admin/ip-pools', [
+        $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Prefix 8 Pool',
             'host_id' => $this->host->id,
             'cidr' => '10.0.0.0/8',
@@ -429,7 +429,7 @@ final class IpManagementTest extends TestCase
         ])->assertStatus(422)->assertJsonValidationErrors(['cidr']);
 
         // /15 rejected
-        $this->postJson('/api/admin/ip-pools', [
+        $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Prefix 15 Pool',
             'host_id' => $this->host->id,
             'cidr' => '10.0.0.0/15',
@@ -450,7 +450,7 @@ final class IpManagementTest extends TestCase
         ]);
 
         // Host 1 has public pool 192.168.50.0/24
-        $res = $this->postJson('/api/admin/ip-pools', [
+        $res = $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Host1 Public Pool',
             'host_id' => $this->host->id,
             'cidr' => '192.168.50.0/24',
@@ -461,7 +461,7 @@ final class IpManagementTest extends TestCase
         $res->assertStatus(201);
 
         // Overlapping pool on the SAME host must be rejected
-        $overlapSameHost = $this->postJson('/api/admin/ip-pools', [
+        $overlapSameHost = $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Host1 Overlapping Subnet',
             'host_id' => $this->host->id,
             'cidr' => '192.168.50.128/25',
@@ -473,7 +473,7 @@ final class IpManagementTest extends TestCase
         $this->assertStringContainsString('Host1 Public Pool', $overlapSameHost->json('errors.cidr.0'));
 
         // Overlapping public pool on a DIFFERENT host must be rejected
-        $overlapDiffHostPublic = $this->postJson('/api/admin/ip-pools', [
+        $overlapDiffHostPublic = $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Host2 Overlapping Public Subnet',
             'host_id' => $host2->id,
             'cidr' => '192.168.50.0/24',
@@ -485,7 +485,7 @@ final class IpManagementTest extends TestCase
         $this->assertStringContainsString('Host1 Public Pool', $overlapDiffHostPublic->json('errors.cidr.0'));
 
         // Non-public pool with same subnet on a DIFFERENT host is isolated and accepted
-        $privateDiffHost = $this->postJson('/api/admin/ip-pools', [
+        $privateDiffHost = $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Host2 Private Isolated Subnet',
             'host_id' => $host2->id,
             'cidr' => '192.168.50.0/24',
@@ -571,7 +571,7 @@ final class IpManagementTest extends TestCase
         ]);
 
         // 1. Can edit name, description, active, dns_servers, cooldown_seconds when empty
-        $res = $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+        $res = $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $pool->id), [
             'name' => 'Renamed Subnet Pool',
             'description' => 'Updated pool description',
             'cooldown_seconds' => 600,
@@ -612,22 +612,22 @@ final class IpManagementTest extends TestCase
         ]);
 
         // 3. Attempting to change cidr when allocations exist is rejected (422)
-        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+        $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $pool->id), [
             'cidr' => '10.160.0.0/24',
         ])->assertStatus(422)->assertJsonValidationErrors(['cidr']);
 
         // 4. Attempting to change network_mode when allocations exist is rejected (422)
-        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+        $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $pool->id), [
             'network_mode' => 'manual',
         ])->assertStatus(422)->assertJsonValidationErrors(['network_mode']);
 
         // 5. Attempting to move first_usable beyond active allocation (.25) is rejected (422)
-        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+        $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $pool->id), [
             'first_usable' => '10.150.0.30',
         ])->assertStatus(422)->assertJsonValidationErrors(['first_usable']);
 
         // 6. Shrinking first_usable safely (.10 -> .20, where allocation .25 remains within range) succeeds
-        $resSafe = $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+        $resSafe = $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $pool->id), [
             'first_usable' => '10.150.0.20',
         ]);
         $resSafe->assertOk();
@@ -664,7 +664,7 @@ final class IpManagementTest extends TestCase
         ]);
 
         // Preflight should return ok: false because parent interface missing
-        $resBad = $this->postJson(sprintf('/api/admin/ip-pools/%d/preflight', $badPool->id));
+        $resBad = $this->postJson(sprintf('/api/v1/admin/ip-pools/%d/preflight', $badPool->id));
         $resBad->assertOk();
         $this->assertFalse($resBad->json('ok'));
 
@@ -677,7 +677,7 @@ final class IpManagementTest extends TestCase
         // Update pool parent_interface to eth0
         $badPool->update(['parent_interface' => 'eth0']);
 
-        $resGood = $this->postJson(sprintf('/api/admin/ip-pools/%d/preflight', $badPool->id));
+        $resGood = $this->postJson(sprintf('/api/v1/admin/ip-pools/%d/preflight', $badPool->id));
         $resGood->assertOk();
         $this->assertTrue($resGood->json('ok'));
 
@@ -719,7 +719,7 @@ final class IpManagementTest extends TestCase
             'gateway' => '10.171.0.1',
         ]);
 
-        $resEmpty = $this->postJson(sprintf('/api/admin/ip-pools/%d/preflight', $emptyNonManualPool->id));
+        $resEmpty = $this->postJson(sprintf('/api/v1/admin/ip-pools/%d/preflight', $emptyNonManualPool->id));
         $resEmpty->assertOk();
         $this->assertFalse($resEmpty->json('ok'));
 
@@ -739,7 +739,7 @@ final class IpManagementTest extends TestCase
             'parent_interface' => '',
         ]);
 
-        $resManual = $this->postJson(sprintf('/api/admin/ip-pools/%d/preflight', $manualPool->id));
+        $resManual = $this->postJson(sprintf('/api/v1/admin/ip-pools/%d/preflight', $manualPool->id));
         $resManual->assertOk();
         $this->assertTrue($resManual->json('ok'));
 
@@ -782,7 +782,7 @@ final class IpManagementTest extends TestCase
             'gateway' => '10.173.0.1',
         ]);
 
-        $resBridgedOk = $this->postJson(sprintf('/api/admin/ip-pools/%d/preflight', $bridgedOkPool->id));
+        $resBridgedOk = $this->postJson(sprintf('/api/v1/admin/ip-pools/%d/preflight', $bridgedOkPool->id));
         $resBridgedOk->assertOk();
         $this->assertTrue($resBridgedOk->json('ok'));
         $checksBridgedOk = collect($resBridgedOk->json('checks'));
@@ -803,7 +803,7 @@ final class IpManagementTest extends TestCase
             'gateway' => '10.174.0.1',
         ]);
 
-        $resBridgedPhys = $this->postJson(sprintf('/api/admin/ip-pools/%d/preflight', $bridgedPhysPool->id));
+        $resBridgedPhys = $this->postJson(sprintf('/api/v1/admin/ip-pools/%d/preflight', $bridgedPhysPool->id));
         $resBridgedPhys->assertOk();
         $this->assertFalse($resBridgedPhys->json('ok'));
         $typeCheckBridgedPhys = collect($resBridgedPhys->json('checks'))->firstWhere('name', 'Parent interface type matches mode');
@@ -822,7 +822,7 @@ final class IpManagementTest extends TestCase
             'gateway' => '10.175.0.1',
         ]);
 
-        $resMacvlanOk = $this->postJson(sprintf('/api/admin/ip-pools/%d/preflight', $macvlanOkPool->id));
+        $resMacvlanOk = $this->postJson(sprintf('/api/v1/admin/ip-pools/%d/preflight', $macvlanOkPool->id));
         $resMacvlanOk->assertOk();
         $this->assertTrue($resMacvlanOk->json('ok'));
         $this->assertTrue(collect($resMacvlanOk->json('checks'))->firstWhere('name', 'Parent interface type matches mode')['ok']);
@@ -839,7 +839,7 @@ final class IpManagementTest extends TestCase
             'gateway' => '10.176.0.1',
         ]);
 
-        $resMacvlanBridge = $this->postJson(sprintf('/api/admin/ip-pools/%d/preflight', $macvlanBridgePool->id));
+        $resMacvlanBridge = $this->postJson(sprintf('/api/v1/admin/ip-pools/%d/preflight', $macvlanBridgePool->id));
         $resMacvlanBridge->assertOk();
         $this->assertFalse($resMacvlanBridge->json('ok'));
         $typeCheckMacvlanBridge = collect($resMacvlanBridge->json('checks'))->firstWhere('name', 'Parent interface type matches mode');
@@ -858,7 +858,7 @@ final class IpManagementTest extends TestCase
             'gateway' => '10.177.0.1',
         ]);
 
-        $resMissingType = $this->postJson(sprintf('/api/admin/ip-pools/%d/preflight', $missingTypePool->id));
+        $resMissingType = $this->postJson(sprintf('/api/v1/admin/ip-pools/%d/preflight', $missingTypePool->id));
         $resMissingType->assertOk();
         $this->assertTrue($resMissingType->json('ok'));
         $typeCheckMissing = collect($resMissingType->json('checks'))->firstWhere('name', 'Parent interface type matches mode');
@@ -876,7 +876,7 @@ final class IpManagementTest extends TestCase
             'parent_interface' => 'incusbr0',
         ]);
 
-        $resRouted = $this->postJson(sprintf('/api/admin/ip-pools/%d/preflight', $routedPool->id));
+        $resRouted = $this->postJson(sprintf('/api/v1/admin/ip-pools/%d/preflight', $routedPool->id));
         $resRouted->assertOk();
         $this->assertTrue($resRouted->json('ok'));
         $checksRouted = collect($resRouted->json('checks'));
@@ -895,7 +895,7 @@ final class IpManagementTest extends TestCase
             'parent_interface' => '',
         ]);
 
-        $resManual = $this->postJson(sprintf('/api/admin/ip-pools/%d/preflight', $manualPool->id));
+        $resManual = $this->postJson(sprintf('/api/v1/admin/ip-pools/%d/preflight', $manualPool->id));
         $resManual->assertOk();
         $this->assertTrue($resManual->json('ok'));
         $typeCheckManual = collect($resManual->json('checks'))->firstWhere('name', 'Parent interface type matches mode');
@@ -914,7 +914,7 @@ final class IpManagementTest extends TestCase
             'gateway' => null,
         ]);
 
-        $resNoGw = $this->postJson(sprintf('/api/admin/ip-pools/%d/preflight', $bridgedNoGwPool->id));
+        $resNoGw = $this->postJson(sprintf('/api/v1/admin/ip-pools/%d/preflight', $bridgedNoGwPool->id));
         $resNoGw->assertOk();
         $this->assertFalse($resNoGw->json('ok'));
         $gwCheck = collect($resNoGw->json('checks'))->firstWhere('name', 'Gateway configured');
@@ -933,7 +933,7 @@ final class IpManagementTest extends TestCase
             'gateway' => '192.168.1.1',
         ]);
 
-        $resBadGw = $this->postJson(sprintf('/api/admin/ip-pools/%d/preflight', $bridgedBadGwPool->id));
+        $resBadGw = $this->postJson(sprintf('/api/v1/admin/ip-pools/%d/preflight', $bridgedBadGwPool->id));
         $resBadGw->assertOk();
         $this->assertFalse($resBadGw->json('ok'));
         $checksBadGw = collect($resBadGw->json('checks'));
@@ -1019,7 +1019,7 @@ final class IpManagementTest extends TestCase
         DB::flushQueryLog();
         DB::enableQueryLog();
 
-        $response = $this->getJson('/api/ips');
+        $response = $this->getJson('/api/v1/ips');
 
         $queries = DB::getQueryLog();
         DB::disableQueryLog();

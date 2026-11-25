@@ -121,7 +121,7 @@ sequenceDiagram
     participant Incus as Incus Hypervisor
     participant WS as Laravel Reverb
 
-    UI->>API: POST /api/vms
+    UI->>API: POST /api/v1/vms
     API->>Svc: provision(CreateVmDTO)
     Svc->>DB: Transaction + lockForUpdate (UserQuota & IpAllocation)
     Svc->>DB: Insert VirtualMachine (status = Provisioning)
@@ -135,6 +135,6 @@ sequenceDiagram
 
 ### 4.2 WebSocket Broadcasting Channels (`backend/routes/channels.php`)
 
-- **Endpoint:** `/api/broadcasting/auth` (authenticated via Sanctum Bearer token).
+- **Endpoint:** `/api/v1/broadcasting/auth` (authenticated via Sanctum Bearer token).
 - **`private-users.{id}`:** Receives `VirtualMachineStatusUpdated` and `SnapshotStatusUpdated` events for workloads owned by user `{id}`.
 - **`private-admin.workloads`:** Receives cluster-wide workload and snapshot updates for users with the `admin` role.

@@ -24,7 +24,7 @@ sequenceDiagram
     participant Proxy as console-proxy (:8085)
     participant Incus as Incus / LXD Host (:8443)
 
-    Browser->>Nginx: POST /api/vms/{id}/console { type, cols, rows }
+    Browser->>Nginx: POST /api/v1/vms/{id}/console { type, cols, rows }
     Nginx->>API: Authorize owner (deny admins and impersonators)
     API->>Incus: mTLS POST /1.0/instances/{name}/exec (or /console)
     Incus-->>API: Operation ID + websocket secrets (data, control)
@@ -37,13 +37,13 @@ sequenceDiagram
     Redis-->>Proxy: Host endpoint + SPKI pin + operation paths + panel client certificate
     Proxy->>Incus: Outbound WSS to /1.0/operations/{id}/websocket (pinned SPKI, mTLS)
     Proxy<<->>Browser: Duplex terminal stream (+ resize through the Incus control socket)
-    Browser->>API: DELETE /api/vms/{id}/console/{sessionId} (on close)
+    Browser->>API: DELETE /api/v1/vms/{id}/console/{sessionId} (on close)
     API->>Incus: DELETE /1.0/operations/{operationId}
 ```
 
 ### Ticket lifecycle
 
-1. The authenticated owner calls `POST /api/vms/{id}/console`.
+1. The authenticated owner calls `POST /api/v1/vms/{id}/console`.
 2. `ConsoleTicketService` checks, in order: the request is not an admin impersonation session, the `viewConsole` policy allows the user, and the instance is `running`.
 3. It chooses a driver (see [Driver selection](#2-driver-selection)) and asks Incus to start an exec or console operation. Incus returns an operation ID and per-socket secrets.
 4. The service stores a **single-use ticket** in Redis under `console:ticket:{ticket}` (64 random characters) with a TTL of `TERMINAL_TICKET_TTL_SECONDS` (default `60`, minimum `10`). It also records the session in `console:vm_sessions:{vmId}` and `console:session_index` so concurrency limits and closing work.
@@ -154,7 +154,7 @@ The idle timeout and message limit are copied into the ticket, so they apply to 
 
 ### Closing a session
 
-The web panel calls `DELETE /api/vms/{id}/console/{sessionId}` when the modal is closed or the terminal reconnects. This removes the session from the concurrency count and cancels the Incus operation. If the browser disappears without calling it, the proxy cleans up the Redis records itself when the socket closes.
+The web panel calls `DELETE /api/v1/vms/{id}/console/{sessionId}` when the modal is closed or the terminal reconnects. This removes the session from the concurrency count and cancels the Incus operation. If the browser disappears without calling it, the proxy cleans up the Redis records itself when the socket closes.
 
 ---
 
@@ -190,7 +190,7 @@ All endpoints require a Sanctum bearer token and are under `/api`. Interactive d
 ### Issue a terminal session
 
 ```http
-POST /api/vms/{id}/console
+POST /api/v1/vms/{id}/console
 ```
 
 **Body parameters (all optional):**
@@ -234,7 +234,7 @@ POST /api/vms/{id}/console
 ### Close a terminal session
 
 ```http
-DELETE /api/vms/{id}/console/{sessionId}
+DELETE /api/v1/vms/{id}/console/{sessionId}
 ```
 
 Optional body field `reason` (default `client_disconnect`) is stored in the audit log. Returns `{ "closed": true }` if the session existed and was closed, otherwise `{ "closed": false }`. Requires the same owner-only permission as issuing a ticket.
@@ -242,7 +242,7 @@ Optional body field `reason` (default `client_disconnect`) is stored in the audi
 ### Boot log
 
 ```http
-GET /api/vms/{id}/console-log
+GET /api/v1/vms/{id}/console-log
 ```
 
 See [Boot log](#7-boot-log).
@@ -251,15 +251,15 @@ See [Boot log](#7-boot-log).
 
 | Endpoint | Behavior |
 | :--- | :--- |
-| `POST /api/vms/{id}/console-ticket` | **Deprecated.** Issues an automatic-driver `console` ticket and returns only `{ "virtual_machine_id", "ticket" }`. Without a `session_id` the session cannot be closed explicitly |
-| `GET /api/vms/{id}/console` | Always `404`. Terminals are only issued with `POST` |
+| `POST /api/v1/vms/{id}/console-ticket` | **Deprecated.** Issues an automatic-driver `console` ticket and returns only `{ "virtual_machine_id", "ticket" }`. Without a `session_id` the session cannot be closed explicitly |
+| `GET /api/v1/vms/{id}/console` | Always `404`. Terminals are only issued with `POST` |
 
 ---
 
 ## 7. Boot Log
 
 ```http
-GET /api/vms/{id}/console-log
+GET /api/v1/vms/{id}/console-log
 ```
 
 Returns the text that the guest has written to its console buffer (`GET /1.0/instances/{name}/console?buffer=true` on Incus), for example to see why a guest failed to boot or which IP it received.

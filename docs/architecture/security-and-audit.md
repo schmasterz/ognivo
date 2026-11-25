@@ -7,10 +7,10 @@ This document describes Ognivo's defense-in-depth security controls, database pr
 ## 1. Platform Security Controls
 
 - **Encrypted Hypervisor Credentials:** The panel's mTLS private key (`PanelCertificate::private_key`) and host tokens (`Host::token`) are encrypted at rest in MySQL using AES-256-CBC (`encrypted` Eloquent cast) and passed in-memory via `CURLOPT_SSLCERT_BLOB` / `CURLOPT_SSLKEY_BLOB` (with a transient `0600` tempfile fallback in `sys_get_temp_dir()` unlinked immediately after the request).
-- **Expiring Bearer Tokens & Server-Side Logout:** Sanctum API tokens expire after 24 hours (`expiration => 1440` in `config/sanctum.php`) and are immediately revoked in the database on `POST /api/logout`.
-- **Strict Tenant Console Privacy:** Guest console sessions (`POST /api/vms/{id}/console`) are restricted exclusively to the workload owner via `VirtualMachinePolicy::viewConsole`. Administrators and active admin impersonation sessions are denied access (`403 Forbidden`) and logged.
+- **Expiring Bearer Tokens & Server-Side Logout:** Sanctum API tokens expire after 24 hours (`expiration => 1440` in `config/sanctum.php`) and are immediately revoked in the database on `POST /api/v1/logout`.
+- **Strict Tenant Console Privacy:** Guest console sessions (`POST /api/v1/vms/{id}/console`) are restricted exclusively to the workload owner via `VirtualMachinePolicy::viewConsole`. Administrators and active admin impersonation sessions are denied access (`403 Forbidden`) and logged.
 - **Cross-Tenant Metrics View Auditing (`vm.metrics.viewed`):** When an administrator (directly or while impersonating) views metrics of another tenant's instance, Ognivo records a `vm.metrics.viewed` audit event once per `(admin, instance)` per 15-minute window (`METRICS_AUDIT_WINDOW_SECONDS=900`) tracked in Redis, without ever storing metric data in the audit log.
-- **Rate Limiting on Hypervisor Mutations:** Destructive and state-changing actions (`POST /api/vms/{id}/action`, snapshot mutations) are protected by `throttle:vm-actions` (10 requests/minute per customer).
+- **Rate Limiting on Hypervisor Mutations:** Destructive and state-changing actions (`POST /api/v1/vms/{id}/action`, snapshot mutations) are protected by `throttle:vm-actions` (10 requests/minute per customer).
 - **Internal Network Isolation:** In production, MySQL (`3306`), Redis (`6379`), Reverb (`8080`), `console-proxy` (`8085`), and Next.js (`3000`) are bound exclusively to the internal Docker network; only Nginx (`80`/`443`) is published to the host.
 
 ### 1.1 Cryptographic Boundaries & Data Classification

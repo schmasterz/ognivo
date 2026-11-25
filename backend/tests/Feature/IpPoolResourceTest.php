@@ -44,7 +44,7 @@ final class IpPoolResourceTest extends TestCase
     {
         Sanctum::actingAs($this->admin);
 
-        $createRes = $this->postJson('/api/admin/ip-pools', [
+        $createRes = $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Manual Null Interface Pool',
             'host_id' => $this->host->id,
             'cidr' => '198.51.110.0/24',
@@ -61,7 +61,7 @@ final class IpPoolResourceTest extends TestCase
             'parent_interface' => '',
         ]);
 
-        $listRes = $this->getJson('/api/admin/ip-pools?host_id='.$this->host->id);
+        $listRes = $this->getJson('/api/v1/admin/ip-pools?host_id='.$this->host->id);
         $listRes->assertOk();
         $listRes->assertJsonPath('data.0.parent_interface', null);
     }
@@ -70,7 +70,7 @@ final class IpPoolResourceTest extends TestCase
     {
         Sanctum::actingAs($this->admin);
 
-        $createRes = $this->postJson('/api/admin/ip-pools', [
+        $createRes = $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Routed Eno1 Pool',
             'host_id' => $this->host->id,
             'cidr' => '198.51.111.0/24',
@@ -82,7 +82,7 @@ final class IpPoolResourceTest extends TestCase
         $createRes->assertCreated();
         $createRes->assertJsonPath('pool.parent_interface', 'eno1');
 
-        $listRes = $this->getJson('/api/admin/ip-pools?host_id='.$this->host->id);
+        $listRes = $this->getJson('/api/v1/admin/ip-pools?host_id='.$this->host->id);
         $listRes->assertOk();
         $listRes->assertJsonPath('data.0.parent_interface', 'eno1');
     }
@@ -138,7 +138,7 @@ final class IpPoolResourceTest extends TestCase
             'parent_interface' => 'eno1',
         ]);
 
-        $request = Request::create('/api/admin/ip-pools', 'GET');
+        $request = Request::create('/api/v1/admin/ip-pools', 'GET');
         $request->setUserResolver(fn (): User => $this->admin);
 
         $emptyArray = (new IpPoolResource($poolEmpty))->toArray($request);
@@ -152,7 +152,7 @@ final class IpPoolResourceTest extends TestCase
     {
         Sanctum::actingAs($this->admin);
 
-        $createRes = $this->postJson('/api/admin/ip-pools', [
+        $createRes = $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Excluded IPs Resource Pool',
             'host_id' => $this->host->id,
             'cidr' => '198.51.120.0/24',
@@ -167,7 +167,7 @@ final class IpPoolResourceTest extends TestCase
         $createRes->assertJsonPath('pool.excluded_ips', ['198.51.120.10', '198.51.120.20']);
         $createRes->assertJsonMissingPath('pool.vlan_id');
 
-        $listRes = $this->getJson('/api/admin/ip-pools?host_id='.$this->host->id);
+        $listRes = $this->getJson('/api/v1/admin/ip-pools?host_id='.$this->host->id);
         $listRes->assertOk();
         $listRes->assertJsonPath('data.0.gateway', '198.51.120.1');
         $listRes->assertJsonPath('data.0.excluded_ips', ['198.51.120.10', '198.51.120.20']);
@@ -202,7 +202,7 @@ final class IpPoolResourceTest extends TestCase
 
         Sanctum::actingAs($this->admin);
 
-        foreach (['/api/admin/ip-pools?per_page=1&page=1', '/api/ip-pools?per_page=1&page=1'] as $endpoint) {
+        foreach (['/api/v1/admin/ip-pools?per_page=1&page=1', '/api/v1/ip-pools?per_page=1&page=1'] as $endpoint) {
             $response = $this->getJson($endpoint);
 
             $response->assertOk()

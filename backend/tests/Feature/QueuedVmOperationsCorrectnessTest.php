@@ -91,7 +91,7 @@ final class QueuedVmOperationsCorrectnessTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->customer)
-            ->postJson("/api/vms/{$vm->id}/action", [
+            ->postJson("/api/v1/vms/{$vm->id}/action", [
                 'action' => 'start',
             ]);
 
@@ -119,7 +119,7 @@ final class QueuedVmOperationsCorrectnessTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->customer)
-            ->postJson("/api/vms/{$vm->id}/action", [
+            ->postJson("/api/v1/vms/{$vm->id}/action", [
                 'action' => 'stop',
             ]);
 
@@ -146,7 +146,7 @@ final class QueuedVmOperationsCorrectnessTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->customer)
-            ->postJson("/api/vms/{$vm->id}/action", [
+            ->postJson("/api/v1/vms/{$vm->id}/action", [
                 'action' => 'delete',
                 'force' => true,
             ]);
@@ -176,7 +176,7 @@ final class QueuedVmOperationsCorrectnessTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->admin)
-            ->postJson("/api/vms/{$vm->id}/action", [
+            ->postJson("/api/v1/vms/{$vm->id}/action", [
                 'action' => 'delete',
                 'force' => true,
             ]);

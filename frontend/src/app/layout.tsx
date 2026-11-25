@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import Script from "next/script";
 import "./globals.css";
 import { ThemeProvider } from "@/lib/theme/ThemeContext";
 import { I18nProvider } from "@/lib/i18n/I18nContext";
 import { ToastProvider } from "@/lib/toast/ToastContext";
 import { AuthProvider } from "@/lib/auth/AuthContext";
 import { GlobalFilterProvider } from "@/lib/filters/GlobalFilterContext";
+import { ConfigProvider } from "@/lib/config/ConfigContext";
+import type { OgnivoRuntimeConfig } from "@/lib/config";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,42 +35,38 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const runtimeConfig: OgnivoRuntimeConfig = {
+    app_name: process.env.NEXT_PUBLIC_APP_NAME || "Ognivo",
+    app_env: process.env.NODE_ENV || "production",
+    api_base_url: process.env.NEXT_PUBLIC_API_URL || "/api/v1",
+    ws_host: process.env.NEXT_PUBLIC_REVERB_HOST || undefined,
+    ws_port: Number.parseInt(process.env.NEXT_PUBLIC_REVERB_PORT ?? "", 10) || undefined,
+    ws_key: process.env.NEXT_PUBLIC_REVERB_APP_KEY || process.env.REVERB_APP_KEY || undefined,
+    features: {
+      registration: process.env.NEXT_PUBLIC_ENABLE_REGISTRATION === "true",
+      impersonation: process.env.NEXT_PUBLIC_ENABLE_IMPERSONATION !== "false",
+    },
+  };
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <Script
-          id="theme-initializer"
-          strategy="beforeInteractive"
-          dangerouslySetInnerHTML={{
-            __html: `
-              try {
-                const saved = localStorage.getItem('theme_mode');
-                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-                const isDark = saved === 'dark' || ((!saved || saved === 'system') && prefersDark);
-                if (isDark) {
-                  document.documentElement.classList.add('dark');
-                  document.documentElement.setAttribute('data-theme', 'dark');
-                  document.documentElement.style.colorScheme = 'dark';
-                } else {
-                  document.documentElement.classList.remove('dark');
-                  document.documentElement.setAttribute('data-theme', 'light');
-                  document.documentElement.style.colorScheme = 'light';
-                }
-              } catch (e) {}
-            `,
-          }}
-        />
+        {/* Synchronous execution before first paint prevents theme FOUC */}
+        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+        <script src="/theme-init.js" />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <ThemeProvider>
-          <I18nProvider>
-            <ToastProvider>
-              <AuthProvider>
-                <GlobalFilterProvider>{children}</GlobalFilterProvider>
-              </AuthProvider>
-            </ToastProvider>
-          </I18nProvider>
-        </ThemeProvider>
+        <ConfigProvider initialConfig={runtimeConfig}>
+          <ThemeProvider>
+            <I18nProvider>
+              <ToastProvider>
+                <AuthProvider>
+                  <GlobalFilterProvider>{children}</GlobalFilterProvider>
+                </AuthProvider>
+              </ToastProvider>
+            </I18nProvider>
+          </ThemeProvider>
+        </ConfigProvider>
       </body>
     </html>
   );

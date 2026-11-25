@@ -99,7 +99,7 @@ beforeEach(function (): void {
 test('GET /api/ips preserves default pagination and response shape', function (): void {
     Sanctum::actingAs($this->admin);
 
-    $response = $this->getJson('/api/ips');
+    $response = $this->getJson('/api/v1/ips');
 
     $response->assertOk()
         ->assertJsonStructure([
@@ -120,45 +120,45 @@ test('GET /api/ips works with each valid filter', function (): void {
     Sanctum::actingAs($this->admin);
 
     // user_id
-    $this->getJson('/api/ips?user_id='.$this->otherTenant->id)
+    $this->getJson('/api/v1/ips?user_id='.$this->otherTenant->id)
         ->assertOk()
         ->assertJsonCount(1, 'data')
         ->assertJsonPath('data.0.id', $this->otherAllocated->id);
 
     // host_id
-    $this->getJson('/api/ips?host_id='.$this->host2->id)
+    $this->getJson('/api/v1/ips?host_id='.$this->host2->id)
         ->assertOk()
         ->assertJsonCount(1, 'data')
         ->assertJsonPath('data.0.id', $this->tenantCooling->id);
 
     // pool_id
-    $this->getJson('/api/ips?pool_id='.$this->pool2->id)
+    $this->getJson('/api/v1/ips?pool_id='.$this->pool2->id)
         ->assertOk()
         ->assertJsonCount(1, 'data')
         ->assertJsonPath('data.0.id', $this->tenantCooling->id);
 
     // status: allocated, cooling
-    $this->getJson('/api/ips?status=allocated')
+    $this->getJson('/api/v1/ips?status=allocated')
         ->assertOk()
         ->assertJsonCount(2, 'data');
 
-    $this->getJson('/api/ips?status=cooling')
+    $this->getJson('/api/v1/ips?status=cooling')
         ->assertOk()
         ->assertJsonCount(1, 'data')
         ->assertJsonPath('data.0.id', $this->tenantCooling->id);
 
     // search (IP prefix and boundary 64-char string)
-    $this->getJson('/api/ips?search=203.0.113.20')
+    $this->getJson('/api/v1/ips?search=203.0.113.20')
         ->assertOk()
         ->assertJsonCount(1, 'data')
         ->assertJsonPath('data.0.id', $this->otherAllocated->id);
 
-    $this->getJson('/api/ips?search='.str_repeat('a', 64))
+    $this->getJson('/api/v1/ips?search='.str_repeat('a', 64))
         ->assertOk()
         ->assertJsonCount(0, 'data');
 
     // per_page and page
-    $this->getJson('/api/ips?per_page=1&page=2')
+    $this->getJson('/api/v1/ips?per_page=1&page=2')
         ->assertOk()
         ->assertJsonCount(1, 'data')
         ->assertJsonPath('meta.per_page', 1)
@@ -169,7 +169,7 @@ test('GET /api/ips works with each valid filter', function (): void {
         ->assertJsonMissingPath('per_page')
         ->assertJsonMissingPath('total');
 
-    $this->getJson('/api/ips?per_page=100')
+    $this->getJson('/api/v1/ips?per_page=100')
         ->assertOk()
         ->assertJsonPath('meta.per_page', 100);
 });
@@ -177,7 +177,7 @@ test('GET /api/ips works with each valid filter', function (): void {
 test('GET /api/ips rejects invalid query parameters with 422', function (string $query, string $errorField): void {
     Sanctum::actingAs($this->admin);
 
-    $this->getJson('/api/ips?'.$query)
+    $this->getJson('/api/v1/ips?'.$query)
         ->assertStatus(422)
         ->assertJsonValidationErrors([$errorField]);
 })->with([
@@ -196,7 +196,7 @@ test('GET /api/ips rejects invalid query parameters with 422', function (string 
 test('tenant cannot view another user allocations via user_id filter', function (): void {
     Sanctum::actingAs($this->tenant);
 
-    $response = $this->getJson('/api/ips?user_id='.$this->otherTenant->id);
+    $response = $this->getJson('/api/v1/ips?user_id='.$this->otherTenant->id);
 
     $response->assertOk();
 

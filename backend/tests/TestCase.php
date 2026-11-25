@@ -54,7 +54,7 @@ abstract class TestCase extends BaseTestCase
                 'updated_at' => $now,
             ],
             [
-                'name' => 'Enterprise Tier',
+                'name' => 'Tier 3',
                 'description' => 'Maximum resource allocations for production clustering and heavy compute workloads',
                 'is_default' => false,
                 'max_vms' => 32,

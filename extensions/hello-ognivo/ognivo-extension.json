@@ -1,0 +1,11 @@
+{
+  "name": "ognivo/hello-ognivo",
+  "version": "1.0.0",
+  "description": "Reference extension demonstrating Ognivo Core extension points",
+  "author": "Ognivo Community",
+  "ognivo_version_constraint": "^1.0",
+  "providers": [
+    "Ognivo\\HelloOgnivo\\HelloOgnivoServiceProvider"
+  ],
+  "event_subscribers": []
+}

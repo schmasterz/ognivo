@@ -1,6 +1,33 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
+import {
+  getThemeTokens,
+  subscribeThemeRegistry,
+  type ThemeTokens,
+} from "@/lib/theming/themeRegistry";
+
+const TOKEN_CSS_VARS: ReadonlyArray<readonly [keyof ThemeTokens, string]> = [
+  ["primaryColor", "--brand-primary"],
+  ["accentColor", "--brand-accent"],
+  ["borderRadius", "--brand-radius"],
+];
+
+function applyBrandTokens(): void {
+  if (typeof document === "undefined") return;
+
+  const tokens = getThemeTokens();
+  const rootStyle = document.documentElement.style;
+
+  for (const [key, cssVar] of TOKEN_CSS_VARS) {
+    const value = tokens[key];
+    if (value) {
+      rootStyle.setProperty(cssVar, value);
+    } else {
+      rootStyle.removeProperty(cssVar);
+    }
+  }
+}
 
 export type ThemeMode = "light" | "dark";
 
@@ -51,6 +78,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       setThemeState(initialMode);
       applyTheme(initialMode);
     });
+  }, []);
+
+  useEffect(() => {
+    applyBrandTokens();
+    return subscribeThemeRegistry(applyBrandTokens);
   }, []);
 
   const setTheme = (newTheme: ThemeMode) => {

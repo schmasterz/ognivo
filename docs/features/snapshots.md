@@ -19,19 +19,19 @@ The snapshot subsystem allows tenants and administrators to capture, restore, an
 
 ```mermaid
 stateDiagram-v2
-    [*] --> creating: POST /api/vms/{id}/snapshots
+    [*] --> creating: POST /api/v1/vms/{id}/snapshots
     creating --> ready: CreateSnapshotJob completed
     creating --> failed: Driver failure / timeout
 
-    ready --> restoring: POST /api/vms/{id}/snapshots/{snapId}/restore
+    ready --> restoring: POST /api/v1/vms/{id}/snapshots/{snapId}/restore
     restoring --> ready: RestoreSnapshotJob completed
     restoring --> failed: Hypervisor restore failure
 
-    ready --> deleting: DELETE /api/vms/{id}/snapshots/{snapId}
+    ready --> deleting: DELETE /api/v1/vms/{id}/snapshots/{snapId}
     deleting --> [*]: DeleteSnapshotJob completed (row deleted)
     deleting --> failed: Hypervisor delete failure
 
-    failed --> deleting: DELETE /api/vms/{id}/snapshots/{snapId}
+    failed --> deleting: DELETE /api/v1/vms/{id}/snapshots/{snapId}
 ```
 
 ### Concurrency & State Invariants
@@ -49,15 +49,15 @@ All endpoints require `auth:sanctum`. Mutating routes enforce `throttle:vm-actio
 
 | Method | Endpoint | Response | Description |
 | :--- | :--- | :--- | :--- |
-| `GET` | `/api/snapshots` | `200 OK` | Global paginated list of snapshots (filtered by tenant ownership, `vm_id`, `status`, `search`, or `user_id` for admins) |
-| `GET` | `/api/vms/{vm}/snapshots` | `200 OK` | Lists snapshots for a specific VM alongside quota `meta` (`used`, `max_snapshots`, `remaining`) |
-| `POST` | `/api/vms/{vm}/snapshots` | `202 Accepted` | Queues a manual snapshot (`name`) |
-| `POST` | `/api/vms/{vm}/snapshots/{snapshot}/restore` | `202 Accepted` | Queues restoration of a `ready` snapshot (by ID or slug name) |
-| `DELETE` | `/api/vms/{vm}/snapshots/{snapshot}` | `202 Accepted` | Queues deletion of a snapshot (by ID or slug name) |
+| `GET` | `/api/v1/snapshots` | `200 OK` | Global paginated list of snapshots (filtered by tenant ownership, `vm_id`, `status`, `search`, or `user_id` for admins) |
+| `GET` | `/api/v1/vms/{vm}/snapshots` | `200 OK` | Lists snapshots for a specific VM alongside quota `meta` (`used`, `max_snapshots`, `remaining`) |
+| `POST` | `/api/v1/vms/{vm}/snapshots` | `202 Accepted` | Queues a manual snapshot (`name`) |
+| `POST` | `/api/v1/vms/{vm}/snapshots/{snapshot}/restore` | `202 Accepted` | Queues restoration of a `ready` snapshot (by ID or slug name) |
+| `DELETE` | `/api/v1/vms/{vm}/snapshots/{snapshot}` | `202 Accepted` | Queues deletion of a snapshot (by ID or slug name) |
 
 ### Example: Create Snapshot
 ```http
-POST /api/vms/1/snapshots
+POST /api/v1/vms/1/snapshots
 Content-Type: application/json
 
 {

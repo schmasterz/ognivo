@@ -76,12 +76,12 @@ test('suspended user with an already issued token gets 403 on /api/vms (GET and 
     ];
 
     // GET /api/vms must return 403 with account_suspended message
-    $getRes = $this->withHeaders($headers)->getJson('/api/vms');
+    $getRes = $this->withHeaders($headers)->getJson('/api/v1/vms');
     $getRes->assertStatus(403);
     $getRes->assertJsonFragment(['message' => __('messages.auth.account_suspended')]);
 
     // POST /api/vms must return 403
-    $postRes = $this->withHeaders($headers)->postJson('/api/vms', [
+    $postRes = $this->withHeaders($headers)->postJson('/api/v1/vms', [
         'name' => 'new-vm-blocked',
         'instance_type' => 'virtual-machine',
         'os_image' => 'ubuntu:24.04',
@@ -93,7 +93,7 @@ test('suspended user with an already issued token gets 403 on /api/vms (GET and 
     $postRes->assertJsonFragment(['message' => __('messages.auth.account_suspended')]);
 
     // POST /api/vms/{vm}/action must return 403
-    $actionRes = $this->withHeaders($headers)->postJson("/api/vms/{$vm->id}/action", [
+    $actionRes = $this->withHeaders($headers)->postJson("/api/v1/vms/{$vm->id}/action", [
         'action' => 'stop',
     ]);
     $actionRes->assertStatus(403);
@@ -110,12 +110,12 @@ test('GET /api/me and POST /api/logout remain accessible for suspended users wit
     ];
 
     // GET /api/me is exempt from EnsureUserIsActive
-    $meRes = $this->withHeaders($headers)->getJson('/api/me');
+    $meRes = $this->withHeaders($headers)->getJson('/api/v1/me');
     $meRes->assertOk();
     $meRes->assertJsonPath('user.status', 'suspended');
 
     // POST /api/logout is exempt and successfully revokes current token
-    $logoutRes = $this->withHeaders($headers)->postJson('/api/logout');
+    $logoutRes = $this->withHeaders($headers)->postJson('/api/v1/logout');
     $logoutRes->assertOk();
 
     // After logout, token is deleted from database
@@ -123,7 +123,7 @@ test('GET /api/me and POST /api/logout remain accessible for suspended users wit
 
     // Forget cached auth state in test application and verify request fails
     $this->app['auth']->forgetGuards();
-    $afterLogoutRes = $this->withHeaders($headers)->getJson('/api/me');
+    $afterLogoutRes = $this->withHeaders($headers)->getJson('/api/v1/me');
     $afterLogoutRes->assertUnauthorized();
 });
 
@@ -152,7 +152,7 @@ test('password change by admin invalidates the old token', function (): void {
     $res = $this->withHeaders([
         'Authorization' => 'Bearer '.$token,
         'Accept' => 'application/json',
-    ])->getJson('/api/vms');
+    ])->getJson('/api/v1/vms');
 
     $res->assertUnauthorized();
 });
@@ -215,7 +215,7 @@ test('demoting the last active admin returns 422', function (): void {
     expect(User::role('admin')->where('status', 'active')->count())->toBe(1);
 
     // 2. Demoting the last remaining active admin via API returns 422
-    $response = $this->actingAs($this->admin)->putJson("/api/admin/users/{$this->admin->id}", [
+    $response = $this->actingAs($this->admin)->putJson("/api/v1/admin/users/{$this->admin->id}", [
         'name' => $this->admin->name,
         'email' => $this->admin->email,
         'role' => 'customer',
@@ -234,7 +234,7 @@ test('admin cannot change their own role', function (): void {
     ]);
     $secondAdmin->assignRole('admin');
 
-    $response = $this->actingAs($this->admin)->putJson("/api/admin/users/{$this->admin->id}", [
+    $response = $this->actingAs($this->admin)->putJson("/api/v1/admin/users/{$this->admin->id}", [
         'name' => $this->admin->name,
         'email' => $this->admin->email,
         'role' => 'customer',

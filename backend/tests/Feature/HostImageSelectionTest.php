@@ -36,7 +36,7 @@ test('POST /api/admin/hosts default attaches all catalog images and sets auto_at
     $img1 = Image::factory()->create();
     $img2 = Image::factory()->create();
 
-    $response = $this->actingAs($this->admin)->postJson('/api/admin/hosts', [
+    $response = $this->actingAs($this->admin)->postJson('/api/v1/admin/hosts', [
         'name' => 'Default Host Node',
         'endpoint_url' => 'https://10.10.1.1:8443',
         'driver' => 'fake',
@@ -59,7 +59,7 @@ test('POST /api/admin/hosts with selected mode and auto_attach_images false atta
     $img2 = Image::factory()->create();
     $img3 = Image::factory()->create();
 
-    $response = $this->actingAs($this->admin)->postJson('/api/admin/hosts', [
+    $response = $this->actingAs($this->admin)->postJson('/api/v1/admin/hosts', [
         'name' => 'Selected Host Node',
         'endpoint_url' => 'https://10.10.1.2:8443',
         'driver' => 'fake',
@@ -88,7 +88,7 @@ test('POST /api/admin/hosts with filter mode attaches matching non-excluded imag
     $imgLinux2 = Image::factory()->create(['os_type' => 'linux']);
     $imgWindows = Image::factory()->create(['os_type' => 'windows']);
 
-    $response = $this->actingAs($this->admin)->postJson('/api/admin/hosts', [
+    $response = $this->actingAs($this->admin)->postJson('/api/v1/admin/hosts', [
         'name' => 'Filter Host Node',
         'endpoint_url' => 'https://10.10.1.3:8443',
         'driver' => 'fake',
@@ -121,7 +121,7 @@ test('PUT /api/admin/hosts/{host} with delta mode updates host_image accurately'
         ['host_id' => $host->id, 'image_id' => $img2->id],
     ]);
 
-    $response = $this->actingAs($this->admin)->putJson("/api/admin/hosts/{$host->id}", [
+    $response = $this->actingAs($this->admin)->putJson("/api/v1/admin/hosts/{$host->id}", [
         'name' => $host->name,
         'endpoint_url' => $host->endpoint_url,
         'driver' => 'fake',
@@ -150,7 +150,7 @@ test('PUT /api/admin/hosts/{host} with all mode attaches all catalog images', fu
 
     DB::table('host_image')->where('host_id', $host->id)->delete();
 
-    $response = $this->actingAs($this->admin)->putJson("/api/admin/hosts/{$host->id}", [
+    $response = $this->actingAs($this->admin)->putJson("/api/v1/admin/hosts/{$host->id}", [
         'name' => $host->name,
         'endpoint_url' => $host->endpoint_url,
         'driver' => 'fake',
@@ -169,7 +169,7 @@ test('PUT /api/admin/hosts/{host} validation errors on invalid image payloads', 
     $host = Host::factory()->create(['driver' => 'fake']);
 
     // 1. empty ids in selected mode
-    $resEmpty = $this->actingAs($this->admin)->putJson("/api/admin/hosts/{$host->id}", [
+    $resEmpty = $this->actingAs($this->admin)->putJson("/api/v1/admin/hosts/{$host->id}", [
         'name' => $host->name,
         'endpoint_url' => $host->endpoint_url,
         'driver' => 'fake',
@@ -182,7 +182,7 @@ test('PUT /api/admin/hosts/{host} validation errors on invalid image payloads', 
         ->assertJsonValidationErrors(['images.ids']);
 
     // 2. non-existent image ID
-    $resNonExistent = $this->actingAs($this->admin)->putJson("/api/admin/hosts/{$host->id}", [
+    $resNonExistent = $this->actingAs($this->admin)->putJson("/api/v1/admin/hosts/{$host->id}", [
         'name' => $host->name,
         'endpoint_url' => $host->endpoint_url,
         'driver' => 'fake',
@@ -195,7 +195,7 @@ test('PUT /api/admin/hosts/{host} validation errors on invalid image payloads', 
         ->assertJsonValidationErrors(['images.ids']);
 
     // 3. unknown filter key
-    $resUnknownFilter = $this->actingAs($this->admin)->putJson("/api/admin/hosts/{$host->id}", [
+    $resUnknownFilter = $this->actingAs($this->admin)->putJson("/api/v1/admin/hosts/{$host->id}", [
         'name' => $host->name,
         'endpoint_url' => $host->endpoint_url,
         'driver' => 'fake',
@@ -208,7 +208,7 @@ test('PUT /api/admin/hosts/{host} validation errors on invalid image payloads', 
         ->assertJsonValidationErrors(['images.filter']);
 
     // 4. unknown key in images
-    $resUnknownKey = $this->actingAs($this->admin)->putJson("/api/admin/hosts/{$host->id}", [
+    $resUnknownKey = $this->actingAs($this->admin)->putJson("/api/v1/admin/hosts/{$host->id}", [
         'name' => $host->name,
         'endpoint_url' => $host->endpoint_url,
         'driver' => 'fake',
@@ -239,7 +239,7 @@ test('updating host attributes, auto_attach_images, and images records exactly o
 
     DB::table('audit_logs')->where('subject_id', (string) $host->id)->delete();
 
-    $response = $this->actingAs($this->admin)->putJson("/api/admin/hosts/{$host->id}", [
+    $response = $this->actingAs($this->admin)->putJson("/api/v1/admin/hosts/{$host->id}", [
         'name' => 'Renamed Host',
         'endpoint_url' => $host->endpoint_url,
         'driver' => 'fake',
@@ -290,7 +290,7 @@ test('updating only images records exactly one audit log with images context and
 
     DB::table('audit_logs')->where('subject_id', (string) $host->id)->delete();
 
-    $response = $this->actingAs($this->admin)->putJson("/api/admin/hosts/{$host->id}", [
+    $response = $this->actingAs($this->admin)->putJson("/api/v1/admin/hosts/{$host->id}", [
         'name' => $host->name,
         'region' => $host->region,
         'endpoint_url' => $host->endpoint_url,
@@ -377,7 +377,7 @@ test('POST /api/admin/hosts/{host}/images/preview-detach returns impacted instan
     ]);
 
     // Preview detaching img1 and img2 (mode: selected with only img3)
-    $response = $this->actingAs($this->admin)->postJson("/api/admin/hosts/{$host1->id}/images/preview-detach", [
+    $response = $this->actingAs($this->admin)->postJson("/api/v1/admin/hosts/{$host1->id}/images/preview-detach", [
         'images' => [
             'mode' => 'selected',
             'ids' => [$img3->id],
@@ -409,14 +409,14 @@ test('POST /api/admin/hosts/{host}/images/preview-detach returns impacted instan
 test('customer receives 403 on preview-detach and put host endpoints', function (): void {
     $host = Host::factory()->create(['driver' => 'fake']);
 
-    $previewRes = $this->actingAs($this->customer)->postJson("/api/admin/hosts/{$host->id}/images/preview-detach", [
+    $previewRes = $this->actingAs($this->customer)->postJson("/api/v1/admin/hosts/{$host->id}/images/preview-detach", [
         'images' => [
             'mode' => 'all',
         ],
     ]);
     $previewRes->assertForbidden();
 
-    $updateRes = $this->actingAs($this->customer)->putJson("/api/admin/hosts/{$host->id}", [
+    $updateRes = $this->actingAs($this->customer)->putJson("/api/v1/admin/hosts/{$host->id}", [
         'name' => 'Forbidden Host Name',
         'endpoint_url' => $host->endpoint_url,
     ]);
@@ -425,7 +425,7 @@ test('customer receives 403 on preview-detach and put host endpoints', function 
 
 test('connect-token and add-certificate endpoints validate auto_attach_images and image selection rules', function (): void {
     // 1. connect-token rejects invalid auto_attach_images
-    $res1 = $this->actingAs($this->admin)->postJson('/api/admin/hosts/connect-token', [
+    $res1 = $this->actingAs($this->admin)->postJson('/api/v1/admin/hosts/connect-token', [
         'name' => 'Token Node 1',
         'token' => 'dummy-token',
         'auto_attach_images' => 'not-a-boolean',
@@ -433,7 +433,7 @@ test('connect-token and add-certificate endpoints validate auto_attach_images an
     $res1->assertStatus(422)->assertJsonValidationErrors(['auto_attach_images']);
 
     // 2. connect-token rejects empty ids in selected mode
-    $res2 = $this->actingAs($this->admin)->postJson('/api/admin/hosts/connect-token', [
+    $res2 = $this->actingAs($this->admin)->postJson('/api/v1/admin/hosts/connect-token', [
         'name' => 'Token Node 2',
         'token' => 'dummy-token',
         'images' => [
@@ -444,7 +444,7 @@ test('connect-token and add-certificate endpoints validate auto_attach_images an
     $res2->assertStatus(422)->assertJsonValidationErrors(['images.ids']);
 
     // 3. connect-token rejects non-existent image ID
-    $res3 = $this->actingAs($this->admin)->postJson('/api/admin/hosts/connect-token', [
+    $res3 = $this->actingAs($this->admin)->postJson('/api/v1/admin/hosts/connect-token', [
         'name' => 'Token Node 3',
         'token' => 'dummy-token',
         'images' => [
@@ -455,7 +455,7 @@ test('connect-token and add-certificate endpoints validate auto_attach_images an
     $res3->assertStatus(422)->assertJsonValidationErrors(['images.ids']);
 
     // 4. connect-token rejects unknown mode
-    $res4 = $this->actingAs($this->admin)->postJson('/api/admin/hosts/connect-token', [
+    $res4 = $this->actingAs($this->admin)->postJson('/api/v1/admin/hosts/connect-token', [
         'name' => 'Token Node 4',
         'token' => 'dummy-token',
         'images' => [
@@ -465,7 +465,7 @@ test('connect-token and add-certificate endpoints validate auto_attach_images an
     $res4->assertStatus(422)->assertJsonValidationErrors(['images.mode']);
 
     // 5. add-certificate rejects invalid auto_attach_images
-    $res5 = $this->actingAs($this->admin)->postJson('/api/admin/hosts/add-certificate', [
+    $res5 = $this->actingAs($this->admin)->postJson('/api/v1/admin/hosts/add-certificate', [
         'name' => 'Cert Node 1',
         'address' => '10.0.0.5:8443',
         'expected_fingerprint' => 'abc',
@@ -474,7 +474,7 @@ test('connect-token and add-certificate endpoints validate auto_attach_images an
     $res5->assertStatus(422)->assertJsonValidationErrors(['auto_attach_images']);
 
     // 6. add-certificate rejects unknown filter key
-    $res6 = $this->actingAs($this->admin)->postJson('/api/admin/hosts/add-certificate', [
+    $res6 = $this->actingAs($this->admin)->postJson('/api/v1/admin/hosts/add-certificate', [
         'name' => 'Cert Node 2',
         'address' => '10.0.0.5:8443',
         'expected_fingerprint' => 'abc',
@@ -486,7 +486,7 @@ test('connect-token and add-certificate endpoints validate auto_attach_images an
     $res6->assertStatus(422)->assertJsonValidationErrors(['images.filter']);
 
     // 7. add-certificate rejects non-existent detach_ids
-    $res7 = $this->actingAs($this->admin)->postJson('/api/admin/hosts/add-certificate', [
+    $res7 = $this->actingAs($this->admin)->postJson('/api/v1/admin/hosts/add-certificate', [
         'name' => 'Cert Node 3',
         'address' => '10.0.0.5:8443',
         'expected_fingerprint' => 'abc',

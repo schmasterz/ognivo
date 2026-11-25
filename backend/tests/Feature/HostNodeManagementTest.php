@@ -103,14 +103,14 @@ final class HostNodeManagementTest extends TestCase
 
     public function test_customer_can_list_active_hosts_for_provisioning_but_cannot_modify(): void
     {
-        $response = $this->actingAs($this->customer)->getJson('/api/hosts');
+        $response = $this->actingAs($this->customer)->getJson('/api/v1/hosts');
         $response->assertOk();
         $response->assertJsonCount(3, 'data');
         $response->assertJsonFragment(['name' => 'eu-west-1', 'region' => 'Europe West (Frankfurt)']);
 
         // Forbidden admin endpoints for customer
-        $this->actingAs($this->customer)->getJson('/api/admin/hosts')->assertForbidden();
-        $this->actingAs($this->customer)->postJson('/api/admin/hosts', [
+        $this->actingAs($this->customer)->getJson('/api/v1/admin/hosts')->assertForbidden();
+        $this->actingAs($this->customer)->postJson('/api/v1/admin/hosts', [
             'name' => 'ap-southeast-1',
             'region' => 'Asia Pacific (Singapore)',
             'endpoint_url' => 'https://ap-southeast-1.incus.local:8443',
@@ -121,12 +121,12 @@ final class HostNodeManagementTest extends TestCase
     public function test_admin_can_crud_host_nodes(): void
     {
         // 1. List
-        $listRes = $this->actingAs($this->admin)->getJson('/api/admin/hosts');
+        $listRes = $this->actingAs($this->admin)->getJson('/api/v1/admin/hosts');
         $listRes->assertOk();
         $listRes->assertJsonCount(3, 'data');
 
         // 2. Create
-        $createRes = $this->actingAs($this->admin)->postJson('/api/admin/hosts', [
+        $createRes = $this->actingAs($this->admin)->postJson('/api/v1/admin/hosts', [
             'name' => 'ap-southeast-1',
             'region' => 'Asia Pacific (Singapore)',
             'endpoint_url' => 'https://ap-southeast-1.incus.internal:8443',
@@ -146,7 +146,7 @@ final class HostNodeManagementTest extends TestCase
         ]);
 
         // 3. Update
-        $updateRes = $this->actingAs($this->admin)->putJson("/api/admin/hosts/{$newNodeId}", [
+        $updateRes = $this->actingAs($this->admin)->putJson("/api/v1/admin/hosts/{$newNodeId}", [
             'name' => 'ap-southeast-2',
             'region' => 'Asia Pacific (Sydney)',
             'endpoint_url' => 'https://ap-southeast-2.incus.internal:8443',
@@ -166,7 +166,7 @@ final class HostNodeManagementTest extends TestCase
         ]);
 
         // 4. Delete
-        $deleteRes = $this->actingAs($this->admin)->deleteJson("/api/admin/hosts/{$newNodeId}");
+        $deleteRes = $this->actingAs($this->admin)->deleteJson("/api/v1/admin/hosts/{$newNodeId}");
         $deleteRes->assertOk();
         $this->assertDatabaseMissing('hosts', ['id' => $newNodeId]);
     }
@@ -186,7 +186,7 @@ final class HostNodeManagementTest extends TestCase
             'ipv4_address' => '10.200.0.10',
         ]);
 
-        $response = $this->actingAs($this->admin)->deleteJson("/api/admin/hosts/{$this->frankfurtHost->id}");
+        $response = $this->actingAs($this->admin)->deleteJson("/api/v1/admin/hosts/{$this->frankfurtHost->id}");
         $response->assertStatus(422);
         $response->assertJsonFragment(['message' => 'Cannot delete compute node with active virtual machines deployed on it.']);
     }
@@ -216,7 +216,7 @@ final class HostNodeManagementTest extends TestCase
             'ipv4_address' => '10.200.0.10',
         ]);
 
-        $response = $this->actingAs($this->admin)->deleteJson("/api/admin/hosts/{$this->frankfurtHost->id}");
+        $response = $this->actingAs($this->admin)->deleteJson("/api/v1/admin/hosts/{$this->frankfurtHost->id}");
         $response->assertOk();
 
         $this->assertDatabaseMissing('hosts', ['id' => $this->frankfurtHost->id]);
@@ -230,7 +230,7 @@ final class HostNodeManagementTest extends TestCase
 
     public function test_ip_pools_can_be_assigned_to_specific_host_nodes(): void
     {
-        $poolRes = $this->actingAs($this->admin)->postJson('/api/admin/ip-pools', [
+        $poolRes = $this->actingAs($this->admin)->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Frankfurt Public Subnet',
             'subnet' => '195.20.10.0/29',
             'gateway' => '195.20.10.1',
@@ -250,7 +250,7 @@ final class HostNodeManagementTest extends TestCase
         ]);
 
         // Verify list returns host relation
-        $listRes = $this->actingAs($this->admin)->getJson('/api/ip-pools');
+        $listRes = $this->actingAs($this->admin)->getJson('/api/v1/ip-pools');
         $listRes->assertOk();
         $listRes->assertJsonFragment([
             'name' => 'Frankfurt Public Subnet',
@@ -283,7 +283,7 @@ final class HostNodeManagementTest extends TestCase
         ]);
 
         // Provision VM on Sofia host
-        $res = $this->actingAs($this->customer)->postJson('/api/vms', [
+        $res = $this->actingAs($this->customer)->postJson('/api/v1/vms', [
             'name' => 'sofia-database',
             'os_image' => 'ubuntu:24.04',
             'cpu_cores' => 2,
@@ -302,7 +302,7 @@ final class HostNodeManagementTest extends TestCase
     public function test_user_quota_is_locked_when_assigned_to_group_and_unlocked_when_custom(): void
     {
         $group = QuotaGroup::create([
-            'name' => 'Pro Tier',
+            'name' => 'Performance Tier',
             'description' => 'Professional plan',
             'max_vms' => 10,
             'max_cpu_cores' => 32,
@@ -313,7 +313,7 @@ final class HostNodeManagementTest extends TestCase
         ]);
 
         // 1. Assign group to customer with attempted custom overrides (which must be ignored because group rules apply)
-        $updateRes = $this->actingAs($this->admin)->putJson("/api/admin/users/{$this->customer->id}", [
+        $updateRes = $this->actingAs($this->admin)->putJson("/api/v1/admin/users/{$this->customer->id}", [
             'name' => 'Tenant Dev',
             'email' => 'tenant-node@test.local',
             'role' => 'customer',
@@ -330,7 +330,7 @@ final class HostNodeManagementTest extends TestCase
         $this->assertSame(10, $this->customer->quota->max_vms); // strictly locked to group
 
         // 2. Switch to Custom (quota_group_id: null) allowing manual custom editing
-        $customRes = $this->actingAs($this->admin)->putJson("/api/admin/users/{$this->customer->id}", [
+        $customRes = $this->actingAs($this->admin)->putJson("/api/v1/admin/users/{$this->customer->id}", [
             'name' => 'Tenant Dev',
             'email' => 'tenant-node@test.local',
             'role' => 'customer',
@@ -382,19 +382,19 @@ final class HostNodeManagementTest extends TestCase
         ]);
 
         // Customer filters by Frankfurt
-        $custRes = $this->actingAs($this->customer)->getJson("/api/vms?host_id={$this->frankfurtHost->id}");
+        $custRes = $this->actingAs($this->customer)->getJson("/api/v1/vms?host_id={$this->frankfurtHost->id}");
         $custRes->assertOk();
         $custRes->assertJsonFragment(['name' => 'vm-frankfurt-01']);
         $custRes->assertJsonMissing(['name' => 'vm-sofia-01']);
 
         // Customer filters by Sofia
-        $custResSofia = $this->actingAs($this->customer)->getJson("/api/vms?host_id={$this->sofiaHost->id}");
+        $custResSofia = $this->actingAs($this->customer)->getJson("/api/v1/vms?host_id={$this->sofiaHost->id}");
         $custResSofia->assertOk();
         $custResSofia->assertJsonFragment(['name' => 'vm-sofia-01']);
         $custResSofia->assertJsonMissing(['name' => 'vm-frankfurt-01']);
 
         // Admin filters by Sofia
-        $adminRes = $this->actingAs($this->admin)->getJson("/api/vms?host_id={$this->sofiaHost->id}");
+        $adminRes = $this->actingAs($this->admin)->getJson("/api/v1/vms?host_id={$this->sofiaHost->id}");
         $adminRes->assertOk();
         $adminRes->assertJsonFragment(['name' => 'vm-sofia-01']);
         $adminRes->assertJsonMissing(['name' => 'vm-frankfurt-01']);
@@ -402,7 +402,7 @@ final class HostNodeManagementTest extends TestCase
 
     public function test_admin_can_create_compute_node_with_lxd_driver(): void
     {
-        $response = $this->actingAs($this->admin)->postJson('/api/admin/hosts', [
+        $response = $this->actingAs($this->admin)->postJson('/api/v1/admin/hosts', [
             'name' => 'lxd-cluster-01',
             'region' => 'Europe West (Paris)',
             'endpoint_url' => 'https://lxd-01.internal:8443',
@@ -424,7 +424,7 @@ final class HostNodeManagementTest extends TestCase
     public function test_admin_can_test_connection_to_fake_compute_node(): void
     {
         // 1. Dynamic test without saved host
-        $resDynamic = $this->actingAs($this->admin)->postJson('/api/admin/hosts/verify-connection', [
+        $resDynamic = $this->actingAs($this->admin)->postJson('/api/v1/admin/hosts/verify-connection', [
             'endpoint_url' => 'https://fake-node.internal:8443',
             'driver' => 'fake',
         ]);
@@ -436,7 +436,7 @@ final class HostNodeManagementTest extends TestCase
         $resDynamic->assertJsonPath('is_trusted', true);
 
         // 2. Test saved fake host
-        $resSaved = $this->actingAs($this->admin)->postJson("/api/admin/hosts/{$this->frankfurtHost->id}/verify-connection");
+        $resSaved = $this->actingAs($this->admin)->postJson("/api/v1/admin/hosts/{$this->frankfurtHost->id}/verify-connection");
         $resSaved->assertOk();
         $resSaved->assertJsonPath('success', true);
         $resSaved->assertJsonPath('server', 'fake');
@@ -460,7 +460,7 @@ final class HostNodeManagementTest extends TestCase
             ], 200),
         ]);
 
-        $res = $this->actingAs($this->admin)->postJson('/api/admin/hosts/verify-connection', [
+        $res = $this->actingAs($this->admin)->postJson('/api/v1/admin/hosts/verify-connection', [
             'endpoint_url' => 'https://incus-node.internal:8443',
             'driver' => 'incus',
         ]);
@@ -491,7 +491,7 @@ final class HostNodeManagementTest extends TestCase
             ], 200),
         ]);
 
-        $res = $this->actingAs($this->admin)->postJson('/api/admin/hosts/verify-connection', [
+        $res = $this->actingAs($this->admin)->postJson('/api/v1/admin/hosts/verify-connection', [
             'endpoint_url' => 'https://lxd-untrusted.internal:8443',
             'driver' => 'lxd',
         ]);
@@ -511,7 +511,7 @@ final class HostNodeManagementTest extends TestCase
             },
         ]);
 
-        $res = $this->actingAs($this->admin)->postJson('/api/admin/hosts/verify-connection', [
+        $res = $this->actingAs($this->admin)->postJson('/api/v1/admin/hosts/verify-connection', [
             'endpoint_url' => 'https://unreachable.internal:8443',
             'driver' => 'incus',
         ]);
@@ -524,7 +524,7 @@ final class HostNodeManagementTest extends TestCase
     public function test_admin_can_save_host_with_token_and_test_connection(): void
     {
         // 1. Create compute node with token
-        $createRes = $this->actingAs($this->admin)->postJson('/api/admin/hosts', [
+        $createRes = $this->actingAs($this->admin)->postJson('/api/v1/admin/hosts', [
             'name' => 'incus-token-node',
             'endpoint_url' => 'https://incus-token.internal:8443',
             'driver' => 'incus',
@@ -554,7 +554,7 @@ final class HostNodeManagementTest extends TestCase
             ], 200),
         ]);
 
-        $testRes = $this->actingAs($this->admin)->postJson('/api/admin/hosts/verify-connection', [
+        $testRes = $this->actingAs($this->admin)->postJson('/api/v1/admin/hosts/verify-connection', [
             'endpoint_url' => 'https://incus-token.internal:8443',
             'driver' => 'incus',
             'token' => 'secret-trust-token-12345',
@@ -584,42 +584,42 @@ final class HostNodeManagementTest extends TestCase
         ]);
 
         // Search by region
-        $searchRegionRes = $this->actingAs($this->admin)->getJson('/api/admin/hosts?search=Frankfurt');
+        $searchRegionRes = $this->actingAs($this->admin)->getJson('/api/v1/admin/hosts?search=Frankfurt');
         $searchRegionRes->assertOk();
         $searchRegionRes->assertJsonCount(1, 'data');
         $searchRegionRes->assertJsonPath('data.0.name', 'eu-west-1');
 
         // Search by server_fingerprint
-        $searchFpRes = $this->actingAs($this->admin)->getJson('/api/admin/hosts?search=abcdef1234567890');
+        $searchFpRes = $this->actingAs($this->admin)->getJson('/api/v1/admin/hosts?search=abcdef1234567890');
         $searchFpRes->assertOk();
         $searchFpRes->assertJsonCount(1, 'data');
         $searchFpRes->assertJsonPath('data.0.name', 'ap-northeast-1');
 
         // Filter by status=unreachable
-        $statusUnreachableRes = $this->actingAs($this->admin)->getJson('/api/admin/hosts?status=unreachable');
+        $statusUnreachableRes = $this->actingAs($this->admin)->getJson('/api/v1/admin/hosts?status=unreachable');
         $statusUnreachableRes->assertOk();
         $statusUnreachableRes->assertJsonCount(1, 'data');
         $statusUnreachableRes->assertJsonPath('data.0.name', 'ap-northeast-1');
 
         // Filter by status=needs_retrust
-        $statusRetrustRes = $this->actingAs($this->admin)->getJson('/api/admin/hosts?status=needs_retrust');
+        $statusRetrustRes = $this->actingAs($this->admin)->getJson('/api/v1/admin/hosts?status=needs_retrust');
         $statusRetrustRes->assertOk();
         $statusRetrustRes->assertJsonCount(1, 'data');
         $statusRetrustRes->assertJsonPath('data.0.name', 'ap-northeast-1');
 
         // Filter by is_active=false and is_active=true
-        $inactiveRes = $this->actingAs($this->admin)->getJson('/api/admin/hosts?is_active=false');
+        $inactiveRes = $this->actingAs($this->admin)->getJson('/api/v1/admin/hosts?is_active=false');
         $inactiveRes->assertOk();
         $inactiveRes->assertJsonCount(1, 'data');
         $inactiveRes->assertJsonPath('data.0.name', 'ap-northeast-1');
 
-        $activeRes = $this->actingAs($this->admin)->getJson('/api/admin/hosts?is_active=true');
+        $activeRes = $this->actingAs($this->admin)->getJson('/api/v1/admin/hosts?is_active=true');
         $activeRes->assertOk();
         $activeRes->assertJsonCount(3, 'data');
         $activeRes->assertJsonMissing(['name' => 'ap-northeast-1']);
 
         // Filter by driver=lxd
-        $driverRes = $this->actingAs($this->admin)->getJson('/api/admin/hosts?driver=lxd');
+        $driverRes = $this->actingAs($this->admin)->getJson('/api/v1/admin/hosts?driver=lxd');
         $driverRes->assertOk();
         $driverRes->assertJsonCount(1, 'data');
         $driverRes->assertJsonPath('data.0.name', 'ap-northeast-1');
@@ -629,7 +629,7 @@ final class HostNodeManagementTest extends TestCase
     {
         PanelCertificate::query()->delete();
 
-        $response = $this->actingAs($this->admin)->getJson('/api/admin/incus/certificate');
+        $response = $this->actingAs($this->admin)->getJson('/api/v1/admin/incus/certificate');
 
         $response->assertOk();
         $response->assertJsonPath('certificate.status', 'active');

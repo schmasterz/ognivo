@@ -24,7 +24,7 @@ final class PasswordResetTest extends TestCase
 
         $user = User::factory()->create(['email' => 'john@example.com']);
 
-        $res = $this->postJson('/api/forgot-password', ['email' => 'john@example.com']);
+        $res = $this->postJson('/api/v1/forgot-password', ['email' => 'john@example.com']);
         $res->assertOk();
 
         Notification::assertSentTo($user, QueuedResetPasswordNotification::class, function (QueuedResetPasswordNotification $notification) use ($user): bool {
@@ -38,7 +38,7 @@ final class PasswordResetTest extends TestCase
     {
         Notification::fake();
 
-        $res = $this->postJson('/api/forgot-password', ['email' => 'nobody@example.com']);
+        $res = $this->postJson('/api/v1/forgot-password', ['email' => 'nobody@example.com']);
         $res->assertOk();
         $res->assertJsonStructure(['message']);
 
@@ -51,7 +51,7 @@ final class PasswordResetTest extends TestCase
         $user->createToken('old-session');
         $token = Password::createToken($user);
 
-        $res = $this->postJson('/api/reset-password', [
+        $res = $this->postJson('/api/v1/reset-password', [
             'token' => $token,
             'email' => 'jane@example.com',
             'password' => 'NewSecurePass123!',
@@ -64,7 +64,7 @@ final class PasswordResetTest extends TestCase
         $this->assertSame(0, $user->tokens()->count());
 
         // Token is single-use
-        $again = $this->postJson('/api/reset-password', [
+        $again = $this->postJson('/api/v1/reset-password', [
             'token' => $token,
             'email' => 'jane@example.com',
             'password' => 'AnotherPass123!',
@@ -77,7 +77,7 @@ final class PasswordResetTest extends TestCase
     {
         User::factory()->create(['email' => 'bob@example.com']);
 
-        $res = $this->postJson('/api/reset-password', [
+        $res = $this->postJson('/api/v1/reset-password', [
             'token' => 'invalid-token',
             'email' => 'bob@example.com',
             'password' => 'NewSecurePass123!',
@@ -93,7 +93,7 @@ final class PasswordResetTest extends TestCase
         $user = User::factory()->create(['email' => 'eve@example.com']);
         $token = Password::createToken($user);
 
-        $res = $this->postJson('/api/reset-password', [
+        $res = $this->postJson('/api/v1/reset-password', [
             'token' => $token,
             'email' => 'eve@example.com',
             'password' => 'NewSecurePass123!',

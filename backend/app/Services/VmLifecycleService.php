@@ -9,6 +9,10 @@ use App\Audit\AuditEntry;
 use App\Audit\AuditLogger;
 use App\Audit\AuditOutcome;
 use App\DTO\Vm\VmActionDTO;
+use App\Events\Instance\InstanceRebooted;
+use App\Events\Instance\InstanceStarted;
+use App\Events\Instance\InstanceStopped;
+use App\Events\Instance\InstanceTerminated;
 use App\Jobs\ExecuteVmActionJob;
 use App\Jobs\ReinstallVmJob;
 use App\Models\DriftReport;
@@ -332,6 +336,8 @@ class VmLifecycleService
                     'resolved_at' => null,
                 ]);
             }
+
+            event(new InstanceTerminated($vm->id, $vm->name));
         });
 
         return true;
@@ -349,8 +355,12 @@ class VmLifecycleService
             throw new RuntimeException(sprintf('Hypervisor failed to start VM #%d (%s)', $vm->id, $vm->name));
         }
 
-        $vm->status->transitionTo(Running::class);
-        $vm->save();
+        DB::transaction(function () use ($vm): void {
+            $vm->status->transitionTo(Running::class);
+            $vm->save();
+
+            event(new InstanceStarted($vm->id, $vm->name));
+        });
 
         return true;
     }
@@ -367,8 +377,12 @@ class VmLifecycleService
             throw new RuntimeException(sprintf('Hypervisor failed to stop VM #%d (%s)', $vm->id, $vm->name));
         }
 
-        $vm->status->transitionTo(Stopped::class);
-        $vm->save();
+        DB::transaction(function () use ($vm): void {
+            $vm->status->transitionTo(Stopped::class);
+            $vm->save();
+
+            event(new InstanceStopped($vm->id, $vm->name));
+        });
 
         return true;
     }
@@ -387,8 +401,13 @@ class VmLifecycleService
         if (! $startSuccess) {
             throw new RuntimeException(sprintf('Hypervisor failed to start VM #%d (%s) during restart', $vm->id, $vm->name));
         }
-        $vm->status->transitionTo(Running::class);
-        $vm->save();
+
+        DB::transaction(function () use ($vm): void {
+            $vm->status->transitionTo(Running::class);
+            $vm->save();
+
+            event(new InstanceRebooted($vm->id, $vm->name));
+        });
 
         return true;
     }

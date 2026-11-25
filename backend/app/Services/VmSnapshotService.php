@@ -10,6 +10,7 @@ use App\Audit\AuditLogger;
 use App\Audit\AuditOutcome;
 use App\Contracts\BackupTargetInterface;
 use App\Events\SnapshotStatusUpdated;
+use App\Events\Storage\SnapshotCreated;
 use App\Exceptions\DuplicateSnapshotNameException;
 use App\Exceptions\InvalidSnapshotNameException;
 use App\Exceptions\InvalidSnapshotStateException;
@@ -134,6 +135,8 @@ class VmSnapshotService
                             'virtual_machine_id' => $vm->id,
                         ],
                     ));
+
+                    event(new SnapshotCreated($createdSnapshot->id, $vm->id, $createdSnapshot->name));
 
                     return $createdSnapshot;
                 });

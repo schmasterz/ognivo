@@ -70,7 +70,7 @@ final class AdminUserAndPoolManagementTest extends TestCase
     public function test_admin_can_create_user_with_infinite_quotas(): void
     {
         $response = $this->actingAs($this->admin)
-            ->postJson('/api/admin/users', [
+            ->postJson('/api/v1/admin/users', [
                 'name' => 'Super Developer',
                 'email' => 'superdev@test.local',
                 'password' => 'SuperSecret123!',
@@ -98,7 +98,7 @@ final class AdminUserAndPoolManagementTest extends TestCase
     public function test_admin_can_update_user_and_quota(): void
     {
         $response = $this->actingAs($this->admin)
-            ->putJson(sprintf('/api/admin/users/%d', $this->customer->id), [
+            ->putJson(sprintf('/api/v1/admin/users/%d', $this->customer->id), [
                 'name' => 'Updated Customer Name',
                 'email' => 'customer-updated@test.local',
                 'role' => 'customer',
@@ -127,7 +127,7 @@ final class AdminUserAndPoolManagementTest extends TestCase
     public function test_admin_cannot_delete_self(): void
     {
         $response = $this->actingAs($this->admin)
-            ->deleteJson(sprintf('/api/admin/users/%d', $this->admin->id));
+            ->deleteJson(sprintf('/api/v1/admin/users/%d', $this->admin->id));
 
         $response->assertStatus(422);
     }
@@ -135,7 +135,7 @@ final class AdminUserAndPoolManagementTest extends TestCase
     public function test_admin_can_delete_customer(): void
     {
         $response = $this->actingAs($this->admin)
-            ->deleteJson(sprintf('/api/admin/users/%d', $this->customer->id));
+            ->deleteJson(sprintf('/api/v1/admin/users/%d', $this->customer->id));
 
         $response->assertStatus(202);
         $this->assertDatabaseMissing('users', ['id' => $this->customer->id]);
@@ -144,12 +144,12 @@ final class AdminUserAndPoolManagementTest extends TestCase
     public function test_admin_can_manage_default_quota(): void
     {
         $getResponse = $this->actingAs($this->admin)
-            ->getJson('/api/admin/quota/default');
+            ->getJson('/api/v1/admin/quota/default');
 
         $getResponse->assertStatus(200);
 
         $updateResponse = $this->actingAs($this->admin)
-            ->putJson('/api/admin/quota/default', [
+            ->putJson('/api/v1/admin/quota/default', [
                 'max_vms' => 5,
                 'max_cpu_cores' => 10,
                 'max_ram_mb' => 8192,
@@ -165,7 +165,7 @@ final class AdminUserAndPoolManagementTest extends TestCase
     public function test_admin_can_create_ip_pool_with_auto_generation(): void
     {
         $response = $this->actingAs($this->admin)
-            ->postJson('/api/admin/ip-pools', [
+            ->postJson('/api/v1/admin/ip-pools', [
                 'name' => 'Public IPv4 DMZ',
                 'host_id' => $this->host->id,
                 'cidr' => '198.51.100.0/29', // 6 usable IPs (.1 to .6)
@@ -209,7 +209,7 @@ final class AdminUserAndPoolManagementTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->admin)
-            ->deleteJson(sprintf('/api/admin/ip-pools/%d', $pool->id));
+            ->deleteJson(sprintf('/api/v1/admin/ip-pools/%d', $pool->id));
 
         $response->assertStatus(422);
     }
@@ -228,7 +228,7 @@ final class AdminUserAndPoolManagementTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->admin)
-            ->deleteJson(sprintf('/api/admin/ip-pools/%d', $pool->id));
+            ->deleteJson(sprintf('/api/v1/admin/ip-pools/%d', $pool->id));
 
         $response->assertStatus(200);
         $this->assertDatabaseMissing('ip_pools', ['id' => $pool->id]);
@@ -237,19 +237,19 @@ final class AdminUserAndPoolManagementTest extends TestCase
     public function test_admin_can_toggle_registration_and_register_is_blocked_when_disabled(): void
     {
         // 1. Initial state: public endpoint returns registration enabled
-        $pubRes = $this->getJson('/api/settings/public');
+        $pubRes = $this->getJson('/api/v1/settings/public');
         $pubRes->assertOk();
         $pubRes->assertJson(['registration_enabled' => true]);
 
         // 2. Admin disables registration
-        $updateRes = $this->actingAs($this->admin)->putJson('/api/admin/settings', [
+        $updateRes = $this->actingAs($this->admin)->putJson('/api/v1/admin/settings', [
             'registration_enabled' => false,
         ]);
         $updateRes->assertOk();
         $updateRes->assertJsonPath('settings.registration_enabled', false);
 
         // 3. New registration is rejected with 403 Forbidden
-        $regRes = $this->postJson('/api/register', [
+        $regRes = $this->postJson('/api/v1/register', [
             'name' => 'Blocked User',
             'email' => 'blocked@example.com',
             'password' => 'SecurePass123!#',
@@ -257,13 +257,13 @@ final class AdminUserAndPoolManagementTest extends TestCase
         $regRes->assertForbidden();
 
         // 4. Admin re-enables registration
-        $reEnableRes = $this->actingAs($this->admin)->putJson('/api/admin/settings', [
+        $reEnableRes = $this->actingAs($this->admin)->putJson('/api/v1/admin/settings', [
             'registration_enabled' => true,
         ]);
         $reEnableRes->assertOk();
 
         // 5. Registration succeeds
-        $allowRes = $this->postJson('/api/register', [
+        $allowRes = $this->postJson('/api/v1/register', [
             'name' => 'Allowed User',
             'email' => 'allowed@example.com',
             'password' => 'SecurePass123!#',
@@ -274,7 +274,7 @@ final class AdminUserAndPoolManagementTest extends TestCase
     public function test_admin_can_toggle_virtualization_modes_and_cannot_disable_both(): void
     {
         // 1. Initial state: both are enabled
-        $pubRes = $this->getJson('/api/settings/public');
+        $pubRes = $this->getJson('/api/v1/settings/public');
         $pubRes->assertOk();
         $pubRes->assertJson([
             'registration_enabled' => true,
@@ -283,7 +283,7 @@ final class AdminUserAndPoolManagementTest extends TestCase
         ]);
 
         // 2. Admin disables containers (only full VM allowed)
-        $res1 = $this->actingAs($this->admin)->putJson('/api/admin/settings', [
+        $res1 = $this->actingAs($this->admin)->putJson('/api/v1/admin/settings', [
             'allow_virtual_machines' => true,
             'allow_containers' => false,
         ]);
@@ -292,7 +292,7 @@ final class AdminUserAndPoolManagementTest extends TestCase
         $res1->assertJsonPath('settings.allow_containers', false);
 
         // 3. Admin tries to disable BOTH virtualization modes -> 422 Unprocessable Content
-        $resInvalid = $this->actingAs($this->admin)->putJson('/api/admin/settings', [
+        $resInvalid = $this->actingAs($this->admin)->putJson('/api/v1/admin/settings', [
             'allow_virtual_machines' => false,
             'allow_containers' => false,
         ]);
@@ -300,7 +300,7 @@ final class AdminUserAndPoolManagementTest extends TestCase
         $resInvalid->assertJsonValidationErrors(['virtualization_modes']);
 
         // 4. Admin enables containers and disables full VM
-        $res2 = $this->actingAs($this->admin)->putJson('/api/admin/settings', [
+        $res2 = $this->actingAs($this->admin)->putJson('/api/v1/admin/settings', [
             'allow_virtual_machines' => false,
             'allow_containers' => true,
         ]);
@@ -312,13 +312,13 @@ final class AdminUserAndPoolManagementTest extends TestCase
     public function test_user_cannot_provision_disabled_virtualization_mode(): void
     {
         // Disable full VMs on platform
-        $this->actingAs($this->admin)->putJson('/api/admin/settings', [
+        $this->actingAs($this->admin)->putJson('/api/v1/admin/settings', [
             'allow_virtual_machines' => false,
             'allow_containers' => true,
         ]);
 
         // Customer attempts to provision full virtual-machine
-        $res = $this->actingAs($this->customer)->postJson('/api/vms', [
+        $res = $this->actingAs($this->customer)->postJson('/api/v1/vms', [
             'name' => 'vm-not-allowed',
             'instance_type' => 'virtual-machine',
             'cpu_cores' => 1,
@@ -340,7 +340,7 @@ final class AdminUserAndPoolManagementTest extends TestCase
         ]);
 
         // Customer provisions allowed container -> succeeds
-        $resOk = $this->actingAs($this->customer)->postJson('/api/vms', [
+        $resOk = $this->actingAs($this->customer)->postJson('/api/v1/vms', [
             'name' => 'container-allowed',
             'instance_type' => 'container',
             'cpu_cores' => 1,
@@ -384,14 +384,14 @@ final class AdminUserAndPoolManagementTest extends TestCase
 
         // Admin cannot suspend their own account
         $selfRes = $this->actingAs($this->admin)->postJson(
-            sprintf('/api/admin/users/%d/status', $this->admin->id),
+            sprintf('/api/v1/admin/users/%d/status', $this->admin->id),
             ['status' => 'suspended']
         );
         $selfRes->assertStatus(422);
 
         // Admin suspends customer account via status endpoint
         $res = $this->actingAs($this->admin)->postJson(
-            sprintf('/api/admin/users/%d/status', $this->customer->id),
+            sprintf('/api/v1/admin/users/%d/status', $this->customer->id),
             ['status' => 'suspended']
         );
 
@@ -447,30 +447,30 @@ final class AdminUserAndPoolManagementTest extends TestCase
         ]);
 
         // 1. Filter by status=suspended
-        $resStatus = $this->actingAs($this->admin)->getJson('/api/admin/users?status=suspended');
+        $resStatus = $this->actingAs($this->admin)->getJson('/api/v1/admin/users?status=suspended');
         $resStatus->assertOk();
         $resStatus->assertJsonCount(1, 'data');
         $resStatus->assertJsonPath('data.0.email', 'suspended@test.local');
 
         // 2. Filter by status=active
-        $resActive = $this->actingAs($this->admin)->getJson('/api/admin/users?status=active');
+        $resActive = $this->actingAs($this->admin)->getJson('/api/v1/admin/users?status=active');
         $resActive->assertOk();
         $resActive->assertJsonCount(2, 'data'); // admin + customer
 
         // 3. Filter by host_id
-        $resHost = $this->actingAs($this->admin)->getJson('/api/admin/users?host_id='.$host->id);
+        $resHost = $this->actingAs($this->admin)->getJson('/api/v1/admin/users?host_id='.$host->id);
         $resHost->assertOk();
         $resHost->assertJsonCount(1, 'data');
         $resHost->assertJsonPath('data.0.id', $suspendedUser->id);
 
         // 4. Filter by IP search
-        $resSearch = $this->actingAs($this->admin)->getJson('/api/admin/users?search=192.0.2.99');
+        $resSearch = $this->actingAs($this->admin)->getJson('/api/v1/admin/users?search=192.0.2.99');
         $resSearch->assertOk();
         $resSearch->assertJsonCount(1, 'data');
         $resSearch->assertJsonPath('data.0.id', $suspendedUser->id);
 
         // 5. Filter by user_id
-        $resUser = $this->actingAs($this->admin)->getJson('/api/admin/users?user_id='.$this->customer->id);
+        $resUser = $this->actingAs($this->admin)->getJson('/api/v1/admin/users?user_id='.$this->customer->id);
         $resUser->assertOk();
         $resUser->assertJsonCount(1, 'data');
         $resUser->assertJsonPath('data.0.id', $this->customer->id);
@@ -488,14 +488,14 @@ final class AdminUserAndPoolManagementTest extends TestCase
         }
 
         // Users pagination: per_page=2, page=1 and page=2
-        $usersPage1 = $this->actingAs($this->admin)->getJson('/api/admin/users?per_page=2&page=1');
+        $usersPage1 = $this->actingAs($this->admin)->getJson('/api/v1/admin/users?per_page=2&page=1');
         $usersPage1->assertOk();
         $usersPage1->assertJsonCount(2, 'data');
         $usersPage1->assertJsonPath('meta.current_page', 1);
         $usersPage1->assertJsonPath('meta.last_page', 3);
         $usersPage1->assertJsonPath('meta.total', 5);
 
-        $usersPage2 = $this->actingAs($this->admin)->getJson('/api/admin/users?per_page=2&page=2');
+        $usersPage2 = $this->actingAs($this->admin)->getJson('/api/v1/admin/users?per_page=2&page=2');
         $usersPage2->assertOk();
         $usersPage2->assertJsonCount(2, 'data');
         $usersPage2->assertJsonPath('meta.current_page', 2);
@@ -515,7 +515,7 @@ final class AdminUserAndPoolManagementTest extends TestCase
             ]);
         }
 
-        $vmsPage1 = $this->actingAs($this->customer)->getJson('/api/vms?per_page=2&page=1');
+        $vmsPage1 = $this->actingAs($this->customer)->getJson('/api/v1/vms?per_page=2&page=1');
         $vmsPage1->assertOk();
         $vmsPage1->assertJsonCount(2, 'data');
         $vmsPage1->assertJsonPath('meta.current_page', 1);
@@ -547,7 +547,7 @@ final class AdminUserAndPoolManagementTest extends TestCase
             ]);
         }
 
-        $ipsPage1 = $this->actingAs($this->customer)->getJson('/api/ips?per_page=2&page=1');
+        $ipsPage1 = $this->actingAs($this->customer)->getJson('/api/v1/ips?per_page=2&page=1');
         $ipsPage1->assertOk();
         $ipsPage1->assertJsonCount(2, 'data');
         $ipsPage1->assertJsonPath('meta.current_page', 1);
@@ -570,7 +570,7 @@ final class AdminUserAndPoolManagementTest extends TestCase
             ],
         ];
 
-        $res = $this->actingAs($this->admin)->putJson('/api/admin/settings', $payload);
+        $res = $this->actingAs($this->admin)->putJson('/api/v1/admin/settings', $payload);
         $res->assertOk();
         $res->assertJsonPath('settings.smtp.enabled', true);
         $res->assertJsonPath('settings.smtp.host', 'smtp.mailgun.org');
@@ -584,7 +584,7 @@ final class AdminUserAndPoolManagementTest extends TestCase
         $this->assertArrayNotHasKey('password', $res->json('settings.smtp'));
 
         // Retrieve settings via GET
-        $getRes = $this->actingAs($this->admin)->getJson('/api/admin/settings');
+        $getRes = $this->actingAs($this->admin)->getJson('/api/v1/admin/settings');
         $getRes->assertOk();
         $getRes->assertJsonPath('settings.smtp.host', 'smtp.mailgun.org');
         $getRes->assertJsonPath('settings.smtp.has_password', true);
@@ -595,7 +595,7 @@ final class AdminUserAndPoolManagementTest extends TestCase
         Mail::fake();
 
         // 1. Configure SMTP
-        $this->actingAs($this->admin)->putJson('/api/admin/settings', [
+        $this->actingAs($this->admin)->putJson('/api/v1/admin/settings', [
             'smtp' => [
                 'enabled' => true,
                 'host' => 'smtp.example.com',
@@ -609,7 +609,7 @@ final class AdminUserAndPoolManagementTest extends TestCase
         ]);
 
         // 2. Request test email
-        $res = $this->actingAs($this->admin)->postJson('/api/admin/settings/test-smtp', [
+        $res = $this->actingAs($this->admin)->postJson('/api/v1/admin/settings/test-smtp', [
             'recipient_email' => 'recipient@example.com',
         ]);
 
@@ -623,15 +623,15 @@ final class AdminUserAndPoolManagementTest extends TestCase
 
     public function test_customer_cannot_access_smtp_settings(): void
     {
-        $res = $this->actingAs($this->customer)->getJson('/api/admin/settings');
+        $res = $this->actingAs($this->customer)->getJson('/api/v1/admin/settings');
         $res->assertStatus(403);
 
-        $putRes = $this->actingAs($this->customer)->putJson('/api/admin/settings', [
+        $putRes = $this->actingAs($this->customer)->putJson('/api/v1/admin/settings', [
             'smtp' => ['enabled' => true],
         ]);
         $putRes->assertStatus(403);
 
-        $testRes = $this->actingAs($this->customer)->postJson('/api/admin/settings/test-smtp', [
+        $testRes = $this->actingAs($this->customer)->postJson('/api/v1/admin/settings/test-smtp', [
             'recipient_email' => 'test@example.com',
         ]);
         $testRes->assertStatus(403);

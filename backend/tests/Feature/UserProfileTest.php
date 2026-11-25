@@ -32,7 +32,7 @@ final class UserProfileTest extends TestCase
     public function test_user_can_update_name_and_email(): void
     {
         $response = $this->actingAs($this->user)
-            ->putJson('/api/me', [
+            ->putJson('/api/v1/me', [
                 'name' => 'Johnathan Doe',
                 'email' => 'john.doe.updated@test.local',
                 'current_password' => 'CurrentSecret123!',
@@ -49,7 +49,7 @@ final class UserProfileTest extends TestCase
     public function test_user_can_change_password_with_valid_current_password(): void
     {
         $response = $this->actingAs($this->user)
-            ->putJson('/api/me', [
+            ->putJson('/api/v1/me', [
                 'name' => 'John Doe',
                 'email' => 'john@test.local',
                 'current_password' => 'CurrentSecret123!',
@@ -66,7 +66,7 @@ final class UserProfileTest extends TestCase
     public function test_user_cannot_change_password_with_invalid_current_password(): void
     {
         $response = $this->actingAs($this->user)
-            ->putJson('/api/me', [
+            ->putJson('/api/v1/me', [
                 'name' => 'John Doe',
                 'email' => 'john@test.local',
                 'current_password' => 'WrongPassword',

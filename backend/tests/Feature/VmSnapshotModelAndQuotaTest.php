@@ -189,8 +189,8 @@ final class VmSnapshotModelAndQuotaTest extends TestCase
     {
         // 1. Create quota group with max_snapshots
         $createRes = $this->actingAs($this->admin)
-            ->postJson('/api/admin/quota-groups', [
-                'name' => 'Snapshot Pro Tier',
+            ->postJson('/api/v1/admin/quota-groups', [
+                'name' => 'Snapshot Plus Tier',
                 'description' => 'Tier with 15 snapshots',
                 'is_default' => false,
                 'max_vms' => 6,
@@ -208,7 +208,7 @@ final class VmSnapshotModelAndQuotaTest extends TestCase
 
         // 2. Assign customer to the new group and verify sync
         $assignRes = $this->actingAs($this->admin)
-            ->postJson(sprintf('/api/admin/users/%d/assign-quota-group', $this->customer->id), [
+            ->postJson(sprintf('/api/v1/admin/users/%d/assign-quota-group', $this->customer->id), [
                 'quota_group_id' => $groupId,
             ]);
         $assignRes->assertOk();
@@ -218,8 +218,8 @@ final class VmSnapshotModelAndQuotaTest extends TestCase
 
         // 3. Update quota group max_snapshots to infinite (-1) and verify sync to assigned users
         $updateRes = $this->actingAs($this->admin)
-            ->putJson(sprintf('/api/admin/quota-groups/%d', $groupId), [
-                'name' => 'Snapshot Pro Tier Unlimited',
+            ->putJson(sprintf('/api/v1/admin/quota-groups/%d', $groupId), [
+                'name' => 'Snapshot Unlimited Tier',
                 'is_default' => false,
                 'max_vms' => 6,
                 'max_cpu_cores' => 12,
@@ -237,7 +237,7 @@ final class VmSnapshotModelAndQuotaTest extends TestCase
 
         // 4. Validation rejects invalid max_snapshots (< -1)
         $invalidRes = $this->actingAs($this->admin)
-            ->putJson(sprintf('/api/admin/quota-groups/%d', $groupId), [
+            ->putJson(sprintf('/api/v1/admin/quota-groups/%d', $groupId), [
                 'name' => 'Invalid Snapshots Group',
                 'max_vms' => 6,
                 'max_cpu_cores' => 12,

@@ -117,7 +117,7 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
     {
         Sanctum::actingAs($this->owner);
 
-        $response = $this->postJson("/api/vms/{$this->vm->id}/console");
+        $response = $this->postJson("/api/v1/vms/{$this->vm->id}/console");
 
         $response->assertStatus(200);
         $response->assertJsonStructure([
@@ -156,7 +156,7 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
     {
         Sanctum::actingAs($this->owner);
 
-        $response = $this->postJson("/api/vms/{$this->container->id}/console");
+        $response = $this->postJson("/api/v1/vms/{$this->container->id}/console");
 
         $response->assertStatus(200);
         $response->assertJson([
@@ -198,7 +198,7 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
 
         Sanctum::actingAs($this->owner);
 
-        $response = $this->postJson("/api/vms/{$this->vm->id}/console");
+        $response = $this->postJson("/api/v1/vms/{$this->vm->id}/console");
 
         $response->assertStatus(200);
         $response->assertJson([
@@ -226,13 +226,13 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
         Sanctum::actingAs($this->owner);
 
         // Open an active session
-        $openResponse = $this->postJson("/api/vms/{$this->vm->id}/console");
+        $openResponse = $this->postJson("/api/v1/vms/{$this->vm->id}/console");
         $openResponse->assertStatus(200);
         $sessionId = (string) $openResponse->json('session_id');
         $this->assertNotEmpty($sessionId);
 
         // Close the active session
-        $deleteResponse = $this->deleteJson("/api/vms/{$this->vm->id}/console/{$sessionId}", [
+        $deleteResponse = $this->deleteJson("/api/v1/vms/{$this->vm->id}/console/{$sessionId}", [
             'reason' => 'user_closed_terminal',
         ]);
 
@@ -259,7 +259,7 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
         $this->assertArrayNotHasKey('input', $log->context);
 
         // Calling DELETE a second time is idempotent and does not duplicate audit log entry
-        $deleteResponse2 = $this->deleteJson("/api/vms/{$this->vm->id}/console/{$sessionId}");
+        $deleteResponse2 = $this->deleteJson("/api/v1/vms/{$this->vm->id}/console/{$sessionId}");
         $deleteResponse2->assertStatus(200);
         $deleteResponse2->assertJson(['closed' => false]);
 
@@ -276,24 +276,24 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
         Sanctum::actingAs($this->owner);
 
         // 1. Boot log succeeds for VM
-        $vmLog = $this->getJson("/api/vms/{$this->vm->id}/console-log");
+        $vmLog = $this->getJson("/api/v1/vms/{$this->vm->id}/console-log");
         $vmLog->assertStatus(200);
         $this->assertNotEmpty($vmLog->json('output'));
 
         // 2. Boot log succeeds for Container
-        $ctLog = $this->getJson("/api/vms/{$this->container->id}/console-log");
+        $ctLog = $this->getJson("/api/v1/vms/{$this->container->id}/console-log");
         $ctLog->assertStatus(200);
         $this->assertNotEmpty($ctLog->json('output'));
 
         // 3. Open exec session on VM, boot log still succeeds
-        $this->postJson("/api/vms/{$this->vm->id}/console")->assertStatus(200);
-        $vmLogDuringSession = $this->getJson("/api/vms/{$this->vm->id}/console-log");
+        $this->postJson("/api/v1/vms/{$this->vm->id}/console")->assertStatus(200);
+        $vmLogDuringSession = $this->getJson("/api/v1/vms/{$this->vm->id}/console-log");
         $vmLogDuringSession->assertStatus(200);
         $this->assertNotEmpty($vmLogDuringSession->json('output'));
 
         // 4. Open exec session on Container, boot log still succeeds
-        $this->postJson("/api/vms/{$this->container->id}/console")->assertStatus(200);
-        $ctLogDuringSession = $this->getJson("/api/vms/{$this->container->id}/console-log");
+        $this->postJson("/api/v1/vms/{$this->container->id}/console")->assertStatus(200);
+        $ctLogDuringSession = $this->getJson("/api/v1/vms/{$this->container->id}/console-log");
         $ctLogDuringSession->assertStatus(200);
         $this->assertNotEmpty($ctLogDuringSession->json('output'));
 
@@ -305,11 +305,11 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
         // Clean previous sessions on VM so we can open a fallback console session
         Redis::del('console:vm_sessions:'.$this->vm->id);
 
-        $fallbackRes = $this->postJson("/api/vms/{$this->vm->id}/console");
+        $fallbackRes = $this->postJson("/api/v1/vms/{$this->vm->id}/console");
         $fallbackRes->assertStatus(200);
         $this->assertSame('console', $fallbackRes->json('driver'));
 
-        $vmLogFallback = $this->getJson("/api/vms/{$this->vm->id}/console-log");
+        $vmLogFallback = $this->getJson("/api/v1/vms/{$this->vm->id}/console-log");
         $vmLogFallback->assertStatus(200);
         $this->assertNotEmpty($vmLogFallback->json('output'));
     }
@@ -318,7 +318,7 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
     {
         Sanctum::actingAs($this->intruder);
 
-        $response = $this->postJson("/api/vms/{$this->vm->id}/console");
+        $response = $this->postJson("/api/v1/vms/{$this->vm->id}/console");
 
         $response->assertStatus(403);
     }
@@ -327,7 +327,7 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
     {
         Sanctum::actingAs($this->admin);
 
-        $response = $this->postJson("/api/vms/{$this->vm->id}/console");
+        $response = $this->postJson("/api/v1/vms/{$this->vm->id}/console");
 
         $response->assertStatus(403);
         $this->assertStringContainsString('Console access is restricted to the workload owner only', (string) $response->json('message'));
@@ -350,7 +350,7 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
 
         Sanctum::actingAs($this->admin);
 
-        $response = $this->postJson("/api/vms/{$adminVm->id}/console");
+        $response = $this->postJson("/api/v1/vms/{$adminVm->id}/console");
 
         $response->assertStatus(200);
         $response->assertJsonStructure([
@@ -374,7 +374,7 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
 
         Sanctum::actingAs($this->owner);
 
-        $response = $this->postJson("/api/vms/{$this->vm->id}/console");
+        $response = $this->postJson("/api/v1/vms/{$this->vm->id}/console");
 
         $response->assertStatus(409);
         $response->assertJsonFragment([
@@ -386,7 +386,7 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
     {
         Sanctum::actingAs($this->owner);
 
-        $response = $this->postJson("/api/vms/{$this->container->id}/console", [
+        $response = $this->postJson("/api/v1/vms/{$this->container->id}/console", [
             'type' => 'vga',
         ]);
 
@@ -400,7 +400,7 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
     {
         Sanctum::actingAs($this->owner);
 
-        $response = $this->postJson("/api/vms/{$this->vm->id}/console-ticket");
+        $response = $this->postJson("/api/v1/vms/{$this->vm->id}/console-ticket");
 
         $response->assertStatus(200);
         $response->assertJsonStructure([
@@ -413,7 +413,7 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
     {
         Sanctum::actingAs($this->owner);
 
-        $response = $this->getJson("/api/vms/{$this->vm->id}/console-log");
+        $response = $this->getJson("/api/v1/vms/{$this->vm->id}/console-log");
 
         $response->assertStatus(200);
 
@@ -440,7 +440,7 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
         )->plainTextToken;
 
         $response = $this->withHeader('Authorization', 'Bearer '.$token)
-            ->postJson("/api/vms/{$this->vm->id}/console");
+            ->postJson("/api/v1/vms/{$this->vm->id}/console");
 
         $response->assertStatus(403);
         $response->assertJson(['message' => 'Issuing console tickets is forbidden while impersonating.']);
@@ -467,7 +467,7 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
         $token = $this->owner->createToken('auth-token')->plainTextToken;
 
         $response = $this->withHeader('Authorization', 'Bearer '.$token)
-            ->postJson("/api/vms/{$this->vm->id}/console");
+            ->postJson("/api/v1/vms/{$this->vm->id}/console");
 
         $response->assertStatus(200);
         $response->assertJsonStructure([

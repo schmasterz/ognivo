@@ -70,7 +70,7 @@ final class VirtualMachineProvisioningTest extends TestCase
     public function test_user_can_provision_virtual_machine_within_quota(): void
     {
         $response = $this->actingAs($this->user)
-            ->postJson('/api/vms', [
+            ->postJson('/api/v1/vms', [
                 'name' => 'web-server-01',
                 'instance_type' => 'virtual-machine',
                 'cpu_cores' => 2,
@@ -95,7 +95,7 @@ final class VirtualMachineProvisioningTest extends TestCase
     {
         // First VM consumes 2 cores, 2048 MB RAM
         $this->actingAs($this->user)
-            ->postJson('/api/vms', [
+            ->postJson('/api/v1/vms', [
                 'name' => 'vm-one',
                 'cpu_cores' => 2,
                 'ram_mb' => 2048,
@@ -106,7 +106,7 @@ final class VirtualMachineProvisioningTest extends TestCase
 
         // Second VM attempts 4 cores (Total 6 > 4 max_cpu_cores)
         $response = $this->actingAs($this->user)
-            ->postJson('/api/vms', [
+            ->postJson('/api/v1/vms', [
                 'name' => 'vm-two',
                 'cpu_cores' => 4,
                 'ram_mb' => 1024,
@@ -136,7 +136,7 @@ final class VirtualMachineProvisioningTest extends TestCase
 
         // Stop VM
         $stopResponse = $this->actingAs($this->user)
-            ->postJson(sprintf('/api/vms/%d/action', $vm->id), [
+            ->postJson(sprintf('/api/v1/vms/%d/action', $vm->id), [
                 'action' => 'stop',
             ]);
 
@@ -145,7 +145,7 @@ final class VirtualMachineProvisioningTest extends TestCase
 
         // Start VM
         $startResponse = $this->actingAs($this->user)
-            ->postJson(sprintf('/api/vms/%d/action', $vm->id), [
+            ->postJson(sprintf('/api/v1/vms/%d/action', $vm->id), [
                 'action' => 'start',
             ]);
 
@@ -171,7 +171,7 @@ final class VirtualMachineProvisioningTest extends TestCase
 
         // Suspend VM
         $suspendResponse = $this->actingAs($this->user)
-            ->postJson(sprintf('/api/vms/%d/action', $vm->id), [
+            ->postJson(sprintf('/api/v1/vms/%d/action', $vm->id), [
                 'action' => 'suspend',
             ]);
 
@@ -180,7 +180,7 @@ final class VirtualMachineProvisioningTest extends TestCase
 
         // Resume / Start VM from suspended state
         $resumeResponse = $this->actingAs($this->user)
-            ->postJson(sprintf('/api/vms/%d/action', $vm->id), [
+            ->postJson(sprintf('/api/v1/vms/%d/action', $vm->id), [
                 'action' => 'start',
             ]);
 
@@ -202,7 +202,7 @@ final class VirtualMachineProvisioningTest extends TestCase
         // Provision 3 VMs without being blocked by previous limit of 2 VMs
         for ($i = 1; $i <= 3; $i++) {
             $response = $this->actingAs($this->user)
-                ->postJson('/api/vms', [
+                ->postJson('/api/v1/vms', [
                     'name' => sprintf('infinite-vm-%d', $i),
                     'cpu_cores' => 8,
                     'ram_mb' => 8192,
@@ -232,7 +232,7 @@ final class VirtualMachineProvisioningTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->getJson(sprintf('/api/vms/%d/console', $vm->id));
+            ->getJson(sprintf('/api/v1/vms/%d/console', $vm->id));
 
         $response->assertStatus(404);
     }
@@ -254,7 +254,7 @@ final class VirtualMachineProvisioningTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->postJson('/api/vms', [
+            ->postJson('/api/v1/vms', [
                 'name' => 'unique-test-vm',
                 'host_id' => $host->id,
                 'cpu_cores' => 1,
@@ -304,7 +304,7 @@ final class VirtualMachineProvisioningTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->postJson('/api/vms', [
+            ->postJson('/api/v1/vms', [
                 'name' => 'shared-name-vm',
                 'host_id' => $host2->id,
                 'cpu_cores' => 1,
@@ -344,7 +344,7 @@ final class VirtualMachineProvisioningTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->postJson(sprintf('/api/vms/%d/action', $vm->id), [
+            ->postJson(sprintf('/api/v1/vms/%d/action', $vm->id), [
                 'action' => 'delete',
             ]);
 
@@ -386,7 +386,7 @@ final class VirtualMachineProvisioningTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->postJson(sprintf('/api/vms/%d/action', $vm->id), [
+            ->postJson(sprintf('/api/v1/vms/%d/action', $vm->id), [
                 'action' => 'delete',
                 'force' => true,
             ]);
@@ -417,12 +417,12 @@ final class VirtualMachineProvisioningTest extends TestCase
 
         // Unauthorized user attempts show
         $this->actingAs($otherUser)
-            ->getJson("/api/vms/{$vm->id}")
+            ->getJson("/api/v1/vms/{$vm->id}")
             ->assertStatus(403);
 
         // Unauthorized user attempts action
         $this->actingAs($otherUser)
-            ->postJson("/api/vms/{$vm->id}/action", [
+            ->postJson("/api/v1/vms/{$vm->id}/action", [
                 'action' => 'stop',
                 'force' => false,
             ])
@@ -446,7 +446,7 @@ final class VirtualMachineProvisioningTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->postJson('/api/vms', [
+            ->postJson('/api/v1/vms', [
                 'name' => 'reusable-vm',
                 'host_id' => $this->host->id,
                 'cpu_cores' => 1,
@@ -473,7 +473,7 @@ final class VirtualMachineProvisioningTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->postJson('/api/vms', [
+            ->postJson('/api/v1/vms', [
                 'name' => 'auto-host-dup',
                 'cpu_cores' => 1,
                 'ram_mb' => 1024,

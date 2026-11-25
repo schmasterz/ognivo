@@ -589,20 +589,20 @@ final class IncusEventSyncAndReconcileTest extends TestCase
         ]);
 
         // Admin access GET /api/admin/drift
-        $response = $this->actingAs($this->admin)->getJson('/api/admin/drift');
+        $response = $this->actingAs($this->admin)->getJson('/api/v1/admin/drift');
         $response->assertOk()
             ->assertJsonPath('meta.unresolved_count', 1)
             ->assertJsonCount(1, 'data'); // Default 'unresolved' status filter
 
         // Admin badge count
-        $badgeResponse = $this->actingAs($this->admin)->getJson('/api/admin/drift/badge');
+        $badgeResponse = $this->actingAs($this->admin)->getJson('/api/v1/admin/drift/badge');
         $badgeResponse->assertOk()
             ->assertJson([
                 'count' => 1,
             ]);
 
         // Customer access is forbidden
-        $forbidden = $this->actingAs($this->customer)->getJson('/api/admin/drift');
+        $forbidden = $this->actingAs($this->customer)->getJson('/api/v1/admin/drift');
         $forbidden->assertForbidden();
     }
 
@@ -616,7 +616,7 @@ final class IncusEventSyncAndReconcileTest extends TestCase
             'resolved_at' => null,
         ]);
 
-        $response = $this->actingAs($this->admin)->postJson('/api/admin/drift/'.$drift->id.'/resolve');
+        $response = $this->actingAs($this->admin)->postJson('/api/v1/admin/drift/'.$drift->id.'/resolve');
         $response->assertOk();
 
         $this->assertNotNull($drift->fresh()->resolved_at);

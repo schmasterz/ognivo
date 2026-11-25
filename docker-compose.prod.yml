@@ -260,10 +260,6 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.prod
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
-        NEXT_PUBLIC_REVERB_APP_KEY: ${NEXT_PUBLIC_REVERB_APP_KEY:?NEXT_PUBLIC_REVERB_APP_KEY must be set}
-        NEXT_PUBLIC_REVERB_PORT: ${NEXT_PUBLIC_REVERB_PORT:-443}
     image: ognivo-frontend:prod
     container_name: ognivo-frontend
     restart: unless-stopped

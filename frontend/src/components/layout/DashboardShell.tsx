@@ -13,6 +13,7 @@ import { useDashboard } from "./DashboardContext";
 import { useI18n } from "@/lib/i18n/I18nContext";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { useGlobalFilters } from "@/lib/filters/GlobalFilterContext";
+import { getSlotComponents } from "@/lib/registry/slotRegistry";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const { t } = useI18n();
@@ -107,6 +108,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   }
 
   const isClusterCardView = isAdmin && selectedUserId === null;
+  const dashboardWidgets = getSlotComponents("dashboard.widgets");
   const hasActiveFilters = Boolean(
     (isAdmin && selectedUserId !== null) ||
       selectedHostId !== null ||
@@ -220,6 +222,14 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               activeTab={activeTab}
             />
           )}
+
+          {dashboardWidgets.length > 0 ? (
+            <div className="space-y-4 mb-6">
+              {dashboardWidgets.map((item) => (
+                <item.component key={item.id} />
+              ))}
+            </div>
+          ) : null}
 
           {children}
         </main>

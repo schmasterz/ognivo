@@ -147,7 +147,7 @@ test('customer requests never leak host secrets or infrastructure keys across en
     ];
 
     // 1. GET /api/ip-pools returns only {id, name, host_id, free: boolean}
-    $poolsRes = $this->actingAs($this->customer)->getJson('/api/ip-pools');
+    $poolsRes = $this->actingAs($this->customer)->getJson('/api/v1/ip-pools');
     $poolsRes->assertOk();
     $poolsData = $poolsRes->json('data');
     expect($poolsData)->not->toBeEmpty();
@@ -159,7 +159,7 @@ test('customer requests never leak host secrets or infrastructure keys across en
     expect($poolItem['free'])->toBeTrue();
 
     // 2. GET /api/hosts
-    $hostsRes = $this->actingAs($this->customer)->getJson('/api/hosts');
+    $hostsRes = $this->actingAs($this->customer)->getJson('/api/v1/hosts');
     $hostsRes->assertOk();
     $hostsData = $hostsRes->json('data');
     expect($hostsData)->not->toBeEmpty();
@@ -178,7 +178,7 @@ test('customer requests never leak host secrets or infrastructure keys across en
     ]);
 
     // 3. GET /api/vms
-    $vmsRes = $this->actingAs($this->customer)->getJson('/api/vms');
+    $vmsRes = $this->actingAs($this->customer)->getJson('/api/v1/vms');
     $vmsRes->assertOk();
     $vmsData = $vmsRes->json('data');
     expect($vmsData)->not->toBeEmpty();
@@ -205,7 +205,7 @@ test('customer requests never leak host secrets or infrastructure keys across en
     ]);
 
     // 4. GET /api/ips
-    $ipsRes = $this->actingAs($this->customer)->getJson('/api/ips');
+    $ipsRes = $this->actingAs($this->customer)->getJson('/api/v1/ips');
     $ipsRes->assertOk();
     $ipsData = $ipsRes->json('data');
     expect($ipsData)->not->toBeEmpty();
@@ -220,7 +220,7 @@ test('customer requests never leak host secrets or infrastructure keys across en
 
 test('admin can retrieve endpoint_url and host details from admin and tenant endpoints', function (): void {
     // 1. GET /api/admin/hosts returns endpoint_url
-    $adminHostsRes = $this->actingAs($this->admin)->getJson('/api/admin/hosts');
+    $adminHostsRes = $this->actingAs($this->admin)->getJson('/api/v1/admin/hosts');
     $adminHostsRes->assertOk();
     $adminHostsData = $adminHostsRes->json('data');
     $adminHostItem = collect($adminHostsData)->firstWhere('id', $this->secureHost->id);
@@ -232,7 +232,7 @@ test('admin can retrieve endpoint_url and host details from admin and tenant end
     expect($adminHostItem)->toHaveKey('settings');
 
     // 2. GET /api/hosts returns HostNodeResource for admin
-    $hostsRes = $this->actingAs($this->admin)->getJson('/api/hosts');
+    $hostsRes = $this->actingAs($this->admin)->getJson('/api/v1/hosts');
     $hostsRes->assertOk();
     $hostItem = collect($hostsRes->json('data'))->firstWhere('id', $this->secureHost->id);
 
@@ -241,7 +241,7 @@ test('admin can retrieve endpoint_url and host details from admin and tenant end
     expect($hostItem['endpoint_url'])->toBe('https://node01.internal.infra:8443');
 
     // 3. GET /api/ip-pools returns HostNodeResource for admin
-    $poolsRes = $this->actingAs($this->admin)->getJson('/api/ip-pools');
+    $poolsRes = $this->actingAs($this->admin)->getJson('/api/v1/ip-pools');
     $poolsRes->assertOk();
     $poolItem = collect($poolsRes->json('data'))->firstWhere('id', $this->ipPool->id);
 

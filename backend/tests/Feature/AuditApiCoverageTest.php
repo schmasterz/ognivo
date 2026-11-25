@@ -100,7 +100,7 @@ final class AuditApiCoverageTest extends TestCase
 
         // Tenant A standard query
         $response = $this->actingAs($this->tenantA)
-            ->getJson('/api/audit')
+            ->getJson('/api/v1/audit')
             ->assertOk();
 
         $data = $response->json('data');
@@ -109,7 +109,7 @@ final class AuditApiCoverageTest extends TestCase
 
         // Tenant A maliciously attempts to query Tenant B's logs via query string
         $maliciousResponse = $this->actingAs($this->tenantA)
-            ->getJson('/api/audit?tenant_user_id='.$this->tenantB->id)
+            ->getJson('/api/v1/audit?tenant_user_id='.$this->tenantB->id)
             ->assertOk();
 
         $maliciousData = $maliciousResponse->json('data');
@@ -137,7 +137,7 @@ final class AuditApiCoverageTest extends TestCase
 
         // Page 1: per_page=2 (should get row 5 and row 4)
         $res1 = $this->actingAs($this->tenantA)
-            ->getJson('/api/audit?per_page=2')
+            ->getJson('/api/v1/audit?per_page=2')
             ->assertOk();
 
         $data1 = $res1->json('data');
@@ -175,7 +175,7 @@ final class AuditApiCoverageTest extends TestCase
 
         // Page 2 using cursor1: should get Row 3 and Row 2, completely stable
         $res2 = $this->actingAs($this->tenantA)
-            ->getJson('/api/audit?per_page=2&cursor='.urlencode((string) $cursor1))
+            ->getJson('/api/v1/audit?per_page=2&cursor='.urlencode((string) $cursor1))
             ->assertOk();
 
         $data2 = $res2->json('data');
@@ -188,7 +188,7 @@ final class AuditApiCoverageTest extends TestCase
 
         // Page 3 using cursor2: should get Row 1 and Row 0
         $res3 = $this->actingAs($this->tenantA)
-            ->getJson('/api/audit?per_page=2&cursor='.urlencode((string) $cursor2))
+            ->getJson('/api/v1/audit?per_page=2&cursor='.urlencode((string) $cursor2))
             ->assertOk();
 
         $data3 = $res3->json('data');
@@ -217,7 +217,7 @@ final class AuditApiCoverageTest extends TestCase
 
         // 1. NDJSON export
         $responseNdjson = $this->actingAs($this->admin)
-            ->get('/api/admin/audit/export');
+            ->get('/api/v1/admin/audit/export');
 
         $responseNdjson->assertOk();
         $responseNdjson->assertHeader('Content-Type', 'application/x-ndjson; charset=UTF-8');
@@ -245,7 +245,7 @@ final class AuditApiCoverageTest extends TestCase
 
         // 2. CSV export
         $responseCsv = $this->actingAs($this->admin)
-            ->get('/api/admin/audit/export?format=csv');
+            ->get('/api/v1/admin/audit/export?format=csv');
 
         $responseCsv->assertOk();
         $responseCsv->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
@@ -269,17 +269,17 @@ final class AuditApiCoverageTest extends TestCase
     public function test_export_and_verify_are_not_routed_to_show_id(): void
     {
         // Calling /api/admin/audit/export
-        $resExport = $this->actingAs($this->admin)->get('/api/admin/audit/export');
+        $resExport = $this->actingAs($this->admin)->get('/api/v1/admin/audit/export');
         $resExport->assertOk();
         $resExport->assertHeader('Content-Type', 'application/x-ndjson; charset=UTF-8');
 
         // Calling /api/admin/audit/verify
-        $resVerify = $this->actingAs($this->admin)->getJson('/api/admin/audit/verify');
+        $resVerify = $this->actingAs($this->admin)->getJson('/api/v1/admin/audit/verify');
         $resVerify->assertOk();
         $resVerify->assertJsonStructure(['ok', 'checked', 'first_failed_id']);
 
         // Calling non-numeric string /api/admin/audit/invalid-id should 404 (due to whereNumber)
-        $resInvalid = $this->actingAs($this->admin)->getJson('/api/admin/audit/invalid-id');
+        $resInvalid = $this->actingAs($this->admin)->getJson('/api/v1/admin/audit/invalid-id');
         $resInvalid->assertNotFound();
 
         // Calling existing numeric ID /api/admin/audit/{id}
@@ -292,23 +292,23 @@ final class AuditApiCoverageTest extends TestCase
             'visibility' => 'admin',
         ]);
 
-        $resShow = $this->actingAs($this->admin)->getJson("/api/admin/audit/{$log->id}");
+        $resShow = $this->actingAs($this->admin)->getJson("/api/v1/admin/audit/{$log->id}");
         $resShow->assertOk();
         $this->assertSame($log->id, $resShow->json('data.id'));
     }
 
     public function test_non_admin_gets_403_on_admin_routes(): void
     {
-        $this->actingAs($this->tenantA)->getJson('/api/admin/audit')->assertForbidden();
-        $this->actingAs($this->tenantA)->get('/api/admin/audit/export')->assertForbidden();
-        $this->actingAs($this->tenantA)->getJson('/api/admin/audit/verify')->assertForbidden();
-        $this->actingAs($this->tenantA)->getJson('/api/admin/audit/1')->assertForbidden();
+        $this->actingAs($this->tenantA)->getJson('/api/v1/admin/audit')->assertForbidden();
+        $this->actingAs($this->tenantA)->get('/api/v1/admin/audit/export')->assertForbidden();
+        $this->actingAs($this->tenantA)->getJson('/api/v1/admin/audit/verify')->assertForbidden();
+        $this->actingAs($this->tenantA)->getJson('/api/v1/admin/audit/1')->assertForbidden();
     }
 
     public function test_unauthenticated_gets_401(): void
     {
-        $this->getJson('/api/audit')->assertUnauthorized();
-        $this->getJson('/api/admin/audit')->assertUnauthorized();
+        $this->getJson('/api/v1/audit')->assertUnauthorized();
+        $this->getJson('/api/v1/admin/audit')->assertUnauthorized();
     }
 
     public function test_ipv4_and_ipv6_filters_work(): void
@@ -337,13 +337,13 @@ final class AuditApiCoverageTest extends TestCase
         ]);
 
         // Filter IPv4
-        $resV4 = $this->actingAs($this->admin)->getJson('/api/admin/audit?ip='.$v4)->assertOk();
+        $resV4 = $this->actingAs($this->admin)->getJson('/api/v1/admin/audit?ip='.$v4)->assertOk();
         $this->assertSame(1, count($resV4->json('data')));
         $this->assertSame($logV4->id, $resV4->json('data.0.id'));
         $this->assertSame($v4, $resV4->json('data.0.ip'));
 
         // Filter IPv6
-        $resV6 = $this->actingAs($this->admin)->getJson('/api/admin/audit?ip='.urlencode($v6))->assertOk();
+        $resV6 = $this->actingAs($this->admin)->getJson('/api/v1/admin/audit?ip='.urlencode($v6))->assertOk();
         $this->assertSame(1, count($resV6->json('data')));
         $this->assertSame($logV6->id, $resV6->json('data.0.id'));
         $this->assertSame($v6, $resV6->json('data.0.ip'));
@@ -405,7 +405,7 @@ final class AuditApiCoverageTest extends TestCase
             'context' => ['action' => 'restart'],
         ]);
 
-        $res = $this->actingAs($this->tenantA)->getJson('/api/audit')->assertOk();
+        $res = $this->actingAs($this->tenantA)->getJson('/api/v1/audit')->assertOk();
         $data = $res->json('data');
         $this->assertCount(3, $data);
 
@@ -439,7 +439,7 @@ final class AuditApiCoverageTest extends TestCase
         $service = app(AuditSealService::class);
 
         // 1. No seals
-        $resEmpty = $this->actingAs($this->admin)->getJson('/api/admin/audit/verify')->assertOk();
+        $resEmpty = $this->actingAs($this->admin)->getJson('/api/v1/admin/audit/verify')->assertOk();
         $this->assertTrue($resEmpty->json('ok'));
         $this->assertSame(0, $resEmpty->json('checked'));
         $this->assertNull($resEmpty->json('first_failed_id'));
@@ -448,7 +448,7 @@ final class AuditApiCoverageTest extends TestCase
         $seal1 = $service->createSeal(1, 10, null, 'v1');
         $seal2 = $service->createSeal(11, 20, $seal1->hash, 'v1');
 
-        $resValid = $this->actingAs($this->admin)->getJson('/api/admin/audit/verify')->assertOk();
+        $resValid = $this->actingAs($this->admin)->getJson('/api/v1/admin/audit/verify')->assertOk();
         $this->assertTrue($resValid->json('ok'));
         $this->assertSame(2, $resValid->json('checked'));
         $this->assertNull($resValid->json('first_failed_id'));
@@ -457,7 +457,7 @@ final class AuditApiCoverageTest extends TestCase
         $seal2->hash = str_repeat('a', 64);
         $seal2->save();
 
-        $resTampered = $this->actingAs($this->admin)->getJson('/api/admin/audit/verify')->assertOk();
+        $resTampered = $this->actingAs($this->admin)->getJson('/api/v1/admin/audit/verify')->assertOk();
         $this->assertFalse($resTampered->json('ok'));
         $this->assertSame($seal2->id, $resTampered->json('first_failed_id'));
     }
@@ -493,53 +493,53 @@ final class AuditApiCoverageTest extends TestCase
         ]);
 
         // 1. actor_id filter
-        $res = $this->actingAs($this->admin)->getJson('/api/admin/audit?actor_id='.$this->tenantA->id)->assertOk();
+        $res = $this->actingAs($this->admin)->getJson('/api/v1/admin/audit?actor_id='.$this->tenantA->id)->assertOk();
         $this->assertCount(1, $res->json('data'));
         $this->assertSame($logMatch->id, $res->json('data.0.id'));
 
         // 2. tenant_user_id filter
-        $res = $this->actingAs($this->admin)->getJson('/api/admin/audit?tenant_user_id='.$this->tenantB->id)->assertOk();
+        $res = $this->actingAs($this->admin)->getJson('/api/v1/admin/audit?tenant_user_id='.$this->tenantB->id)->assertOk();
         $this->assertCount(1, $res->json('data'));
         $this->assertSame($logOther->id, $res->json('data.0.id'));
 
         // 3. category filter (first segment: 'vm')
-        $res = $this->actingAs($this->admin)->getJson('/api/admin/audit?category=vm')->assertOk();
+        $res = $this->actingAs($this->admin)->getJson('/api/v1/admin/audit?category=vm')->assertOk();
         $this->assertCount(1, $res->json('data'));
         $this->assertSame($logMatch->id, $res->json('data.0.id'));
 
         // 4. action filter
-        $res = $this->actingAs($this->admin)->getJson('/api/admin/audit?action=auth.login.failed')->assertOk();
+        $res = $this->actingAs($this->admin)->getJson('/api/v1/admin/audit?action=auth.login.failed')->assertOk();
         $this->assertCount(1, $res->json('data'));
         $this->assertSame($logOther->id, $res->json('data.0.id'));
 
         // 5. outcome filter
-        $res = $this->actingAs($this->admin)->getJson('/api/admin/audit?outcome=failed')->assertOk();
+        $res = $this->actingAs($this->admin)->getJson('/api/v1/admin/audit?outcome=failed')->assertOk();
         $this->assertCount(1, $res->json('data'));
         $this->assertSame($logOther->id, $res->json('data.0.id'));
 
         // 6. subject_type & subject_id filters
-        $res = $this->actingAs($this->admin)->getJson('/api/admin/audit?subject_type=App%5CModels%5CVirtualMachine&subject_id=42')->assertOk();
+        $res = $this->actingAs($this->admin)->getJson('/api/v1/admin/audit?subject_type=App%5CModels%5CVirtualMachine&subject_id=42')->assertOk();
         $this->assertCount(1, $res->json('data'));
         $this->assertSame($logMatch->id, $res->json('data.0.id'));
 
         // 7. request_id filter
-        $res = $this->actingAs($this->admin)->getJson('/api/admin/audit?request_id=req-filter-match-123')->assertOk();
+        $res = $this->actingAs($this->admin)->getJson('/api/v1/admin/audit?request_id=req-filter-match-123')->assertOk();
         $this->assertCount(1, $res->json('data'));
         $this->assertSame($logMatch->id, $res->json('data.0.id'));
 
         // 8. from & to dates (ISO format)
-        $res = $this->actingAs($this->admin)->getJson('/api/admin/audit?from=2026-11-05T11:00:00Z&to=2026-11-05T13:00:00Z')->assertOk();
+        $res = $this->actingAs($this->admin)->getJson('/api/v1/admin/audit?from=2026-11-05T11:00:00Z&to=2026-11-05T13:00:00Z')->assertOk();
         $this->assertCount(1, $res->json('data'));
         $this->assertSame($logMatch->id, $res->json('data.0.id'));
 
         // 9. per_page (valid max 100, default 25, > 100 returns 422)
-        $resDefault = $this->actingAs($this->admin)->getJson('/api/admin/audit')->assertOk();
+        $resDefault = $this->actingAs($this->admin)->getJson('/api/v1/admin/audit')->assertOk();
         $this->assertLessThanOrEqual(25, count($resDefault->json('data')));
 
-        $resMax = $this->actingAs($this->admin)->getJson('/api/admin/audit?per_page=100')->assertOk();
+        $resMax = $this->actingAs($this->admin)->getJson('/api/v1/admin/audit?per_page=100')->assertOk();
         $this->assertLessThanOrEqual(100, count($resMax->json('data')));
 
-        $this->actingAs($this->admin)->getJson('/api/admin/audit?per_page=101')->assertUnprocessable();
+        $this->actingAs($this->admin)->getJson('/api/v1/admin/audit?per_page=101')->assertUnprocessable();
 
         // Direct DTO clamps to 100
         $dtoClamped = AuditFilterDTO::fromArray(['per_page' => 999]);

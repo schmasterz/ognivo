@@ -99,7 +99,7 @@ final class VirtualMachineResourceAndBootLogTest extends TestCase
     public function test_vm_resource_shape_for_tenant(): void
     {
         $response = $this->actingAs($this->tenant)
-            ->getJson("/api/vms/{$this->vm->id}");
+            ->getJson("/api/v1/vms/{$this->vm->id}");
 
         $response->assertStatus(200);
 
@@ -138,7 +138,7 @@ final class VirtualMachineResourceAndBootLogTest extends TestCase
     public function test_vm_resource_shape_for_admin(): void
     {
         $response = $this->actingAs($this->admin)
-            ->getJson("/api/vms/{$this->vm->id}");
+            ->getJson("/api/v1/vms/{$this->vm->id}");
 
         $response->assertStatus(200);
 
@@ -169,7 +169,7 @@ final class VirtualMachineResourceAndBootLogTest extends TestCase
     public function test_console_route_returns_404(): void
     {
         $response = $this->actingAs($this->tenant)
-            ->getJson("/api/vms/{$this->vm->id}/console");
+            ->getJson("/api/v1/vms/{$this->vm->id}/console");
 
         $response->assertStatus(404);
     }
@@ -178,18 +178,18 @@ final class VirtualMachineResourceAndBootLogTest extends TestCase
     {
         // 1. Owner can access boot log
         $ownerRes = $this->actingAs($this->tenant)
-            ->getJson("/api/vms/{$this->vm->id}/console-log");
+            ->getJson("/api/v1/vms/{$this->vm->id}/console-log");
         $ownerRes->assertStatus(200)
             ->assertJsonStructure(['virtual_machine_id', 'name', 'output']);
 
         // 2. Foreign tenant is denied (403)
         $foreignRes = $this->actingAs($this->otherTenant)
-            ->getJson("/api/vms/{$this->vm->id}/console-log");
+            ->getJson("/api/v1/vms/{$this->vm->id}/console-log");
         $foreignRes->assertStatus(403);
 
         // 3. Admin is denied (403) by viewConsole policy privacy constraint
         $adminRes = $this->actingAs($this->admin)
-            ->getJson("/api/vms/{$this->vm->id}/console-log");
+            ->getJson("/api/v1/vms/{$this->vm->id}/console-log");
         $adminRes->assertStatus(403);
     }
 
@@ -209,7 +209,7 @@ final class VirtualMachineResourceAndBootLogTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->admin)
-            ->getJson("/api/vms/{$adminVm->id}/console-log");
+            ->getJson("/api/v1/vms/{$adminVm->id}/console-log");
 
         $response->assertStatus(200)
             ->assertJsonStructure(['virtual_machine_id', 'name', 'output']);
@@ -229,7 +229,7 @@ final class VirtualMachineResourceAndBootLogTest extends TestCase
             }));
 
         $res = $this->actingAs($this->tenant)
-            ->getJson("/api/vms/{$this->vm->id}/console-log");
+            ->getJson("/api/v1/vms/{$this->vm->id}/console-log");
 
         $res->assertStatus(200);
     }
@@ -242,13 +242,13 @@ final class VirtualMachineResourceAndBootLogTest extends TestCase
         // 6 successful requests
         for ($i = 0; $i < 6; $i++) {
             $res = $this->actingAs($this->tenant)
-                ->getJson("/api/vms/{$this->vm->id}/console-log");
+                ->getJson("/api/v1/vms/{$this->vm->id}/console-log");
             $this->assertSame(200, $res->status(), "Request #{$i} should succeed with 200");
         }
 
         // 7th request exceeds throttle (6/min)
         $rateLimitedRes = $this->actingAs($this->tenant)
-            ->getJson("/api/vms/{$this->vm->id}/console-log");
+            ->getJson("/api/v1/vms/{$this->vm->id}/console-log");
         $this->assertSame(429, $rateLimitedRes->status());
     }
 

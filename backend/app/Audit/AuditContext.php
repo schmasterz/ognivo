@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Audit;
 
 use App\DTO\Cast;
+use App\Models\ServiceToken;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -65,8 +66,10 @@ final class AuditContext
 
         $this->impersonatorId = null;
 
-        $user = $request->user();
-        if ($user !== null) {
+        $serviceToken = $request->attributes->get('service_token');
+        if ($serviceToken instanceof ServiceToken) {
+            $this->forServiceToken($serviceToken);
+        } elseif (($user = $request->user()) !== null) {
             $this->actorId = Cast::int($user->getAuthIdentifier());
             $userLabel = Cast::string($user->email ?? $user->name);
             $this->actorLabel = $userLabel !== '' ? $userLabel : "User #{$this->actorId}";
@@ -108,6 +111,19 @@ final class AuditContext
 
         $opId = $request->header('X-Operation-Id') ?? $request->input('operation_id');
         $this->operationId = $opId !== null && is_numeric($opId) ? (int) $opId : null;
+
+        return $this;
+    }
+
+    /**
+     * Configure context for an authenticated service token.
+     */
+    public function forServiceToken(ServiceToken $token): static
+    {
+        $this->actorType = 'system';
+        $this->actorId = (int) $token->id;
+        $this->actorLabel = 'service_token:'.$token->name;
+        $this->impersonatorId = null;
 
         return $this;
     }

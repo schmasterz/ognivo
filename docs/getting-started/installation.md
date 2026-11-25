@@ -19,7 +19,7 @@ One Compose project named `ognivo` with these services (names differ only by a `
 
 | Service | Role |
 | :--- | :--- |
-| `webserver` (Nginx) | Public entry point. Routes `/` to the frontend, `/api` to the backend, `/app` to Reverb and `/console` to the console proxy |
+| `webserver` (Nginx) | Public entry point. Routes `/` to the frontend, `/api/v1` to the backend, `/app` to Reverb and `/console` to the console proxy |
 | `backend` (Laravel, PHP-FPM) | API |
 | `frontend` (Next.js) | Web UI |
 | `queue-worker`, `scheduler`, `incus-events` | Background jobs, scheduled tasks and hypervisor event listener |
@@ -174,7 +174,7 @@ This creates `.env.production` (and `.env.development`) and fills in random valu
 
 ### Step 2: Configure `.env.production`
 
-Edit the file **before building**. The `NEXT_PUBLIC_*` values are baked into the frontend image at build time, so changing them later requires `make build-prod`.
+Frontend configuration is runtime-driven: Node.js reads container environment variables upon request and feeds `<ConfigProvider>` and `GET /api/v1/config`. Changing variables in `.env.production` later only requires recreating or restarting the container (`make up-prod` or `docker compose restart frontend`), without running `make build-prod`.
 
 | Setting | What to put |
 | :--- | :--- |
@@ -340,7 +340,7 @@ Dev data lives in `ognivo_db_data_dev`, production data in `ognivo_db_data`.
 | `Production configuration check failed` | A placeholder or unsafe value in `.env.production` | Read `make logs-prod`, fix the named setting. List of checks: [Configuration](../operations/configuration.md#5-production-safety-enforcement-appcheck-production-config) |
 | MySQL `Access denied for user 'ognivo_user'` | New passwords were generated but the existing database volume still has the old ones | Development: `make reset-dev`. Production with no data to keep: `make down-prod`, `docker volume rm ognivo_db_data`, `make up-prod` |
 | Browser warns about the certificate | Self-signed certificate | Install a real one, see [TLS certificates](#tls-certificates) |
-| Page loads but live updates or the terminal do not work | `REVERB_ALLOWED_ORIGINS` or `APP_URL` does not match the address in the browser | Make them equal to the public URL, rebuild the frontend (`make build-prod`) and run `make up-prod` |
+| Page loads but live updates or the terminal do not work | `REVERB_ALLOWED_ORIGINS` or `APP_URL` does not match the address in the browser | Make them equal to the public URL and run `make up-prod` (or `docker compose restart frontend`) |
 | `502 Bad Gateway` after recreating containers | Nginx kept an old container address | `docker restart ognivo-nginx` (or `ognivo-nginx-dev`) |
 | Adding an Incus node fails or is rejected | Port `8443` not reachable, Incus listens only locally, node on a private address in production, or the trust token expired | Check `core.https_address`, firewall and `HYPERVISOR_ALLOW_PRIVATE_ENDPOINTS`; create a new token |
 

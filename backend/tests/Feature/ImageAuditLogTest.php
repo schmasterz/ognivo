@@ -23,7 +23,7 @@ beforeEach(function (): void {
 test('creating an image records image.created audit log entry', function (): void {
     $host = Host::factory()->create();
 
-    $response = $this->actingAs($this->admin)->postJson('/api/admin/images', [
+    $response = $this->actingAs($this->admin)->postJson('/api/v1/admin/images', [
         'name' => 'debian/12-audit-test',
         'alias' => 'Debian 12 Audit Test',
         'source' => 'https://images.linuxcontainers.org',
@@ -54,7 +54,7 @@ test('updating an image records image.updated audit log entry with diff', functi
         'enabled' => true,
     ]);
 
-    $response = $this->actingAs($this->admin)->putJson("/api/admin/images/{$image->id}", [
+    $response = $this->actingAs($this->admin)->putJson("/api/v1/admin/images/{$image->id}", [
         'alias' => 'Ubuntu 24.04 Updated',
         'enabled' => false,
         'skip_remote_validation' => true,
@@ -80,7 +80,7 @@ test('deleting an image records image.deleted audit log entry', function (): voi
     $host = Host::factory()->create();
     $image->hosts()->sync([$host->id]);
 
-    $response = $this->actingAs($this->admin)->deleteJson("/api/admin/images/{$image->id}");
+    $response = $this->actingAs($this->admin)->deleteJson("/api/v1/admin/images/{$image->id}");
     $response->assertStatus(200);
 
     $log = AuditLog::where('action', AuditAction::ImageDeleted->value)->latest('id')->first();

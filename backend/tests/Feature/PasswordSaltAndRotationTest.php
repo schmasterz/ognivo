@@ -99,7 +99,7 @@ final class PasswordSaltAndRotationTest extends TestCase
         $oldHash = $user->password;
         $token = Password::createToken($user);
 
-        $res = $this->postJson('/api/reset-password', [
+        $res = $this->postJson('/api/v1/reset-password', [
             'token' => $token,
             'email' => 'reset@example.com',
             'password' => 'ResetPass789!',

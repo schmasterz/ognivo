@@ -1,5 +1,6 @@
 import Echo from "laravel-echo";
 import Pusher from "pusher-js";
+import { getRuntimeConfig } from "@/lib/config";
 
 declare global {
   interface Window {
@@ -63,30 +64,48 @@ export function getEcho(): Echo<"reverb"> | null {
 
   window.Pusher = Pusher;
 
+  const runtimeConfig = getRuntimeConfig();
   const isHttps = window.location.protocol === "https:";
-  let port = isHttps ? 443 : 80;
 
-  if (window.location.port && window.location.port !== "3000") {
-    port = parseInt(window.location.port, 10);
-  } else if (process.env.NEXT_PUBLIC_REVERB_PORT && isHttps) {
-    port = parseInt(process.env.NEXT_PUBLIC_REVERB_PORT, 10);
-  }
+  const envPort = process.env.NEXT_PUBLIC_REVERB_PORT
+    ? parseInt(process.env.NEXT_PUBLIC_REVERB_PORT, 10)
+    : undefined;
+  const runtimePort =
+    typeof runtimeConfig.ws_port === "number" && Number.isFinite(runtimeConfig.ws_port)
+      ? runtimeConfig.ws_port
+      : undefined;
+  const configuredPort =
+    envPort !== undefined && Number.isFinite(envPort) ? envPort : runtimePort;
+  const port =
+    configuredPort ??
+    (window.location.port && window.location.port !== "3000"
+      ? parseInt(window.location.port, 10)
+      : (isHttps ? 443 : 80));
 
-  const reverbAppKey = process.env.NEXT_PUBLIC_REVERB_APP_KEY;
+  const wsHost =
+    process.env.NEXT_PUBLIC_REVERB_HOST ||
+    runtimeConfig.ws_host ||
+    window.location.hostname;
+
+  const reverbAppKey =
+    runtimeConfig.ws_key ||
+    process.env.NEXT_PUBLIC_REVERB_APP_KEY ||
+    process.env.REVERB_APP_KEY;
   if (!reverbAppKey) {
-    throw new Error("NEXT_PUBLIC_REVERB_APP_KEY is required to initialize Laravel Echo.");
+    console.warn("Reverb app key is not configured; real-time updates are disabled.");
+    return null;
   }
 
   echoAuthToken = currentToken;
   echoInstance = new Echo({
     broadcaster: "reverb",
     key: reverbAppKey,
-    wsHost: window.location.hostname,
+    wsHost,
     wsPort: port,
     wssPort: isHttps ? port : 443,
     forceTLS: isHttps,
     enabledTransports: ["ws", "wss"],
-    authEndpoint: "/api/broadcasting/auth",
+    authEndpoint: `${runtimeConfig.api_base_url || "/api/v1"}/broadcasting/auth`,
     auth: {
       headers: {
         Authorization: `Bearer ${currentToken}`,
