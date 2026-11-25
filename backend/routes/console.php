@@ -28,6 +28,9 @@ Schedule::command('audit:verify')->hourly();
 Schedule::command('audit:prune')->daily();
 Schedule::command('images:verify-catalog')->daily();
 Schedule::command('hosts:sync-resources')->hourly()->withoutOverlapping();
+Schedule::command('metrics:collect')->everyMinute()->withoutOverlapping(2);
+Schedule::command('metrics:rollup')->everyFiveMinutes()->withoutOverlapping(10);
+Schedule::command('metrics:prune')->hourly()->withoutOverlapping(15);
 
 if (app()->environment('testing')) {
     Artisan::command('tests:allocate-ip {pool} {vm}', function (IpManagementService $service): int {
