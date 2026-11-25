@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Services\Hypervisor\Drivers;
 
 use App\DTO\Host\HostResourcesDTO;
+use App\DTO\Incus\RawInstanceMetricsDTO;
 use App\Models\Host;
 use App\Models\VirtualMachine;
 use App\Services\Hypervisor\Contracts\HypervisorDriverInterface;
+use App\Services\Hypervisor\OpenMetricsParser;
 use Illuminate\Support\Facades\Cache;
 use Override;
 
@@ -32,6 +34,29 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
     public array $actionCallbacks = [];
 
     public ?HostResourcesDTO $hostResources = null;
+
+    /**
+     * @var array<int, array<string, RawInstanceMetricsDTO>|string>
+     */
+    public array $hostMetricsOverrides = [];
+
+    public int $metricsRequestCount = 0;
+
+    /**
+     * @var array<int, int>
+     */
+    private array $simulatedScrapeCounts = [];
+
+    /**
+     * @param  array<string, RawInstanceMetricsDTO>|string  $metrics
+     */
+    public function setHostMetrics(Host|int $host, array|string $metrics): self
+    {
+        $hostId = $host instanceof Host ? $host->id : $host;
+        $this->hostMetricsOverrides[$hostId] = $metrics;
+
+        return $this;
+    }
 
     public function setActionCallback(string $action, callable $callback): self
     {
@@ -780,5 +805,98 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
             storageGb: $host->total_storage_gb > 0 ? $host->total_storage_gb : 2000,
             storagePool: 'default',
         );
+    }
+
+    /**
+     * @return array<string, RawInstanceMetricsDTO>
+     */
+    #[Override]
+    public function getHostInstanceMetrics(Host $host, int $timeoutSeconds = 10): array
+    {
+        $this->metricsRequestCount++;
+
+        if ($this->shouldFail('getHostInstanceMetrics') || $this->shouldFail("getHostInstanceMetrics:{$host->id}")) {
+            throw new \RuntimeException(sprintf('Fake driver forced failure getting host metrics for %s', $host->name));
+        }
+
+        if (isset($this->actionCallbacks['getHostInstanceMetrics'])) {
+            /** @var array<string, RawInstanceMetricsDTO> $res */
+            $res = ($this->actionCallbacks['getHostInstanceMetrics'])($host, $timeoutSeconds);
+
+            return $res;
+        }
+
+        if (isset($this->hostMetricsOverrides[$host->id])) {
+            $override = $this->hostMetricsOverrides[$host->id];
+            if (is_string($override)) {
+                return app(OpenMetricsParser::class)->parse($override);
+            }
+
+            return $override;
+        }
+
+        $vms = VirtualMachine::query()
+            ->where('host_id', $host->id)
+            ->where('status', 'running')
+            ->get(['id', 'name', 'incus_project', 'instance_type', 'cpu_cores', 'ram_mb', 'disk_gb']);
+
+        $result = [];
+
+        foreach ($vms as $vm) {
+            if (strtoupper($this->getInstanceStatus($vm)) !== 'RUNNING') {
+                continue;
+            }
+
+            $agentRunning = true;
+            if ($vm->instance_type !== 'container') {
+                if (array_key_exists($vm->name, $this->instanceStates)) {
+                    $agentRunning = (bool) ($this->instanceStates[$vm->name]['agent_running'] ?? true);
+                } else {
+                    try {
+                        $cachedState = Cache::get("fake_driver:state:{$vm->name}");
+                        if (is_array($cachedState) && array_key_exists('agent_running', $cachedState)) {
+                            $agentRunning = (bool) $cachedState['agent_running'];
+                        }
+                    } catch (\Throwable) {
+                    }
+                }
+            }
+
+            $step = ($this->simulatedScrapeCounts[$vm->id] ?? 0) + 1;
+            $this->simulatedScrapeCounts[$vm->id] = $step;
+
+            $cpuCores = max(1, (int) $vm->cpu_cores);
+            $cpuBusy = round((float) $step * 12.5 * (float) $cpuCores, 2);
+            $memTotal = $agentRunning ? ((int) $vm->ram_mb * 1024 * 1024) : null;
+            $memAvail = $memTotal !== null ? (int) round((float) $memTotal * 0.65) : null;
+            $fsTotal = $agentRunning ? ((int) $vm->disk_gb * 1024 * 1024 * 1024) : null;
+            $fsAvail = $fsTotal !== null ? (int) round((float) $fsTotal * 0.75) : null;
+            $diskRead = $step * 1048576;
+            $diskWrite = $step * 524288;
+            $netRx = $step * 262144;
+            $netTx = $step * 131072;
+
+            $project = $vm->incus_project !== '' ? $vm->incus_project : 'default';
+            $instanceType = $vm->instance_type === 'container' ? 'container' : 'virtual-machine';
+
+            $result["{$project}/{$vm->name}"] = new RawInstanceMetricsDTO(
+                project: $project,
+                name: $vm->name,
+                instanceType: $instanceType,
+                cpuBusySecondsTotal: $cpuBusy,
+                effectiveCpus: $cpuCores,
+                memoryTotalBytes: $memTotal,
+                memoryAvailableBytes: $memAvail,
+                filesystemTotalBytes: $fsTotal,
+                filesystemAvailBytes: $fsAvail,
+                diskReadBytesTotal: $diskRead,
+                diskWriteBytesTotal: $diskWrite,
+                netRxBytesTotal: $netRx,
+                netTxBytesTotal: $netTx,
+                procsTotal: $agentRunning ? 42 : 0,
+            );
+        }
+
+        return $result;
     }
 }

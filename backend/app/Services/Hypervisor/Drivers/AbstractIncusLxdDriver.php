@@ -6,6 +6,7 @@ namespace App\Services\Hypervisor\Drivers;
 
 use App\DTO\Cast;
 use App\DTO\Host\HostResourcesDTO;
+use App\DTO\Incus\RawInstanceMetricsDTO;
 use App\Exceptions\FingerprintMismatchException;
 use App\Models\Host;
 use App\Models\User;
@@ -13,6 +14,7 @@ use App\Models\VirtualMachine;
 use App\Services\Hypervisor\Contracts\HypervisorDriverInterface;
 use App\Services\Hypervisor\HypervisorGateway;
 use App\Services\Hypervisor\InstanceSpecBuilder;
+use App\Services\Hypervisor\OpenMetricsParser;
 use App\Services\Hypervisor\TenantProjectProvisioner;
 use App\Services\PanelCertificateService;
 use Illuminate\Http\Client\PendingRequest;
@@ -123,6 +125,38 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
             storageGb: $storageGb,
             storagePool: $poolName,
         );
+    }
+
+    /**
+     * @return array<string, RawInstanceMetricsDTO>
+     */
+    #[Override]
+    public function getHostInstanceMetrics(Host $host, int $timeoutSeconds = 10): array
+    {
+        $timeout = max(1, min(10, $timeoutSeconds));
+        $service = $this->certService ?? app(PanelCertificateService::class);
+        $clientCert = $service->getActiveCertificate() ?? $service->getRetiringCertificate();
+        $gateway = $this->gateway ?? app(HypervisorGateway::class);
+
+        $client = $gateway->client(
+            host: $host,
+            certificate: $clientCert,
+            timeout: $timeout,
+            connectTimeout: min(5, $timeout),
+        );
+
+        /** @var Response $response */
+        $response = $client->get('/1.0/metrics');
+        if (! $response->successful()) {
+            throw new RuntimeException(sprintf(
+                'Failed to retrieve metrics from %s (HTTP %d): %s',
+                $host->endpoint_url,
+                $response->status(),
+                substr(trim($response->body()), 0, 200)
+            ));
+        }
+
+        return app(OpenMetricsParser::class)->parse($response->body());
     }
 
     /**
