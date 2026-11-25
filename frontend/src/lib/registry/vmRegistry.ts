@@ -7,6 +7,7 @@ export interface VmTabContext {
   vm: VirtualMachine;
   user: User | null;
   isAdmin: boolean;
+  metricsEnabled?: boolean;
 }
 
 export interface VmTabComponentProps {

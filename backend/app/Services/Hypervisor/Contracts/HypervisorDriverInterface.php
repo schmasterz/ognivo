@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Hypervisor\Contracts;
 
 use App\DTO\Host\HostResourcesDTO;
+use App\DTO\Incus\RawInstanceMetricsDTO;
 use App\Models\Host;
 use App\Models\VirtualMachine;
 
@@ -141,4 +142,11 @@ interface HypervisorDriverInterface
      * Retrieve discovered compute and storage resources for the host.
      */
     public function getHostResources(Host $host): HostResourcesDTO;
+
+    /**
+     * Retrieve raw OpenMetrics telemetry for all running instances on the specified host.
+     *
+     * @return array<string, RawInstanceMetricsDTO> Keyed by "{project}/{name}"
+     */
+    public function getHostInstanceMetrics(Host $host, int $timeoutSeconds = 10): array;
 }

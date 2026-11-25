@@ -153,6 +153,25 @@ final class AppServiceProvider extends ServiceProvider
                 });
         });
 
+        // Configure named rate limiter for workload telemetry queries (NFR-6)
+        RateLimiter::for('vm-metrics', static function (Request $request): Limit {
+            /** @var User|null $user */
+            $user = $request->user();
+            $maxAttempts = max(1, Cast::int(config('metrics.rate_limit_per_minute', 60), 60));
+            $key = $user !== null ? 'metrics:user:'.$user->id : 'metrics:ip:'.Cast::string($request->ip());
+
+            return Limit::perMinute($maxAttempts)
+                ->by($key)
+                ->response(static function (Request $request, array $headers): JsonResponse {
+                    $retryAfter = Cast::int($headers['Retry-After'] ?? 60, 60);
+
+                    return response()->json([
+                        'message' => __('messages.vm.rate_limit_exceeded', ['seconds' => $retryAfter]),
+                        'retry_after' => $retryAfter,
+                    ], 429, $headers);
+                });
+        });
+
         // Password reset links must point to the web frontend, not the API host
         ResetPassword::createUrlUsing(
             static function (mixed $notifiable, string $token): string {

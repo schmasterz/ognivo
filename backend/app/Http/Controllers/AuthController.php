@@ -11,6 +11,7 @@ use App\Http\Resources\UserResource;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\Services\AuthService;
+use App\Services\Metrics\VmMetricsConfigService;
 use App\Services\UserService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -96,10 +97,15 @@ final class AuthController extends Controller
     #[Get('settings/public', name: 'settings.public')]
     public function publicSettings(): JsonResponse
     {
+        $metricsConfig = app(VmMetricsConfigService::class);
+
         return response()->json([
             'registration_enabled' => SystemSetting::isRegistrationEnabled(),
             'allow_virtual_machines' => SystemSetting::isVmEnabled(),
             'allow_containers' => SystemSetting::isContainerEnabled(),
+            'metrics_enabled' => $metricsConfig->isEnabled(),
+            'metrics_interval_seconds' => $metricsConfig->intervalSeconds(),
+            'metrics_available_ranges' => $metricsConfig->availableRanges(),
         ]);
     }
 

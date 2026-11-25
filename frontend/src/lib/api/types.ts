@@ -89,12 +89,22 @@ export interface HostCapacityDetails {
   disk: HostResourceCapacityMetrics;
 }
 
+export interface HostMetricsHealth {
+  last_success_at: string | null;
+  last_error_at: string | null;
+  last_error: string | null;
+  last_duration_ms: number | null;
+  consecutive_failures: number;
+  backoff_until: string | null;
+}
+
 export interface HostNode extends TenantHost {
   endpoint_url?: string;
   server_fingerprint?: string | null;
   status?: "ok" | "unreachable" | "fingerprint_mismatch" | "not_trusted" | "error" | string;
   needs_retrust?: boolean;
   last_checked_at?: string | null;
+  metrics_health?: HostMetricsHealth | null;
   has_token?: boolean;
   token?: string | null;
   total_cpu_cores: number;
@@ -457,6 +467,14 @@ export interface SystemSettings {
   allow_containers: boolean;
   frontend_url?: string;
   smtp?: SmtpSettings;
+  metrics_enabled?: boolean;
+  metrics_interval_seconds?: number;
+  metrics_available_ranges?: Array<"1h" | "6h" | "24h" | "7d" | "30d">;
+  metrics_retention?: {
+    raw_hours: number;
+    rollup_5m_days: number;
+    rollup_1h_days: number;
+  };
 }
 
 export interface UpdateSystemSettingsPayload {
@@ -609,4 +627,63 @@ export interface AuditVerifyResponse {
   ok: boolean;
   checked: number;
   first_failed_id: number | null;
+}
+
+export type VmMetricsRangeKey = "1h" | "6h" | "24h" | "7d" | "30d";
+
+export interface VmMetricPointDTO {
+  ts: number;
+  avg: number | null;
+  min: number | null;
+  max: number | null;
+  reason: "gap" | "unavailable" | null;
+}
+
+export interface VmMetricSingleSeriesDTO {
+  unit: string;
+  available: boolean;
+  unavailable_reason: string | null;
+  points: VmMetricPointDTO[];
+}
+
+export interface VmMetricDiskIoSeriesDTO {
+  unit: string;
+  available: boolean;
+  unavailable_reason: string | null;
+  read: VmMetricPointDTO[];
+  write: VmMetricPointDTO[];
+}
+
+export interface VmMetricNetworkSeriesDTO {
+  unit: string;
+  available: boolean;
+  unavailable_reason: string | null;
+  rx: VmMetricPointDTO[];
+  tx: VmMetricPointDTO[];
+}
+
+export interface VmMetricsTotalsDTO {
+  cpu_cores: number;
+  memory_total_bytes: number;
+  disk_total_bytes: number;
+}
+
+export interface VmMetricsResponse {
+  virtual_machine_id: number;
+  instance_type: string;
+  status: string;
+  range: VmMetricsRangeKey;
+  tier: "raw" | "rollup_5m" | "rollup_1h";
+  bucket_width_seconds: number;
+  refresh_interval_seconds: number;
+  available_ranges: VmMetricsRangeKey[];
+  last_sample_at: string | null;
+  totals: VmMetricsTotalsDTO;
+  series: {
+    cpu?: VmMetricSingleSeriesDTO;
+    memory?: VmMetricSingleSeriesDTO;
+    disk_space?: VmMetricSingleSeriesDTO;
+    disk_io?: VmMetricDiskIoSeriesDTO;
+    network?: VmMetricNetworkSeriesDTO;
+  };
 }

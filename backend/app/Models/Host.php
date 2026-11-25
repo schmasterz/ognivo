@@ -37,6 +37,12 @@ use Override;
  * @property float $disk_overcommit
  * @property string|null $capacity_source
  * @property Carbon|null $capacity_synced_at
+ * @property Carbon|null $metrics_last_success_at
+ * @property Carbon|null $metrics_last_error_at
+ * @property string|null $metrics_last_error
+ * @property int|null $metrics_last_duration_ms
+ * @property int $metrics_consecutive_failures
+ * @property Carbon|null $metrics_backoff_until
  * @property array<string, mixed>|null $settings
  * @property bool $auto_attach_images
  * @property Carbon|null $created_at
@@ -88,6 +94,7 @@ final class Host extends Model
         'disk_overcommit' => 1.0,
         'capacity_source' => 'unknown',
         'auto_attach_images' => true,
+        'metrics_consecutive_failures' => 0,
     ];
 
     /**
@@ -116,6 +123,12 @@ final class Host extends Model
         'disk_overcommit',
         'capacity_source',
         'capacity_synced_at',
+        'metrics_last_success_at',
+        'metrics_last_error_at',
+        'metrics_last_error',
+        'metrics_last_duration_ms',
+        'metrics_consecutive_failures',
+        'metrics_backoff_until',
         'settings',
         'auto_attach_images',
     ];
@@ -152,6 +165,12 @@ final class Host extends Model
             'disk_overcommit' => 'float',
             'capacity_source' => 'string',
             'capacity_synced_at' => 'datetime',
+            'metrics_last_success_at' => 'datetime',
+            'metrics_last_error_at' => 'datetime',
+            'metrics_last_error' => 'string',
+            'metrics_last_duration_ms' => 'integer',
+            'metrics_consecutive_failures' => 'integer',
+            'metrics_backoff_until' => 'datetime',
             'settings' => 'array',
             'token' => 'encrypted',
         ];

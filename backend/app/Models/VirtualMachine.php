@@ -6,6 +6,7 @@ namespace App\Models;
 
 use App\Events\AdminVirtualMachineStatusUpdated;
 use App\Events\VirtualMachineStatusUpdated;
+use App\Jobs\PurgeVmMetricsJob;
 use App\States\Vm\Deleted;
 use App\States\Vm\VmState;
 use Database\Factories\VirtualMachineFactory;
@@ -15,6 +16,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Override;
 use Spatie\ModelStates\HasStates;
 
@@ -208,6 +210,8 @@ final class VirtualMachine extends Model
                 } catch (\Throwable) {
                     // Ignore if table not yet migrated in isolated unit tests
                 }
+
+                self::purgeMetricsCacheAndDispatch($vm);
             }
 
             if ($vm->wsBroadcastType !== null) {
@@ -223,5 +227,23 @@ final class VirtualMachine extends Model
                 }
             }
         });
+
+        self::deleted(function (self $vm): void {
+            self::purgeMetricsCacheAndDispatch($vm);
+        });
+    }
+
+    /**
+     * Clear cached metric counters/totals and dispatch async DB purge for a deleted VM.
+     */
+    private static function purgeMetricsCacheAndDispatch(self $vm): void
+    {
+        try {
+            Cache::forget("metrics:counters:{$vm->id}");
+            Cache::forget("metrics:totals_latest:{$vm->id}");
+            PurgeVmMetricsJob::dispatch($vm->id);
+        } catch (\Throwable) {
+            // Ignore if queue or cache is unavailable in isolated unit tests
+        }
     }
 }

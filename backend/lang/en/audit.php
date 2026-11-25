@@ -29,6 +29,7 @@ $actions = [
     'vm.snapshot.restored' => 'Snapshot restored',
     'vm.snapshot.deleted' => 'Snapshot deleted',
     'vm.reinstall.requested' => 'Workload reinstall requested',
+    'vm.metrics.viewed' => 'Workload metrics viewed (cross-tenant)',
 
     'ip.allocated' => 'Public IP allocated',
     'ip.released' => 'Public IP released',

@@ -38,6 +38,11 @@ final class UpdateSettingsRequest extends FormRequest
             'smtp.password' => ['nullable', 'string', 'max:255'],
             'smtp.from_address' => ['nullable', 'email', 'max:255'],
             'smtp.from_name' => ['nullable', 'string', 'max:255'],
+            'metrics_enabled' => ['sometimes', 'boolean'],
+            'metrics_interval_seconds' => ['sometimes', 'integer', 'min:30', 'max:300'],
+            'metrics_retention_raw_hours' => ['sometimes', 'integer', 'min:6', 'max:168'],
+            'metrics_retention_5m_days' => ['sometimes', 'integer', 'min:8', 'max:365'],
+            'metrics_retention_1h_days' => ['sometimes', 'integer', 'min:35', 'max:730'],
         ];
     }
 
