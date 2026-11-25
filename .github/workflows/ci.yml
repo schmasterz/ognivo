@@ -141,6 +141,9 @@ jobs:
       - name: Run Unit & Feature tests (SQLite)
         run: vendor/bin/pest --exclude-group=integration
 
+      - name: Run Contract tests
+        run: vendor/bin/pest tests/Contract
+
   backend-integration:
     name: Backend Integration Tests (MySQL & Redis)
     runs-on: ubuntu-latest
