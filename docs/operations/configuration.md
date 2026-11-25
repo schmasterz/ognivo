@@ -112,7 +112,6 @@ The development example (`.env.development.example`) differs from the production
 | `NEXT_PUBLIC_API_URL` | `/api/v1` | `/api/v1` | Base URL for frontend API requests (read at runtime) |
 | `NEXT_PUBLIC_REVERB_APP_KEY` | *(none)* | generated, equals `REVERB_APP_KEY` | Reverb public key read by the frontend runtime configuration (must match `REVERB_APP_KEY`) |
 | `NEXT_PUBLIC_REVERB_PORT` | `443` | `443` | Browser WebSocket port override for HTTPS pages (read at runtime) |
-| `NEXT_PUBLIC_ENABLE_FAKE_DRIVER` | *(unset)* | not in file | Development only: set to `true` to show the `fake` driver option in the host forms |
 
 > [!NOTE]
 > **Runtime Frontend Configuration:** Frontend configuration is runtime-driven. The Next.js Node.js server reads `NEXT_PUBLIC_*` container environment variables upon request and feeds `<ConfigProvider>` and `GET /api/v1/config`. They are **not** baked into the frontend Docker image at build time, so changing variables in `.env` only requires restarting or recreating the container (`make up-prod` / `make up-dev`, or `docker compose restart frontend`), without running `make build-prod`.
@@ -161,7 +160,7 @@ Mail is used for email verification, password reset, the hourly `audit:verify` f
 | Variable | Code default | In `.env.production.example` | Description |
 | :--- | :--- | :--- | :--- |
 | `HYPERVISOR_ALLOW_PRIVATE_ENDPOINTS` | `false` | `false` | When `false`, fetching the TLS peer certificate of a compute node (done when adding a node) rejects private-range and loopback addresses as an SSRF mitigation. **Set to `true` when Incus compute nodes are on private RFC 1918 / LAN or loopback addresses**, which is the common case. The development example sets it to `true` |
-| `ALLOW_FAKE_DRIVER` | `false` | `false` | Permits creating hosts with the `fake` driver outside `local` / `testing` and enables emulated terminal sessions in `console-proxy`. Placement still excludes `fake` hosts outside `local` / `testing`. Keep `false` in production (enforced by `app:check-production-config`) |
+| `ALLOW_FAKE_DRIVER` | `false` | `false` | Enables the emulated `fake` hypervisor driver in the backend (permits creating hosts with the `fake` driver outside `local` / `testing`), enables emulated terminal sessions in `console-proxy`, and reflects into `features.fake_driver` via `GET /api/v1/config` for the frontend UI. Placement still excludes `fake` hosts outside `local` / `testing`. Keep `false` in production (enforced by `app:check-production-config`) |
 
 The panel can only manage a node that listens on the network. On the Incus host, run once:
 
@@ -199,6 +198,16 @@ Read from `backend/config/metrics.php`. Details: [Instance Metrics](../features/
 | `METRICS_AUDIT_WINDOW_SECONDS` | `900` | `900` | Deduplication window in seconds (`15 minutes`) in Redis per `(admin, instance)` for `vm.metrics.viewed` cross-tenant audit events |
 | `METRICS_RATE_LIMIT_PER_MINUTE` | `60` | `60` | Maximum instance metrics API queries per user per minute |
 
+### OpenAPI Documentation (Scramble)
+Read from `backend/config/scramble.php`.
+
+| Variable | Code default | In `.env.production.example` | Description |
+| :--- | :--- | :--- | :--- |
+| `SCRAMBLE_ALLOW_PUBLIC` | `true` | `true` | Controls whether interactive OpenAPI documentation (`/docs/api` and `/docs/api.json`) is publicly accessible in production. When `false`, access requires an authenticated user with the `admin` role |
+
+> [!NOTE]
+> **Production Content-Security-Policy:** The interactive Scramble UI uses Stoplight Elements web-components loaded from `https://unpkg.com`. `docker/nginx.prod.conf` whitelists `https://unpkg.com` in the `script-src` and `style-src` directives of the `Content-Security-Policy` header so those UI assets can load.
+
 ### Development vs production examples
 
 | Variable | `.env.development.example` | `.env.production.example` |
@@ -213,7 +222,7 @@ Read from `backend/config/metrics.php`. Details: [Instance Metrics](../features/
 | `SESSION_SECURE_COOKIE` | `false` | `true` |
 | `SANCTUM_STATEFUL_DOMAINS` | `localhost,localhost:3000,127.0.0.1,127.0.0.1:8000,::1` | `panel.example.com` (replace with your domain) |
 | `HYPERVISOR_ALLOW_PRIVATE_ENDPOINTS` | `true` | `false` |
-| `ALLOW_FAKE_DRIVER` | `true` | `false` |
+| `ALLOW_FAKE_DRIVER` | `true` (enables backend emulation and `features.fake_driver` via `/api/v1/config`) | `false` |
 | `PROVISION_HOST_*_RESERVE_*` | `0` / `0` / `0` | `1` core / `2048` MB / `20` GB |
 | `AUDIT_STRICT_GRANTS` | `false` | `true` |
 | `MAIL_FROM_ADDRESS` | `hello@ognivo.local` | `noreply@example.com` |

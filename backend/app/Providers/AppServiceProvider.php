@@ -98,7 +98,19 @@ final class AppServiceProvider extends ServiceProvider
         });
 
         Gate::policy(VirtualMachine::class, VirtualMachinePolicy::class);
-        Gate::define('viewApiDocs', static fn (?User $user = null): bool => app()->environment('local', 'testing') || ($user !== null && $user->hasRole('admin')));
+        Gate::define('viewApiDocs', static function (?User $user = null): bool {
+            if (app()->environment('local', 'testing')) {
+                return true;
+            }
+
+            if ((bool) config('scramble.allow_public', true)) {
+                return true;
+            }
+
+            $resolvedUser = $user ?? request()->user('sanctum');
+
+            return $resolvedUser instanceof User && $resolvedUser->hasRole('admin');
+        });
 
         Event::listen(Lockout::class, AuditLockoutListener::class);
         Event::listen(StateChanged::class, VmStateChangedListener::class);
