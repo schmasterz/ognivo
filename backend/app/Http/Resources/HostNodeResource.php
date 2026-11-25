@@ -84,6 +84,14 @@ final class HostNodeResource extends JsonResource
             'disk_overcommit' => $diskOvercommit,
             'capacity_source' => $host->capacity_source ?? 'unknown',
             'capacity_synced_at' => $host->capacity_synced_at?->toISOString(),
+            'metrics_health' => [
+                'last_success_at' => $host->metrics_last_success_at?->toISOString(),
+                'last_error_at' => $host->metrics_last_error_at?->toISOString(),
+                'last_error' => $host->metrics_last_error,
+                'last_duration_ms' => $host->metrics_last_duration_ms,
+                'consecutive_failures' => Cast::int($host->metrics_consecutive_failures),
+                'backoff_until' => $host->metrics_backoff_until?->toISOString(),
+            ],
             'max_instance' => [
                 'cpu_cores' => $maxInstance['cpu'],
                 'ram_mb' => $maxInstance['ram'],
