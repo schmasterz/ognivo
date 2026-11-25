@@ -25,6 +25,7 @@ use Illuminate\Database\Connection;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -62,30 +63,7 @@ final class IpManagementService
                 throw new IpPoolExhaustedException('The selected IP pool is disabled.');
             }
 
-            // 2. Query occupied IP addresses (active allocations + cooling allocations still in quarantine)
-            $cooldownLimit = now()->subSeconds($lockedPool->cooldown_seconds);
-
-            $occupiedAllocations = IpAllocation::where('pool_id', $lockedPool->id)
-                ->where(function (Builder $query) use ($cooldownLimit): void {
-                    $query->where('status', 'allocated')
-                        ->orWhere(function (Builder $sub) use ($cooldownLimit): void {
-                            $sub->where('status', 'cooling')
-                                ->where('released_at', '>', $cooldownLimit);
-                        });
-                })
-                ->get(['ip_string']);
-
-            // 3. Build blocked unsigned IP lookup map (effective exclusions + occupied allocations)
-            /** @var array<int, true|int> $blockedLongs */
-            $blockedLongs = $lockedPool->effectiveExcludedLongs();
-            foreach ($occupiedAllocations as $alloc) {
-                $ipLong = CidrHelper::ipToUnsigned($alloc->ip_string);
-                if ($ipLong !== null) {
-                    $blockedLongs[$ipLong] = true;
-                }
-            }
-
-            // 4. Scan the usable address range deterministically
+            // 2. Validate pool boundaries and resolve effective exclusions
             $firstLong = CidrHelper::ipToUnsigned((string) $lockedPool->first_usable);
             $lastLong = CidrHelper::ipToUnsigned((string) $lockedPool->last_usable);
 
@@ -93,18 +71,66 @@ final class IpManagementService
                 throw new IpPoolExhaustedException('Invalid IP pool boundary configuration.');
             }
 
-            $candidateIp = null;
-            for ($ipLong = $firstLong; $ipLong <= $lastLong; $ipLong++) {
-                if (isset($blockedLongs[$ipLong])) {
+            $effectiveExcluded = $lockedPool->effectiveExcludedLongs();
+            $cooldownLimit = now()->subSeconds($lockedPool->cooldown_seconds);
+
+            // 3. Query occupied IP addresses ordered by binary address using a streaming cursor
+            $cursor = DB::table('ip_allocations')
+                ->where('pool_id', $lockedPool->id)
+                ->where(function (QueryBuilder $query) use ($cooldownLimit): void {
+                    $query->where('status', 'allocated')
+                        ->orWhere(function (QueryBuilder $sub) use ($cooldownLimit): void {
+                            $sub->where('status', 'cooling')
+                                ->where('released_at', '>', $cooldownLimit);
+                        });
+                })
+                ->orderBy('address', 'asc')
+                ->cursor(['ip_string']);
+
+            // 4. Search for the lowest free gap across the usable address range
+            $candidateLong = null;
+            $curr = $firstLong;
+
+            foreach ($cursor as $row) {
+                if (! is_string($row->ip_string)) {
                     continue;
                 }
-                $candidateIp = long2ip($ipLong);
-                break;
+                $occLong = CidrHelper::ipToUnsigned($row->ip_string);
+                if ($occLong === null || $occLong < $curr) {
+                    continue;
+                }
+
+                // Check if there is an unallocated gap before $occLong
+                while ($curr < $occLong) {
+                    if (! isset($effectiveExcluded[$curr])) {
+                        $candidateLong = $curr;
+                        break 2;
+                    }
+                    $curr++;
+                }
+
+                $curr = $occLong + 1;
+                if ($curr > $lastLong) {
+                    break;
+                }
             }
 
-            if ($candidateIp === null) {
+            // If no gap was found before the last occupied IP, check remaining range up to $lastLong
+            if ($candidateLong === null) {
+                while ($curr <= $lastLong) {
+                    if (! isset($effectiveExcluded[$curr])) {
+                        $candidateLong = $curr;
+                        break;
+                    }
+                    $curr++;
+                }
+            }
+
+            if ($candidateLong === null) {
                 throw new IpPoolExhaustedException(sprintf('No available IP addresses in pool "%s" for host #%d.', $lockedPool->name, $lockedPool->host_id));
             }
+
+            $candidateIp = long2ip($candidateLong);
 
             // 5. Generate Locally Administered Unicast MAC (02:54:xx:xx:xx:xx)
             $mac = $this->generateMacAddress();
@@ -207,16 +233,40 @@ final class IpManagementService
     }
 
     /**
+     * Aggregate total and excluded-overlap counts for a filtered ip_allocations query.
+     *
+     * @param  list<string>  $excludedIps
+     * @return array{int, int} [totalCount, overlapCount]
+     */
+    private function aggregatePoolAllocationCounts(QueryBuilder $query, array $excludedIps): array
+    {
+        if ($excludedIps !== []) {
+            $placeholders = implode(',', array_fill(0, count($excludedIps), '?'));
+            $row = $query
+                ->selectRaw("COUNT(*) as total_count, SUM(CASE WHEN ip_string IN ({$placeholders}) THEN 1 ELSE 0 END) as overlap_count", $excludedIps)
+                ->first();
+        } else {
+            $row = $query
+                ->selectRaw('COUNT(*) as total_count, 0 as overlap_count')
+                ->first();
+        }
+
+        $total = $row !== null && is_numeric($row->total_count) ? (int) $row->total_count : 0;
+        $overlap = $row !== null && is_numeric($row->overlap_count) ? (int) $row->overlap_count : 0;
+
+        return [$total, $overlap];
+    }
+
+    /**
      * Compute capacity and live utilization metrics for a pool given its counts.
      *
-     * @param  array<int, true>|null  $occupiedLongs
      * @return array{total: int, allocated: int, cooling: int, free: int, percent: float}
      */
     private function computeUtilizationMetrics(
         IpPool $pool,
         ?int $allocatedCount = null,
         ?int $coolingCount = null,
-        ?array $occupiedLongs = null,
+        ?int $overlapCount = null,
     ): array {
         $firstLong = CidrHelper::ipToUnsigned((string) $pool->first_usable);
         $lastLong = CidrHelper::ipToUnsigned((string) $pool->last_usable);
@@ -235,46 +285,34 @@ final class IpManagementService
         $effectiveExcludedSet = $pool->effectiveExcludedLongs();
         $usableTotal = max(0, $rawTotal - count($effectiveExcludedSet));
 
-        if ($allocatedCount === null || $coolingCount === null || $occupiedLongs === null) {
+        if ($allocatedCount === null || $coolingCount === null || $overlapCount === null) {
+            $excludedIps = array_map(
+                static fn (int $long): string => long2ip($long),
+                array_values($effectiveExcludedSet),
+            );
+
+            // Query 1: allocated count and overlap with effective exclusions
+            $allocatedQuery = DB::table('ip_allocations')
+                ->where('pool_id', $pool->id)
+                ->where('status', 'allocated');
+            [$allocatedCount, $allocatedOverlap] = $this->aggregatePoolAllocationCounts($allocatedQuery, $excludedIps);
+
+            // Query 2: active cooling count and overlap with effective exclusions
             $cooldownLimit = now()->subSeconds($pool->cooldown_seconds);
-
-            $allocatedAllocations = $pool->allocations()
-                ->where('status', 'allocated')
-                ->get(['ip_string']);
-            $coolingAllocations = $pool->allocations()
+            $coolingQuery = DB::table('ip_allocations')
+                ->where('pool_id', $pool->id)
                 ->where('status', 'cooling')
-                ->where('released_at', '>', $cooldownLimit)
-                ->get(['ip_string']);
+                ->whereNotNull('released_at')
+                ->where('released_at', '>', $cooldownLimit);
+            [$coolingCount, $coolingOverlap] = $this->aggregatePoolAllocationCounts($coolingQuery, $excludedIps);
 
-            $allocatedCount = $allocatedAllocations->count();
-            $coolingCount = $coolingAllocations->count();
-
-            $occupiedLongs = [];
-            foreach ($allocatedAllocations as $alloc) {
-                $ipLong = CidrHelper::ipToUnsigned($alloc->ip_string);
-                if ($ipLong !== null && $ipLong >= $firstLong && $ipLong <= $lastLong) {
-                    $occupiedLongs[$ipLong] = true;
-                }
-            }
-            foreach ($coolingAllocations as $alloc) {
-                $ipLong = CidrHelper::ipToUnsigned($alloc->ip_string);
-                if ($ipLong !== null && $ipLong >= $firstLong && $ipLong <= $lastLong) {
-                    $occupiedLongs[$ipLong] = true;
-                }
-            }
+            $overlapCount = $allocatedOverlap + $coolingOverlap;
         }
 
         // Section 7.2 rule 7: free = usable - |excluded ∪ occupied|, counting any overlap once
-        $unionSet = $effectiveExcludedSet;
-        foreach (array_keys($occupiedLongs) as $ipLong) {
-            if ($ipLong >= $firstLong && $ipLong <= $lastLong) {
-                $unionSet[$ipLong] = $ipLong;
-            }
-        }
-
-        $freeCount = max(0, $rawTotal - count($unionSet));
-        $effectiveOccupiedCount = max(0, $usableTotal - $freeCount);
-        $percent = $usableTotal > 0 ? round(((float) $effectiveOccupiedCount / (float) $usableTotal) * 100.0, 1) : 0.0;
+        $effectiveOccupied = max(0, ($allocatedCount + $coolingCount) - $overlapCount);
+        $freeCount = max(0, $usableTotal - $effectiveOccupied);
+        $percent = $usableTotal > 0 ? round(((float) $effectiveOccupied / (float) $usableTotal) * 100.0, 1) : 0.0;
 
         return [
             'total' => $usableTotal,
@@ -461,34 +499,51 @@ final class IpManagementService
 
         /** @var array<int, int> $poolCooldowns */
         $poolCooldowns = [];
+        /** @var array<int, array<int, int>> $excludedLongsByPool */
+        $excludedLongsByPool = [];
+        $allExcludedIps = [];
         foreach ($poolList as $pool) {
             $poolCooldowns[$pool->id] = $pool->cooldown_seconds;
+            $excludedLongs = $pool->effectiveExcludedLongs();
+            $excludedLongsByPool[$pool->id] = $excludedLongs;
+            foreach ($excludedLongs as $long) {
+                $allExcludedIps[] = long2ip($long);
+            }
         }
+        $allExcludedIps = array_values(array_unique($allExcludedIps));
 
         /** @var array<int, int> $allocatedCounts */
         $allocatedCounts = [];
-        /** @var array<int, array<int, true>> $occupiedLongsByPool */
-        $occupiedLongsByPool = [];
+        /** @var array<int, int> $allocatedOverlaps */
+        $allocatedOverlaps = [];
 
-        $allocatedRows = DB::table('ip_allocations')
+        $allocatedQuery = DB::table('ip_allocations')
             ->whereIn('pool_id', $poolIds)
-            ->where('status', 'allocated')
-            ->get(['pool_id', 'ip_string']);
+            ->where('status', 'allocated');
 
-        foreach ($allocatedRows as $row) {
+        if ($allExcludedIps !== []) {
+            $placeholders = implode(',', array_fill(0, count($allExcludedIps), '?'));
+            $allocatedData = $allocatedQuery
+                ->selectRaw("pool_id, COUNT(*) as total_allocated, SUM(CASE WHEN ip_string IN ({$placeholders}) THEN 1 ELSE 0 END) as overlap_allocated", $allExcludedIps)
+                ->groupBy('pool_id')
+                ->get();
+        } else {
+            $allocatedData = $allocatedQuery
+                ->selectRaw('pool_id, COUNT(*) as total_allocated, 0 as overlap_allocated')
+                ->groupBy('pool_id')
+                ->get();
+        }
+
+        foreach ($allocatedData as $row) {
             $pid = is_numeric($row->pool_id) ? (int) $row->pool_id : 0;
-            $allocatedCounts[$pid] = ($allocatedCounts[$pid] ?? 0) + 1;
-
-            if (is_string($row->ip_string)) {
-                $ipLong = CidrHelper::ipToUnsigned($row->ip_string);
-                if ($ipLong !== null) {
-                    $occupiedLongsByPool[$pid][$ipLong] = true;
-                }
-            }
+            $allocatedCounts[$pid] = is_numeric($row->total_allocated) ? (int) $row->total_allocated : 0;
+            $allocatedOverlaps[$pid] = is_numeric($row->overlap_allocated) ? (int) $row->overlap_allocated : 0;
         }
 
         /** @var array<int, int> $coolingCounts */
         $coolingCounts = [];
+        /** @var array<int, int> $coolingOverlaps */
+        $coolingOverlaps = [];
         $coolingRows = DB::table('ip_allocations')
             ->whereIn('pool_id', $poolIds)
             ->where('status', 'cooling')
@@ -508,8 +563,8 @@ final class IpManagementService
 
                 if (is_string($row->ip_string)) {
                     $ipLong = CidrHelper::ipToUnsigned($row->ip_string);
-                    if ($ipLong !== null) {
-                        $occupiedLongsByPool[$pid][$ipLong] = true;
+                    if ($ipLong !== null && isset($excludedLongsByPool[$pid][$ipLong])) {
+                        $coolingOverlaps[$pid] = ($coolingOverlaps[$pid] ?? 0) + 1;
                     }
                 }
             }
@@ -518,8 +573,16 @@ final class IpManagementService
         foreach ($poolList as $pool) {
             $allocated = $allocatedCounts[$pool->id] ?? 0;
             $cooling = $coolingCounts[$pool->id] ?? 0;
-            $occupiedLongs = $occupiedLongsByPool[$pool->id] ?? [];
-            $pool->utilization = $this->computeUtilizationMetrics($pool, $allocated, $cooling, $occupiedLongs);
+            $allocatedOverlap = $allocatedOverlaps[$pool->id] ?? 0;
+            $coolingOverlap = $coolingOverlaps[$pool->id] ?? 0;
+            $totalOverlap = $allocatedOverlap + $coolingOverlap;
+
+            $pool->utilization = $this->computeUtilizationMetrics(
+                pool: $pool,
+                allocatedCount: $allocated,
+                coolingCount: $cooling,
+                overlapCount: $totalOverlap,
+            );
         }
     }
 
