@@ -245,10 +245,10 @@ final class ProvisioningLifecycleTest extends TestCase
 
         // Unauthorized user cannot access
         $otherUser = User::factory()->create();
-        $this->actingAs($otherUser)->getJson("/api/vms/{$vm->id}/console-log")->assertStatus(403);
+        $this->actingAs($otherUser)->getJson("/api/v1/vms/{$vm->id}/console-log")->assertStatus(403);
 
         // Owner can access
-        $response = $this->actingAs($this->user)->getJson("/api/vms/{$vm->id}/console-log");
+        $response = $this->actingAs($this->user)->getJson("/api/v1/vms/{$vm->id}/console-log");
         $response->assertOk();
         $response->assertJsonPath('virtual_machine_id', $vm->id);
         $response->assertJsonPath('name', 'vm-boot-log');
@@ -372,7 +372,7 @@ final class ProvisioningLifecycleTest extends TestCase
         $this->assertSame('failed', (string) $vm->status);
 
         // 1. Tenant request must not leak raw error or incus_project
-        $tenantRes = $this->actingAs($this->user)->getJson("/api/vms/{$vm->id}");
+        $tenantRes = $this->actingAs($this->user)->getJson("/api/v1/vms/{$vm->id}");
         $tenantRes->assertOk();
 
         $data = $tenantRes->json();
@@ -394,7 +394,7 @@ final class ProvisioningLifecycleTest extends TestCase
         $admin = User::factory()->create(['status' => 'active']);
         $admin->assignRole('admin');
 
-        $adminRes = $this->actingAs($admin)->getJson("/api/vms/{$vm->id}");
+        $adminRes = $this->actingAs($admin)->getJson("/api/v1/vms/{$vm->id}");
         $adminRes->assertOk();
 
         $adminData = $adminRes->json();

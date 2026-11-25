@@ -86,7 +86,7 @@ final class AuditUserCoverageTest extends TestCase
         );
 
         $groupB = QuotaGroup::firstOrCreate(
-            ['name' => 'Custom Tier Pro'],
+            ['name' => 'Custom Tier Plus'],
             [
                 'is_default' => false,
                 'max_vms' => 10,
@@ -204,7 +204,7 @@ final class AuditUserCoverageTest extends TestCase
         $user->createToken('active-token');
 
         $group = QuotaGroup::firstOrCreate(
-            ['name' => 'Custom Tier Enterprise'],
+            ['name' => 'Custom Tier Dedicated'],
             [
                 'is_default' => false,
                 'max_vms' => 50,
@@ -230,7 +230,7 @@ final class AuditUserCoverageTest extends TestCase
         );
         $quotaContext = json_decode((string) $quotaRow->context, true);
         $this->assertSame($group->id, $quotaContext['quota_group_id']);
-        $this->assertSame('Custom Tier Enterprise', $quotaContext['quota_group_name']);
+        $this->assertSame('Custom Tier Dedicated', $quotaContext['quota_group_name']);
 
         // Delete user
         Queue::fake([DeleteUserWorkloadsJob::class]);

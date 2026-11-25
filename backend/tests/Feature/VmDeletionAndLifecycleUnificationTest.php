@@ -102,7 +102,7 @@ final class VmDeletionAndLifecycleUnificationTest extends TestCase
         $this->assertSame(1, IpAllocation::where('user_id', $this->tenant->id)->where('status', 'allocated')->count());
 
         $response = $this->actingAs($this->tenant)
-            ->postJson("/api/vms/{$vm->id}/action", [
+            ->postJson("/api/v1/vms/{$vm->id}/action", [
                 'action' => 'delete',
             ]);
 
@@ -302,7 +302,7 @@ final class VmDeletionAndLifecycleUnificationTest extends TestCase
 
         // Deleting the failed VM
         $response = $this->actingAs($this->tenant)
-            ->postJson("/api/vms/{$vm->id}/action", [
+            ->postJson("/api/v1/vms/{$vm->id}/action", [
                 'action' => 'delete',
             ]);
 
@@ -337,7 +337,7 @@ final class VmDeletionAndLifecycleUnificationTest extends TestCase
 
         // Customer attempts force delete -> force is ignored (set to false)
         $this->actingAs($this->tenant)
-            ->postJson("/api/vms/{$vm->id}/action", [
+            ->postJson("/api/v1/vms/{$vm->id}/action", [
                 'action' => 'delete',
                 'force' => true,
             ])
@@ -349,7 +349,7 @@ final class VmDeletionAndLifecycleUnificationTest extends TestCase
 
         // Admin attempts force delete -> force remains true
         $this->actingAs($this->admin)
-            ->postJson("/api/vms/{$vm->id}/action", [
+            ->postJson("/api/v1/vms/{$vm->id}/action", [
                 'action' => 'delete',
                 'force' => true,
             ])

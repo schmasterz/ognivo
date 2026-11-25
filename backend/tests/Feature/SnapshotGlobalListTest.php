@@ -82,7 +82,7 @@ final class SnapshotGlobalListTest extends TestCase
             'source' => 'manual',
         ]);
 
-        $response = $this->actingAs($user1)->getJson('/api/snapshots');
+        $response = $this->actingAs($user1)->getJson('/api/v1/snapshots');
         $response->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.name', 'user1-snap')
@@ -115,17 +115,17 @@ final class SnapshotGlobalListTest extends TestCase
             'source' => 'manual',
         ]);
 
-        $response = $this->actingAs($admin)->getJson('/api/snapshots?status=creating');
+        $response = $this->actingAs($admin)->getJson('/api/v1/snapshots?status=creating');
         $response->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.name', 'snap-beta');
 
-        $searchResponse = $this->actingAs($admin)->getJson('/api/snapshots?search=alpha');
+        $searchResponse = $this->actingAs($admin)->getJson('/api/v1/snapshots?search=alpha');
         $searchResponse->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.name', 'snap-alpha');
 
-        $vmSearchResponse = $this->actingAs($admin)->getJson('/api/snapshots?search=target-vm&per_page=1&page=1');
+        $vmSearchResponse = $this->actingAs($admin)->getJson('/api/v1/snapshots?search=target-vm&per_page=1&page=1');
         $vmSearchResponse->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('current_page', 1)

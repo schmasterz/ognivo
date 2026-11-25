@@ -53,7 +53,7 @@ final class QuotaGroupManagementTest extends TestCase
 
     public function test_user_registration_automatically_assigns_default_quota_group(): void
     {
-        $response = $this->postJson('/api/register', [
+        $response = $this->postJson('/api/v1/register', [
             'name' => 'New Customer',
             'email' => 'newcustomer@test.local',
             'password' => 'Password123!@#',
@@ -75,8 +75,8 @@ final class QuotaGroupManagementTest extends TestCase
     public function test_admin_can_create_quota_group_and_set_as_default(): void
     {
         $response = $this->actingAs($this->admin)
-            ->postJson('/api/admin/quota-groups', [
-                'name' => 'High Power Pro',
+            ->postJson('/api/v1/admin/quota-groups', [
+                'name' => 'High Power Plus',
                 'description' => 'High resource quota tier',
                 'is_default' => true,
                 'max_vms' => 10,
@@ -91,7 +91,7 @@ final class QuotaGroupManagementTest extends TestCase
 
         $this->assertDatabaseHas('quota_groups', [
             'id' => $groupId,
-            'name' => 'High Power Pro',
+            'name' => 'High Power Plus',
             'is_default' => true,
         ]);
 
@@ -102,7 +102,7 @@ final class QuotaGroupManagementTest extends TestCase
     public function test_admin_can_update_quota_group_and_sync_all_assigned_users(): void
     {
         $response = $this->actingAs($this->admin)
-            ->putJson(sprintf('/api/admin/quota-groups/%d', $this->defaultGroup->id), [
+            ->putJson(sprintf('/api/v1/admin/quota-groups/%d', $this->defaultGroup->id), [
                 'name' => 'Standard Default Updated',
                 'is_default' => true,
                 'max_vms' => 5,
@@ -126,7 +126,7 @@ final class QuotaGroupManagementTest extends TestCase
     public function test_admin_cannot_delete_default_quota_group(): void
     {
         $response = $this->actingAs($this->admin)
-            ->deleteJson(sprintf('/api/admin/quota-groups/%d', $this->defaultGroup->id));
+            ->deleteJson(sprintf('/api/v1/admin/quota-groups/%d', $this->defaultGroup->id));
 
         $response->assertStatus(422);
         $this->assertDatabaseHas('quota_groups', ['id' => $this->defaultGroup->id]);
@@ -134,9 +134,9 @@ final class QuotaGroupManagementTest extends TestCase
 
     public function test_admin_can_assign_quota_group_to_user(): void
     {
-        /** @var QuotaGroup $enterpriseGroup */
-        $enterpriseGroup = QuotaGroup::create([
-            'name' => 'Enterprise Plan',
+        /** @var QuotaGroup $dedicatedGroup */
+        $dedicatedGroup = QuotaGroup::create([
+            'name' => 'Dedicated Plan',
             'is_default' => false,
             'max_vms' => -1,
             'max_cpu_cores' => -1,
@@ -146,14 +146,14 @@ final class QuotaGroupManagementTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->admin)
-            ->postJson(sprintf('/api/admin/users/%d/assign-quota-group', $this->customer->id), [
-                'quota_group_id' => $enterpriseGroup->id,
+            ->postJson(sprintf('/api/v1/admin/users/%d/assign-quota-group', $this->customer->id), [
+                'quota_group_id' => $dedicatedGroup->id,
             ]);
 
         $response->assertStatus(200);
 
         $this->customer->refresh();
-        $this->assertEquals($enterpriseGroup->id, $this->customer->quota_group_id);
+        $this->assertEquals($dedicatedGroup->id, $this->customer->quota_group_id);
         $this->assertEquals(-1, $this->customer->quota->max_vms);
         $this->assertEquals(-1, $this->customer->quota->max_cpu_cores);
     }
@@ -175,7 +175,7 @@ final class QuotaGroupManagementTest extends TestCase
         $this->customer->quota()->update(['quota_group_id' => $secondaryGroup->id]);
 
         $response = $this->actingAs($this->admin)
-            ->deleteJson(sprintf('/api/admin/quota-groups/%d', $secondaryGroup->id));
+            ->deleteJson(sprintf('/api/v1/admin/quota-groups/%d', $secondaryGroup->id));
 
         $response->assertStatus(200);
         $this->assertDatabaseMissing('quota_groups', ['id' => $secondaryGroup->id]);

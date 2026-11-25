@@ -100,19 +100,19 @@ final class AdminManagementTest extends TestCase
     {
         Sanctum::actingAs($this->customerA);
 
-        $this->getJson('/api/admin/users')->assertStatus(403);
-        $this->getJson('/api/admin/stats')->assertStatus(403);
+        $this->getJson('/api/v1/admin/users')->assertStatus(403);
+        $this->getJson('/api/v1/admin/stats')->assertStatus(403);
     }
 
     public function test_admin_can_access_user_list_and_cluster_stats(): void
     {
         Sanctum::actingAs($this->admin);
 
-        $usersRes = $this->getJson('/api/admin/users');
+        $usersRes = $this->getJson('/api/v1/admin/users');
         $usersRes->assertStatus(200)
             ->assertJsonCount(3, 'data'); // admin, alice, bob
 
-        $statsRes = $this->getJson('/api/admin/stats');
+        $statsRes = $this->getJson('/api/v1/admin/stats');
         $statsRes->assertStatus(200)
             ->assertJsonPath('overview.total_vms', 2)
             ->assertJsonPath('overview.running_vms', 1)
@@ -124,7 +124,7 @@ final class AdminManagementTest extends TestCase
     {
         Sanctum::actingAs($this->customerA);
 
-        $response = $this->getJson('/api/vms');
+        $response = $this->getJson('/api/v1/vms');
         $response->assertStatus(200)
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.name', 'alice-web-app');
@@ -134,7 +134,7 @@ final class AdminManagementTest extends TestCase
     {
         Sanctum::actingAs($this->admin);
 
-        $response = $this->getJson('/api/vms');
+        $response = $this->getJson('/api/v1/vms');
         $response->assertStatus(200)
             ->assertJsonCount(2, 'data');
     }
@@ -144,13 +144,13 @@ final class AdminManagementTest extends TestCase
         Sanctum::actingAs($this->admin);
 
         // Filter Alice's machines
-        $aliceRes = $this->getJson('/api/vms?user_id='.$this->customerA->id);
+        $aliceRes = $this->getJson('/api/v1/vms?user_id='.$this->customerA->id);
         $aliceRes->assertStatus(200)
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.name', 'alice-web-app');
 
         // Filter Bob's machines
-        $bobRes = $this->getJson('/api/vms?user_id='.$this->customerB->id);
+        $bobRes = $this->getJson('/api/v1/vms?user_id='.$this->customerB->id);
         $bobRes->assertStatus(200)
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.name', 'bob-db-server');
@@ -161,13 +161,13 @@ final class AdminManagementTest extends TestCase
         Sanctum::actingAs($this->admin);
 
         // Status filter: running
-        $runningRes = $this->getJson('/api/vms?status=running');
+        $runningRes = $this->getJson('/api/v1/vms?status=running');
         $runningRes->assertStatus(200)
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.name', 'alice-web-app');
 
         // Search by keyword
-        $searchRes = $this->getJson('/api/vms?search=db-server');
+        $searchRes = $this->getJson('/api/v1/vms?search=db-server');
         $searchRes->assertStatus(200)
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.name', 'bob-db-server');
@@ -179,7 +179,7 @@ final class AdminManagementTest extends TestCase
 
         $vm = VirtualMachine::where('name', 'alice-web-app')->firstOrFail();
 
-        $response = $this->getJson("/api/vms/{$vm->id}/console-log");
+        $response = $this->getJson("/api/v1/vms/{$vm->id}/console-log");
         $response->assertStatus(403);
     }
 }

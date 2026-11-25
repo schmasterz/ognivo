@@ -43,7 +43,7 @@ final class AdminIpPoolValidationTest extends TestCase
         Sanctum::actingAs($this->admin);
 
         // Explicit routed mode without parent_interface
-        $this->postJson('/api/admin/ip-pools', [
+        $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Routed Without Interface',
             'host_id' => $this->host->id,
             'cidr' => '198.51.100.0/24',
@@ -52,7 +52,7 @@ final class AdminIpPoolValidationTest extends TestCase
         ])->assertStatus(422)->assertJsonValidationErrors(['parent_interface']);
 
         // Missing network_mode (defaults to routed) without parent_interface
-        $this->postJson('/api/admin/ip-pools', [
+        $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Default Mode Without Interface',
             'host_id' => $this->host->id,
             'cidr' => '198.51.101.0/24',
@@ -60,7 +60,7 @@ final class AdminIpPoolValidationTest extends TestCase
         ])->assertStatus(422)->assertJsonValidationErrors(['parent_interface']);
 
         // Explicit routed mode with empty string parent_interface
-        $this->postJson('/api/admin/ip-pools', [
+        $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Routed Empty Interface',
             'host_id' => $this->host->id,
             'cidr' => '198.51.102.0/24',
@@ -74,7 +74,7 @@ final class AdminIpPoolValidationTest extends TestCase
     {
         Sanctum::actingAs($this->admin);
 
-        $response = $this->postJson('/api/admin/ip-pools', [
+        $response = $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Manual Without Interface',
             'host_id' => $this->host->id,
             'cidr' => '198.51.103.0/24',
@@ -101,14 +101,14 @@ final class AdminIpPoolValidationTest extends TestCase
             'parent_interface' => 'eth0',
         ]);
 
-        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+        $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $pool->id), [
             'parent_interface' => '',
         ])->assertStatus(422)->assertJsonValidationErrors(['parent_interface']);
 
         $pool->refresh();
         $this->assertSame('eth0', $pool->parent_interface);
 
-        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+        $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $pool->id), [
             'parent_interface' => null,
         ])->assertStatus(422)->assertJsonValidationErrors(['parent_interface']);
 
@@ -116,7 +116,7 @@ final class AdminIpPoolValidationTest extends TestCase
         $this->assertSame('eth0', $pool->parent_interface);
 
         // Updating another field without sending parent_interface still succeeds and keeps stored value
-        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+        $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $pool->id), [
             'name' => 'Routed Pool Renamed',
         ])->assertOk()->assertJsonPath('pool.parent_interface', 'eth0');
 
@@ -139,7 +139,7 @@ final class AdminIpPoolValidationTest extends TestCase
             'parent_interface' => 'eth0',
         ]);
 
-        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+        $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $pool->id), [
             'parent_interface' => '',
         ])->assertOk()->assertJsonPath('pool.parent_interface', null);
 
@@ -158,7 +158,7 @@ final class AdminIpPoolValidationTest extends TestCase
             'parent_interface' => '',
         ]);
 
-        $this->putJson(sprintf('/api/admin/ip-pools/%d', $manualEmptyPool->id), [
+        $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $manualEmptyPool->id), [
             'network_mode' => 'routed',
         ])->assertStatus(422)->assertJsonValidationErrors(['parent_interface']);
     }
@@ -178,7 +178,7 @@ final class AdminIpPoolValidationTest extends TestCase
             'parent_interface' => 'eno1',
         ]);
 
-        $response = $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+        $response = $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $pool->id), [
             'network_mode' => 'manual',
             'parent_interface' => '',
         ]);
@@ -207,7 +207,7 @@ final class AdminIpPoolValidationTest extends TestCase
             'parent_interface' => '',
         ]);
 
-        $response = $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+        $response = $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $pool->id), [
             'parent_interface' => '',
         ]);
 
@@ -233,7 +233,7 @@ final class AdminIpPoolValidationTest extends TestCase
             'parent_interface' => 'eno1',
         ]);
 
-        $response = $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+        $response = $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $pool->id), [
             'name' => 'Keep Interface Pool Renamed',
         ]);
 
@@ -268,7 +268,7 @@ final class AdminIpPoolValidationTest extends TestCase
             'allocated_at' => now(),
         ]);
 
-        $response = $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+        $response = $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $pool->id), [
             'parent_interface' => 'eno2',
         ]);
 
@@ -310,15 +310,15 @@ final class AdminIpPoolValidationTest extends TestCase
             'allocated_at' => now(),
         ]);
 
-        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+        $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $pool->id), [
             'cidr' => '10.198.0.0/24',
         ])->assertStatus(422)->assertJsonValidationErrors(['cidr']);
 
-        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+        $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $pool->id), [
             'host_id' => $otherHost->id,
         ])->assertStatus(422)->assertJsonValidationErrors(['host_id']);
 
-        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+        $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $pool->id), [
             'network_mode' => 'bridged',
         ])->assertStatus(422)->assertJsonValidationErrors(['network_mode']);
 
@@ -352,7 +352,7 @@ final class AdminIpPoolValidationTest extends TestCase
             'allocated_at' => now(),
         ]);
 
-        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+        $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $pool->id), [
             'parent_interface' => '',
         ])->assertStatus(422)->assertJsonValidationErrors(['parent_interface']);
 
@@ -364,7 +364,7 @@ final class AdminIpPoolValidationTest extends TestCase
     {
         Sanctum::actingAs($this->admin);
 
-        $this->postJson('/api/admin/ip-pools', [
+        $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Bridged Missing Gateway',
             'host_id' => $this->host->id,
             'cidr' => '198.51.110.0/24',
@@ -372,7 +372,7 @@ final class AdminIpPoolValidationTest extends TestCase
             'parent_interface' => 'incusbr0',
         ])->assertStatus(422)->assertJsonValidationErrors(['gateway']);
 
-        $this->postJson('/api/admin/ip-pools', [
+        $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Macvlan Missing Gateway',
             'host_id' => $this->host->id,
             'cidr' => '198.51.111.0/24',
@@ -385,7 +385,7 @@ final class AdminIpPoolValidationTest extends TestCase
     {
         Sanctum::actingAs($this->admin);
 
-        $this->postJson('/api/admin/ip-pools', [
+        $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Macvlan Slash 32',
             'host_id' => $this->host->id,
             'cidr' => '198.51.112.10/32',
@@ -396,7 +396,7 @@ final class AdminIpPoolValidationTest extends TestCase
             ->assertJsonValidationErrors(['cidr'])
             ->assertJsonPath('errors.cidr.0', 'Bridged and macvlan modes only support /16 to /30 subnets.');
 
-        $this->postJson('/api/admin/ip-pools', [
+        $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Bridged Slash 31',
             'host_id' => $this->host->id,
             'cidr' => '198.51.112.12/31',
@@ -413,7 +413,7 @@ final class AdminIpPoolValidationTest extends TestCase
         Sanctum::actingAs($this->admin);
 
         // Gateway outside CIDR
-        $this->postJson('/api/admin/ip-pools', [
+        $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Bridged Outside Gateway',
             'host_id' => $this->host->id,
             'cidr' => '198.51.113.0/24',
@@ -423,7 +423,7 @@ final class AdminIpPoolValidationTest extends TestCase
         ])->assertStatus(422)->assertJsonValidationErrors(['gateway']);
 
         // Gateway equals network address
-        $this->postJson('/api/admin/ip-pools', [
+        $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Bridged Network Gateway',
             'host_id' => $this->host->id,
             'cidr' => '198.51.113.0/24',
@@ -433,7 +433,7 @@ final class AdminIpPoolValidationTest extends TestCase
         ])->assertStatus(422)->assertJsonValidationErrors(['gateway']);
 
         // Gateway equals broadcast address
-        $this->postJson('/api/admin/ip-pools', [
+        $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Bridged Broadcast Gateway',
             'host_id' => $this->host->id,
             'cidr' => '198.51.113.0/24',
@@ -443,7 +443,7 @@ final class AdminIpPoolValidationTest extends TestCase
         ])->assertStatus(422)->assertJsonValidationErrors(['gateway']);
 
         // IPv6 gateway rejected
-        $this->postJson('/api/admin/ip-pools', [
+        $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Bridged IPv6 Gateway',
             'host_id' => $this->host->id,
             'cidr' => '198.51.113.0/24',
@@ -457,7 +457,7 @@ final class AdminIpPoolValidationTest extends TestCase
     {
         Sanctum::actingAs($this->admin);
 
-        $bridgedResponse = $this->postJson('/api/admin/ip-pools', [
+        $bridgedResponse = $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Valid Bridged Pool',
             'host_id' => $this->host->id,
             'cidr' => '198.51.115.0/24',
@@ -471,7 +471,7 @@ final class AdminIpPoolValidationTest extends TestCase
         $bridgedResponse->assertJsonPath('pool.gateway', '198.51.115.1');
 
         // Routed /24 without gateway returns 201; routed /24 with gateway 201; routed /32 without gateway 201
-        $this->postJson('/api/admin/ip-pools', [
+        $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Routed 24 Without Gateway',
             'host_id' => $this->host->id,
             'cidr' => '198.51.116.0/24',
@@ -481,7 +481,7 @@ final class AdminIpPoolValidationTest extends TestCase
             ->assertJsonPath('pool.network_mode', 'routed')
             ->assertJsonPath('pool.gateway', null);
 
-        $this->postJson('/api/admin/ip-pools', [
+        $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Routed 24 Valid',
             'host_id' => $this->host->id,
             'cidr' => '198.51.118.0/24',
@@ -490,7 +490,7 @@ final class AdminIpPoolValidationTest extends TestCase
             'parent_interface' => 'eth0',
         ])->assertCreated();
 
-        $this->postJson('/api/admin/ip-pools', [
+        $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Routed 32 Without Gateway',
             'host_id' => $this->host->id,
             'cidr' => '198.51.117.10/32',
@@ -514,7 +514,7 @@ final class AdminIpPoolValidationTest extends TestCase
             'parent_interface' => 'eth0',
         ]);
 
-        $this->putJson(sprintf('/api/admin/ip-pools/%d', $routedPoolWithoutGateway->id), [
+        $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $routedPoolWithoutGateway->id), [
             'network_mode' => 'macvlan',
             'parent_interface' => 'eno1',
         ])->assertStatus(422)->assertJsonValidationErrors(['gateway']);
@@ -538,11 +538,11 @@ final class AdminIpPoolValidationTest extends TestCase
             'parent_interface' => 'incusbr0',
         ]);
 
-        $this->putJson(sprintf('/api/admin/ip-pools/%d', $bridgedPool->id), [
+        $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $bridgedPool->id), [
             'gateway' => null,
         ])->assertStatus(422)->assertJsonValidationErrors(['gateway']);
 
-        $this->putJson(sprintf('/api/admin/ip-pools/%d', $bridgedPool->id), [
+        $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $bridgedPool->id), [
             'gateway' => '',
         ])->assertStatus(422)->assertJsonValidationErrors(['gateway']);
 
@@ -579,7 +579,7 @@ final class AdminIpPoolValidationTest extends TestCase
                 'allocated_at' => now(),
             ]);
 
-            $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+            $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $pool->id), [
                 'gateway' => $case['newGw'],
             ])->assertStatus(422)
                 ->assertJsonValidationErrors(['gateway'])
@@ -615,7 +615,7 @@ final class AdminIpPoolValidationTest extends TestCase
             'allocated_at' => now(),
         ]);
 
-        $gatewayResponse = $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+        $gatewayResponse = $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $pool->id), [
             'gateway' => '10.204.0.10',
         ])->assertStatus(422)
             ->assertJsonValidationErrors(['gateway']);
@@ -624,7 +624,7 @@ final class AdminIpPoolValidationTest extends TestCase
         $this->assertStringContainsString('10.204.0.10', $gatewayMessage);
         $this->assertStringContainsString((string) $allocation->id, $gatewayMessage);
 
-        $excludedResponse = $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+        $excludedResponse = $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $pool->id), [
             'excluded_ips' => ['10.204.0.5', '10.204.0.10'],
         ])->assertStatus(422)
             ->assertJsonValidationErrors(['excluded_ips']);
@@ -665,19 +665,19 @@ final class AdminIpPoolValidationTest extends TestCase
         ]);
 
         // Updating gateway on a bridged pool succeeds when only expired cooling allocations exist
-        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+        $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $pool->id), [
             'gateway' => '10.210.0.2',
         ])->assertOk()
             ->assertJsonPath('pool.gateway', '10.210.0.2');
 
         // Updating network_mode (bridged -> routed) succeeds
-        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+        $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $pool->id), [
             'network_mode' => 'routed',
         ])->assertOk()
             ->assertJsonPath('pool.network_mode', 'routed');
 
         // Updating cidr without explicit first_usable/last_usable succeeds and recalculates usable range
-        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+        $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $pool->id), [
             'cidr' => '10.211.0.0/24',
             'gateway' => '10.211.0.1',
         ])->assertOk()
@@ -697,7 +697,7 @@ final class AdminIpPoolValidationTest extends TestCase
         Sanctum::actingAs($this->admin);
 
         // Link-local CIDR
-        $this->postJson('/api/admin/ip-pools', [
+        $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Link Local CIDR',
             'host_id' => $this->host->id,
             'cidr' => '169.254.10.0/24',
@@ -706,7 +706,7 @@ final class AdminIpPoolValidationTest extends TestCase
         ])->assertStatus(422)->assertJsonValidationErrors(['cidr']);
 
         // Link-local gateway
-        $this->postJson('/api/admin/ip-pools', [
+        $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Link Local Gateway',
             'host_id' => $this->host->id,
             'cidr' => '198.51.120.0/24',
@@ -716,7 +716,7 @@ final class AdminIpPoolValidationTest extends TestCase
         ])->assertStatus(422)->assertJsonValidationErrors(['gateway']);
 
         // Link-local excluded IP
-        $this->postJson('/api/admin/ip-pools', [
+        $this->postJson('/api/v1/admin/ip-pools', [
             'name' => 'Link Local Excluded',
             'host_id' => $this->host->id,
             'cidr' => '198.51.121.0/24',
@@ -736,11 +736,11 @@ final class AdminIpPoolValidationTest extends TestCase
             'parent_interface' => 'eth0',
         ]);
 
-        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+        $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $pool->id), [
             'gateway' => '169.254.0.1',
         ])->assertStatus(422)->assertJsonValidationErrors(['gateway']);
 
-        $this->putJson(sprintf('/api/admin/ip-pools/%d', $pool->id), [
+        $this->putJson(sprintf('/api/v1/admin/ip-pools/%d', $pool->id), [
             'excluded_ips' => ['169.254.10.10'],
         ])->assertStatus(422)->assertJsonValidationErrors(['excluded_ips']);
     }

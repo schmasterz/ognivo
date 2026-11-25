@@ -106,7 +106,7 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
 
         // Attempt to provision on hostB
         $response = $this->actingAs($this->customer)
-            ->postJson('/api/vms', [
+            ->postJson('/api/v1/vms', [
                 'name' => 'test-foreign-host',
                 'instance_type' => 'virtual-machine',
                 'cpu_cores' => 2,
@@ -135,7 +135,7 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
 
         // Attempt to provision as container
         $response = $this->actingAs($this->customer)
-            ->postJson('/api/vms', [
+            ->postJson('/api/v1/vms', [
                 'name' => 'lxc-windows-test',
                 'instance_type' => 'container',
                 'cpu_cores' => 2,
@@ -162,7 +162,7 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
         $windowsImage->hosts()->attach([$this->hostA->id]);
 
         $response = $this->actingAs($this->customer)
-            ->postJson('/api/vms', [
+            ->postJson('/api/v1/vms', [
                 'name' => 'vm-windows-test',
                 'instance_type' => 'virtual-machine',
                 'cpu_cores' => 2,
@@ -188,7 +188,7 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
         $windowsA->hosts()->attach([$this->hostA->id]);
 
         // Filter by host A only
-        $resA = $this->actingAs($this->customer)->getJson('/api/images?host_id='.$this->hostA->id);
+        $resA = $this->actingAs($this->customer)->getJson('/api/v1/images?host_id='.$this->hostA->id);
         $resA->assertStatus(200);
         $namesA = collect($resA->json('data'))->pluck('name');
         $this->assertTrue($namesA->contains('linux-a'));
@@ -196,7 +196,7 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
         $this->assertFalse($namesA->contains('linux-b'));
 
         // Filter by container instance_type (no Windows)
-        $resContainer = $this->actingAs($this->customer)->getJson('/api/images?host_id='.$this->hostA->id.'&instance_type=container');
+        $resContainer = $this->actingAs($this->customer)->getJson('/api/v1/images?host_id='.$this->hostA->id.'&instance_type=container');
         $resContainer->assertStatus(200);
         $namesContainer = collect($resContainer->json('data'))->pluck('name');
         $this->assertTrue($namesContainer->contains('linux-a'));
@@ -206,7 +206,7 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
     public function test_admin_can_crud_images_and_sync_node_associations(): void
     {
         // 1. Create with multiple nodes
-        $createRes = $this->actingAs($this->admin)->postJson('/api/admin/images', [
+        $createRes = $this->actingAs($this->admin)->postJson('/api/v1/admin/images', [
             'name' => 'alpine/edge',
             'alias' => 'Test Image Alias',
             'source' => 'https://images.linuxcontainers.org',
@@ -221,7 +221,7 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
         $this->assertCount(2, $createRes->json('image.host_ids'));
 
         // 2. Update to remove hostB (X on node)
-        $updateRes = $this->actingAs($this->admin)->putJson("/api/admin/images/{$imageId}", [
+        $updateRes = $this->actingAs($this->admin)->putJson("/api/v1/admin/images/{$imageId}", [
             'host_ids' => [$this->hostA->id],
         ]);
 
@@ -229,7 +229,7 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
         $this->assertEquals([$this->hostA->id], $updateRes->json('image.host_ids'));
 
         // 3. Customer is forbidden from admin endpoints
-        $customerRes = $this->actingAs($this->customer)->postJson('/api/admin/images', [
+        $customerRes = $this->actingAs($this->customer)->postJson('/api/v1/admin/images', [
             'name' => 'hacked/image',
             'alias' => 'Test Image Alias',
             'source' => 'https://bad.org',
@@ -249,7 +249,7 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
         $image->hosts()->attach([$this->hostA->id]);
 
         // Non-admin tenant
-        $tenantRes = $this->actingAs($this->customer)->getJson('/api/images');
+        $tenantRes = $this->actingAs($this->customer)->getJson('/api/v1/images');
         $tenantRes->assertStatus(200);
 
         /** @var array<int, array<string, mixed>> $tenantHosts */
@@ -270,7 +270,7 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
         $tenantRes->assertDontSee('capacity');
 
         // Admin calling GET /api/images receives HostNodeResource fields
-        $adminRes = $this->actingAs($this->admin)->getJson('/api/images');
+        $adminRes = $this->actingAs($this->admin)->getJson('/api/v1/images');
         $adminRes->assertStatus(200);
 
         /** @var array<int, array<string, mixed>> $adminHosts */
@@ -285,7 +285,7 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
         $this->assertArrayHasKey('capacity', $adminHost);
 
         // Admin calling GET /api/admin/images receives HostNodeResource fields
-        $adminApiRes = $this->actingAs($this->admin)->getJson('/api/admin/images');
+        $adminApiRes = $this->actingAs($this->admin)->getJson('/api/v1/admin/images');
         $adminApiRes->assertStatus(200);
         $adminApiRes->assertJsonStructure([
             'data',
@@ -330,7 +330,7 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
         rsort($imageIds);
 
         // Page 1: per_page=2
-        $res1 = $this->actingAs($this->admin)->getJson('/api/admin/images?per_page=2');
+        $res1 = $this->actingAs($this->admin)->getJson('/api/v1/admin/images?per_page=2');
         $res1->assertStatus(200);
         $res1->assertJsonCount(2, 'data');
         $this->assertNotNull($res1->json('next_cursor'));
@@ -340,7 +340,7 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
         $cursor1 = $res1->json('next_cursor');
 
         // Page 2: per_page=2&cursor=$cursor1
-        $res2 = $this->actingAs($this->admin)->getJson('/api/admin/images?per_page=2&cursor='.urlencode((string) $cursor1));
+        $res2 = $this->actingAs($this->admin)->getJson('/api/v1/admin/images?per_page=2&cursor='.urlencode((string) $cursor1));
         $res2->assertStatus(200);
         $res2->assertJsonCount(2, 'data');
         $this->assertNotNull($res2->json('next_cursor'));
@@ -350,7 +350,7 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
         $cursor2 = $res2->json('next_cursor');
 
         // Page 3: per_page=2&cursor=$cursor2
-        $res3 = $this->actingAs($this->admin)->getJson('/api/admin/images?per_page=2&cursor='.urlencode((string) $cursor2));
+        $res3 = $this->actingAs($this->admin)->getJson('/api/v1/admin/images?per_page=2&cursor='.urlencode((string) $cursor2));
         $res3->assertStatus(200);
         $res3->assertJsonCount(1, 'data');
         $this->assertNull($res3->json('next_cursor'));
@@ -384,7 +384,7 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
         $imgDetached->hosts()->sync([]);
 
         // When host_id is provided
-        $responseWithHost = $this->actingAs($this->admin)->getJson('/api/admin/images?host_id='.$this->hostA->id);
+        $responseWithHost = $this->actingAs($this->admin)->getJson('/api/v1/admin/images?host_id='.$this->hostA->id);
         $responseWithHost->assertStatus(200);
 
         $items = collect($responseWithHost->json('data'))->keyBy('id');
@@ -392,7 +392,7 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
         $this->assertFalse($items[$imgDetached->id]['attached']);
 
         // When host_id is NOT provided, 'attached' is omitted
-        $responseWithoutHost = $this->actingAs($this->admin)->getJson('/api/admin/images');
+        $responseWithoutHost = $this->actingAs($this->admin)->getJson('/api/v1/admin/images');
         $responseWithoutHost->assertStatus(200);
 
         foreach ($responseWithoutHost->json('data') as $item) {
@@ -423,21 +423,21 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
         $imgDetached->hosts()->sync([]);
 
         // attachment=attached
-        $resAttached = $this->actingAs($this->admin)->getJson('/api/admin/images?host_id='.$this->hostA->id.'&attachment=attached');
+        $resAttached = $this->actingAs($this->admin)->getJson('/api/v1/admin/images?host_id='.$this->hostA->id.'&attachment=attached');
         $resAttached->assertStatus(200);
         $resAttached->assertJsonCount(1, 'data');
         $this->assertSame($imgAttached->id, $resAttached->json('data.0.id'));
         $this->assertTrue($resAttached->json('data.0.attached'));
 
         // attachment=detached
-        $resDetached = $this->actingAs($this->admin)->getJson('/api/admin/images?host_id='.$this->hostA->id.'&attachment=detached');
+        $resDetached = $this->actingAs($this->admin)->getJson('/api/v1/admin/images?host_id='.$this->hostA->id.'&attachment=detached');
         $resDetached->assertStatus(200);
         $resDetached->assertJsonCount(1, 'data');
         $this->assertSame($imgDetached->id, $resDetached->json('data.0.id'));
         $this->assertFalse($resDetached->json('data.0.attached'));
 
         // attachment=all
-        $resAll = $this->actingAs($this->admin)->getJson('/api/admin/images?host_id='.$this->hostA->id.'&attachment=all');
+        $resAll = $this->actingAs($this->admin)->getJson('/api/v1/admin/images?host_id='.$this->hostA->id.'&attachment=all');
         $resAll->assertStatus(200);
         $resAll->assertJsonCount(2, 'data');
     }
@@ -488,7 +488,7 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
 
         // Filter: os_type=linux & enabled=1 & host_id=hostA
         $res = $this->actingAs($this->admin)->getJson(
-            '/api/admin/images?host_id='.$this->hostA->id.'&os_type=linux&enabled=1'
+            '/api/v1/admin/images?host_id='.$this->hostA->id.'&os_type=linux&enabled=1'
         );
         $res->assertStatus(200);
 
@@ -504,7 +504,7 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
 
         // When attachment=attached tab is selected, filtered counts must remain identical (ignoring attachment tab)
         $resTab = $this->actingAs($this->admin)->getJson(
-            '/api/admin/images?host_id='.$this->hostA->id.'&os_type=linux&enabled=1&attachment=attached'
+            '/api/v1/admin/images?host_id='.$this->hostA->id.'&os_type=linux&enabled=1&attachment=attached'
         );
         $resTab->assertStatus(200);
         $resTab->assertJsonPath('counts.filtered.catalog', 2);
@@ -514,15 +514,15 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
 
     public function test_admin_images_attachment_without_host_id_returns_422(): void
     {
-        $res1 = $this->actingAs($this->admin)->getJson('/api/admin/images?attachment=attached');
+        $res1 = $this->actingAs($this->admin)->getJson('/api/v1/admin/images?attachment=attached');
         $res1->assertStatus(422);
         $res1->assertJsonValidationErrors(['attachment']);
 
-        $res2 = $this->actingAs($this->admin)->getJson('/api/admin/images?attachment=detached');
+        $res2 = $this->actingAs($this->admin)->getJson('/api/v1/admin/images?attachment=detached');
         $res2->assertStatus(422);
         $res2->assertJsonValidationErrors(['attachment']);
 
-        $res3 = $this->actingAs($this->admin)->getJson('/api/admin/images?attachment=all');
+        $res3 = $this->actingAs($this->admin)->getJson('/api/v1/admin/images?attachment=all');
         $res3->assertStatus(422);
         $res3->assertJsonValidationErrors(['attachment']);
     }
@@ -530,35 +530,35 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
     public function test_admin_images_invalid_cursor_returns_422(): void
     {
         // 1. Not base64
-        $res1 = $this->actingAs($this->admin)->getJson('/api/admin/images?cursor=invalid!cursor');
+        $res1 = $this->actingAs($this->admin)->getJson('/api/v1/admin/images?cursor=invalid!cursor');
         $res1->assertStatus(422);
         $res1->assertJsonValidationErrors(['cursor']);
 
         // 2. Base64 but not valid JSON
-        $res2 = $this->actingAs($this->admin)->getJson('/api/admin/images?cursor='.base64_encode('not-json'));
+        $res2 = $this->actingAs($this->admin)->getJson('/api/v1/admin/images?cursor='.base64_encode('not-json'));
         $res2->assertStatus(422);
         $res2->assertJsonValidationErrors(['cursor']);
 
         // 3. JSON without id key
-        $res3 = $this->actingAs($this->admin)->getJson('/api/admin/images?cursor='.base64_encode((string) json_encode(['foo' => 'bar'])));
+        $res3 = $this->actingAs($this->admin)->getJson('/api/v1/admin/images?cursor='.base64_encode((string) json_encode(['foo' => 'bar'])));
         $res3->assertStatus(422);
         $res3->assertJsonValidationErrors(['cursor']);
 
         // 4. JSON with non-positive id
-        $res4 = $this->actingAs($this->admin)->getJson('/api/admin/images?cursor='.base64_encode((string) json_encode(['id' => -1])));
+        $res4 = $this->actingAs($this->admin)->getJson('/api/v1/admin/images?cursor='.base64_encode((string) json_encode(['id' => -1])));
         $res4->assertStatus(422);
         $res4->assertJsonValidationErrors(['cursor']);
     }
 
     public function test_admin_images_forbidden_for_non_admin(): void
     {
-        $response = $this->actingAs($this->customer)->getJson('/api/admin/images');
+        $response = $this->actingAs($this->customer)->getJson('/api/v1/admin/images');
         $response->assertStatus(403);
     }
 
     public function test_admin_images_non_existent_host_id_returns_422(): void
     {
-        $response = $this->actingAs($this->admin)->getJson('/api/admin/images?host_id=999999');
+        $response = $this->actingAs($this->admin)->getJson('/api/v1/admin/images?host_id=999999');
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['host_id']);
     }

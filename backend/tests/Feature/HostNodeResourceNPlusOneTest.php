@@ -95,7 +95,7 @@ final class HostNodeResourceNPlusOneTest extends TestCase
         DB::flushQueryLog();
         DB::enableQueryLog();
 
-        $response = $this->actingAs($this->admin)->getJson('/api/vms?per_page=50');
+        $response = $this->actingAs($this->admin)->getJson('/api/v1/vms?per_page=50');
 
         $response->assertOk();
         $response->assertJsonCount(6, 'data');
@@ -173,7 +173,7 @@ final class HostNodeResourceNPlusOneTest extends TestCase
         DB::flushQueryLog();
         DB::enableQueryLog();
 
-        $response = $this->actingAs($this->admin)->getJson('/api/admin/hosts?per_page=50');
+        $response = $this->actingAs($this->admin)->getJson('/api/v1/admin/hosts?per_page=50');
 
         $response->assertOk();
         $response->assertJsonCount(5, 'data');

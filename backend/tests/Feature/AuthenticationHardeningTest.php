@@ -37,18 +37,18 @@ final class AuthenticationHardeningTest extends TestCase
         ];
 
         for ($i = 0; $i < 5; $i++) {
-            $response = $this->postJson('/api/login', $payload);
+            $response = $this->postJson('/api/v1/login', $payload);
             $this->assertNotEquals(429, $response->status());
         }
 
-        $sixthResponse = $this->postJson('/api/login', $payload);
+        $sixthResponse = $this->postJson('/api/v1/login', $payload);
         $sixthResponse->assertStatus(429);
     }
 
     public function test_register_rate_limiting_returns_429_on_sixth_attempt(): void
     {
         for ($i = 0; $i < 5; $i++) {
-            $response = $this->postJson('/api/register', [
+            $response = $this->postJson('/api/v1/register', [
                 'name' => "User {$i}",
                 'email' => "user{$i}@example.com",
                 'password' => 'StrongPassword123!',
@@ -57,7 +57,7 @@ final class AuthenticationHardeningTest extends TestCase
             $this->assertNotEquals(429, $response->status());
         }
 
-        $sixthResponse = $this->postJson('/api/register', [
+        $sixthResponse = $this->postJson('/api/v1/register', [
             'name' => 'User 6',
             'email' => 'user6@example.com',
             'password' => 'StrongPassword123!',
@@ -75,7 +75,7 @@ final class AuthenticationHardeningTest extends TestCase
         ]);
         $user->assignRole('customer');
 
-        $response = $this->actingAs($user)->putJson('/api/me', [
+        $response = $this->actingAs($user)->putJson('/api/v1/me', [
             'name' => 'Updated Name',
             'email' => 'newaddress@example.com',
         ]);
@@ -93,7 +93,7 @@ final class AuthenticationHardeningTest extends TestCase
         ]);
         $user->assignRole('customer');
 
-        $response = $this->actingAs($user)->putJson('/api/me', [
+        $response = $this->actingAs($user)->putJson('/api/v1/me', [
             'name' => 'Updated Name',
             'email' => 'newaddress@example.com',
             'current_password' => 'IncorrectPassword!',
@@ -115,7 +115,7 @@ final class AuthenticationHardeningTest extends TestCase
         ]);
         $user->assignRole('customer');
 
-        $response = $this->actingAs($user)->putJson('/api/me', [
+        $response = $this->actingAs($user)->putJson('/api/v1/me', [
             'name' => 'Updated Name',
             'email' => 'newaddress@example.com',
             'current_password' => 'Secret12345!',
@@ -148,7 +148,7 @@ final class AuthenticationHardeningTest extends TestCase
         ]);
         $user->assignRole('customer');
 
-        $response = $this->actingAs($user)->putJson('/api/me', [
+        $response = $this->actingAs($user)->putJson('/api/v1/me', [
             'name' => 'Updated Name',
             'email' => 'newaddress@example.com',
             'current_password' => 'Secret12345!',

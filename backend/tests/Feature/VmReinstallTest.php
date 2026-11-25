@@ -261,7 +261,7 @@ final class VmReinstallTest extends TestCase
         $this->clearRateLimit($this->otherTenant);
 
         $response = $this->actingAs($this->otherTenant)
-            ->postJson("/api/vms/{$vm->id}/action", [
+            ->postJson("/api/v1/vms/{$vm->id}/action", [
                 'action' => 'reinstall',
             ]);
 
@@ -288,7 +288,7 @@ final class VmReinstallTest extends TestCase
         $this->clearRateLimit($this->tenant);
 
         $response = $this->actingAs($this->tenant)
-            ->postJson("/api/vms/{$vm->id}/action", [
+            ->postJson("/api/v1/vms/{$vm->id}/action", [
                 'action' => 'reinstall',
             ]);
 
@@ -319,7 +319,7 @@ final class VmReinstallTest extends TestCase
         $this->clearRateLimit($this->admin);
 
         $response = $this->actingAs($this->admin)
-            ->postJson("/api/vms/{$vm->id}/action", [
+            ->postJson("/api/v1/vms/{$vm->id}/action", [
                 'action' => 'reinstall',
             ]);
 
@@ -347,7 +347,7 @@ final class VmReinstallTest extends TestCase
             $this->clearRateLimit($this->tenant);
 
             $response = $this->actingAs($this->tenant)
-                ->postJson("/api/vms/{$vm->id}/action", [
+                ->postJson("/api/v1/vms/{$vm->id}/action", [
                     'action' => 'reinstall',
                 ]);
 
@@ -382,7 +382,7 @@ final class VmReinstallTest extends TestCase
             $this->clearRateLimit($this->tenant);
 
             $response = $this->actingAs($this->tenant)
-                ->postJson("/api/vms/{$vm->id}/action", [
+                ->postJson("/api/v1/vms/{$vm->id}/action", [
                     'action' => 'reinstall',
                 ]);
 
@@ -404,7 +404,7 @@ final class VmReinstallTest extends TestCase
         $this->clearRateLimit($this->tenant);
 
         $response = $this->actingAs($this->tenant)
-            ->postJson("/api/vms/{$vm->id}/action", [
+            ->postJson("/api/v1/vms/{$vm->id}/action", [
                 'action' => 'reinstall',
                 'os_image' => $this->disabledImage->name,
             ]);
@@ -422,7 +422,7 @@ final class VmReinstallTest extends TestCase
         $this->clearRateLimit($this->tenant);
 
         $response = $this->actingAs($this->tenant)
-            ->postJson("/api/vms/{$vm->id}/action", [
+            ->postJson("/api/v1/vms/{$vm->id}/action", [
                 'action' => 'reinstall',
                 'os_image' => 'unknown/image-does-not-exist',
             ]);
@@ -440,7 +440,7 @@ final class VmReinstallTest extends TestCase
         $this->clearRateLimit($this->tenant);
 
         $response = $this->actingAs($this->tenant)
-            ->postJson("/api/vms/{$vm->id}/action", [
+            ->postJson("/api/v1/vms/{$vm->id}/action", [
                 'action' => 'reinstall',
                 'os_image' => $this->windowsImage->name,
             ]);
@@ -461,7 +461,7 @@ final class VmReinstallTest extends TestCase
         $this->clearRateLimit($this->tenant);
 
         $response = $this->actingAs($this->tenant)
-            ->postJson("/api/vms/{$vm->id}/action", [
+            ->postJson("/api/v1/vms/{$vm->id}/action", [
                 'action' => 'reinstall',
                 'os_image' => $this->otherLinuxImage->name,
             ]);
@@ -480,7 +480,7 @@ final class VmReinstallTest extends TestCase
         $this->clearRateLimit($this->tenant);
 
         $response = $this->actingAs($this->tenant)
-            ->postJson("/api/vms/{$vm->id}/action", [
+            ->postJson("/api/v1/vms/{$vm->id}/action", [
                 'action' => 'reinstall',
                 'os_image' => $this->windowsImage->name,
             ]);
@@ -512,7 +512,7 @@ final class VmReinstallTest extends TestCase
         $this->clearRateLimit($this->tenant);
 
         $response = $this->actingAs($this->tenant)
-            ->postJson("/api/vms/{$vm->id}/action", [
+            ->postJson("/api/v1/vms/{$vm->id}/action", [
                 'action' => 'reinstall',
             ]);
 
@@ -530,7 +530,7 @@ final class VmReinstallTest extends TestCase
         $this->clearRateLimit($this->tenant);
 
         $response = $this->actingAs($this->tenant)
-            ->postJson("/api/vms/{$vm->id}/action", [
+            ->postJson("/api/v1/vms/{$vm->id}/action", [
                 'action' => 'reinstall',
             ]);
 
@@ -628,7 +628,7 @@ final class VmReinstallTest extends TestCase
 
         // 1. Reinstall with explicitly provided image
         $this->actingAs($this->tenant)
-            ->postJson("/api/vms/{$vm1->id}/action", [
+            ->postJson("/api/v1/vms/{$vm1->id}/action", [
                 'action' => 'reinstall',
                 'os_image' => $this->otherLinuxImage->name,
             ])
@@ -647,7 +647,7 @@ final class VmReinstallTest extends TestCase
         $this->clearRateLimit($this->tenant);
 
         $this->actingAs($this->tenant)
-            ->postJson("/api/vms/{$vm2->id}/action", [
+            ->postJson("/api/v1/vms/{$vm2->id}/action", [
                 'action' => 'reinstall',
             ])
             ->assertStatus(200);

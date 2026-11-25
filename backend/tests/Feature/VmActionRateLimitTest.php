@@ -78,7 +78,7 @@ final class VmActionRateLimitTest extends TestCase
 
         // Perform 10 actions (allowed ceiling)
         for ($i = 0; $i < 10; $i++) {
-            $response = $this->postJson("/api/vms/{$this->vm->id}/action", [
+            $response = $this->postJson("/api/v1/vms/{$this->vm->id}/action", [
                 'action' => 'stop',
                 'force' => false,
             ]);
@@ -93,14 +93,14 @@ final class VmActionRateLimitTest extends TestCase
 
         // Exhaust the 10 allowed attempts
         for ($i = 0; $i < 10; $i++) {
-            $this->postJson("/api/vms/{$this->vm->id}/action", [
+            $this->postJson("/api/v1/vms/{$this->vm->id}/action", [
                 'action' => 'stop',
                 'force' => false,
             ])->assertStatus(200);
         }
 
         // 11th request must be rejected with 429 Too Many Requests
-        $response = $this->postJson("/api/vms/{$this->vm->id}/action", [
+        $response = $this->postJson("/api/v1/vms/{$this->vm->id}/action", [
             'action' => 'stop',
             'force' => false,
         ]);
@@ -118,7 +118,7 @@ final class VmActionRateLimitTest extends TestCase
 
         // Admin should be able to perform 12 consecutive requests without throttling
         for ($i = 0; $i < 12; $i++) {
-            $response = $this->postJson("/api/vms/{$this->vm->id}/action", [
+            $response = $this->postJson("/api/v1/vms/{$this->vm->id}/action", [
                 'action' => 'restart',
                 'force' => false,
             ]);
@@ -132,14 +132,14 @@ final class VmActionRateLimitTest extends TestCase
         // 1. Exhaust customer A's limit
         Sanctum::actingAs($this->customer);
         for ($i = 0; $i < 10; $i++) {
-            $this->postJson("/api/vms/{$this->vm->id}/action", [
+            $this->postJson("/api/v1/vms/{$this->vm->id}/action", [
                 'action' => 'stop',
                 'force' => false,
             ])->assertStatus(200);
         }
 
         // Customer A gets 429
-        $this->postJson("/api/vms/{$this->vm->id}/action", [
+        $this->postJson("/api/v1/vms/{$this->vm->id}/action", [
             'action' => 'stop',
             'force' => false,
         ])->assertStatus(429);
@@ -160,7 +160,7 @@ final class VmActionRateLimitTest extends TestCase
 
         // Customer B must NOT be throttled
         Sanctum::actingAs($this->otherCustomer);
-        $resOther = $this->postJson("/api/vms/{$otherVm->id}/action", [
+        $resOther = $this->postJson("/api/v1/vms/{$otherVm->id}/action", [
             'action' => 'stop',
             'force' => false,
         ]);

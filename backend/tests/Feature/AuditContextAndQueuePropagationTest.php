@@ -20,7 +20,7 @@ final class AuditContextAndQueuePropagationTest extends TestCase
         $user = new User(['id' => 42, 'email' => 'admin@example.com']);
         $user->id = 42;
 
-        $request = Request::create('/api/vms', 'GET', [], [], [], [
+        $request = Request::create('/api/v1/vms', 'GET', [], [], [], [
             'REMOTE_ADDR' => '198.51.100.25',
             'HTTP_USER_AGENT' => 'TestBrowser/1.0',
             'HTTP_X_REQUEST_ID' => 'custom-request-id-1234',
@@ -136,7 +136,7 @@ final class AuditContextAndQueuePropagationTest extends TestCase
 
     public function test_set_audit_context_middleware_fills_context_from_request(): void
     {
-        $request = Request::create('/api/vms', 'GET', [], [], [], [
+        $request = Request::create('/api/v1/vms', 'GET', [], [], [], [
             'REMOTE_ADDR' => '198.51.100.50',
             'HTTP_USER_AGENT' => 'CustomClient/2.0',
             'HTTP_X_REQUEST_ID' => 'mw-request-uuid-456',

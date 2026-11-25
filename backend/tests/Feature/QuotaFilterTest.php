@@ -95,7 +95,7 @@ final class QuotaFilterTest extends TestCase
 
     public function test_quota_metrics_reflect_total_usage_without_filters(): void
     {
-        $response = $this->actingAs($this->customer)->getJson('/api/quota');
+        $response = $this->actingAs($this->customer)->getJson('/api/v1/quota');
 
         $response->assertStatus(200);
         $response->assertJsonPath('usage.vms', 2);
@@ -106,7 +106,7 @@ final class QuotaFilterTest extends TestCase
 
     public function test_quota_metrics_filter_by_host_id(): void
     {
-        $response = $this->actingAs($this->customer)->getJson('/api/quota?host_id='.$this->hostA->id);
+        $response = $this->actingAs($this->customer)->getJson('/api/v1/quota?host_id='.$this->hostA->id);
 
         $response->assertStatus(200);
         $response->assertJsonPath('usage.vms', 1);
@@ -118,7 +118,7 @@ final class QuotaFilterTest extends TestCase
 
     public function test_quota_metrics_filter_by_status(): void
     {
-        $response = $this->actingAs($this->customer)->getJson('/api/quota?status=running');
+        $response = $this->actingAs($this->customer)->getJson('/api/v1/quota?status=running');
 
         $response->assertStatus(200);
         $response->assertJsonPath('usage.vms', 1);
@@ -128,7 +128,7 @@ final class QuotaFilterTest extends TestCase
 
     public function test_quota_metrics_filter_by_search(): void
     {
-        $response = $this->actingAs($this->customer)->getJson('/api/quota?search=db');
+        $response = $this->actingAs($this->customer)->getJson('/api/v1/quota?search=db');
 
         $response->assertStatus(200);
         $response->assertJsonPath('usage.vms', 1);
@@ -139,7 +139,7 @@ final class QuotaFilterTest extends TestCase
 
     public function test_admin_cluster_stats_filter_by_host_node(): void
     {
-        $response = $this->actingAs($this->admin)->getJson('/api/admin/stats?host_id='.$this->hostA->id);
+        $response = $this->actingAs($this->admin)->getJson('/api/v1/admin/stats?host_id='.$this->hostA->id);
 
         $response->assertStatus(200);
         $response->assertJsonPath('overview.total_vms', 1);

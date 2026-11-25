@@ -91,7 +91,7 @@ final class VmActionHostReachabilityTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->tenant)
-            ->postJson("/api/vms/{$vm->id}/action", [
+            ->postJson("/api/v1/vms/{$vm->id}/action", [
                 'action' => 'start',
             ]);
 
@@ -120,7 +120,7 @@ final class VmActionHostReachabilityTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->tenant)
-            ->postJson("/api/vms/{$vm->id}/action", [
+            ->postJson("/api/v1/vms/{$vm->id}/action", [
                 'action' => 'stop',
             ]);
 
@@ -149,7 +149,7 @@ final class VmActionHostReachabilityTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->tenant)
-            ->postJson("/api/vms/{$vm->id}/console", [
+            ->postJson("/api/v1/vms/{$vm->id}/console", [
                 'type' => 'console',
             ]);
 
@@ -180,7 +180,7 @@ final class VmActionHostReachabilityTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->admin)
-            ->postJson("/api/vms/{$vm->id}/action", [
+            ->postJson("/api/v1/vms/{$vm->id}/action", [
                 'action' => 'delete',
                 'force' => true,
             ]);
@@ -204,7 +204,7 @@ final class VmActionHostReachabilityTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->tenant)
-            ->postJson("/api/vms/{$vm->id}/action", [
+            ->postJson("/api/v1/vms/{$vm->id}/action", [
                 'action' => 'delete',
                 'force' => true,
             ]);
@@ -234,7 +234,7 @@ final class VmActionHostReachabilityTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->tenant)
-            ->postJson("/api/vms/{$vm->id}/snapshots", [
+            ->postJson("/api/v1/vms/{$vm->id}/snapshots", [
                 'name' => 'snap-fail-host',
             ]);
 
@@ -272,7 +272,7 @@ final class VmActionHostReachabilityTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->tenant)
-            ->postJson("/api/vms/{$vm->id}/snapshots/{$snapshot->id}/restore");
+            ->postJson("/api/v1/vms/{$vm->id}/snapshots/{$snapshot->id}/restore");
 
         $response->assertStatus(422)
             ->assertJson([

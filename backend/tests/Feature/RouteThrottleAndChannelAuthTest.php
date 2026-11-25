@@ -44,13 +44,13 @@ final class RouteThrottleAndChannelAuthTest extends TestCase
         Sanctum::actingAs($this->customer);
 
         for ($i = 0; $i < 10; $i++) {
-            $response = $this->postJson('/api/tokens', [
+            $response = $this->postJson('/api/v1/tokens', [
                 'name' => "token-{$i}",
             ]);
             $response->assertStatus(201);
         }
 
-        $throttledResponse = $this->postJson('/api/tokens', [
+        $throttledResponse = $this->postJson('/api/v1/tokens', [
             'name' => 'token-overflow',
         ]);
 
@@ -64,11 +64,11 @@ final class RouteThrottleAndChannelAuthTest extends TestCase
 
         // Even with unprocessable payload, throttle middleware runs and counts attempts
         for ($i = 0; $i < 10; $i++) {
-            $response = $this->postJson('/api/vms', []);
+            $response = $this->postJson('/api/v1/vms', []);
             $response->assertStatus(422);
         }
 
-        $throttledResponse = $this->postJson('/api/vms', []);
+        $throttledResponse = $this->postJson('/api/v1/vms', []);
         $throttledResponse->assertStatus(429);
         $throttledResponse->assertHeader('Retry-After');
         $throttledResponse->assertJsonStructure(['message', 'retry_after']);
@@ -79,7 +79,7 @@ final class RouteThrottleAndChannelAuthTest extends TestCase
         Sanctum::actingAs($this->admin);
 
         for ($i = 0; $i < 12; $i++) {
-            $response = $this->postJson('/api/vms', []);
+            $response = $this->postJson('/api/v1/vms', []);
             $response->assertStatus(422);
         }
     }
@@ -93,7 +93,7 @@ final class RouteThrottleAndChannelAuthTest extends TestCase
 
         Sanctum::actingAs($suspendedUser);
 
-        $response = $this->postJson('/api/broadcasting/auth', [
+        $response = $this->postJson('/api/v1/broadcasting/auth', [
             'channel_name' => 'private-users.'.$suspendedUser->id,
             'socket_id' => '1234.5678',
         ]);
@@ -108,7 +108,7 @@ final class RouteThrottleAndChannelAuthTest extends TestCase
 
         Sanctum::actingAs($inactiveUser);
 
-        $inactiveResponse = $this->postJson('/api/broadcasting/auth', [
+        $inactiveResponse = $this->postJson('/api/v1/broadcasting/auth', [
             'channel_name' => 'private-users.'.$inactiveUser->id,
             'socket_id' => '1234.5678',
         ]);
@@ -121,7 +121,7 @@ final class RouteThrottleAndChannelAuthTest extends TestCase
     {
         Sanctum::actingAs($this->customer);
 
-        $response = $this->postJson('/api/broadcasting/auth', [
+        $response = $this->postJson('/api/v1/broadcasting/auth', [
             'channel_name' => 'private-users.'.$this->customer->id,
             'socket_id' => '1234.5678',
         ]);

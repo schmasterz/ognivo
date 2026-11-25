@@ -126,7 +126,7 @@ final class SafeUserDeletionAndSuspensionTest extends TestCase
 
         // 3. Admin calls DELETE /api/admin/users/{id}
         $response = $this->actingAs($this->admin)
-            ->deleteJson(sprintf('/api/admin/users/%d', $this->customer->id));
+            ->deleteJson(sprintf('/api/v1/admin/users/%d', $this->customer->id));
 
         // Returns 202 with status deleting
         $response->assertStatus(202);
@@ -153,14 +153,14 @@ final class SafeUserDeletionAndSuspensionTest extends TestCase
         $this->assertSame('allocated', $ip->status);
 
         // 7. Admin user list and show endpoints reflect the visible "deletion_failed" state
-        $listRes = $this->actingAs($this->admin)->getJson('/api/admin/users?status=deletion_failed');
+        $listRes = $this->actingAs($this->admin)->getJson('/api/v1/admin/users?status=deletion_failed');
         $listRes->assertOk();
         $listRes->assertJsonFragment([
             'id' => $this->customer->id,
             'status' => 'deletion_failed',
         ]);
 
-        $showRes = $this->actingAs($this->admin)->getJson(sprintf('/api/admin/users/%d', $this->customer->id));
+        $showRes = $this->actingAs($this->admin)->getJson(sprintf('/api/v1/admin/users/%d', $this->customer->id));
         $showRes->assertOk();
         $showRes->assertJsonPath('user.status', 'deletion_failed');
     }
@@ -185,7 +185,7 @@ final class SafeUserDeletionAndSuspensionTest extends TestCase
         $this->fakeDriver->setFailAction('deleteProject', true);
 
         $response = $this->actingAs($this->admin)
-            ->deleteJson(sprintf('/api/admin/users/%d', $this->customer->id));
+            ->deleteJson(sprintf('/api/v1/admin/users/%d', $this->customer->id));
 
         $response->assertStatus(202);
 
@@ -229,7 +229,7 @@ final class SafeUserDeletionAndSuspensionTest extends TestCase
         $this->fakeDriver->projects[] = 'proj-customer-safety';
 
         $response = $this->actingAs($this->admin)
-            ->deleteJson(sprintf('/api/admin/users/%d', $this->customer->id));
+            ->deleteJson(sprintf('/api/v1/admin/users/%d', $this->customer->id));
 
         $response->assertStatus(202);
 
@@ -252,7 +252,7 @@ final class SafeUserDeletionAndSuspensionTest extends TestCase
         $this->assertCount(1, $this->customer->tokens);
 
         $response = $this->actingAs($this->admin)
-            ->deleteJson(sprintf('/api/admin/users/%d', $this->customer->id));
+            ->deleteJson(sprintf('/api/v1/admin/users/%d', $this->customer->id));
 
         $response->assertStatus(202);
         $response->assertJson([

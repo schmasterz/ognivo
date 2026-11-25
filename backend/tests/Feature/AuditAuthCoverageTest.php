@@ -123,7 +123,7 @@ final class AuditAuthCoverageTest extends TestCase
             'status' => 'active',
         ]);
 
-        $request = Request::create('/api/login', 'POST', [
+        $request = Request::create('/api/v1/login', 'POST', [
             'email' => 'THROTTLED@example.com',
         ]);
 

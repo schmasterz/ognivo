@@ -41,13 +41,13 @@ it('deduplicates direct admin cross-tenant metric views within a 15-minute windo
     Sanctum::actingAs($admin);
 
     // Simulate 4 auto-refresh polls spread over 10 minutes inside the 15-minute audit window.
-    $this->getJson("/api/vms/{$tenantVm->id}/metrics?range=1h")->assertOk();
+    $this->getJson("/api/v1/vms/{$tenantVm->id}/metrics?range=1h")->assertOk();
     $this->travel(3)->minutes();
-    $this->getJson("/api/vms/{$tenantVm->id}/metrics?range=1h")->assertOk();
+    $this->getJson("/api/v1/vms/{$tenantVm->id}/metrics?range=1h")->assertOk();
     $this->travel(3)->minutes();
-    $this->getJson("/api/vms/{$tenantVm->id}/metrics?range=1h")->assertOk();
+    $this->getJson("/api/v1/vms/{$tenantVm->id}/metrics?range=1h")->assertOk();
     $this->travel(4)->minutes();
-    $this->getJson("/api/vms/{$tenantVm->id}/metrics?range=1h")->assertOk();
+    $this->getJson("/api/v1/vms/{$tenantVm->id}/metrics?range=1h")->assertOk();
 
     expect(AuditLog::where('action', 'vm.metrics.viewed')->count())->toBe(1);
 
@@ -67,8 +67,8 @@ it('deduplicates direct admin cross-tenant metric views within a 15-minute windo
     // Advance past the 15-minute window and poll twice more -> exactly one new audit row.
     $this->travel(16)->minutes();
 
-    $this->getJson("/api/vms/{$tenantVm->id}/metrics?range=1h")->assertOk();
-    $this->getJson("/api/vms/{$tenantVm->id}/metrics?range=1h")->assertOk();
+    $this->getJson("/api/v1/vms/{$tenantVm->id}/metrics?range=1h")->assertOk();
+    $this->getJson("/api/v1/vms/{$tenantVm->id}/metrics?range=1h")->assertOk();
 
     expect(AuditLog::where('action', 'vm.metrics.viewed')->count())->toBe(2);
 });
@@ -94,12 +94,12 @@ it('records windowed cross-tenant audit entries when an admin views metrics whil
 
     $this->app['auth']->forgetGuards();
     $this->withHeader('Authorization', "Bearer {$token}")
-        ->getJson("/api/vms/{$tenantVm->id}/metrics?range=1h")
+        ->getJson("/api/v1/vms/{$tenantVm->id}/metrics?range=1h")
         ->assertOk();
 
     $this->app['auth']->forgetGuards();
     $this->withHeader('Authorization', "Bearer {$token}")
-        ->getJson("/api/vms/{$tenantVm->id}/metrics?range=1h")
+        ->getJson("/api/v1/vms/{$tenantVm->id}/metrics?range=1h")
         ->assertOk();
 
     expect(AuditLog::where('action', 'vm.metrics.viewed')->count())->toBe(1);
@@ -132,11 +132,11 @@ it('does not record cross-tenant audit rows for self-owned instance metric views
     ]);
 
     Sanctum::actingAs($tenant);
-    $this->getJson("/api/vms/{$tenantVm->id}/metrics?range=1h")->assertOk();
+    $this->getJson("/api/v1/vms/{$tenantVm->id}/metrics?range=1h")->assertOk();
 
     $this->app['auth']->forgetGuards();
     Sanctum::actingAs($admin);
-    $this->getJson("/api/vms/{$adminOwnVm->id}/metrics?range=1h")->assertOk();
+    $this->getJson("/api/v1/vms/{$adminOwnVm->id}/metrics?range=1h")->assertOk();
 
     expect(AuditLog::where('action', 'vm.metrics.viewed')->count())->toBe(0);
 });

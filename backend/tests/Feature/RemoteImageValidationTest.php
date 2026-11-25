@@ -46,7 +46,7 @@ test('test_admin_can_validate_valid_simplestreams_image', function (): void {
         ], 200),
     ]);
 
-    $response = $this->actingAs($this->admin)->postJson('/api/admin/images/validate', [
+    $response = $this->actingAs($this->admin)->postJson('/api/v1/admin/images/validate', [
         'source' => 'https://images.linuxcontainers.org',
         'name' => 'images:debian/12',
         'protocol' => 'simplestreams',
@@ -79,7 +79,7 @@ test('test_validate_fails_when_alias_not_found_on_simplestreams_remote', functio
         ], 200),
     ]);
 
-    $response = $this->actingAs($this->admin)->postJson('/api/admin/images/validate', [
+    $response = $this->actingAs($this->admin)->postJson('/api/v1/admin/images/validate', [
         'source' => 'https://images.linuxcontainers.org',
         'name' => 'debian/99',
         'protocol' => 'simplestreams',
@@ -100,7 +100,7 @@ test('test_validate_incus_protocol_image', function (): void {
         ], 200),
     ]);
 
-    $response = $this->actingAs($this->admin)->postJson('/api/admin/images/validate', [
+    $response = $this->actingAs($this->admin)->postJson('/api/v1/admin/images/validate', [
         'source' => 'https://incus.local:8443',
         'name' => 'my-img',
         'protocol' => 'incus',
@@ -128,7 +128,7 @@ test('test_create_image_enforces_remote_validation_when_enabled', function (): v
         ], 200),
     ]);
 
-    $response = $this->actingAs($this->admin)->postJson('/api/admin/images', [
+    $response = $this->actingAs($this->admin)->postJson('/api/v1/admin/images', [
         'name' => 'debian/99',
         'alias' => 'Debian 99',
         'source' => 'https://images.linuxcontainers.org',
@@ -156,7 +156,7 @@ test('test_create_image_bypasses_remote_validation_when_skip_flag_is_true', func
         ], 200),
     ]);
 
-    $response = $this->actingAs($this->admin)->postJson('/api/admin/images', [
+    $response = $this->actingAs($this->admin)->postJson('/api/v1/admin/images', [
         'name' => 'debian/offline',
         'alias' => 'Debian Offline',
         'source' => 'https://images.linuxcontainers.org',
@@ -169,7 +169,7 @@ test('test_create_image_bypasses_remote_validation_when_skip_flag_is_true', func
 });
 
 test('test_customer_cannot_access_remote_image_validation_endpoint', function (): void {
-    $response = $this->actingAs($this->customer)->postJson('/api/admin/images/validate', [
+    $response = $this->actingAs($this->customer)->postJson('/api/v1/admin/images/validate', [
         'source' => 'https://images.linuxcontainers.org',
         'name' => 'debian/12',
         'protocol' => 'simplestreams',

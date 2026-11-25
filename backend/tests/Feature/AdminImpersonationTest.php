@@ -77,35 +77,35 @@ final class AdminImpersonationTest extends TestCase
     public function test_non_admin_cannot_impersonate(): void
     {
         $this->actingAs($this->activeTenant)
-            ->postJson("/api/admin/users/{$this->suspendedTenant->id}/impersonate")
+            ->postJson("/api/v1/admin/users/{$this->suspendedTenant->id}/impersonate")
             ->assertForbidden();
     }
 
     public function test_admin_cannot_impersonate_themself(): void
     {
         $this->actingAs($this->admin)
-            ->postJson("/api/admin/users/{$this->admin->id}/impersonate")
+            ->postJson("/api/v1/admin/users/{$this->admin->id}/impersonate")
             ->assertStatus(403);
     }
 
     public function test_admin_cannot_impersonate_another_admin(): void
     {
         $this->actingAs($this->admin)
-            ->postJson("/api/admin/users/{$this->otherAdmin->id}/impersonate")
+            ->postJson("/api/v1/admin/users/{$this->otherAdmin->id}/impersonate")
             ->assertStatus(403);
     }
 
     public function test_admin_cannot_impersonate_inactive_user(): void
     {
         $this->actingAs($this->admin)
-            ->postJson("/api/admin/users/{$this->suspendedTenant->id}/impersonate")
+            ->postJson("/api/v1/admin/users/{$this->suspendedTenant->id}/impersonate")
             ->assertStatus(403);
     }
 
     public function test_admin_impersonate_issues_token_and_records_audit_with_impersonator_id(): void
     {
         $response = $this->actingAs($this->admin)
-            ->postJson("/api/admin/users/{$this->activeTenant->id}/impersonate")
+            ->postJson("/api/v1/admin/users/{$this->activeTenant->id}/impersonate")
             ->assertOk();
 
         $token = $response->json('token');
@@ -123,7 +123,7 @@ final class AdminImpersonationTest extends TestCase
 
         // Verify tenant sees this session in Activity tab (GET /api/audit)
         $auditRes = $this->withTokenHeader($token)
-            ->getJson('/api/audit')
+            ->getJson('/api/v1/audit')
             ->assertOk();
 
         $data = $auditRes->json('data');
@@ -138,14 +138,14 @@ final class AdminImpersonationTest extends TestCase
     public function test_impersonator_id_is_present_on_every_row_created_during_session(): void
     {
         $impersonateRes = $this->actingAs($this->admin)
-            ->postJson("/api/admin/users/{$this->activeTenant->id}/impersonate")
+            ->postJson("/api/v1/admin/users/{$this->activeTenant->id}/impersonate")
             ->assertOk();
 
         $token = $impersonateRes->json('token');
 
         // Execute profile update (permitted: updating name only)
         $this->withTokenHeader($token)
-            ->putJson('/api/me', [
+            ->putJson('/api/v1/me', [
                 'name' => 'Alice Support Updated',
                 'email' => 'alice@example.com',
             ])
@@ -161,14 +161,14 @@ final class AdminImpersonationTest extends TestCase
     public function test_forbidden_actions_are_rejected_and_audited_as_denied(): void
     {
         $impersonateRes = $this->actingAs($this->admin)
-            ->postJson("/api/admin/users/{$this->activeTenant->id}/impersonate")
+            ->postJson("/api/v1/admin/users/{$this->activeTenant->id}/impersonate")
             ->assertOk();
 
         $token = $impersonateRes->json('token');
 
         // 1. Password changes: rejected and audited as denied
         $this->withTokenHeader($token)
-            ->putJson('/api/me', [
+            ->putJson('/api/v1/me', [
                 'name' => 'Alice',
                 'email' => 'alice@example.com',
                 'password' => 'new-secret-password-1234',
@@ -186,7 +186,7 @@ final class AdminImpersonationTest extends TestCase
 
         // 2. Email changes: rejected and audited as denied
         $this->withTokenHeader($token)
-            ->putJson('/api/me', [
+            ->putJson('/api/v1/me', [
                 'name' => 'Alice',
                 'email' => 'alice-hacked@example.com',
             ])
@@ -202,7 +202,7 @@ final class AdminImpersonationTest extends TestCase
 
         // 3. Creating API credentials: rejected and audited as denied
         $this->withTokenHeader($token)
-            ->postJson('/api/tokens', [
+            ->postJson('/api/v1/tokens', [
                 'name' => 'backdoor-token',
             ])
             ->assertStatus(403);
@@ -216,11 +216,11 @@ final class AdminImpersonationTest extends TestCase
 
         // 4. Token management: rejected and audited as denied
         $this->withTokenHeader($token)
-            ->getJson('/api/tokens')
+            ->getJson('/api/v1/tokens')
             ->assertStatus(403);
 
         $this->withTokenHeader($token)
-            ->deleteJson('/api/tokens')
+            ->deleteJson('/api/v1/tokens')
             ->assertStatus(403);
 
         // 5. Console ticket issuing: rejected and audited as denied
@@ -231,7 +231,7 @@ final class AdminImpersonationTest extends TestCase
         ]);
 
         $this->withTokenHeader($token)
-            ->postJson("/api/vms/{$vm->id}/console-ticket")
+            ->postJson("/api/v1/vms/{$vm->id}/console-ticket")
             ->assertStatus(403);
 
         $consoleLog = AuditLog::where('action', AuditAction::VmActionDenied->value)
@@ -242,7 +242,7 @@ final class AdminImpersonationTest extends TestCase
         $this->assertSame($this->admin->id, $consoleLog->impersonator_id);
 
         $this->withTokenHeader($token)
-            ->postJson("/api/vms/{$vm->id}/console")
+            ->postJson("/api/v1/vms/{$vm->id}/console")
             ->assertStatus(403);
 
         $consolePostLog = AuditLog::where('action', AuditAction::VmActionDenied->value)
@@ -262,7 +262,7 @@ final class AdminImpersonationTest extends TestCase
 
         // 6. Deleting account: rejected and audited as denied
         $this->withTokenHeader($token)
-            ->deleteJson('/api/me')
+            ->deleteJson('/api/v1/me')
             ->assertStatus(403);
 
         $deleteLog = AuditLog::where('action', AuditAction::UserDeleted->value)
@@ -276,17 +276,17 @@ final class AdminImpersonationTest extends TestCase
     public function test_impersonation_stop_revokes_token_and_records_audit(): void
     {
         $impersonateRes = $this->actingAs($this->admin)
-            ->postJson("/api/admin/users/{$this->activeTenant->id}/impersonate")
+            ->postJson("/api/v1/admin/users/{$this->activeTenant->id}/impersonate")
             ->assertOk();
 
         $token = $impersonateRes->json('token');
 
         // Request succeeds before stop
-        $this->withTokenHeader($token)->getJson('/api/me')->assertOk();
+        $this->withTokenHeader($token)->getJson('/api/v1/me')->assertOk();
 
         // Call stop
         $stopRes = $this->withTokenHeader($token)
-            ->postJson('/api/impersonation/stop')
+            ->postJson('/api/v1/impersonation/stop')
             ->assertOk();
 
         // Stop returns token and user matching login endpoint shape
@@ -298,7 +298,7 @@ final class AdminImpersonationTest extends TestCase
         $pat = PersonalAccessToken::findToken($adminToken);
         $this->assertNotNull($pat);
         $this->assertNotContains('impersonated', $pat->abilities ?? [], 'Issued admin token must not carry impersonated ability');
-        $this->withTokenHeader($adminToken)->getJson('/api/admin/users')->assertOk();
+        $this->withTokenHeader($adminToken)->getJson('/api/v1/admin/users')->assertOk();
 
         // Audit row impersonation.ended is recorded with admin_session_issued context
         /** @var AuditLog $endLog */
@@ -312,13 +312,13 @@ final class AdminImpersonationTest extends TestCase
         $this->assertTrue($endLog->context['admin_session_issued'] ?? false, 'Audit context must note admin session issued');
 
         // Token cannot be used after stop
-        $this->withTokenHeader($token)->getJson('/api/me')->assertStatus(401);
+        $this->withTokenHeader($token)->getJson('/api/v1/me')->assertStatus(401);
     }
 
     public function test_impersonation_stop_refuses_when_impersonator_demoted(): void
     {
         $impersonateRes = $this->actingAs($this->admin)
-            ->postJson("/api/admin/users/{$this->activeTenant->id}/impersonate")
+            ->postJson("/api/v1/admin/users/{$this->activeTenant->id}/impersonate")
             ->assertOk();
 
         $token = $impersonateRes->json('token');
@@ -327,7 +327,7 @@ final class AdminImpersonationTest extends TestCase
         $this->admin->removeRole('admin');
 
         $stopRes = $this->withTokenHeader($token)
-            ->postJson('/api/impersonation/stop')
+            ->postJson('/api/v1/impersonation/stop')
             ->assertStatus(403);
 
         $this->assertNull($stopRes->json('token'));
@@ -336,7 +336,7 @@ final class AdminImpersonationTest extends TestCase
     public function test_impersonation_stop_refuses_when_impersonator_suspended(): void
     {
         $impersonateRes = $this->actingAs($this->admin)
-            ->postJson("/api/admin/users/{$this->activeTenant->id}/impersonate")
+            ->postJson("/api/v1/admin/users/{$this->activeTenant->id}/impersonate")
             ->assertOk();
 
         $token = $impersonateRes->json('token');
@@ -345,7 +345,7 @@ final class AdminImpersonationTest extends TestCase
         $this->admin->update(['status' => 'suspended']);
 
         $stopRes = $this->withTokenHeader($token)
-            ->postJson('/api/impersonation/stop')
+            ->postJson('/api/v1/impersonation/stop')
             ->assertStatus(403);
 
         $this->assertNull($stopRes->json('token'));
@@ -354,7 +354,7 @@ final class AdminImpersonationTest extends TestCase
     public function test_impersonation_stop_refuses_when_impersonator_deleted(): void
     {
         $impersonateRes = $this->actingAs($this->admin)
-            ->postJson("/api/admin/users/{$this->activeTenant->id}/impersonate")
+            ->postJson("/api/v1/admin/users/{$this->activeTenant->id}/impersonate")
             ->assertOk();
 
         $token = $impersonateRes->json('token');
@@ -363,7 +363,7 @@ final class AdminImpersonationTest extends TestCase
         $this->admin->delete();
 
         $stopRes = $this->withTokenHeader($token)
-            ->postJson('/api/impersonation/stop')
+            ->postJson('/api/v1/impersonation/stop')
             ->assertStatus(403);
 
         $this->assertNull($stopRes->json('token'));
@@ -374,32 +374,32 @@ final class AdminImpersonationTest extends TestCase
         // Normal tenant login token
         $tenantToken = $this->activeTenant->createToken('tenant-normal')->plainTextToken;
         $this->withTokenHeader($tenantToken)
-            ->postJson('/api/impersonation/stop')
+            ->postJson('/api/v1/impersonation/stop')
             ->assertStatus(403);
 
         // Normal admin login token
         $adminToken = $this->admin->createToken('admin-normal')->plainTextToken;
         $this->withTokenHeader($adminToken)
-            ->postJson('/api/impersonation/stop')
+            ->postJson('/api/v1/impersonation/stop')
             ->assertStatus(403);
     }
 
     public function test_token_expires_after_30_minutes(): void
     {
         $impersonateRes = $this->actingAs($this->admin)
-            ->postJson("/api/admin/users/{$this->activeTenant->id}/impersonate")
+            ->postJson("/api/v1/admin/users/{$this->activeTenant->id}/impersonate")
             ->assertOk();
 
         $token = $impersonateRes->json('token');
 
         // Active at minute 0
-        $this->withTokenHeader($token)->getJson('/api/me')->assertOk();
+        $this->withTokenHeader($token)->getJson('/api/v1/me')->assertOk();
 
         // Travel 31 minutes into the future
         Carbon::setTestNow(now()->addMinutes(31));
 
         // Token has expired
-        $this->withTokenHeader($token)->getJson('/api/me')->assertStatus(401);
+        $this->withTokenHeader($token)->getJson('/api/v1/me')->assertStatus(401);
 
         Carbon::setTestNow();
     }

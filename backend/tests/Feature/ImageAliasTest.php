@@ -19,7 +19,7 @@ beforeEach(function (): void {
 });
 
 test('test_admin_can_create_image_with_alias_and_view_it_in_catalog', function (): void {
-    $response = $this->actingAs($this->admin)->postJson('/api/admin/images', [
+    $response = $this->actingAs($this->admin)->postJson('/api/v1/admin/images', [
         'name' => 'custom/ubuntu-noble-alias-test',
         'alias' => 'Ubuntu 24.04 Noble',
         'source' => 'https://images.canonical.com',
@@ -31,14 +31,14 @@ test('test_admin_can_create_image_with_alias_and_view_it_in_catalog', function (
     $response->assertStatus(201)
         ->assertJsonPath('image.alias', 'Ubuntu 24.04 Noble');
 
-    $catalogResponse = $this->actingAs($this->admin)->getJson('/api/admin/images');
+    $catalogResponse = $this->actingAs($this->admin)->getJson('/api/v1/admin/images');
 
     $catalogResponse->assertStatus(200)
         ->assertJsonPath('data.0.alias', 'Ubuntu 24.04 Noble');
 });
 
 test('test_create_image_requires_alias', function (): void {
-    $response = $this->actingAs($this->admin)->postJson('/api/admin/images', [
+    $response = $this->actingAs($this->admin)->postJson('/api/v1/admin/images', [
         'name' => 'custom/ubuntu-missing-alias',
         'source' => 'https://images.canonical.com',
         'protocol' => 'simplestreams',
@@ -56,7 +56,7 @@ test('test_admin_can_update_image_alias', function (): void {
         'alias' => 'Debian Old Alias',
     ]);
 
-    $response = $this->actingAs($this->admin)->putJson("/api/admin/images/{$image->id}", [
+    $response = $this->actingAs($this->admin)->putJson("/api/v1/admin/images/{$image->id}", [
         'alias' => 'Debian 12 Updated',
     ]);
 
@@ -79,7 +79,7 @@ test('test_admin_can_search_images_by_alias', function (): void {
         'source' => 'https://images.example.org',
     ]);
 
-    $response = $this->actingAs($this->admin)->getJson('/api/admin/images?search=Debian');
+    $response = $this->actingAs($this->admin)->getJson('/api/v1/admin/images?search=Debian');
 
     $response->assertStatus(200)
         ->assertJsonCount(1, 'data')
@@ -97,7 +97,7 @@ test('test_vm_resource_resolves_image_alias', function (): void {
         'os_image' => 'custom/debian',
     ]);
 
-    $response = $this->actingAs($this->customer)->getJson('/api/vms');
+    $response = $this->actingAs($this->customer)->getJson('/api/v1/vms');
 
     $response->assertStatus(200)
         ->assertJsonPath('data.0.os_image_alias', 'Debian 12');

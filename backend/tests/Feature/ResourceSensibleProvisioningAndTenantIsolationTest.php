@@ -113,7 +113,7 @@ final class ResourceSensibleProvisioningAndTenantIsolationTest extends TestCase
         ]);
 
         // Provision VM on this host
-        $response = $this->actingAs($this->customer)->postJson('/api/vms', [
+        $response = $this->actingAs($this->customer)->postJson('/api/v1/vms', [
             'name' => 'fallthrough-vm',
             'host_id' => $host->id,
             'instance_type' => 'virtual-machine',
@@ -334,7 +334,7 @@ final class ResourceSensibleProvisioningAndTenantIsolationTest extends TestCase
             'allocated_at' => now(),
         ]);
 
-        $response = $this->actingAs($this->customer)->postJson('/api/vms', [
+        $response = $this->actingAs($this->customer)->postJson('/api/v1/vms', [
             'name' => 'should-fail-vm',
             'host_id' => $host->id,
             'instance_type' => 'virtual-machine',
@@ -374,7 +374,7 @@ final class ResourceSensibleProvisioningAndTenantIsolationTest extends TestCase
             'active' => true,
         ]);
 
-        $resUnhealthy = $this->actingAs($this->customer)->postJson('/api/vms', [
+        $resUnhealthy = $this->actingAs($this->customer)->postJson('/api/v1/vms', [
             'name' => 'vm-on-unhealthy',
             'host_id' => $unhealthyHost->id,
             'cpu_cores' => 1,
@@ -408,7 +408,7 @@ final class ResourceSensibleProvisioningAndTenantIsolationTest extends TestCase
             'active' => true,
         ]);
 
-        $resImageless = $this->actingAs($this->customer)->postJson('/api/vms', [
+        $resImageless = $this->actingAs($this->customer)->postJson('/api/v1/vms', [
             'name' => 'vm-on-imageless',
             'host_id' => $imagelessHost->id,
             'cpu_cores' => 1,
@@ -541,7 +541,7 @@ final class ResourceSensibleProvisioningAndTenantIsolationTest extends TestCase
         ];
 
         // 1. GET /api/ip-pools as customer
-        $poolsResponse = $this->actingAs($this->customer)->getJson('/api/ip-pools');
+        $poolsResponse = $this->actingAs($this->customer)->getJson('/api/v1/ip-pools');
         $poolsResponse->assertOk();
         $poolsPayload = $poolsResponse->json();
 
@@ -556,7 +556,7 @@ final class ResourceSensibleProvisioningAndTenantIsolationTest extends TestCase
         }
 
         // 2. GET /api/ips as customer
-        $ipsResponse = $this->actingAs($this->customer)->getJson('/api/ips');
+        $ipsResponse = $this->actingAs($this->customer)->getJson('/api/v1/ips');
         $ipsResponse->assertOk();
         $ipsPayload = $ipsResponse->json();
 
@@ -570,7 +570,7 @@ final class ResourceSensibleProvisioningAndTenantIsolationTest extends TestCase
         $this->assertSame('customer-workload-sec', $customerAllocation['virtual_machine']['name']);
 
         // 3. Admin call to /api/ip-pools and /api/admin/ip-pools DOES receive full resource
-        $adminResponse = $this->actingAs($this->admin)->getJson('/api/ip-pools');
+        $adminResponse = $this->actingAs($this->admin)->getJson('/api/v1/ip-pools');
         $adminResponse->assertOk();
         $adminPool = collect($adminResponse->json('data'))->firstWhere('id', $pool->id);
         $this->assertNotNull($adminPool);

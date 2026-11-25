@@ -32,7 +32,7 @@ test('creating an image via POST /api/admin/images without host_ids attaches onl
     $autoHost = Host::factory()->create(['auto_attach_images' => true]);
     $manualHost = Host::factory()->create(['auto_attach_images' => false]);
 
-    $response = $this->actingAs($this->admin)->postJson('/api/admin/images', [
+    $response = $this->actingAs($this->admin)->postJson('/api/v1/admin/images', [
         'name' => 'ubuntu/noble-auto-test',
         'alias' => 'Test Auto Attach Image',
         'source' => 'https://images.canonical.com',
@@ -53,7 +53,7 @@ test('creating an image via POST /api/admin/images with explicit host_ids overri
     $autoHost = Host::factory()->create(['auto_attach_images' => true]);
     $manualHost = Host::factory()->create(['auto_attach_images' => false]);
 
-    $response = $this->actingAs($this->admin)->postJson('/api/admin/images', [
+    $response = $this->actingAs($this->admin)->postJson('/api/v1/admin/images', [
         'name' => 'ubuntu/noble-explicit-test',
         'alias' => 'Test Auto Attach Image',
         'source' => 'https://images.canonical.com',
@@ -74,7 +74,7 @@ test('creating an image via POST /api/admin/images with explicit host_ids overri
 test('creating an image via POST /api/admin/images with empty host_ids array attaches to no hosts', function (): void {
     $autoHost = Host::factory()->create(['auto_attach_images' => true]);
 
-    $response = $this->actingAs($this->admin)->postJson('/api/admin/images', [
+    $response = $this->actingAs($this->admin)->postJson('/api/v1/admin/images', [
         'name' => 'ubuntu/noble-empty-test',
         'alias' => 'Test Auto Attach Image',
         'source' => 'https://images.canonical.com',
@@ -99,7 +99,7 @@ test('updating an image via PUT /api/admin/images/{id} with host_ids syncs assoc
     $image = Image::factory()->create();
     $image->hosts()->sync([$host1->id]);
 
-    $response = $this->actingAs($this->admin)->putJson("/api/admin/images/{$image->id}", [
+    $response = $this->actingAs($this->admin)->putJson("/api/v1/admin/images/{$image->id}", [
         'host_ids' => [$host2->id],
     ]);
 
@@ -108,7 +108,7 @@ test('updating an image via PUT /api/admin/images/{id} with host_ids syncs assoc
         ->and(DB::table('host_image')->where('image_id', $image->id)->where('host_id', $host2->id)->exists())->toBeTrue()
         ->and(DB::table('host_image')->where('image_id', $image->id)->where('host_id', $host1->id)->exists())->toBeFalse();
 
-    $responseEmpty = $this->actingAs($this->admin)->putJson("/api/admin/images/{$image->id}", [
+    $responseEmpty = $this->actingAs($this->admin)->putJson("/api/v1/admin/images/{$image->id}", [
         'host_ids' => [],
     ]);
 

@@ -35,7 +35,7 @@ final class TokenAbilitiesSecurityTest extends TestCase
     {
         Sanctum::actingAs($this->user);
 
-        $response = $this->postJson('/api/tokens', [
+        $response = $this->postJson('/api/v1/tokens', [
             'name' => 'exploit-token',
             'abilities' => ['impersonated'],
         ]);
@@ -48,7 +48,7 @@ final class TokenAbilitiesSecurityTest extends TestCase
     {
         Sanctum::actingAs($this->user);
 
-        $response = $this->postJson('/api/tokens', [
+        $response = $this->postJson('/api/v1/tokens', [
             'name' => 'exploit-token',
             'abilities' => ['impersonator:1'],
         ]);
@@ -61,22 +61,22 @@ final class TokenAbilitiesSecurityTest extends TestCase
     {
         Sanctum::actingAs($this->user);
 
-        $this->postJson('/api/tokens', [
+        $this->postJson('/api/v1/tokens', [
             'name' => 'variant-1',
             'abilities' => ['  IMPERSONATED  '],
         ])->assertStatus(422)->assertJsonValidationErrors(['abilities.0']);
 
-        $this->postJson('/api/tokens', [
+        $this->postJson('/api/v1/tokens', [
             'name' => 'variant-2',
             'abilities' => ['impersonator:999'],
         ])->assertStatus(422)->assertJsonValidationErrors(['abilities.0']);
 
-        $this->postJson('/api/tokens', [
+        $this->postJson('/api/v1/tokens', [
             'name' => 'variant-3',
             'abilities' => [''],
         ])->assertStatus(422)->assertJsonValidationErrors(['abilities.0']);
 
-        $this->postJson('/api/tokens', [
+        $this->postJson('/api/v1/tokens', [
             'name' => 'variant-4',
             'abilities' => [123],
         ])->assertStatus(422)->assertJsonValidationErrors(['abilities.0']);
@@ -88,7 +88,7 @@ final class TokenAbilitiesSecurityTest extends TestCase
 
         Sanctum::actingAs($this->user);
 
-        $response = $this->postJson('/api/tokens', [
+        $response = $this->postJson('/api/v1/tokens', [
             'name' => 'normal-token',
             'abilities' => ['vms:read', 'snapshots:read'],
         ]);
@@ -112,7 +112,7 @@ final class TokenAbilitiesSecurityTest extends TestCase
         Sanctum::actingAs($this->user);
 
         // Requested expiration within max (2 hours)
-        $this->postJson('/api/tokens', [
+        $this->postJson('/api/v1/tokens', [
             'name' => 'short-lived-token',
             'expires_at' => Carbon::now()->addHours(2)->toIso8601String(),
         ])->assertStatus(201);
@@ -122,7 +122,7 @@ final class TokenAbilitiesSecurityTest extends TestCase
         $this->assertSame('2026-11-14 14:00:00', $shortToken->expires_at?->toDateTimeString());
 
         // Requested expiration exceeding max (30 days) should be capped at 24 hours (1440 min)
-        $this->postJson('/api/tokens', [
+        $this->postJson('/api/v1/tokens', [
             'name' => 'excessive-token',
             'expires_at' => Carbon::now()->addDays(30)->toIso8601String(),
         ])->assertStatus(201);
@@ -138,12 +138,12 @@ final class TokenAbilitiesSecurityTest extends TestCase
     {
         Sanctum::actingAs($this->user);
 
-        $this->postJson('/api/api-credentials', [
+        $this->postJson('/api/v1/api-credentials', [
             'name' => 'exploit-cred-1',
             'abilities' => ['impersonated'],
         ])->assertStatus(422)->assertJsonValidationErrors(['abilities.0']);
 
-        $this->postJson('/api/api-credentials', [
+        $this->postJson('/api/v1/api-credentials', [
             'name' => 'exploit-cred-2',
             'abilities' => ['impersonator:1'],
         ])->assertStatus(422)->assertJsonValidationErrors(['abilities.0']);
@@ -155,7 +155,7 @@ final class TokenAbilitiesSecurityTest extends TestCase
 
         Sanctum::actingAs($this->user);
 
-        $response = $this->postJson('/api/api-credentials', [
+        $response = $this->postJson('/api/v1/api-credentials', [
             'name' => 'normal-cred',
         ]);
 

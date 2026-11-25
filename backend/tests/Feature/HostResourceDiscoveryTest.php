@@ -210,7 +210,7 @@ final class HostResourceDiscoveryTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->admin, 'sanctum')
-            ->putJson("/api/admin/hosts/{$host->id}", [
+            ->putJson("/api/v1/admin/hosts/{$host->id}", [
                 'name' => 'physical-cap-host',
                 'endpoint_url' => $host->endpoint_url,
                 'total_cpu_cores' => 24,
@@ -241,7 +241,7 @@ final class HostResourceDiscoveryTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->admin, 'sanctum')
-            ->postJson("/api/admin/hosts/{$host->id}/sync-resources");
+            ->postJson("/api/v1/admin/hosts/{$host->id}/sync-resources");
 
         $response->assertOk()
             ->assertJsonPath('host.capacity.source', 'discovered')

@@ -377,7 +377,7 @@ final class TenantProvisioningArchitecturalComplianceTest extends TestCase
     public function test_image_not_in_allowlist_fails_validation(): void
     {
         $response = $this->actingAs($this->user)
-            ->postJson('/api/vms', [
+            ->postJson('/api/v1/vms', [
                 'name' => 'unapproved-image-vm',
                 'cpu_cores' => 1,
                 'ram_mb' => 1024,
@@ -399,7 +399,7 @@ final class TenantProvisioningArchitecturalComplianceTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->postJson('/api/vms', [
+            ->postJson('/api/v1/vms', [
                 'name' => 'disabled-image-vm',
                 'cpu_cores' => 1,
                 'ram_mb' => 1024,
@@ -430,7 +430,7 @@ final class TenantProvisioningArchitecturalComplianceTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->postJson('/api/vms', [
+            ->postJson('/api/v1/vms', [
                 'name' => 'approved-image-vm',
                 'cpu_cores' => 1,
                 'ram_mb' => 1024,
