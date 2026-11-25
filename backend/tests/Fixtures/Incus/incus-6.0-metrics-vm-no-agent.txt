@@ -1,0 +1,59 @@
+#HELP incus_cpu_seconds_total The total number of CPU time used in seconds.
+# TYPE incus_cpu_seconds_total counter
+incus_cpu_seconds_total{cpu="0",mode="system",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 1.410142
+incus_cpu_seconds_total{cpu="0",mode="user",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 2.340156
+incus_cpu_seconds_total{cpu="0",mode="system",name="vm-noagent-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 5.12
+incus_cpu_seconds_total{cpu="0",mode="user",name="vm-noagent-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 3.48
+# HELP incus_cpu_effective_total The total number of effective CPUs.
+# TYPE incus_cpu_effective_total gauge
+incus_cpu_effective_total{name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 1
+incus_cpu_effective_total{name="vm-noagent-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+# HELP incus_disk_read_bytes_total The total number of bytes read.
+# TYPE incus_disk_read_bytes_total counter
+incus_disk_read_bytes_total{device="nvme0n1",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 9.0730496e+07
+incus_disk_read_bytes_total{device="dev_qemu_sda-root",name="vm-noagent-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 5.24288e+07
+# HELP incus_disk_reads_completed_total The total number of completed reads.
+# TYPE incus_disk_reads_completed_total counter
+incus_disk_reads_completed_total{device="nvme0n1",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 3324
+incus_disk_reads_completed_total{device="dev_qemu_sda-root",name="vm-noagent-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1240
+# HELP incus_disk_written_bytes_total The total number of bytes written.
+# TYPE incus_disk_written_bytes_total counter
+incus_disk_written_bytes_total{device="nvme0n1",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 1.429504e+06
+incus_disk_written_bytes_total{device="dev_qemu_sda-root",name="vm-noagent-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.6777216e+07
+# HELP incus_disk_writes_completed_total The total number of completed writes.
+# TYPE incus_disk_writes_completed_total counter
+incus_disk_writes_completed_total{device="nvme0n1",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 259
+incus_disk_writes_completed_total{device="dev_qemu_sda-root",name="vm-noagent-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 410
+# HELP incus_filesystem_avail_bytes The number of available space in bytes.
+# TYPE incus_filesystem_avail_bytes gauge
+incus_filesystem_avail_bytes{device="",fstype="ext4",mountpoint="/",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 2.67550326784e+11
+# HELP incus_filesystem_free_bytes The number of free space in bytes.
+# TYPE incus_filesystem_free_bytes gauge
+incus_filesystem_free_bytes{device="",fstype="ext4",mountpoint="/",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 2.9311612928e+11
+# HELP incus_filesystem_size_bytes The size of the filesystem in bytes.
+# TYPE incus_filesystem_size_bytes gauge
+incus_filesystem_size_bytes{device="",fstype="ext4",mountpoint="/",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 5.01809635328e+11
+# HELP incus_memory_MemAvailable_bytes The amount of available memory.
+# TYPE incus_memory_MemAvailable_bytes gauge
+incus_memory_MemAvailable_bytes{name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 2.019078144e+09
+# HELP incus_memory_MemFree_bytes The amount of free memory.
+# TYPE incus_memory_MemFree_bytes gauge
+incus_memory_MemFree_bytes{name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 1.91934464e+09
+# HELP incus_memory_MemTotal_bytes The amount of used memory.
+# TYPE incus_memory_MemTotal_bytes gauge
+incus_memory_MemTotal_bytes{name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 2.048e+09
+# HELP incus_network_receive_bytes_total The amount of received bytes on a given interface.
+# TYPE incus_network_receive_bytes_total counter
+incus_network_receive_bytes_total{device="eth0",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 7762
+incus_network_receive_bytes_total{device="lo",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 0
+incus_network_receive_bytes_total{device="eth0",name="vm-noagent-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 4096
+# HELP incus_network_transmit_bytes_total The amount of transmitted bytes on a given interface.
+# TYPE incus_network_transmit_bytes_total counter
+incus_network_transmit_bytes_total{device="eth0",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 9494
+incus_network_transmit_bytes_total{device="lo",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 0
+incus_network_transmit_bytes_total{device="eth0",name="vm-noagent-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 2048
+# HELP incus_procs_total The number of running processes.
+# TYPE incus_procs_total gauge
+incus_procs_total{name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 15
+incus_procs_total{name="vm-noagent-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+# EOF

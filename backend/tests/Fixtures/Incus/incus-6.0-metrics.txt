@@ -1,0 +1,337 @@
+# HELP incus_cpu_seconds_total The total number of CPU time used in seconds.
+# TYPE incus_cpu_seconds_total counter
+incus_cpu_seconds_total{cpu="0",mode="system",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 1.410142
+incus_cpu_seconds_total{cpu="0",mode="user",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 2.340156
+incus_cpu_seconds_total{cpu="0",mode="iowait",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 2.07
+incus_cpu_seconds_total{cpu="0",mode="irq",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 13.03
+incus_cpu_seconds_total{cpu="0",mode="idle",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 9969.41
+incus_cpu_seconds_total{cpu="0",mode="nice",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0.05
+incus_cpu_seconds_total{cpu="0",mode="softirq",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 2.89
+incus_cpu_seconds_total{cpu="0",mode="steal",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0.66
+incus_cpu_seconds_total{cpu="0",mode="system",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 18.36
+incus_cpu_seconds_total{cpu="0",mode="user",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 4.43
+incus_cpu_seconds_total{cpu="0",mode="iowait",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.15
+incus_cpu_seconds_total{cpu="0",mode="irq",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_cpu_seconds_total{cpu="0",mode="idle",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 9409.06
+incus_cpu_seconds_total{cpu="0",mode="nice",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_cpu_seconds_total{cpu="0",mode="softirq",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0.02
+incus_cpu_seconds_total{cpu="0",mode="steal",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0.05
+incus_cpu_seconds_total{cpu="0",mode="system",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 7.65
+incus_cpu_seconds_total{cpu="0",mode="user",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 4.59
+# HELP incus_cpu_effective_total The total number of effective CPUs.
+# TYPE incus_cpu_effective_total gauge
+incus_cpu_effective_total{name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 1
+incus_cpu_effective_total{name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_cpu_effective_total{name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+# HELP incus_disk_read_bytes_total The total number of bytes read.
+# TYPE incus_disk_read_bytes_total counter
+incus_disk_read_bytes_total{device="nvme0n1",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 9.0730496e+07
+incus_disk_read_bytes_total{device="sda",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.50820352e+08
+incus_disk_read_bytes_total{device="sda1",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 7.454208e+06
+incus_disk_read_bytes_total{device="sda2",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.39937792e+08
+incus_disk_read_bytes_total{device="sr0",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.339392e+06
+incus_disk_read_bytes_total{device="sr0",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 143360
+incus_disk_read_bytes_total{device="sda",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.0405376e+08
+incus_disk_read_bytes_total{device="sda1",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 4.570624e+06
+incus_disk_read_bytes_total{device="sda2",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 9.5702528e+07
+incus_disk_read_bytes_total{device="loop0",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_read_bytes_total{device="loop1",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_read_bytes_total{device="loop2",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_read_bytes_total{device="loop3",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_read_bytes_total{device="loop4",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_read_bytes_total{device="loop5",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_read_bytes_total{device="loop6",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_read_bytes_total{device="loop7",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+# HELP incus_disk_reads_completed_total The total number of completed reads.
+# TYPE incus_disk_reads_completed_total counter
+incus_disk_reads_completed_total{device="nvme0n1",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 3324
+incus_disk_reads_completed_total{device="sda",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 3147
+incus_disk_reads_completed_total{device="sda1",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 92
+incus_disk_reads_completed_total{device="sda2",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 2979
+incus_disk_reads_completed_total{device="sr0",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 14
+incus_disk_reads_completed_total{device="sr0",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 36
+incus_disk_reads_completed_total{device="sda",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 3449
+incus_disk_reads_completed_total{device="sda1",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 143
+incus_disk_reads_completed_total{device="sda2",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 3110
+incus_disk_reads_completed_total{device="loop0",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_reads_completed_total{device="loop1",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_reads_completed_total{device="loop2",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_reads_completed_total{device="loop3",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_reads_completed_total{device="loop4",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_reads_completed_total{device="loop5",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_reads_completed_total{device="loop6",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_reads_completed_total{device="loop7",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+# HELP incus_disk_written_bytes_total The total number of bytes written.
+# TYPE incus_disk_written_bytes_total counter
+incus_disk_written_bytes_total{device="nvme0n1",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 1.429504e+06
+incus_disk_written_bytes_total{device="sda",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 8.32619008e+08
+incus_disk_written_bytes_total{device="sda1",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 512
+incus_disk_written_bytes_total{device="sda2",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 8.32618496e+08
+incus_disk_written_bytes_total{device="sr0",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_written_bytes_total{device="sr0",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_written_bytes_total{device="sda",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 4.96202752e+08
+incus_disk_written_bytes_total{device="sda1",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1024
+incus_disk_written_bytes_total{device="sda2",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 4.9614848e+08
+incus_disk_written_bytes_total{device="loop0",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_written_bytes_total{device="loop1",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_written_bytes_total{device="loop2",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_written_bytes_total{device="loop3",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_written_bytes_total{device="loop4",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_written_bytes_total{device="loop5",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_written_bytes_total{device="loop6",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_written_bytes_total{device="loop7",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+# HELP incus_disk_writes_completed_total The total number of completed writes.
+# TYPE incus_disk_writes_completed_total counter
+incus_disk_writes_completed_total{device="nvme0n1",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 259
+incus_disk_writes_completed_total{device="sda",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 2346
+incus_disk_writes_completed_total{device="sda1",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1
+incus_disk_writes_completed_total{device="sda2",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 2342
+incus_disk_writes_completed_total{device="sr0",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_writes_completed_total{device="sr0",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_writes_completed_total{device="sda",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 919
+incus_disk_writes_completed_total{device="sda1",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 2
+incus_disk_writes_completed_total{device="sda2",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 904
+incus_disk_writes_completed_total{device="loop0",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_writes_completed_total{device="loop1",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_writes_completed_total{device="loop2",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_writes_completed_total{device="loop3",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_writes_completed_total{device="loop4",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_writes_completed_total{device="loop5",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_writes_completed_total{device="loop6",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_disk_writes_completed_total{device="loop7",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+# HELP incus_filesystem_avail_bytes The number of available space in bytes.
+# TYPE incus_filesystem_avail_bytes gauge
+incus_filesystem_avail_bytes{device="",fstype="ext4",mountpoint="/",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 2.67550326784e+11
+incus_filesystem_avail_bytes{device="/dev/sda2",fstype="ext4",mountpoint="/",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.7922736128e+10
+incus_filesystem_avail_bytes{device="tmpfs",fstype="tmpfs",mountpoint="/run",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 3.888128e+08
+incus_filesystem_avail_bytes{device="tmpfs",fstype="tmpfs",mountpoint="/tmp",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 9.73938688e+08
+incus_filesystem_avail_bytes{device="none",fstype="tmpfs",mountpoint="/run/credentials/systemd-journald.service",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.048576e+06
+incus_filesystem_avail_bytes{device="none",fstype="tmpfs",mountpoint="/run/credentials/systemd-resolved.service",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.048576e+06
+incus_filesystem_avail_bytes{device="/dev/sda1",fstype="0x4d44",mountpoint="/boot/efi",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.02864896e+08
+incus_filesystem_avail_bytes{device="tmpfs",fstype="tmpfs",mountpoint="/run/incus_agent",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 3.9272448e+07
+incus_filesystem_avail_bytes{device="none",fstype="tmpfs",mountpoint="/run/credentials/systemd-networkd.service",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.048576e+06
+incus_filesystem_avail_bytes{device="none",fstype="tmpfs",mountpoint="/run/credentials/serial-getty@ttyS0.service",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.048576e+06
+incus_filesystem_avail_bytes{device="none",fstype="tmpfs",mountpoint="/run/credentials/getty@tty1.service",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.048576e+06
+incus_filesystem_avail_bytes{device="tmpfs",fstype="tmpfs",mountpoint="/run",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.93511424e+08
+incus_filesystem_avail_bytes{device="/dev/sda2",fstype="ext4",mountpoint="/",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.8040303616e+10
+incus_filesystem_avail_bytes{device="tmpfs",fstype="tmpfs",mountpoint="/run/lock",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 5.24288e+06
+incus_filesystem_avail_bytes{device="ramfs",fstype="0x-7a7ba70a",mountpoint="/run/credentials/systemd-sysctl.service",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_filesystem_avail_bytes{device="ramfs",fstype="0x-7a7ba70a",mountpoint="/run/credentials/systemd-firstboot.service",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_filesystem_avail_bytes{device="ramfs",fstype="0x-7a7ba70a",mountpoint="/run/credentials/systemd-sysusers.service",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_filesystem_avail_bytes{device="ramfs",fstype="0x-7a7ba70a",mountpoint="/run/credentials/systemd-tmpfiles-setup-dev.service",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_filesystem_avail_bytes{device="tmpfs",fstype="tmpfs",mountpoint="/run/incus_agent",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 3.9272448e+07
+incus_filesystem_avail_bytes{device="/dev/sda1",fstype="0x4d44",mountpoint="/boot/efi",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 9.0859008e+07
+incus_filesystem_avail_bytes{device="ramfs",fstype="0x-7a7ba70a",mountpoint="/run/credentials/systemd-tmpfiles-setup.service",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+# HELP incus_filesystem_free_bytes The number of free space in bytes.
+# TYPE incus_filesystem_free_bytes gauge
+incus_filesystem_free_bytes{device="",fstype="ext4",mountpoint="/",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 2.9311612928e+11
+incus_filesystem_free_bytes{device="/dev/sda2",fstype="ext4",mountpoint="/",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.7939513344e+10
+incus_filesystem_free_bytes{device="tmpfs",fstype="tmpfs",mountpoint="/run",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 3.888128e+08
+incus_filesystem_free_bytes{device="tmpfs",fstype="tmpfs",mountpoint="/tmp",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 9.73938688e+08
+incus_filesystem_free_bytes{device="none",fstype="tmpfs",mountpoint="/run/credentials/systemd-journald.service",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.048576e+06
+incus_filesystem_free_bytes{device="none",fstype="tmpfs",mountpoint="/run/credentials/systemd-resolved.service",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.048576e+06
+incus_filesystem_free_bytes{device="/dev/sda1",fstype="0x4d44",mountpoint="/boot/efi",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.02864896e+08
+incus_filesystem_free_bytes{device="tmpfs",fstype="tmpfs",mountpoint="/run/incus_agent",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 3.9272448e+07
+incus_filesystem_free_bytes{device="none",fstype="tmpfs",mountpoint="/run/credentials/systemd-networkd.service",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.048576e+06
+incus_filesystem_free_bytes{device="none",fstype="tmpfs",mountpoint="/run/credentials/serial-getty@ttyS0.service",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.048576e+06
+incus_filesystem_free_bytes{device="none",fstype="tmpfs",mountpoint="/run/credentials/getty@tty1.service",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.048576e+06
+incus_filesystem_free_bytes{device="tmpfs",fstype="tmpfs",mountpoint="/run",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.93511424e+08
+incus_filesystem_free_bytes{device="/dev/sda2",fstype="ext4",mountpoint="/",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.8057080832e+10
+incus_filesystem_free_bytes{device="tmpfs",fstype="tmpfs",mountpoint="/run/lock",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 5.24288e+06
+incus_filesystem_free_bytes{device="ramfs",fstype="0x-7a7ba70a",mountpoint="/run/credentials/systemd-sysctl.service",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_filesystem_free_bytes{device="ramfs",fstype="0x-7a7ba70a",mountpoint="/run/credentials/systemd-firstboot.service",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_filesystem_free_bytes{device="ramfs",fstype="0x-7a7ba70a",mountpoint="/run/credentials/systemd-sysusers.service",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_filesystem_free_bytes{device="ramfs",fstype="0x-7a7ba70a",mountpoint="/run/credentials/systemd-tmpfiles-setup-dev.service",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_filesystem_free_bytes{device="tmpfs",fstype="tmpfs",mountpoint="/run/incus_agent",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 3.9272448e+07
+incus_filesystem_free_bytes{device="/dev/sda1",fstype="0x4d44",mountpoint="/boot/efi",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 9.0859008e+07
+incus_filesystem_free_bytes{device="ramfs",fstype="0x-7a7ba70a",mountpoint="/run/credentials/systemd-tmpfiles-setup.service",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+# HELP incus_filesystem_size_bytes The size of the filesystem in bytes.
+# TYPE incus_filesystem_size_bytes gauge
+incus_filesystem_size_bytes{device="",fstype="ext4",mountpoint="/",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 5.01809635328e+11
+incus_filesystem_size_bytes{device="/dev/sda2",fstype="ext4",mountpoint="/",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.9203981312e+10
+incus_filesystem_size_bytes{device="tmpfs",fstype="tmpfs",mountpoint="/run",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 3.89574656e+08
+incus_filesystem_size_bytes{device="tmpfs",fstype="tmpfs",mountpoint="/tmp",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 9.73938688e+08
+incus_filesystem_size_bytes{device="none",fstype="tmpfs",mountpoint="/run/credentials/systemd-journald.service",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.048576e+06
+incus_filesystem_size_bytes{device="none",fstype="tmpfs",mountpoint="/run/credentials/systemd-resolved.service",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.048576e+06
+incus_filesystem_size_bytes{device="/dev/sda1",fstype="0x4d44",mountpoint="/boot/efi",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.03202816e+08
+incus_filesystem_size_bytes{device="tmpfs",fstype="tmpfs",mountpoint="/run/incus_agent",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 5.24288e+07
+incus_filesystem_size_bytes{device="none",fstype="tmpfs",mountpoint="/run/credentials/systemd-networkd.service",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.048576e+06
+incus_filesystem_size_bytes{device="none",fstype="tmpfs",mountpoint="/run/credentials/serial-getty@ttyS0.service",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.048576e+06
+incus_filesystem_size_bytes{device="none",fstype="tmpfs",mountpoint="/run/credentials/getty@tty1.service",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.048576e+06
+incus_filesystem_size_bytes{device="tmpfs",fstype="tmpfs",mountpoint="/run",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.9417088e+08
+incus_filesystem_size_bytes{device="/dev/sda2",fstype="ext4",mountpoint="/",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.9204476928e+10
+incus_filesystem_size_bytes{device="tmpfs",fstype="tmpfs",mountpoint="/run/lock",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 5.24288e+06
+incus_filesystem_size_bytes{device="ramfs",fstype="0x-7a7ba70a",mountpoint="/run/credentials/systemd-sysctl.service",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_filesystem_size_bytes{device="ramfs",fstype="0x-7a7ba70a",mountpoint="/run/credentials/systemd-firstboot.service",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_filesystem_size_bytes{device="ramfs",fstype="0x-7a7ba70a",mountpoint="/run/credentials/systemd-sysusers.service",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_filesystem_size_bytes{device="ramfs",fstype="0x-7a7ba70a",mountpoint="/run/credentials/systemd-tmpfiles-setup-dev.service",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_filesystem_size_bytes{device="tmpfs",fstype="tmpfs",mountpoint="/run/incus_agent",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 5.24288e+07
+incus_filesystem_size_bytes{device="/dev/sda1",fstype="0x4d44",mountpoint="/boot/efi",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.03202816e+08
+incus_filesystem_size_bytes{device="ramfs",fstype="0x-7a7ba70a",mountpoint="/run/credentials/systemd-tmpfiles-setup.service",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+# HELP incus_memory_Active_anon_bytes The amount of anonymous memory on active LRU list.
+# TYPE incus_memory_Active_anon_bytes gauge
+incus_memory_Active_anon_bytes{name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 2.2806528e+07
+incus_memory_Active_anon_bytes{name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 4.6542848e+07
+incus_memory_Active_anon_bytes{name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 389120
+# HELP incus_memory_Active_file_bytes The amount of file-backed memory on active LRU list.
+# TYPE incus_memory_Active_file_bytes gauge
+incus_memory_Active_file_bytes{name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 7.0012928e+07
+incus_memory_Active_file_bytes{name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_memory_Active_file_bytes{name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 5.6143872e+07
+# HELP incus_memory_Active_bytes The amount of memory on active LRU list.
+# TYPE incus_memory_Active_bytes gauge
+incus_memory_Active_bytes{name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 9.2819456e+07
+incus_memory_Active_bytes{name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 4.6542848e+07
+incus_memory_Active_bytes{name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 5.6532992e+07
+# HELP incus_memory_Cached_bytes The amount of cached memory.
+# TYPE incus_memory_Cached_bytes gauge
+incus_memory_Cached_bytes{name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 9.9733504e+07
+incus_memory_Cached_bytes{name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.38006528e+08
+incus_memory_Cached_bytes{name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.06164224e+08
+# HELP incus_memory_Dirty_bytes The amount of memory waiting to get written back to the disk.
+# TYPE incus_memory_Dirty_bytes gauge
+incus_memory_Dirty_bytes{name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 0
+incus_memory_Dirty_bytes{name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 4.202496e+06
+incus_memory_Dirty_bytes{name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+# HELP incus_memory_HugepagesFree_bytes The amount of free memory for hugetlb.
+# TYPE incus_memory_HugepagesFree_bytes gauge
+incus_memory_HugepagesFree_bytes{name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_memory_HugepagesFree_bytes{name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+# HELP incus_memory_HugepagesTotal_bytes The amount of used memory for hugetlb.
+# TYPE incus_memory_HugepagesTotal_bytes gauge
+incus_memory_HugepagesTotal_bytes{name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_memory_HugepagesTotal_bytes{name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+# HELP incus_memory_Inactive_anon_bytes The amount of anonymous memory on inactive LRU list.
+# TYPE incus_memory_Inactive_anon_bytes gauge
+incus_memory_Inactive_anon_bytes{name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 0
+incus_memory_Inactive_anon_bytes{name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_memory_Inactive_anon_bytes{name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 3.4942976e+07
+# HELP incus_memory_Inactive_file_bytes The amount of file-backed memory on inactive LRU list.
+# TYPE incus_memory_Inactive_file_bytes gauge
+incus_memory_Inactive_file_bytes{name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 2.1192704e+07
+incus_memory_Inactive_file_bytes{name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.36896512e+08
+incus_memory_Inactive_file_bytes{name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 4.5498368e+07
+# HELP incus_memory_Inactive_bytes The amount of memory on inactive LRU list.
+# TYPE incus_memory_Inactive_bytes gauge
+incus_memory_Inactive_bytes{name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 2.1192704e+07
+incus_memory_Inactive_bytes{name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.36896512e+08
+incus_memory_Inactive_bytes{name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 8.0441344e+07
+# HELP incus_memory_Mapped_bytes The amount of mapped memory.
+# TYPE incus_memory_Mapped_bytes gauge
+incus_memory_Mapped_bytes{name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 3.1367168e+07
+incus_memory_Mapped_bytes{name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 3.6958208e+07
+incus_memory_Mapped_bytes{name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 3.2423936e+07
+# HELP incus_memory_MemAvailable_bytes The amount of available memory.
+# TYPE incus_memory_MemAvailable_bytes gauge
+incus_memory_MemAvailable_bytes{name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 2.019078144e+09
+incus_memory_MemAvailable_bytes{name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.637617664e+09
+incus_memory_MemAvailable_bytes{name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.667633152e+09
+# HELP incus_memory_MemFree_bytes The amount of free memory.
+# TYPE incus_memory_MemFree_bytes gauge
+incus_memory_MemFree_bytes{name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 1.91934464e+09
+incus_memory_MemFree_bytes{name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.629179904e+09
+incus_memory_MemFree_bytes{name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.68183808e+09
+# HELP incus_memory_MemTotal_bytes The amount of used memory.
+# TYPE incus_memory_MemTotal_bytes gauge
+incus_memory_MemTotal_bytes{name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 2.048e+09
+incus_memory_MemTotal_bytes{name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.94787328e+09
+incus_memory_MemTotal_bytes{name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.941680128e+09
+# HELP incus_memory_RSS_bytes The amount of anonymous and swap cache memory.
+# TYPE incus_memory_RSS_bytes gauge
+incus_memory_RSS_bytes{name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_memory_RSS_bytes{name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+# HELP incus_memory_Shmem_bytes The amount of cached filesystem data that is swap-backed.
+# TYPE incus_memory_Shmem_bytes gauge
+incus_memory_Shmem_bytes{name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 8.556544e+06
+incus_memory_Shmem_bytes{name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.8018304e+07
+incus_memory_Shmem_bytes{name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 1.7911808e+07
+# HELP incus_memory_Swap_bytes The amount of used swap memory.
+# TYPE incus_memory_Swap_bytes gauge
+incus_memory_Swap_bytes{name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 0
+incus_memory_Swap_bytes{name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_memory_Swap_bytes{name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+# HELP incus_memory_Unevictable_bytes The amount of unevictable memory.
+# TYPE incus_memory_Unevictable_bytes gauge
+incus_memory_Unevictable_bytes{name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 0
+incus_memory_Unevictable_bytes{name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 4.096e+06
+incus_memory_Unevictable_bytes{name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 4.096e+06
+# HELP incus_memory_Writeback_bytes The amount of memory queued for syncing to disk.
+# TYPE incus_memory_Writeback_bytes gauge
+incus_memory_Writeback_bytes{name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 0
+incus_memory_Writeback_bytes{name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_memory_Writeback_bytes{name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+# HELP incus_memory_OOM_kills_total The number of out of memory kills.
+# TYPE incus_memory_OOM_kills_total counter
+incus_memory_OOM_kills_total{name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 0
+incus_memory_OOM_kills_total{name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_memory_OOM_kills_total{name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+# HELP incus_network_receive_bytes_total The amount of received bytes on a given interface.
+# TYPE incus_network_receive_bytes_total counter
+incus_network_receive_bytes_total{device="eth0",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 7762
+incus_network_receive_bytes_total{device="lo",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 0
+incus_network_receive_bytes_total{device="lo",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_network_receive_bytes_total{device="eth0",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 15262
+incus_network_receive_bytes_total{device="lo",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_network_receive_bytes_total{device="eth0",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 2919
+# HELP incus_network_receive_drop_total The amount of received dropped bytes on a given interface.
+# TYPE incus_network_receive_drop_total counter
+incus_network_receive_drop_total{device="eth0",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 0
+incus_network_receive_drop_total{device="lo",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 0
+incus_network_receive_drop_total{device="lo",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_network_receive_drop_total{device="eth0",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_network_receive_drop_total{device="lo",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_network_receive_drop_total{device="eth0",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+# HELP incus_network_receive_errs_total The amount of received errors on a given interface.
+# TYPE incus_network_receive_errs_total counter
+incus_network_receive_errs_total{device="eth0",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 0
+incus_network_receive_errs_total{device="lo",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 0
+incus_network_receive_errs_total{device="lo",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_network_receive_errs_total{device="eth0",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_network_receive_errs_total{device="lo",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_network_receive_errs_total{device="eth0",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+# HELP incus_network_receive_packets_total The amount of received packets on a given interface.
+# TYPE incus_network_receive_packets_total counter
+incus_network_receive_packets_total{device="eth0",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 68
+incus_network_receive_packets_total{device="lo",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 0
+incus_network_receive_packets_total{device="lo",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_network_receive_packets_total{device="eth0",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 306
+incus_network_receive_packets_total{device="lo",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_network_receive_packets_total{device="eth0",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 28
+# HELP incus_network_transmit_bytes_total The amount of transmitted bytes on a given interface.
+# TYPE incus_network_transmit_bytes_total counter
+incus_network_transmit_bytes_total{device="eth0",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 9494
+incus_network_transmit_bytes_total{device="lo",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 0
+incus_network_transmit_bytes_total{device="lo",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_network_transmit_bytes_total{device="eth0",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 489382
+incus_network_transmit_bytes_total{device="lo",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_network_transmit_bytes_total{device="eth0",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 2068
+# HELP incus_network_transmit_drop_total The amount of transmitted dropped bytes on a given interface.
+# TYPE incus_network_transmit_drop_total counter
+incus_network_transmit_drop_total{device="eth0",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 0
+incus_network_transmit_drop_total{device="lo",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 0
+incus_network_transmit_drop_total{device="lo",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_network_transmit_drop_total{device="eth0",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_network_transmit_drop_total{device="lo",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_network_transmit_drop_total{device="eth0",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+# HELP incus_network_transmit_errs_total The amount of transmitted errors on a given interface.
+# TYPE incus_network_transmit_errs_total counter
+incus_network_transmit_errs_total{device="eth0",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 0
+incus_network_transmit_errs_total{device="lo",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 0
+incus_network_transmit_errs_total{device="lo",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_network_transmit_errs_total{device="eth0",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_network_transmit_errs_total{device="lo",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_network_transmit_errs_total{device="eth0",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+# HELP incus_network_transmit_packets_total The amount of transmitted packets on a given interface.
+# TYPE incus_network_transmit_packets_total counter
+incus_network_transmit_packets_total{device="eth0",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 121
+incus_network_transmit_packets_total{device="lo",name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 0
+incus_network_transmit_packets_total{device="lo",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_network_transmit_packets_total{device="eth0",name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 6601
+incus_network_transmit_packets_total{device="lo",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 0
+incus_network_transmit_packets_total{device="eth0",name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 27
+# HELP incus_procs_total The number of running processes.
+# TYPE incus_procs_total gauge
+incus_procs_total{name="ct-rocky-1",project="proj-00000000-0000-0000-0000-000000000001",type="container"} 15
+incus_procs_total{name="vm-arch-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 24
+incus_procs_total{name="vm-debian-1",project="proj-00000000-0000-0000-0000-000000000001",type="virtual-machine"} 10
+# EOF
