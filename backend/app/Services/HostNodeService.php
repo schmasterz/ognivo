@@ -13,6 +13,10 @@ use App\DTO\Cast;
 use App\DTO\Host\CreateHostDTO;
 use App\DTO\Host\HostResourcesDTO;
 use App\DTO\Host\UpdateHostDTO;
+use App\Events\Host\HostMaintenanceEntered;
+use App\Events\Host\HostMaintenanceExited;
+use App\Events\Host\HostRegistered;
+use App\Events\Host\HostStatusUpdated;
 use App\Models\Host;
 use App\Services\Hypervisor\Drivers\FakeHypervisorDriver;
 use App\Services\Hypervisor\HypervisorGateway;
@@ -218,6 +222,11 @@ final class HostNodeService
                 context: $context,
             ));
 
+            $hostname = is_string($parsedCreateHost) && $parsedCreateHost !== '' ? $parsedCreateHost : $host->name;
+            $ipAddress = filter_var($hostname, FILTER_VALIDATE_IP) !== false ? $hostname : '';
+
+            event(new HostRegistered($host->id, $host->name, $hostname, $ipAddress));
+
             return $host->fresh(['ipPools', 'virtualMachines']) ?? $host;
         });
     }
@@ -238,6 +247,7 @@ final class HostNodeService
         }
 
         $oldAutoAttach = (bool) $host->auto_attach_images;
+        $oldIsActive = $host->is_active;
 
         /** @var array<string, mixed> $attributes */
         $attributes = [
@@ -293,12 +303,15 @@ final class HostNodeService
         }
 
         if ($dto->images === null) {
-            $host->update($attributes);
+            return DB::transaction(function () use ($host, $attributes, $dto, $oldIsActive): Host {
+                $host->update($attributes);
+                $this->dispatchMaintenanceEventsIfChanged($host, $dto->isActive, $oldIsActive);
 
-            return $host->fresh(['ipPools', 'virtualMachines']) ?? $host;
+                return $host->fresh(['ipPools', 'virtualMachines']) ?? $host;
+            });
         }
 
-        return DB::transaction(function () use ($host, $attributes, $dto, $autoAttachChanged): Host {
+        return DB::transaction(function () use ($host, $attributes, $dto, $autoAttachChanged, $oldIsActive): Host {
             $host->fill($attributes);
 
             $diff = [];
@@ -345,8 +358,44 @@ final class HostNodeService
                 ));
             }
 
+            $this->dispatchMaintenanceEventsIfChanged($host, $dto->isActive, $oldIsActive);
+
             return $host->fresh(['ipPools', 'virtualMachines']) ?? $host;
         });
+    }
+
+    /**
+     * Update a host node's operational status and emit a domain event if changed.
+     */
+    public function updateStatus(Host $host, string $newStatus): Host
+    {
+        $oldStatus = $host->status;
+        if ($oldStatus !== $newStatus) {
+            DB::transaction(function () use ($host, $oldStatus, $newStatus): void {
+                $host->status = $newStatus;
+                $host->save();
+
+                event(new HostStatusUpdated($host->id, $oldStatus, $newStatus));
+            });
+        }
+
+        return $host;
+    }
+
+    /**
+     * Dispatch host maintenance events when the active flag transitions.
+     */
+    private function dispatchMaintenanceEventsIfChanged(Host $host, ?bool $newIsActive, bool $oldIsActive): void
+    {
+        if ($newIsActive === null || $newIsActive === $oldIsActive) {
+            return;
+        }
+
+        if ($newIsActive === false) {
+            event(new HostMaintenanceEntered($host->id, 'Deactivated'));
+        } else {
+            event(new HostMaintenanceExited($host->id));
+        }
     }
 
     /**
