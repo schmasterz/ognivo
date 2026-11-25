@@ -39,7 +39,7 @@ HTTP Request (/api/*)
 ```text
 app/
 ├── Audit/                            # Tamper-evident audit subsystem (AuditLogger, AuditContext, AuditAction, AuditOutcome, AuditEntry, AuditRedactor, Auditable, AuditConfigValidator, RestoreAuditContext trait)
-├── Console/Commands/                 # Artisan CLI commands (admin:create, app:check-production-config, app:reencrypt-secrets, incus:generate-cert, incus:listen, vm:reconcile, vm:sweep-stale-provisioning, hosts:sync-resources, hosts:backfill-pins, hypervisor:cleanup-cert-keys, audit:grants|seal|verify|prune|pseudonymise)
+├── Console/Commands/                 # Artisan CLI commands (admin:create, app:check-production-config, app:reencrypt-secrets, incus:generate-cert, incus:listen, snapshots:sync, vm:reconcile, vm:sweep-stale-provisioning, hosts:sync-resources, hosts:backfill-pins, hypervisor:cleanup-cert-keys, audit:grants|seal|verify|prune|pseudonymise)
 ├── Contracts/                        # Core interfaces (BackupTargetInterface)
 ├── DTO/                              # Immutable readonly Data Transfer Objects grouped by domain (Vm, Host, Incus, Ip, Network, Quota, User, Auth, Audit, System, ImageSelectionDTO)
 ├── Events/                           # Reverb broadcast events (VirtualMachineStatusUpdated, AdminVirtualMachineStatusUpdated, Snapshot* events)
