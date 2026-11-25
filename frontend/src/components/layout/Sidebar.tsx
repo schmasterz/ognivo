@@ -1,7 +1,8 @@
 "use client";
 
-import React from "react";
+import React, { useSyncExternalStore } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   Server,
   Globe,
@@ -18,6 +19,10 @@ import {
 import { User } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
 import { OgnivoLogo } from "@/components/ui/OgnivoLogo";
+import {
+  getNavigationItems,
+  subscribeNavigationRegistry,
+} from "@/lib/registry/navigationRegistry";
 import { TabType } from "./useDashboardNavigation";
 
 interface SidebarProps {
@@ -60,7 +65,13 @@ export function Sidebar({
   onLogout,
 }: SidebarProps) {
   const { t } = useI18n();
+  const pathname = usePathname();
   const isAdmin = roles.includes("admin");
+  const extensionItems = useSyncExternalStore(
+    subscribeNavigationRegistry,
+    () => getNavigationItems(roles),
+    () => getNavigationItems(roles)
+  );
 
   const handleNavClick = (tab: TabType) => {
     onTabChange(tab);
@@ -361,6 +372,60 @@ export function Sidebar({
                     </div>
                   </button>
                 )}
+              </nav>
+            </div>
+          )}
+
+          {/* Extensions Section */}
+          {extensionItems.length > 0 && (
+            <div>
+              <div className="px-3 mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-400">
+                Extensions
+              </div>
+
+              <nav className="space-y-1.5">
+                {extensionItems.map((item) => {
+                  const Icon = item.icon;
+                  const badgeValue =
+                    typeof item.badge === "function" ? item.badge() : item.badge;
+                  const isActive =
+                    item.target !== "_blank" && pathname === item.href;
+
+                  return (
+                    <Link
+                      key={item.id}
+                      href={item.href}
+                      target={item.target}
+                      rel={
+                        item.target === "_blank"
+                          ? "noopener noreferrer"
+                          : undefined
+                      }
+                      onClick={onClose}
+                      className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition ${
+                        isActive
+                          ? "bg-blue-600 text-white shadow-md shadow-blue-600/25"
+                          : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-900"
+                      }`}
+                    >
+                      <div className="flex items-center space-x-3">
+                        {Icon && <Icon className="w-4 h-4" />}
+                        <span>{item.label}</span>
+                      </div>
+                      {badgeValue !== undefined && (
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
+                            isActive
+                              ? "bg-white/20 text-white font-bold"
+                              : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400"
+                          }`}
+                        >
+                          {badgeValue}
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
               </nav>
             </div>
           )}

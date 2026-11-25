@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useSyncExternalStore } from "react";
-import { VirtualMachine, User } from "@/lib/api";
+import type { VirtualMachine, User } from "@/lib/api";
+import { getSlotComponents, type SlotItem } from "./slotRegistry.ts";
 
 export interface VmTabContext {
   vm: VirtualMachine;
@@ -84,16 +85,111 @@ export function unregisterVmTab(tabId: string): void {
   }
 }
 
+const ACTION_VARIANTS = new Set(["default", "primary", "danger", "warning"]);
+
+function resolveSlotLabel<TContext>(
+  item: SlotItem
+): string | ((context: TContext) => string) {
+  const rawLabel = item.metadata?.label;
+  if (typeof rawLabel === "function") {
+    return rawLabel as (context: TContext) => string;
+  }
+  if (rawLabel !== undefined && rawLabel !== null) {
+    return String(rawLabel);
+  }
+  return item.id;
+}
+
+function slotItemToVmTab(item: SlotItem): VmTabDefinition {
+  const metadata = item.metadata;
+  return {
+    id: item.id,
+    label: resolveSlotLabel<VmTabContext>(item),
+    order: item.priority,
+    icon:
+      typeof metadata?.icon === "function"
+        ? (metadata.icon as VmTabDefinition["icon"])
+        : undefined,
+    badge:
+      typeof metadata?.badge === "function"
+        ? (metadata.badge as VmTabDefinition["badge"])
+        : undefined,
+    visible:
+      typeof metadata?.visible === "function"
+        ? (metadata.visible as VmTabDefinition["visible"])
+        : undefined,
+    component: item.component as React.ComponentType<VmTabComponentProps>,
+  };
+}
+
+function slotItemToVmAction(item: SlotItem): VmActionDefinition {
+  const metadata = item.metadata;
+  const rawVariant = metadata?.variant;
+  return {
+    id: item.id,
+    label: resolveSlotLabel<VmActionContext>(item),
+    order: item.priority,
+    icon:
+      typeof metadata?.icon === "function"
+        ? (metadata.icon as VmActionDefinition["icon"])
+        : undefined,
+    variant:
+      typeof rawVariant === "string" && ACTION_VARIANTS.has(rawVariant)
+        ? (rawVariant as VmActionDefinition["variant"])
+        : undefined,
+    disabled:
+      typeof metadata?.disabled === "function"
+        ? (metadata.disabled as VmActionDefinition["disabled"])
+        : undefined,
+    visible:
+      typeof metadata?.visible === "function"
+        ? (metadata.visible as VmActionDefinition["visible"])
+        : undefined,
+    onClick:
+      typeof metadata?.onClick === "function"
+        ? (metadata.onClick as VmActionDefinition["onClick"])
+        : () => {},
+  };
+}
+
+function mergeAndSortRegistry<
+  T extends {
+    id: string;
+    order?: number;
+    visible?: (context: TContext) => boolean;
+  },
+  TContext,
+>(
+  builtIns: Map<string, T>,
+  slotItems: SlotItem[],
+  converter: (item: SlotItem) => T,
+  context?: TContext
+): T[] {
+  const merged = new Map<string, T>(builtIns);
+  for (const item of slotItems) {
+    if (!merged.has(item.id)) {
+      merged.set(item.id, converter(item));
+    }
+  }
+
+  const entries = Array.from(merged.values());
+  const filtered = context
+    ? entries.filter((entry) => (entry.visible ? entry.visible(context) : true))
+    : entries;
+
+  return filtered.sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
+}
+
 /**
  * Retrieve registered tabs, optionally filtered by context visibility and sorted by order.
  */
 export function getVmTabs(context?: VmTabContext): VmTabDefinition[] {
-  const tabs = Array.from(tabsRegistry.values());
-  const filtered = context
-    ? tabs.filter((t) => (t.visible ? t.visible(context) : true))
-    : tabs;
-
-  return filtered.sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
+  return mergeAndSortRegistry(
+    tabsRegistry,
+    getSlotComponents("instance.detail.tabs"),
+    slotItemToVmTab,
+    context
+  );
 }
 
 /**
@@ -119,12 +215,12 @@ export function unregisterVmAction(actionId: string): void {
  * Retrieve registered actions, optionally filtered by context visibility and sorted by order.
  */
 export function getVmActions(context?: VmActionContext): VmActionDefinition[] {
-  const actions = Array.from(actionsRegistry.values());
-  const filtered = context
-    ? actions.filter((a) => (a.visible ? a.visible(context) : true))
-    : actions;
-
-  return filtered.sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
+  return mergeAndSortRegistry(
+    actionsRegistry,
+    getSlotComponents("instance.detail.actions"),
+    slotItemToVmAction,
+    context
+  );
 }
 
 // Subscription helper for useSyncExternalStore
