@@ -1,0 +1,19 @@
+{
+  "name": "ognivo/hello-ognivo",
+  "description": "Reference extension demonstrating Ognivo Core extension points",
+  "type": "ognivo-extension",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Ognivo Community"
+    }
+  ],
+  "require": {
+    "php": "^8.2|^8.3|^8.4|^8.5"
+  },
+  "autoload": {
+    "psr-4": {
+      "Ognivo\\HelloOgnivo\\": "src/"
+    }
+  }
+}
