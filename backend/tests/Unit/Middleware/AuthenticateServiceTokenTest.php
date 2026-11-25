@@ -181,7 +181,7 @@ it('updates AuditContext downstream in SetAuditContext when service_token attrib
 
     $auditContext = new AuditContext;
     $setAuditContext = new SetAuditContext($auditContext);
-    $request = Request::create('/api/hosts', 'GET');
+    $request = Request::create('/api/v1/hosts', 'GET');
 
     $setAuditContext->handle($request, function (Request $req) use ($token): Response {
         $req->attributes->set('service_token', $token);

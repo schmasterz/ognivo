@@ -92,7 +92,8 @@ export function getEcho(): Echo<"reverb"> | null {
     process.env.NEXT_PUBLIC_REVERB_APP_KEY ||
     process.env.REVERB_APP_KEY;
   if (!reverbAppKey) {
-    throw new Error("Reverb app key is required to initialize Laravel Echo.");
+    console.warn("Reverb app key is not configured; real-time updates are disabled.");
+    return null;
   }
 
   echoAuthToken = currentToken;
@@ -104,7 +105,7 @@ export function getEcho(): Echo<"reverb"> | null {
     wssPort: isHttps ? port : 443,
     forceTLS: isHttps,
     enabledTransports: ["ws", "wss"],
-    authEndpoint: "/api/broadcasting/auth",
+    authEndpoint: `${runtimeConfig.api_base_url || "/api/v1"}/broadcasting/auth`,
     auth: {
       headers: {
         Authorization: `Bearer ${currentToken}`,

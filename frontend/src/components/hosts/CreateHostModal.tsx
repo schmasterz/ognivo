@@ -22,6 +22,7 @@ import {
 } from "@/lib/images/imageSelection";
 import { HostImagesSection } from "./HostImagesSection";
 import { useI18n } from "@/lib/i18n/I18nContext";
+import { useConfig } from "@/lib/config/ConfigContext";
 import { useModalEscape } from "@/lib/hooks/useModalEscape";
 
 interface CreateHostModalProps {
@@ -31,6 +32,7 @@ interface CreateHostModalProps {
 
 export function CreateHostModal({ onClose, onSuccess }: CreateHostModalProps) {
   const { t } = useI18n();
+  const { features } = useConfig();
 
   // Mode: primary is "token" (Connect with token), secondary is "cert" (Add with certificate)
   const [mode, setMode] = useState<"token" | "cert">("token");
@@ -420,7 +422,7 @@ export function CreateHostModal({ onClose, onSuccess }: CreateHostModalProps) {
               >
                 <option value="incus">Incus Hypervisor</option>
                 <option value="lxd">LXD Hypervisor</option>
-                {process.env.NEXT_PUBLIC_ENABLE_FAKE_DRIVER === "true" && (
+                {features?.fake_driver && (
                   <option value="fake">Emulated Driver (Dev / Test)</option>
                 )}
               </select>

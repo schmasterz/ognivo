@@ -12,6 +12,7 @@ export interface OgnivoRuntimeConfig {
   features?: {
     registration?: boolean;
     impersonation?: boolean;
+    fake_driver?: boolean;
   };
 }
 
@@ -26,11 +27,12 @@ export const DEFAULT_CONFIG: OgnivoRuntimeConfig = {
   app_env: "production",
   api_base_url: "/api/v1",
   ws_host: typeof window !== "undefined" ? window.location.hostname : "localhost",
-  ws_port: 6001,
+  ws_port: undefined,
   ws_key: undefined,
   features: {
     registration: false,
     impersonation: true,
+    fake_driver: false,
   },
 };
 

@@ -28,6 +28,7 @@ import {
 import { HostImagesSection } from "./HostImagesSection";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { useI18n } from "@/lib/i18n/I18nContext";
+import { useConfig } from "@/lib/config/ConfigContext";
 import { useModalEscape } from "@/lib/hooks/useModalEscape";
 
 interface EditHostModalProps {
@@ -38,6 +39,7 @@ interface EditHostModalProps {
 
 export function EditHostModal({ host, onClose, onSuccess }: EditHostModalProps) {
   const { t } = useI18n();
+  const { features } = useConfig();
 
   const [name, setName] = useState(host.name);
   const [region, setRegion] = useState(host.region || "");
@@ -472,7 +474,7 @@ export function EditHostModal({ host, onClose, onSuccess }: EditHostModalProps) 
             >
               <option value="incus">Incus Hypervisor</option>
               <option value="lxd">LXD Hypervisor</option>
-              {(process.env.NEXT_PUBLIC_ENABLE_FAKE_DRIVER === "true" || host.driver === "fake") && (
+              {(features?.fake_driver || host.driver === "fake") && (
                 <option value="fake">Emulated Driver (Dev / Test)</option>
               )}
             </select>
