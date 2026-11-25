@@ -1,5 +1,10 @@
-import { request } from "./client";
-import { VirtualMachine, PaginatedResponse } from "./types";
+import { API_BASE, ApiError, request } from "./client";
+import {
+  PaginatedResponse,
+  VirtualMachine,
+  VmMetricsRangeKey,
+  VmMetricsResponse,
+} from "./types";
 
 export interface ConsoleSessionResponse {
   virtual_machine_id: number;
@@ -145,5 +150,89 @@ export const vmsApi = {
       method: "DELETE",
       body: JSON.stringify({ reason }),
     });
+  },
+
+  async getVmMetrics(
+    vmId: number,
+    options?: {
+      range?: VmMetricsRangeKey;
+      metrics?: string[];
+      maxPoints?: number;
+      etag?: string | null;
+      signal?: AbortSignal;
+    }
+  ): Promise<
+    | { status: 200; data: VmMetricsResponse; etag: string | null }
+    | { status: 304; data: null; etag: string | null }
+  > {
+    const params = new URLSearchParams();
+    if (options?.range) params.set("range", options.range);
+    if (options?.metrics && options.metrics.length > 0) {
+      params.set("metrics", options.metrics.join(","));
+    }
+    if (options?.maxPoints !== undefined) {
+      params.set("max_points", String(options.maxPoints));
+    }
+    const qs = params.toString() ? `?${params.toString()}` : "";
+
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    if (options?.etag) {
+      headers["If-None-Match"] = options.etag;
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE}/vms/${vmId}/metrics${qs}`, {
+        method: "GET",
+        headers,
+        signal: options?.signal,
+      });
+    } catch (fetchError) {
+      if (
+        fetchError instanceof TypeError &&
+        (fetchError.message?.includes("fetch failed") || fetchError.name === "TypeError")
+      ) {
+        throw new ApiError(0, fetchError.message, null);
+      }
+      throw fetchError;
+    }
+
+    if (response.status === 304) {
+      return {
+        status: 304,
+        data: null,
+        etag: response.headers.get("ETag") ?? options?.etag ?? null,
+      };
+    }
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      const retryAfterSeconds = parseInt(response.headers.get("Retry-After") || "0");
+      if (retryAfterSeconds > 0 && response.status === 429) {
+        throw new ApiError(
+          response.status,
+          errData.message || "Too Many Requests",
+          errData.errors || null,
+          retryAfterSeconds
+        );
+      }
+      const message = errData.message || "An unexpected error occurred.";
+      throw new ApiError(response.status, message, errData.errors);
+    }
+
+    const data = (await response.json()) as VmMetricsResponse;
+    return {
+      status: 200,
+      data,
+      etag: response.headers.get("ETag"),
+    };
   },
 };
