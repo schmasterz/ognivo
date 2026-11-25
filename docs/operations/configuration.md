@@ -185,6 +185,20 @@ Read from `config/hypervisor.php` by the backend. Each value is copied into the 
 > [!NOTE]
 > The `console-proxy` container does not read `.env.production`. Compose passes it only `PORT`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_PREFIX`, `APP_KEY`, `APP_PREVIOUS_KEYS`, `NODE_ENV` and `ALLOW_FAKE_DRIVER`. Its own defaults for `MAX_MESSAGE_BYTES` and `IDLE_TIMEOUT_SECONDS` (`65536` / `900`) are used only when a ticket does not carry the value, which the backend always provides. To change them, edit the `console-proxy` service in the Compose file.
 
+### 3.11 Instance Metrics & Telemetry
+Read from `backend/config/metrics.php`. Details: [Instance Metrics](../features/metrics.md).
+
+| Variable | Code default | In `.env.production.example` | Description |
+| :--- | :--- | :--- | :--- |
+| `METRICS_ENABLED` | `true` | `true` | Master feature flag for instance metrics scraping (`GET /1.0/metrics`), the query API (`503` `metrics_disabled` when `false`), and the UI Metrics tab. Local `metrics:rollup` and `metrics:prune` tasks still run when disabled |
+| `METRICS_INTERVAL_SECONDS` | `60` | `60` | Scrape interval in seconds between raw collection cycles (allowed range `30..300`) |
+| `METRICS_REQUEST_TIMEOUT_SECONDS` | `10` | `10` | Per-node hypervisor HTTP scrape timeout in seconds (maximum `10`) |
+| `METRICS_RETENTION_RAW_HOURS` | `12` | `12` | Retention period in hours for raw samples (`vm_metric_samples`; minimum `6`) |
+| `METRICS_RETENTION_5M_DAYS` | `8` | `8` | Retention period in days for 5-minute rollups (`vm_metric_rollups_5m`; minimum `8`) |
+| `METRICS_RETENTION_1H_DAYS` | `35` | `35` | Retention period in days for 1-hour rollups (`vm_metric_rollups_1h`; minimum `35`) |
+| `METRICS_AUDIT_WINDOW_SECONDS` | `900` | `900` | Deduplication window in seconds (`15 minutes`) in Redis per `(admin, instance)` for `vm.metrics.viewed` cross-tenant audit events |
+| `METRICS_RATE_LIMIT_PER_MINUTE` | `60` | `60` | Maximum instance metrics API queries per user per minute |
+
 ### Development vs production examples
 
 | Variable | `.env.development.example` | `.env.production.example` |

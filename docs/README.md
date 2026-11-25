@@ -22,6 +22,7 @@ Welcome to the **Ognivo** technical documentation. All guides are organized into
 - **[Network Modes & Host IPAM](features/networking.md)** - Routed (`routed`), Bridged (`bridged`), Macvlan (`macvlan`), and Manual (`manual`) IPv4 subnet pools, pool address/free-IP inspection, required hypervisor `sysctl` / Proxy ARP and bridge/NIC requirements, preflight pool verification, and IP version support.
 - **[Interactive Web Terminal](features/console.md)** - `xterm.js` terminals through the `console-proxy`, the `exec` and serial `console` drivers, single-use Redis tickets, session limits and idle timeout, the read-only boot log, and strict tenant privacy isolation.
 - **[Virtual Machine Snapshots](features/snapshots.md)** - Point-in-time VM/container snapshots, state machine, concurrency locks, quota enforcement, REST API, and `BackupTargetInterface` extension points.
+- **[Instance Metrics](features/metrics.md)** - Per-instance historical telemetry (`1h`–`30d`), `METRICS_ENABLED` flag, `incus-agent` requirements, 3-tier retention (`12h / 8d / 35d`), storage growth formula, and `mysqldump` backup exclusion.
 
 ## 4. Operations & Reference (`docs/operations/`)
 - **[Production Deployment](operations/production.md)** - Building self-contained images, startup safety enforcement, creating the initial administrator, and installing real TLS certificates.

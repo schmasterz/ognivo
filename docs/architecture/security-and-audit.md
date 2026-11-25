@@ -9,6 +9,7 @@ This document describes Ognivo's defense-in-depth security controls, database pr
 - **Encrypted Hypervisor Credentials:** The panel's mTLS private key (`PanelCertificate::private_key`) and host tokens (`Host::token`) are encrypted at rest in MySQL using AES-256-CBC (`encrypted` Eloquent cast) and passed in-memory via `CURLOPT_SSLCERT_BLOB` / `CURLOPT_SSLKEY_BLOB` (with a transient `0600` tempfile fallback in `sys_get_temp_dir()` unlinked immediately after the request).
 - **Expiring Bearer Tokens & Server-Side Logout:** Sanctum API tokens expire after 24 hours (`expiration => 1440` in `config/sanctum.php`) and are immediately revoked in the database on `POST /api/logout`.
 - **Strict Tenant Console Privacy:** Guest console sessions (`POST /api/vms/{id}/console`) are restricted exclusively to the workload owner via `VirtualMachinePolicy::viewConsole`. Administrators and active admin impersonation sessions are denied access (`403 Forbidden`) and logged.
+- **Cross-Tenant Metrics View Auditing (`vm.metrics.viewed`):** When an administrator (directly or while impersonating) views metrics of another tenant's instance, Ognivo records a `vm.metrics.viewed` audit event once per `(admin, instance)` per 15-minute window (`METRICS_AUDIT_WINDOW_SECONDS=900`) tracked in Redis, without ever storing metric data in the audit log.
 - **Rate Limiting on Hypervisor Mutations:** Destructive and state-changing actions (`POST /api/vms/{id}/action`, snapshot mutations) are protected by `throttle:vm-actions` (10 requests/minute per customer).
 - **Internal Network Isolation:** In production, MySQL (`3306`), Redis (`6379`), Reverb (`8080`), `console-proxy` (`8085`), and Next.js (`3000`) are bound exclusively to the internal Docker network; only Nginx (`80`/`443`) is published to the host.
 
@@ -19,6 +20,10 @@ For key rotation steps, follow the canonical runbook in [configuration.md — AP
 - **Symmetrically Encrypted with `APP_KEY` (AES-256-CBC):** `PanelCertificate::private_key` (panel mTLS private key), `Host::token` (hypervisor trust tokens), and `system_settings.smtp_settings['password']` (SMTP authentication password). Ephemeral console tickets are encrypted with HKDF derived from `APP_KEY`. Losing `APP_KEY` renders this data permanently unrecoverable.
 - **Hashed with per-user salt & `APP_KEY` pepper (one-way):** User passwords (`User::$password`) are NOT symmetrically encrypted; they use a per-user Base62 salt (`password_salt`) and an HMAC-SHA256 pre-hash peppered with `APP_KEY`, followed by Bcrypt (`Hash::make(...)`). They cannot be decrypted or re-encrypted offline without the user's plaintext password; during key rotation they are upgraded lazily upon user authentication as long as the old key is retained in `APP_PREVIOUS_KEYS` (or scanned via `--include-users`).
 - **Signed with HMAC (`AUDIT_HMAC_KEY`):** Audit seals (`audit_seals`) use SHA-256 hash chaining signed with `AUDIT_HMAC_KEY` (`AUDIT_HMAC_KEY_ID`). This is rotated separately using `AUDIT_PREVIOUS_HMAC_KEYS` as described in [Section 4](#4-hmac-sealing-key-rotation-procedure).
+
+### 1.2 Threat Model Note: Host-Side Usage Metrics vs Guest Content
+
+Administrators and hosting operators are permitted to view resource utilization metrics (CPU %, memory usage, root filesystem usage, disk I/O rates, and network traffic rates) of tenant instances (`VirtualMachinePolicy::view`), with cross-tenant admin views audited via `vm.metrics.viewed`. This telemetry represents host-side hypervisor metadata exposed by Incus (`GET /1.0/metrics`) for capacity planning, billing verification, and abuse/health diagnostics. In contrast, interactive guest console access (`VirtualMachinePolicy::viewConsole`) and guest filesystem contents remain strictly restricted to the workload owner.
 
 ---
 

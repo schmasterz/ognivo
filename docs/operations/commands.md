@@ -115,6 +115,10 @@ docker exec -it ognivo-backend php artisan scramble:cache && docker exec -it ogn
 | `hosts:backfill-pins [--force]` | Compute and store `server_public_key_pin` (SPKI hash) for existing hosts from their stored server certificate. `--force` overwrites existing pins |
 | `hypervisor:cleanup-cert-keys` | Remove leftover `panel_cert_*.key` files from storage and temporary directories |
 | `images:verify-catalog [--skip-disabled] [--id=]` | Verify allowlist catalog images against their remote servers (simplestreams, Incus, LXD) and report reachability or missing aliases |
+| `metrics:collect` | Dispatch per-node metric collection jobs across active hypervisors when `metrics.enabled` (`METRICS_ENABLED`) is enabled |
+| `metrics:rollup` | Aggregate closed 5-minute (`vm_metric_rollups_5m`) and 1-hour (`vm_metric_rollups_1h`) rollup buckets from finer tiers |
+| `metrics:prune` | Maintain MySQL `RANGE` partitions, drop expired partitions, and prune expired metric rows in bounded batches |
+| `metrics:benchmark-nfr` | Run synthetic storage and query latency benchmarks to verify non-functional metrics performance budgets |
 
 ```bash
 docker exec -it ognivo-backend php artisan incus:generate-cert --force
@@ -124,6 +128,10 @@ docker exec -it ognivo-backend php artisan hosts:backfill-pins
 docker exec -it ognivo-backend php artisan images:verify-catalog
 docker exec -it ognivo-backend php artisan images:verify-catalog --skip-disabled
 docker exec -it ognivo-backend php artisan images:verify-catalog --id=1
+docker exec -it ognivo-backend php artisan metrics:collect
+docker exec -it ognivo-backend php artisan metrics:rollup
+docker exec -it ognivo-backend php artisan metrics:prune
+docker exec -it ognivo-backend php artisan metrics:benchmark-nfr
 ```
 
 ### 3.3 Audit Log
@@ -156,6 +164,9 @@ The `scheduler` container runs `php artisan schedule:work` and triggers these ta
 | `vm:reconcile` | Every 5 minutes | Drift detection |
 | `vm:sweep-stale-provisioning` | Every 5 minutes | No overlapping runs |
 | IP cooldown cleanup (`ipam:prune-cooling`) | Every minute | Returns expired `cooling` IPs to the pool; the only mechanism that deletes expired cooling IPs (read endpoints do not) |
+| `metrics:collect` | Every minute | Dispatches per-node collection jobs when `metrics.enabled` is on |
+| `metrics:rollup` | Every 5 minutes | Aggregates closed 5m and 1h rollup buckets even when flag is off |
+| `metrics:prune` | Hourly | Maintains MySQL `RANGE` partitions, drops expired partitions, and prunes expired rows in bounded batches |
 | `audit:seal` | Every minute | No overlapping runs |
 | `audit:verify` | Hourly | Emails active admins when verification fails |
 | `hosts:sync-resources` | Hourly | No overlapping runs |
