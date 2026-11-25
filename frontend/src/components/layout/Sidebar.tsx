@@ -99,7 +99,7 @@ export function Sidebar({
                 </div>
                 <div className="flex items-center space-x-1 mt-0.5">
                   <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                    {t("poweredBy")}
+                    {t("tagline")}
                   </span>
                 </div>
               </div>

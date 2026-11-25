@@ -4,7 +4,7 @@ export const dictionaries = {
   en: {
     // Brand & Header
     platformTitle: "Ognivo",
-    poweredBy: "Cloud Control Plane",
+    tagline: "VPS & Container Panel",
     platformSubtitle: "Open-Source Multi-Tenant VPS Platform",
     adminBadge: "Admin",
     signOut: "Sign out",
@@ -821,7 +821,7 @@ export const dictionaries = {
   bg: {
     // Brand & Header
     platformTitle: "Ognivo",
-    poweredBy: "Облачен Контролен Панел",
+    tagline: "VPS и контейнер панел",
     platformSubtitle: "Open-Source VPS платформа с мулти-тенант изолация",
     adminBadge: "Админ",
     signOut: "Изход",
