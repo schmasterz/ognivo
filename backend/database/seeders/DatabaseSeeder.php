@@ -60,7 +60,7 @@ final class DatabaseSeeder extends Seeder
         );
 
         QuotaGroup::firstOrCreate(
-            ['name' => 'Enterprise Tier'],
+            ['name' => 'Performance Tier'],
             [
                 'description' => 'Maximum resource allocations for production clustering and heavy compute workloads',
                 'is_default' => false,
