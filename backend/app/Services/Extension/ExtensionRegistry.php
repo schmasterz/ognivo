@@ -144,14 +144,20 @@ final class ExtensionRegistry
             ];
         }
 
-        $extensionsDir = $this->app->basePath('extensions');
-        if (is_dir($extensionsDir)) {
-            $paths = [
-                ...$paths,
-                ...$this->globManifests(
-                    $extensionsDir.DIRECTORY_SEPARATOR.'*'.DIRECTORY_SEPARATOR.self::MANIFEST_FILENAME
-                ),
-            ];
+        $candidateExtensionDirs = array_values(array_unique([
+            $this->app->basePath('extensions'),
+            dirname($this->app->basePath()).DIRECTORY_SEPARATOR.'extensions',
+        ]));
+
+        foreach ($candidateExtensionDirs as $extensionsDir) {
+            if (is_dir($extensionsDir)) {
+                $paths = [
+                    ...$paths,
+                    ...$this->globManifests(
+                        $extensionsDir.DIRECTORY_SEPARATOR.'*'.DIRECTORY_SEPARATOR.self::MANIFEST_FILENAME
+                    ),
+                ];
+            }
         }
 
         return $paths;

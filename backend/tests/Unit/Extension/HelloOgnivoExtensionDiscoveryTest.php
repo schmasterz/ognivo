@@ -22,7 +22,20 @@ beforeEach(function (): void {
     }
 
     $prefix = 'Ognivo\\HelloOgnivo\\';
-    $baseDir = base_path('extensions/hello-ognivo/src').DIRECTORY_SEPARATOR;
+    $candidateDirs = [
+        base_path('extensions/hello-ognivo/src'),
+        dirname(base_path()).DIRECTORY_SEPARATOR.'extensions'.DIRECTORY_SEPARATOR.'hello-ognivo'.DIRECTORY_SEPARATOR.'src',
+    ];
+
+    $resolvedDir = null;
+    foreach ($candidateDirs as $candidateDir) {
+        if (is_dir($candidateDir)) {
+            $resolvedDir = rtrim($candidateDir, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
+            break;
+        }
+    }
+
+    $baseDir = $resolvedDir ?? base_path('extensions/hello-ognivo/src').DIRECTORY_SEPARATOR;
 
     spl_autoload_register(static function (string $class) use ($prefix, $baseDir): void {
         if (! str_starts_with($class, $prefix)) {
