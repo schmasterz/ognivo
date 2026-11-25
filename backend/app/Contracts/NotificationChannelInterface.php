@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Contracts;
 
 /**
- * Contract for pluggable notification delivery channels (Slack, Webhook, Email, SMS, Telegram, etc.).
+ * Contract for pluggable notification delivery channels (Developer Preview).
+ *
+ * @experimental This extension contract is in Developer Preview and may evolve in minor 1.x releases based on feedback from real reference implementations. It will be frozen under full SemVer once proven with core-integrated modules.
  */
 interface NotificationChannelInterface
 {

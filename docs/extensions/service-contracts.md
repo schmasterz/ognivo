@@ -10,6 +10,10 @@ Extensions provide custom behavior by binding implementations of these contracts
 
 ### 1. `DnsProviderInterface`
 
+> [!NOTE]
+> **Status: Developer Preview (`@experimental`)**  
+> Provided as an architectural preview. Subject to refinement in minor `1.x` releases based on feedback from the first production reference implementations.
+
 Contract: `App\Contracts\DnsProviderInterface` (`backend/app/Contracts/DnsProviderInterface.php`)
 
 Manages DNS records in external zones:
@@ -36,6 +40,10 @@ interface DnsProviderInterface
 
 ### 2. `NotificationChannelInterface`
 
+> [!NOTE]
+> **Status: Developer Preview (`@experimental`)**  
+> Provided as an architectural preview. Subject to refinement in minor `1.x` releases based on feedback from the first production reference implementations.
+
 Contract: `App\Contracts\NotificationChannelInterface` (`backend/app/Contracts/NotificationChannelInterface.php`)
 
 Delivers operational or tenant notifications over pluggable channels (e.g. email, chat webhooks, SMS):
@@ -61,6 +69,10 @@ interface NotificationChannelInterface
 
 ### 3. `BillingProviderInterface`
 
+> [!NOTE]
+> **Status: Developer Preview (`@experimental`)**  
+> Provided as an architectural preview. Subject to refinement in minor `1.x` releases based on feedback from the first production reference implementations.
+
 Contract: `App\Contracts\BillingProviderInterface` (`backend/app/Contracts/BillingProviderInterface.php`)
 
 Records resource usage measurements for tenants without introducing billing logic into core:
@@ -83,6 +95,10 @@ interface BillingProviderInterface
 ```
 
 ### 4. `BackupTargetInterface`
+
+> [!NOTE]
+> **Status: Stable / Frozen (SemVer 1.0.0)**  
+> Actively utilized by core snapshot orchestration (`VmSnapshotService`, jobs). Governed by strict SemVer 1.0 backward compatibility guarantees.
 
 Contract: `App\Contracts\BackupTargetInterface` (`backend/app/Contracts/BackupTargetInterface.php`)
 
