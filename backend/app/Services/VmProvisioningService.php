@@ -72,13 +72,89 @@ final class VmProvisioningService
             ]);
         }
 
+        // 1. Validate platform virtualization mode support
+        $instanceType = $data['instance_type'] ?? null;
+        if ($instanceType === null) {
+            $instanceType = SystemSetting::isVmEnabled() ? 'virtual-machine' : 'container';
+        }
+
+        if ($instanceType === 'virtual-machine' && ! SystemSetting::isVmEnabled()) {
+            /** @var string $msg */
+            $msg = __('messages.vm.vm_mode_disabled');
+            throw ValidationException::withMessages([
+                'instance_type' => [$msg],
+            ]);
+        }
+
+        if ($instanceType === 'container' && ! SystemSetting::isContainerEnabled()) {
+            /** @var string $msg */
+            $msg = __('messages.vm.container_mode_disabled');
+            throw ValidationException::withMessages([
+                'instance_type' => [$msg],
+            ]);
+        }
+
+        // 2. Enforce admin-approved image allowlist
+        $allowedImage = Image::where('name', $data['os_image'])->where('enabled', true)->first();
+        if ($allowedImage === null) {
+            throw ValidationException::withMessages([
+                'os_image' => ['The selected image is not in the allowlist or is disabled.'],
+            ]);
+        }
+
+        // 3. Enforce that containers (LXC) can only run Linux images
+        if ($instanceType === 'container' && $allowedImage->os_type !== 'linux') {
+            throw ValidationException::withMessages([
+                'instance_type' => ['Containers (LXC) can only run Linux operating system images.'],
+            ]);
+        }
+
+        // 4. Optimistic Host selection / validation before entering transaction
+        $hostId = $data['host_id'] ?? null;
+        if ($hostId === null) {
+            $chosenHost = $this->hostSelector->select([
+                'os_image' => $data['os_image'],
+                'instance_type' => $instanceType,
+                'cpu_cores' => $data['cpu_cores'],
+                'ram_mb' => $data['ram_mb'],
+                'disk_gb' => $data['disk_gb'],
+            ]);
+
+            if ($chosenHost === null) {
+                $hasAnyActiveHost = Host::where('is_active', true)->where('status', 'ok')->exists();
+                $errorMsg = $hasAnyActiveHost
+                    ? __('messages.host.no_capacity')
+                    : __('messages.host.no_active_host');
+
+                throw ValidationException::withMessages([
+                    'host_id' => [$errorMsg],
+                ]);
+            }
+            $hostId = $chosenHost->id;
+        } else {
+            $chosenHost = Host::find($hostId);
+            if ($chosenHost === null) {
+                throw ValidationException::withMessages([
+                    'host_id' => [__('messages.host.not_active_or_available')],
+                ]);
+            }
+
+            $this->hostSelector->validateHost($chosenHost, [
+                'os_image' => $data['os_image'],
+                'instance_type' => $instanceType,
+                'cpu_cores' => $data['cpu_cores'],
+                'ram_mb' => $data['ram_mb'],
+                'disk_gb' => $data['disk_gb'],
+            ]);
+        }
+
         // Acquire distributed lock to eliminate row lock contention across concurrent requests
         $lock = Cache::lock(sprintf('user_quota_lock:%d', $user->id), 10);
 
         try {
             /** @var VirtualMachine $provisionedVm */
-            $provisionedVm = $lock->block(5, function () use ($user, $data): VirtualMachine {
-                return DB::transaction(function () use ($user, $data): VirtualMachine {
+            $provisionedVm = $lock->block(5, function () use ($user, $data, $instanceType, $hostId): VirtualMachine {
+                return DB::transaction(function () use ($user, $data, $instanceType, $hostId): VirtualMachine {
                     // Lock quota row to prevent race conditions during concurrent requests
                     $quota = UserQuota::firstOrCreate(
                         ['user_id' => $user->id],
@@ -139,82 +215,6 @@ final class VmProvisioningService
                         ]);
                     }
 
-                    // Validate platform virtualization mode support
-                    $instanceType = $data['instance_type'] ?? null;
-                    if ($instanceType === null) {
-                        $instanceType = SystemSetting::isVmEnabled() ? 'virtual-machine' : 'container';
-                    }
-
-                    if ($instanceType === 'virtual-machine' && ! SystemSetting::isVmEnabled()) {
-                        /** @var string $msg */
-                        $msg = __('messages.vm.vm_mode_disabled');
-                        throw ValidationException::withMessages([
-                            'instance_type' => [$msg],
-                        ]);
-                    }
-
-                    if ($instanceType === 'container' && ! SystemSetting::isContainerEnabled()) {
-                        /** @var string $msg */
-                        $msg = __('messages.vm.container_mode_disabled');
-                        throw ValidationException::withMessages([
-                            'instance_type' => [$msg],
-                        ]);
-                    }
-
-                    // Enforce admin-approved image allowlist
-                    $allowedImage = Image::where('name', $data['os_image'])->where('enabled', true)->first();
-                    if ($allowedImage === null) {
-                        throw ValidationException::withMessages([
-                            'os_image' => ['The selected image is not in the allowlist or is disabled.'],
-                        ]);
-                    }
-
-                    // Enforce that containers (LXC) can only run Linux images
-                    if ($instanceType === 'container' && $allowedImage->os_type !== 'linux') {
-                        throw ValidationException::withMessages([
-                            'instance_type' => ['Containers (LXC) can only run Linux operating system images.'],
-                        ]);
-                    }
-
-                    // Assign default active host if not explicitly specified
-                    $hostId = $data['host_id'] ?? null;
-                    if ($hostId === null) {
-                        $chosenHost = $this->hostSelector->select([
-                            'os_image' => $data['os_image'],
-                            'instance_type' => $instanceType,
-                            'cpu_cores' => $data['cpu_cores'],
-                            'ram_mb' => $data['ram_mb'],
-                            'disk_gb' => $data['disk_gb'],
-                        ]);
-
-                        if ($chosenHost === null) {
-                            $hasAnyActiveHost = Host::where('is_active', true)->where('status', 'ok')->exists();
-                            $errorMsg = $hasAnyActiveHost
-                                ? __('messages.host.no_capacity')
-                                : __('messages.host.no_active_host');
-
-                            throw ValidationException::withMessages([
-                                'host_id' => [$errorMsg],
-                            ]);
-                        }
-                        $hostId = $chosenHost->id;
-                    } else {
-                        $chosenHost = Host::find($hostId);
-                        if ($chosenHost === null) {
-                            throw ValidationException::withMessages([
-                                'host_id' => [__('messages.host.not_active_or_available')],
-                            ]);
-                        }
-
-                        $this->hostSelector->validateHost($chosenHost, [
-                            'os_image' => $data['os_image'],
-                            'instance_type' => $instanceType,
-                            'cpu_cores' => $data['cpu_cores'],
-                            'ram_mb' => $data['ram_mb'],
-                            'disk_gb' => $data['disk_gb'],
-                        ]);
-                    }
-
                     // LOCK ORDER:
                     // 1. user quota lock (distributed cache lock: user_quota_lock:{id})
                     // 2. user quota row (UserQuota lockForUpdate)
@@ -222,6 +222,12 @@ final class VmProvisioningService
                     // No other code path in the system acquires these locks in reverse order.
                     /** @var Host $lockedHost */
                     $lockedHost = Host::where('id', $hostId)->lockForUpdate()->firstOrFail();
+
+                    if (! $lockedHost->is_active || $lockedHost->status !== 'ok') {
+                        throw ValidationException::withMessages([
+                            'host_id' => [__('messages.host.not_active_or_available')],
+                        ]);
+                    }
 
                     $duplicateActiveName = VirtualMachine::where('user_id', $user->id)
                         ->where('host_id', $hostId)
