@@ -17,8 +17,9 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::job(new WarnExpiringPanelCertificateJob)->daily();
-Schedule::command('vm:reconcile')->everyFiveMinutes();
+Schedule::command('vm:reconcile')->everyFiveMinutes()->withoutOverlapping(10)->runInBackground();
 Schedule::command('vm:sweep-stale-provisioning')->everyFiveMinutes()->withoutOverlapping();
+Schedule::command('snapshots:sync')->hourly()->withoutOverlapping(15)->runInBackground();
 Schedule::call(fn (IpManagementService $service) => $service->pruneExpiredCoolingAllocations())
     ->everyMinute()
     ->name('ipam:prune-cooling');

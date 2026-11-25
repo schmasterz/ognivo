@@ -71,6 +71,7 @@ services:
     env_file:
       - .env.production
     environment:
+      PHP_FPM_MAX_CHILDREN: ${PHP_FPM_MAX_CHILDREN:-30}
       AUDIT_DB_USERNAME: ${AUDIT_DB_USERNAME:-audit_writer}
       AUDIT_DB_PASSWORD: ${AUDIT_DB_PASSWORD:-}
       AUDIT_MAINT_DB_USERNAME: ${AUDIT_MAINT_DB_USERNAME:-audit_maintenance}
@@ -114,7 +115,52 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    command: php artisan queue:work --verbose --tries=3 --timeout=600 --max-time=3600
+    command: php artisan queue:work --queue=high,metrics,default --verbose --tries=3 --timeout=120 --max-time=3600
+    env_file:
+      - .env.production
+    environment:
+      RUN_MIGRATIONS: "false"
+      RUN_SEEDERS: "false"
+      AUDIT_DB_USERNAME: ${AUDIT_DB_USERNAME:-audit_writer}
+      AUDIT_DB_PASSWORD: ${AUDIT_DB_PASSWORD:-}
+      AUDIT_MAINT_DB_USERNAME: ${AUDIT_MAINT_DB_USERNAME:-audit_maintenance}
+      AUDIT_MAINT_DB_PASSWORD: ${AUDIT_MAINT_DB_PASSWORD:-}
+      DB_MIGRATION_USERNAME: ${DB_MIGRATION_USERNAME:-migration_user}
+      DB_MIGRATION_PASSWORD: ${DB_MIGRATION_PASSWORD:-}
+      AUDIT_STRICT_GRANTS: ${AUDIT_STRICT_GRANTS:-true}
+      AUDIT_HMAC_KEY_ID: ${AUDIT_HMAC_KEY_ID:-v1}
+      AUDIT_HMAC_KEY: ${AUDIT_HMAC_KEY:-}
+      AUDIT_PSEUDONYM_SALT: ${AUDIT_PSEUDONYM_SALT:-}
+      AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-400}
+      AUDIT_SEAL_DELAY_SECONDS: ${AUDIT_SEAL_DELAY_SECONDS:-120}
+      AUDIT_ATTEMPTED_EMAIL_DAYS: ${AUDIT_ATTEMPTED_EMAIL_DAYS:-30}
+      AUDIT_LOG_STDERR: ${AUDIT_LOG_STDERR:-false}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    volumes:
+      - app_storage:/var/www/html/storage/app
+    networks:
+      - app-network
+
+  # 4b. Laravel Heavy Queue Worker (Provisioning, Reinstalls, Snapshots)
+  queue-worker-heavy:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    image: ognivo-backend:prod
+    container_name: ognivo-queue-heavy
+    user: "www-data:www-data"
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    command: php artisan queue:work --queue=heavy,default --verbose --tries=3 --timeout=600 --max-time=3600
     env_file:
       - .env.production
     environment:

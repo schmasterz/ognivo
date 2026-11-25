@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Exceptions\NoHypervisorAvailableException;
+use App\Jobs\Enums\QueueName;
 use App\Models\Host;
 use App\Models\IpAllocation;
 use App\Models\User;
@@ -43,7 +44,9 @@ final class DeleteUserWorkloadsJob implements ShouldQueue
 
     public function __construct(
         public readonly User $user,
-    ) {}
+    ) {
+        $this->onQueue(QueueName::Heavy);
+    }
 
     /**
      * @return list<object>

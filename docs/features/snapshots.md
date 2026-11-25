@@ -74,3 +74,16 @@ Content-Type: application/json
 2. **Lifecycle Events (`app/Events/`):** `SnapshotStatusUpdated` broadcasts WebSocket notifications to tenant and administrator channels and serves as the single event hook across snapshot state transitions (`creating`, `ready`, `restoring`, `deleting`, `deleted`, `failed`).
 3. **Provenance Discriminator (`source`):** Distinguishes `manual` snapshots from future `scheduled` policy snapshots.
 4. **Frontend UI Registry (`frontend/src/lib/registry/vmRegistry.ts`):** Allows dynamically registering tabs (`registerVmTab`) and actions (`registerVmAction`) inside the VM details modal.
+
+---
+
+## 5. Hypervisor Reconciliation (`snapshots:sync`)
+
+To ensure snapshot state stays consistent even if snapshots are created or deleted out-of-band directly on hypervisor hosts, Ognivo provides the `snapshots:sync` Artisan command:
+
+```bash
+docker exec -it ognivo-backend php artisan snapshots:sync [host]
+```
+
+- **Scheduler:** Triggered hourly (`Schedule::command('snapshots:sync')->hourly()->withoutOverlapping(15)->runInBackground()`).
+- **Decoupled Architecture:** Decoupled from the 5-minute `vm:reconcile` loop to eliminate N+1 hypervisor HTTP calls and ensure state reconciliation remains lightweight.

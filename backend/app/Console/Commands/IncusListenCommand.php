@@ -32,6 +32,12 @@ class IncusListenCommand extends Command
 
     protected bool $shouldStop = false;
 
+    /** @var array<int, int> Host ID => consecutive failure count */
+    protected array $failureCount = [];
+
+    /** @var array<int, int> Host ID => epoch timestamp until which re-spawning is paused */
+    protected array $cooldownUntil = [];
+
     public function __construct(
         protected readonly IncusEventSyncService $syncService,
         protected readonly IncusEventTransportInterface $defaultTransport,
@@ -66,9 +72,14 @@ class IncusListenCommand extends Command
             return self::SUCCESS;
         }
 
-        // Test mode, one-off execution, or missing pcntl_fork extension
-        if (app()->runningUnitTests() || (bool) $this->option('once') || ! function_exists('pcntl_fork')) {
+        if (app()->runningUnitTests() || (bool) $this->option('once')) {
             return $this->runSequentialListener();
+        }
+
+        if (! function_exists('pcntl_fork')) {
+            $this->error("The 'pcntl' PHP extension is required to run the multi-host Incus listener daemon. Please install ext-pcntl or run with --once.");
+
+            return self::FAILURE;
         }
 
         return $this->runSupervisor();
@@ -93,44 +104,26 @@ class IncusListenCommand extends Command
     }
 
     /**
-     * Run sequential listener across active hosts (used in tests, one-off runs, or when pcntl is unavailable).
+     * Run sequential single-pass listener across active hosts (used in unit tests and --once runs).
      */
     protected function runSequentialListener(): int
     {
-        $isOnce = app()->runningUnitTests() || (bool) $this->option('once');
+        $hosts = Host::query()
+            ->where('is_active', true)
+            ->whereIn('driver', ['incus', 'lxd', 'fake'])
+            ->get();
 
-        while (! $this->shouldStop) {
-            $hosts = Host::query()
-                ->where('is_active', true)
-                ->whereIn('driver', ['incus', 'lxd', 'fake'])
-                ->get();
+        if ($hosts->isEmpty()) {
+            $this->warn('No active Incus/LXD host nodes found.');
 
-            if ($hosts->isEmpty()) {
-                if ($isOnce) {
-                    $this->warn('No active Incus/LXD host nodes found.');
+            return self::SUCCESS;
+        }
 
-                    return self::SUCCESS;
-                }
-
-                $this->warn('No active Incus/LXD host nodes found. Waiting for hosts to be added...');
-                sleep(2);
-
-                continue;
-            }
-
-            foreach ($hosts as $host) {
-                if ($this->shouldStop) {
-                    break;
-                }
-                $this->listenToHost($host);
-            }
-
-            if ($isOnce) {
+        foreach ($hosts as $host) {
+            if ($this->shouldStop) {
                 break;
             }
-
-            // In daemon mode, sleep briefly to prevent tight spin when transports return immediately
-            sleep(1);
+            $this->listenToHost($host);
         }
 
         return self::SUCCESS;
@@ -202,6 +195,10 @@ class IncusListenCommand extends Command
         // 2. Spawn worker processes for active hosts without a running worker
         foreach ($activeHosts as $host) {
             if (! isset($workers[$host->id])) {
+                if (isset($this->cooldownUntil[$host->id]) && time() < $this->cooldownUntil[$host->id]) {
+                    continue;
+                }
+
                 $pid = $this->spawnWorker($host);
                 if ($pid > 0) {
                     $workers[$host->id] = $pid;
@@ -282,7 +279,21 @@ class IncusListenCommand extends Command
             $status = 0;
             $res = pcntl_waitpid($pid, $status, WNOHANG);
             if ($res === $pid || $res === -1) {
-                $this->warn(sprintf('Worker process for host ID [%d] (PID %d) has exited.', $hostId, $pid));
+                /** @var int $status */
+                $exitCode = function_exists('pcntl_wexitstatus') ? pcntl_wexitstatus($status) : 0;
+                $isNormalExit = function_exists('pcntl_wifexited') && pcntl_wifexited($status) && $exitCode === 0;
+
+                if (! $isNormalExit) {
+                    $this->failureCount[$hostId] = ($this->failureCount[$hostId] ?? 0) + 1;
+                    $delay = min(15 * (2 ** ($this->failureCount[$hostId] - 1)), 300);
+                    $this->cooldownUntil[$hostId] = time() + $delay;
+                    $this->warn(sprintf('Worker for host ID [%d] (PID %d) exited unexpectedly (status %d). Backing off for %ds...', $hostId, $pid, $exitCode, $delay));
+                } else {
+                    $this->failureCount[$hostId] = 0;
+                    unset($this->cooldownUntil[$hostId]);
+                    $this->info(sprintf('Worker process for host ID [%d] (PID %d) has exited cleanly.', $hostId, $pid));
+                }
+
                 unset($workers[$hostId]);
             }
         }
@@ -362,7 +373,16 @@ class IncusListenCommand extends Command
         $transport->listen(
             $host,
             function (array $event) use ($host): void {
-                $this->line(sprintf('Received event: %s', json_encode($event)));
+                if ($this->output->isVerbose()) {
+                    $this->line(sprintf('Received event: %s', json_encode($event)));
+                }
+
+                try {
+                    DB::select('SELECT 1');
+                } catch (\Throwable) {
+                    DB::reconnect();
+                }
+
                 $vm = $this->syncService->handleLifecycleEvent($host, $event);
                 if ($vm !== null) {
                     $this->info(sprintf('Updated VM [%s] -> Status [%s]', $vm->name, $vm->status->getValue()));

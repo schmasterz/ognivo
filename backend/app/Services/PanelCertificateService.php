@@ -23,6 +23,18 @@ use RuntimeException;
  */
 final class PanelCertificateService
 {
+    public const int CACHE_TTL_SECONDS = 60;
+
+    private ?PanelCertificate $cachedActive = null;
+
+    private ?PanelCertificate $cachedRetiring = null;
+
+    private ?string $cachedActivePrivateKey = null;
+
+    private float $activeCacheTimestamp = 0.0;
+
+    private float $retiringCacheTimestamp = 0.0;
+
     public function __construct(
         private ?AuditLogger $auditLogger = null,
     ) {
@@ -125,7 +137,8 @@ final class PanelCertificateService
 
                 $fingerprint = strtolower((string) openssl_x509_fingerprint($certPem, 'sha256'));
 
-                return DB::transaction(function () use ($certPem, $keyPem, $fingerprint, $validFrom, $validTo): PanelCertificate {
+                /** @var PanelCertificate $newCert */
+                $newCert = DB::transaction(function () use ($certPem, $keyPem, $fingerprint, $validFrom, $validTo): PanelCertificate {
                     // If active certificate exists, mark it as retiring and clear active_marker
                     $existingActive = PanelCertificate::where('status', PanelCertificate::STATUS_ACTIVE)
                         ->lockForUpdate()
@@ -179,6 +192,10 @@ final class PanelCertificateService
 
                     return $certModel;
                 });
+
+                $this->clearMemoryCache();
+
+                return $newCert;
             } finally {
                 if (file_exists($tmpCnf)) {
                     @unlink($tmpCnf);
@@ -192,9 +209,17 @@ final class PanelCertificateService
      */
     public function getActiveCertificate(): ?PanelCertificate
     {
+        if ($this->cachedActive !== null && (microtime(true) - $this->activeCacheTimestamp) < self::CACHE_TTL_SECONDS) {
+            return $this->cachedActive;
+        }
+
         /** @var PanelCertificate|null $cert */
         $cert = PanelCertificate::where('active_marker', 1)->first()
             ?? PanelCertificate::where('status', PanelCertificate::STATUS_ACTIVE)->first();
+
+        $this->cachedActive = $cert;
+        $this->cachedActivePrivateKey = null;
+        $this->activeCacheTimestamp = microtime(true);
 
         return $cert;
     }
@@ -204,10 +229,42 @@ final class PanelCertificateService
      */
     public function getRetiringCertificate(): ?PanelCertificate
     {
+        if ($this->cachedRetiring !== null && (microtime(true) - $this->retiringCacheTimestamp) < self::CACHE_TTL_SECONDS) {
+            return $this->cachedRetiring;
+        }
+
         /** @var PanelCertificate|null $cert */
         $cert = PanelCertificate::where('status', PanelCertificate::STATUS_RETIRING)->first();
 
+        $this->cachedRetiring = $cert;
+        $this->retiringCacheTimestamp = microtime(true);
+
         return $cert;
+    }
+
+    /**
+     * Get the decrypted private key of the active certificate, memoized in memory.
+     */
+    public function getActivePrivateKey(): ?string
+    {
+        $active = $this->getActiveCertificate();
+        if ($active === null) {
+            return null;
+        }
+
+        return $this->cachedActivePrivateKey ??= $active->private_key;
+    }
+
+    /**
+     * Clear in-memory cached certificate instances and keys.
+     */
+    public function clearMemoryCache(): void
+    {
+        $this->cachedActive = null;
+        $this->cachedRetiring = null;
+        $this->cachedActivePrivateKey = null;
+        $this->activeCacheTimestamp = 0.0;
+        $this->retiringCacheTimestamp = 0.0;
     }
 
     /**
@@ -250,6 +307,7 @@ final class PanelCertificateService
             'status' => PanelCertificate::STATUS_REVOKED,
             'active_marker' => null,
         ]);
+        $this->clearMemoryCache();
 
         $this->logger()->record(new AuditEntry(
             action: AuditAction::CertRevoked,
@@ -273,6 +331,7 @@ final class PanelCertificateService
         $active = $this->getActiveCertificate();
         if ($active === null) {
             $active = $this->generate();
+            $this->clearMemoryCache();
         }
 
         $this->logger()->record(new AuditEntry(

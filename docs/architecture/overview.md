@@ -22,7 +22,8 @@ flowchart TB
         Backend["Laravel 13 PHP-FPM<br/>(:9000)"]
         Reverb["Laravel Reverb WS<br/>(:8080)"]
         ConsoleProxy["console-proxy (Node 26)<br/>(:8085)"]
-        Queue["queue-worker<br/>(php artisan queue:work)"]
+        Queue["queue-worker (fast)<br/>(high, metrics, default)"]
+        QueueHeavy["queue-worker-heavy<br/>(heavy, default)"]
         Scheduler["scheduler<br/>(php artisan schedule:work)"]
         IncusEvents["incus-events<br/>(php artisan incus:listen)"]
         MySQL[("MySQL 8.4 LTS<br/>(:3306 internal)")]
@@ -42,6 +43,8 @@ flowchart TB
     Backend --> Reverb
     Queue --> MySQL
     Queue --> Redis
+    QueueHeavy --> MySQL
+    QueueHeavy --> Redis
     Scheduler --> MySQL
     Scheduler --> Redis
     IncusEvents --> MySQL
@@ -50,6 +53,7 @@ flowchart TB
     ConsoleProxy -->|"GETDEL ticket"| Redis
     Backend -->|"mTLS (:8443)"| Incus
     Queue -->|"mTLS (:8443)"| Incus
+    QueueHeavy -->|"mTLS (:8443)"| Incus
     IncusEvents -->|"mTLS Events (:8443)"| Incus
     ConsoleProxy -->|"WSS Secret + SPKI Pin (:8443)"| Incus
 ```
@@ -117,7 +121,7 @@ sequenceDiagram
     participant API as VirtualMachineController
     participant Svc as VmProvisioningService
     participant DB as MySQL 8.4
-    participant Queue as Redis Queue Worker
+    participant Queue as queue-worker-heavy (heavy queue)
     participant Incus as Incus Hypervisor
     participant WS as Laravel Reverb
 
@@ -125,13 +129,15 @@ sequenceDiagram
     API->>Svc: provision(CreateVmDTO)
     Svc->>DB: Transaction + lockForUpdate (UserQuota & IpAllocation)
     Svc->>DB: Insert VirtualMachine (status = Provisioning)
-    Svc->>Queue: Dispatch ProvisionVmJob (afterCommit)
+    Svc->>Queue: Dispatch ProvisionVmJob to heavy queue (afterCommit)
     API-->>UI: 202 Accepted (Provisioning badge)
     Queue->>Incus: mTLS POST /1.0/instances & startInstance
     Queue->>DB: Transition status -> Running
     DB->>WS: Broadcast VirtualMachineStatusUpdated
     WS-->>UI: Live update status -> Running
 ```
+
+> **Note:** `ProvisionVmJob` is dispatched to the `heavy` queue and processed by `queue-worker-heavy`, isolating long-running provisioning tasks from fast control-plane jobs on `high`, `metrics`, and `default`.
 
 ### 4.2 WebSocket Broadcasting Channels (`backend/routes/channels.php`)
 

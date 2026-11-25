@@ -6,6 +6,7 @@ namespace App\Jobs;
 
 use App\Contracts\BackupTargetInterface;
 use App\Events\SnapshotStatusUpdated;
+use App\Jobs\Enums\QueueName;
 use App\Models\VirtualMachine;
 use App\Models\VmSnapshot;
 use App\States\Vm\Deleted;
@@ -41,6 +42,7 @@ final class RestoreSnapshotJob implements ShouldQueue
     public function __construct(
         public readonly VmSnapshot $snapshot,
     ) {
+        $this->onQueue(QueueName::Heavy);
         $this->initiatedAsRestoring = ($snapshot->status === VmSnapshot::STATUS_RESTORING);
     }
 

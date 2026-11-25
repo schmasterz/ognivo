@@ -53,6 +53,7 @@ function runWorkerUntilEmpty(int $maxSeconds = 10): int
         $artisan,
         'queue:work',
         'redis',
+        '--queue=high,metrics,default,heavy',
         '--stop-when-empty',
         '--timeout='.$maxSeconds,
     ];

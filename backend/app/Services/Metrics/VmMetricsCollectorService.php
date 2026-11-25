@@ -213,16 +213,72 @@ final class VmMetricsCollectorService
             $vmByProjectName[sprintf('%s/%s', $project, $vm->name)] = $vm;
         }
 
+        /** @var array<string, VirtualMachine> $targetVms */
+        $targetVms = [];
+        foreach ($rawMap as $key => $dto) {
+            if (isset($vmByProjectName[$key])) {
+                $targetVms[$key] = $vmByProjectName[$key];
+            }
+        }
+
+        $counterKeys = [];
+        $totalsKeys = [];
+        foreach ($targetVms as $vm) {
+            $counterKeys[$vm->id] = "metrics:counters:{$vm->id}";
+            $totalsKeys[$vm->id] = "metrics:totals_latest:{$vm->id}";
+        }
+
+        /** @var array<string, mixed> $countersMap */
+        $countersMap = $counterKeys !== [] ? Cache::many(array_values($counterKeys)) : [];
+        /** @var array<string, mixed> $totalsMap */
+        $totalsMap = $totalsKeys !== [] ? Cache::many(array_values($totalsKeys)) : [];
+
+        $nextCounters = [];
+        $nextTotals = [];
+
+        // Resolve any missing cached totals in a single batch DB query.
+        $missingTotalsVmIds = [];
+        foreach ($targetVms as $vm) {
+            $tKey = "metrics:totals_latest:{$vm->id}";
+            if (! isset($totalsMap[$tKey])) {
+                $missingTotalsVmIds[] = $vm->id;
+            }
+        }
+
+        if ($missingTotalsVmIds !== []) {
+            $latestTotalsRows = DB::table('vm_metric_totals')
+                ->whereIn('virtual_machine_id', array_values(array_unique($missingTotalsVmIds)))
+                ->orderByDesc('recorded_at_ts')
+                ->get(['virtual_machine_id', 'cpu_cores', 'ram_total_bytes', 'disk_total_bytes']);
+
+            foreach ($latestTotalsRows as $row) {
+                $vId = Cast::int($row->virtual_machine_id);
+                $tKey = "metrics:totals_latest:{$vId}";
+                if (! isset($totalsMap[$tKey])) {
+                    $resolvedTotals = [
+                        'cpu_cores' => Cast::int($row->cpu_cores),
+                        'ram_total_bytes' => Cast::int($row->ram_total_bytes),
+                        'disk_total_bytes' => Cast::int($row->disk_total_bytes),
+                    ];
+                    $totalsMap[$tKey] = $resolvedTotals;
+                    $nextTotals[$tKey] = $resolvedTotals;
+                }
+            }
+        }
+
         $sampleRows = [];
         $totalRows = [];
 
         foreach ($rawMap as $key => $dto) {
-            if (! isset($vmByProjectName[$key])) {
+            if (! isset($targetVms[$key])) {
                 continue;
             }
 
-            $vm = $vmByProjectName[$key];
-            $prior = Cast::arrayOrNull(Cache::get("metrics:counters:{$vm->id}"));
+            $vm = $targetVms[$key];
+            $cKey = "metrics:counters:{$vm->id}";
+            $tKey = "metrics:totals_latest:{$vm->id}";
+
+            $prior = Cast::arrayOrNull($countersMap[$cKey] ?? null);
             $effCpu = max(1, $vm->cpu_cores);
 
             $computed = $this->computeSampleFromDto(
@@ -236,27 +292,12 @@ final class VmMetricsCollectorService
             );
 
             $sampleRows[] = $computed['sample'];
-            Cache::put("metrics:counters:{$vm->id}", $computed['next_counters'], max(600, $interval * 4));
+            $nextCounters[$cKey] = $computed['next_counters'];
 
             $effRamTotal = $dto->memoryTotalBytes ?? ($vm->ram_mb * 1024 * 1024);
             $effDiskTotal = $dto->filesystemTotalBytes ?? ($vm->disk_gb * 1024 * 1024 * 1024);
 
-            $cachedTotals = Cast::arrayOrNull(Cache::get("metrics:totals_latest:{$vm->id}"));
-            if ($cachedTotals === null) {
-                $latestRow = DB::table('vm_metric_totals')
-                    ->where('virtual_machine_id', $vm->id)
-                    ->orderByDesc('recorded_at_ts')
-                    ->first(['cpu_cores', 'ram_total_bytes', 'disk_total_bytes']);
-
-                if ($latestRow !== null) {
-                    $cachedTotals = [
-                        'cpu_cores' => Cast::int($latestRow->cpu_cores),
-                        'ram_total_bytes' => Cast::int($latestRow->ram_total_bytes),
-                        'disk_total_bytes' => Cast::int($latestRow->disk_total_bytes),
-                    ];
-                    Cache::put("metrics:totals_latest:{$vm->id}", $cachedTotals, 86400 * 7);
-                }
-            }
+            $cachedTotals = Cast::arrayOrNull($totalsMap[$tKey] ?? null);
 
             $totalsChanged = $cachedTotals === null
                 || Cast::int($cachedTotals['cpu_cores'] ?? 0) !== $effCpu
@@ -271,12 +312,20 @@ final class VmMetricsCollectorService
                     'ram_total_bytes' => $effRamTotal,
                     'disk_total_bytes' => $effDiskTotal,
                 ];
-                Cache::put("metrics:totals_latest:{$vm->id}", [
+                $nextTotals[$tKey] = [
                     'cpu_cores' => $effCpu,
                     'ram_total_bytes' => $effRamTotal,
                     'disk_total_bytes' => $effDiskTotal,
-                ], 86400 * 7);
+                ];
             }
+        }
+
+        if ($nextCounters !== []) {
+            Cache::putMany($nextCounters, max(600, $interval * 4));
+        }
+
+        if ($nextTotals !== []) {
+            Cache::putMany($nextTotals, 86400 * 7);
         }
 
         if ($sampleRows !== []) {

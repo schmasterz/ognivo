@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Jobs\Enums\QueueName;
 use App\Models\User;
 use App\Models\VirtualMachine;
 use App\Services\VmLifecycleService;
@@ -27,7 +28,9 @@ final class SuspendUserWorkloadsJob implements ShouldQueue
 
     public function __construct(
         public readonly User $user,
-    ) {}
+    ) {
+        $this->onQueue(QueueName::Heavy);
+    }
 
     /**
      * @return list<object>

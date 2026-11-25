@@ -9,7 +9,7 @@ Ognivo adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.htm
 The following surfaces constitute the **Ognivo 1.0.0 Public Extension Surface** and will not receive breaking changes in any `1.y.0` minor or `1.y.z` patch release:
 
 1. **PHP Service Contracts (`App\Contracts\*`):**
-   - `DnsProviderInterface`, `NotificationChannelInterface`, `BillingProviderInterface`, `BackupTargetInterface`.
+   - `BackupTargetInterface` (stable core contract for snapshot/backup orchestration).
 2. **Domain Event Contracts & Catalog:**
    - `OgnivoEventInterface`, `AbstractOgnivoEvent` (`getEventName()`, `getPayload()`, `getOccurredAt()`, `getActor()`, `ShouldDispatchAfterCommit`), and all 17 `1.0.0` event names and payload keys.
 3. **Extension Discovery & Manifest Schema:**
@@ -25,6 +25,17 @@ The following surfaces constitute the **Ognivo 1.0.0 Public Extension Surface** 
    - `Idempotency-Key` behavior (`X-Idempotent-Replay: true`, `409 Conflict`, `422 Unprocessable Entity`).
 
 Extensions targeting `ognivo_version_constraint: "^1.0"` can rely on backward compatibility across all `1.x` releases.
+
+---
+
+## Developer Preview Contracts (`@experimental`)
+
+The following extension interfaces are currently in **Developer Preview (`@experimental`)**:
+- `DnsProviderInterface`
+- `NotificationChannelInterface`
+- `BillingProviderInterface`
+
+Unlike the frozen surfaces above, experimental contracts are provided as architectural scaffolding and may be refined in minor `1.y.0` releases based on real-world requirements from the first production reference implementations (e.g. Pro billing, external DNS providers). Once a production reference module integrated with core proves each contract's lifecycle, the interface will transition into the frozen SemVer commitment.
 
 ---
 

@@ -13,13 +13,14 @@ All components run inside an isolated Docker bridge network (`app-network-dev`).
 | 1 | `db` | `ognivo-db-dev` | MySQL 8.4 LTS, exposed on `127.0.0.1:3306` for local inspection |
 | 2 | `redis` | `ognivo-redis-dev` | Redis 7 Alpine for cache, queues, locks, and console tickets |
 | 3 | `backend` | `ognivo-backend-dev` | PHP 8.5-FPM Alpine running the Laravel 13 API |
-| 4 | `queue-worker` | `ognivo-queue-dev` | Asynchronous job processor (`php artisan queue:work`) |
-| 5 | `scheduler` | `ognivo-scheduler-dev` | Periodic task runner (`php artisan schedule:work`) |
-| 6 | `incus-events` | `ognivo-incus-events-dev` | Hypervisor event stream listener (`php artisan incus:listen`) |
-| 7 | `reverb` | `ognivo-reverb-dev` | Laravel Reverb WebSocket server on port `8080` |
-| 8 | `console-proxy` | `ognivo-console-proxy-dev` | Node.js 26 WebSocket-to-Incus mTLS console bridge (`:8085`) |
-| 9 | `frontend` | `ognivo-frontend-dev` | Next.js 16 dev server (`npm run dev`) on port `3000` with Turbopack |
-| 10 | `webserver` | `ognivo-nginx-dev` | Unified Nginx reverse proxy on port `80` |
+| 4 | `queue-worker` | `ognivo-queue-dev` | Fast asynchronous job processor (`php artisan queue:work --queue=high,metrics,default --timeout=120`) |
+| 5 | `queue-worker-heavy` | `ognivo-queue-dev-heavy` | Heavy asynchronous job processor for provisioning and snapshots (`php artisan queue:work --queue=heavy,default --timeout=600`) |
+| 6 | `scheduler` | `ognivo-scheduler-dev` | Periodic task runner (`php artisan schedule:work`) |
+| 7 | `incus-events` | `ognivo-incus-events-dev` | Hypervisor event stream listener (`php artisan incus:listen`) |
+| 8 | `reverb` | `ognivo-reverb-dev` | Laravel Reverb WebSocket server on port `8080` |
+| 9 | `console-proxy` | `ognivo-console-proxy-dev` | Node.js 26 WebSocket-to-Incus mTLS console bridge (`:8085`) |
+| 10 | `frontend` | `ognivo-frontend-dev` | Next.js 16 dev server (`npm run dev`) on port `3000` with Turbopack |
+| 11 | `webserver` | `ognivo-nginx-dev` | Unified Nginx reverse proxy on port `80` |
 
 ---
 
@@ -35,7 +36,7 @@ make up-dev
    - Automatically runs `composer install` if `backend/vendor/autoload.php` is missing on the host bind mount (e.g., on a fresh `git clone`).
    - Runs `php artisan migrate --force` and `php artisan audit:grants --force`.
    - When `APP_ENV=local` and `RUN_SEEDERS=true`, runs `php artisan db:seed --force` before starting PHP-FPM.
-4. **Workers & Real-Time Services:** `queue-worker`, `scheduler`, `incus-events`, `reverb`, and `console-proxy` start once `backend` reports `healthy`.
+4. **Workers & Real-Time Services:** `queue-worker`, `queue-worker-heavy`, `scheduler`, `incus-events`, `reverb`, and `console-proxy` start once `backend` reports `healthy`.
 5. **Frontend & Ingress:** `frontend` (Next.js Turbopack) and `webserver` (Nginx) start and begin serving requests on `http://localhost`.
 
 To manually re-run migrations or seeders, or to wipe the database volume and start fresh:

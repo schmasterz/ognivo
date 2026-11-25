@@ -68,90 +68,94 @@ final class VmMetricsRollupService
         $now = $nowEpoch ?? time();
         $closedEnd5m = intdiv($now, 300) * 300;
         $defaultLookback = $now - (max(12, $this->config()->rawRetentionHours()) * 3600);
-
-        /** @var mixed $cachedLast */
-        $cachedLast = Cache::get(self::CACHE_KEY_LAST_5M);
-        $start5m = is_numeric($cachedLast)
-            ? min($closedEnd5m, max(0, (int) $cachedLast - 300))
-            : max(0, intdiv($defaultLookback, 300) * 300);
+        $start5m = $this->resolveRollupStart(
+            self::CACHE_KEY_LAST_5M,
+            'vm_metric_rollups_5m',
+            300,
+            $closedEnd5m,
+            $defaultLookback,
+        );
 
         if ($start5m >= $closedEnd5m) {
             return 0;
         }
 
-        $rows = DB::table('vm_metric_samples')
-            ->where('bucket_ts', '>=', $start5m)
-            ->where('bucket_ts', '<', $closedEnd5m)
-            ->orderBy('virtual_machine_id')
-            ->orderBy('bucket_ts')
-            ->get();
+        $chunkSizeSeconds = 3600; // Process at most 1 hour (12 buckets) per chunk
+        $totalRecords = 0;
 
-        /** @var array<int, array<int, list<array<string, mixed>>>> $groups */
-        $groups = [];
-        foreach ($rows as $row) {
-            $attrs = get_object_vars($row);
-            $vmId = Cast::int($attrs['virtual_machine_id'] ?? 0);
-            $bucketTs = Cast::int($attrs['bucket_ts'] ?? 0);
-            $rollupTs = intdiv($bucketTs, 300) * 300;
+        for ($chunkStart = $start5m; $chunkStart < $closedEnd5m; $chunkStart += $chunkSizeSeconds) {
+            $chunkEnd = min($closedEnd5m, $chunkStart + $chunkSizeSeconds);
 
-            $groups[$vmId][$rollupTs][] = $attrs;
-        }
+            $rows = DB::table('vm_metric_samples')
+                ->where('bucket_ts', '>=', $chunkStart)
+                ->where('bucket_ts', '<', $chunkEnd)
+                ->orderBy('virtual_machine_id')
+                ->orderBy('bucket_ts')
+                ->get();
 
-        /** @var list<array<string, int|null>> $records */
-        $records = [];
-        foreach ($groups as $vmId => $buckets) {
-            foreach ($buckets as $rollupTs => $groupRows) {
-                $availMask = 0;
-                foreach ($groupRows as $groupRow) {
-                    $availMask |= Cast::int($groupRow['avail_mask'] ?? 0);
-                }
+            if ($rows->isEmpty()) {
+                continue;
+            }
 
-                /** @var array<string, int|null> $record */
-                $record = [
-                    'virtual_machine_id' => $vmId,
-                    'bucket_ts' => $rollupTs,
-                    'sample_count' => count($groupRows),
-                    'avail_mask' => $availMask,
-                ];
+            /** @var array<int, array<int, list<array<string, mixed>>>> $groups */
+            $groups = [];
+            foreach ($rows as $row) {
+                $attrs = get_object_vars($row);
+                $vmId = Cast::int($attrs['virtual_machine_id'] ?? 0);
+                $bucketTs = Cast::int($attrs['bucket_ts'] ?? 0);
+                $rollupTs = intdiv($bucketTs, 300) * 300;
 
-                foreach (self::METRIC_COLUMNS as $col) {
-                    $vals = [];
+                $groups[$vmId][$rollupTs][] = $attrs;
+            }
+
+            /** @var list<array<string, int|null>> $records */
+            $records = [];
+            foreach ($groups as $vmId => $buckets) {
+                foreach ($buckets as $rollupTs => $groupRows) {
+                    $availMask = 0;
                     foreach ($groupRows as $groupRow) {
-                        $val = Cast::intOrNull($groupRow[$col['raw']] ?? null);
-                        if ($val !== null) {
-                            $vals[] = $val;
+                        $availMask |= Cast::int($groupRow['avail_mask'] ?? 0);
+                    }
+
+                    /** @var array<string, int|null> $record */
+                    $record = [
+                        'virtual_machine_id' => $vmId,
+                        'bucket_ts' => $rollupTs,
+                        'sample_count' => count($groupRows),
+                        'avail_mask' => $availMask,
+                    ];
+
+                    foreach (self::METRIC_COLUMNS as $col) {
+                        $vals = [];
+                        foreach ($groupRows as $groupRow) {
+                            $val = Cast::intOrNull($groupRow[$col['raw']] ?? null);
+                            if ($val !== null) {
+                                $vals[] = $val;
+                            }
+                        }
+
+                        if ($vals !== []) {
+                            $record[$col['avg']] = (int) round(array_sum($vals) / count($vals));
+                            $record[$col['min']] = min($vals);
+                            $record[$col['max']] = max($vals);
+                        } else {
+                            $record[$col['avg']] = null;
+                            $record[$col['min']] = null;
+                            $record[$col['max']] = null;
                         }
                     }
 
-                    if ($vals !== []) {
-                        $record[$col['avg']] = (int) round(array_sum($vals) / count($vals));
-                        $record[$col['min']] = min($vals);
-                        $record[$col['max']] = max($vals);
-                    } else {
-                        $record[$col['avg']] = null;
-                        $record[$col['min']] = null;
-                        $record[$col['max']] = null;
-                    }
+                    $records[] = $record;
                 }
-
-                $records[] = $record;
             }
-        }
 
-        if ($records !== []) {
-            $updateColumns = $this->upsertUpdateColumns();
-            foreach (array_chunk($records, self::UPSERT_CHUNK_SIZE) as $chunk) {
-                DB::table('vm_metric_rollups_5m')->upsert(
-                    $chunk,
-                    ['virtual_machine_id', 'bucket_ts'],
-                    $updateColumns,
-                );
-            }
+            $this->upsertRollupRecords('vm_metric_rollups_5m', $records);
+            $totalRecords += count($records);
         }
 
         Cache::put(self::CACHE_KEY_LAST_5M, $closedEnd5m, 86400 * 7);
 
-        return count($records);
+        return $totalRecords;
     }
 
     /**
@@ -162,103 +166,153 @@ final class VmMetricsRollupService
         $now = $nowEpoch ?? time();
         $closedEnd1h = intdiv($now, 3600) * 3600;
         $defaultLookback = $now - (max(8, $this->config()->rollup5mRetentionDays()) * 86400);
-
-        /** @var mixed $cachedLast */
-        $cachedLast = Cache::get(self::CACHE_KEY_LAST_1H);
-        $start1h = is_numeric($cachedLast)
-            ? min($closedEnd1h, max(0, (int) $cachedLast - 3600))
-            : max(0, intdiv($defaultLookback, 3600) * 3600);
+        $start1h = $this->resolveRollupStart(
+            self::CACHE_KEY_LAST_1H,
+            'vm_metric_rollups_1h',
+            3600,
+            $closedEnd1h,
+            $defaultLookback,
+        );
 
         if ($start1h >= $closedEnd1h) {
             return 0;
         }
 
-        $rows = DB::table('vm_metric_rollups_5m')
-            ->where('bucket_ts', '>=', $start1h)
-            ->where('bucket_ts', '<', $closedEnd1h)
-            ->orderBy('virtual_machine_id')
-            ->orderBy('bucket_ts')
-            ->get();
+        $chunkSizeSeconds = 86400; // Process at most 24 hours per chunk
+        $totalRecords = 0;
 
-        /** @var array<int, array<int, list<array<string, mixed>>>> $groups */
-        $groups = [];
-        foreach ($rows as $row) {
-            $attrs = get_object_vars($row);
-            $vmId = Cast::int($attrs['virtual_machine_id'] ?? 0);
-            $bucketTs = Cast::int($attrs['bucket_ts'] ?? 0);
-            $rollupTs = intdiv($bucketTs, 3600) * 3600;
+        for ($chunkStart = $start1h; $chunkStart < $closedEnd1h; $chunkStart += $chunkSizeSeconds) {
+            $chunkEnd = min($closedEnd1h, $chunkStart + $chunkSizeSeconds);
 
-            $groups[$vmId][$rollupTs][] = $attrs;
-        }
+            $rows = DB::table('vm_metric_rollups_5m')
+                ->where('bucket_ts', '>=', $chunkStart)
+                ->where('bucket_ts', '<', $chunkEnd)
+                ->orderBy('virtual_machine_id')
+                ->orderBy('bucket_ts')
+                ->get();
 
-        /** @var list<array<string, int|null>> $records */
-        $records = [];
-        foreach ($groups as $vmId => $buckets) {
-            foreach ($buckets as $rollupTs => $groupRows) {
-                $sampleCount = 0;
-                $availMask = 0;
+            if ($rows->isEmpty()) {
+                continue;
+            }
 
-                foreach ($groupRows as $groupRow) {
-                    $sampleCount += Cast::int($groupRow['sample_count'] ?? 0);
-                    $availMask |= Cast::int($groupRow['avail_mask'] ?? 0);
-                }
+            /** @var array<int, array<int, list<array<string, mixed>>>> $groups */
+            $groups = [];
+            foreach ($rows as $row) {
+                $attrs = get_object_vars($row);
+                $vmId = Cast::int($attrs['virtual_machine_id'] ?? 0);
+                $bucketTs = Cast::int($attrs['bucket_ts'] ?? 0);
+                $rollupTs = intdiv($bucketTs, 3600) * 3600;
 
-                /** @var array<string, int|null> $record */
-                $record = [
-                    'virtual_machine_id' => $vmId,
-                    'bucket_ts' => $rollupTs,
-                    'sample_count' => $sampleCount,
-                    'avail_mask' => $availMask,
-                ];
+                $groups[$vmId][$rollupTs][] = $attrs;
+            }
 
-                foreach (self::METRIC_COLUMNS as $col) {
-                    $weightedSum = 0;
-                    $weightCount = 0;
-                    $minVal = null;
-                    $maxVal = null;
+            /** @var list<array<string, int|null>> $records */
+            $records = [];
+            foreach ($groups as $vmId => $buckets) {
+                foreach ($buckets as $rollupTs => $groupRows) {
+                    $sampleCount = 0;
+                    $availMask = 0;
 
                     foreach ($groupRows as $groupRow) {
-                        $weight = max(1, Cast::int($groupRow['sample_count'] ?? 1));
-                        $avg = Cast::intOrNull($groupRow[$col['avg']] ?? null);
-                        if ($avg !== null) {
-                            $weightedSum += $avg * $weight;
-                            $weightCount += $weight;
-                        }
-
-                        $min = Cast::intOrNull($groupRow[$col['min']] ?? null);
-                        if ($min !== null) {
-                            $minVal = $minVal === null ? $min : min($minVal, $min);
-                        }
-
-                        $max = Cast::intOrNull($groupRow[$col['max']] ?? null);
-                        if ($max !== null) {
-                            $maxVal = $maxVal === null ? $max : max($maxVal, $max);
-                        }
+                        $sampleCount += Cast::int($groupRow['sample_count'] ?? 0);
+                        $availMask |= Cast::int($groupRow['avail_mask'] ?? 0);
                     }
 
-                    $record[$col['avg']] = $weightCount > 0 ? (int) round($weightedSum / $weightCount) : null;
-                    $record[$col['min']] = $minVal;
-                    $record[$col['max']] = $maxVal;
+                    /** @var array<string, int|null> $record */
+                    $record = [
+                        'virtual_machine_id' => $vmId,
+                        'bucket_ts' => $rollupTs,
+                        'sample_count' => $sampleCount,
+                        'avail_mask' => $availMask,
+                    ];
+
+                    foreach (self::METRIC_COLUMNS as $col) {
+                        $weightedSum = 0;
+                        $weightCount = 0;
+                        $minVal = null;
+                        $maxVal = null;
+
+                        foreach ($groupRows as $groupRow) {
+                            $weight = max(1, Cast::int($groupRow['sample_count'] ?? 1));
+                            $avg = Cast::intOrNull($groupRow[$col['avg']] ?? null);
+                            if ($avg !== null) {
+                                $weightedSum += $avg * $weight;
+                                $weightCount += $weight;
+                            }
+
+                            $min = Cast::intOrNull($groupRow[$col['min']] ?? null);
+                            if ($min !== null) {
+                                $minVal = $minVal === null ? $min : min($minVal, $min);
+                            }
+
+                            $max = Cast::intOrNull($groupRow[$col['max']] ?? null);
+                            if ($max !== null) {
+                                $maxVal = $maxVal === null ? $max : max($maxVal, $max);
+                            }
+                        }
+
+                        $record[$col['avg']] = $weightCount > 0 ? (int) round($weightedSum / $weightCount) : null;
+                        $record[$col['min']] = $minVal;
+                        $record[$col['max']] = $maxVal;
+                    }
+
+                    $records[] = $record;
                 }
-
-                $records[] = $record;
             }
-        }
 
-        if ($records !== []) {
-            $updateColumns = $this->upsertUpdateColumns();
-            foreach (array_chunk($records, self::UPSERT_CHUNK_SIZE) as $chunk) {
-                DB::table('vm_metric_rollups_1h')->upsert(
-                    $chunk,
-                    ['virtual_machine_id', 'bucket_ts'],
-                    $updateColumns,
-                );
-            }
+            $this->upsertRollupRecords('vm_metric_rollups_1h', $records);
+            $totalRecords += count($records);
         }
 
         Cache::put(self::CACHE_KEY_LAST_1H, $closedEnd1h, 86400 * 35);
 
-        return count($records);
+        return $totalRecords;
+    }
+
+    /**
+     * Resolve the rollup start timestamp using cached cursor, DB max bucket fallback, or retention lookback.
+     */
+    private function resolveRollupStart(
+        string $cacheKey,
+        string $table,
+        int $bucketSeconds,
+        int $closedEnd,
+        int $defaultLookback,
+    ): int {
+        /** @var mixed $cachedLast */
+        $cachedLast = Cache::get($cacheKey);
+        if (is_numeric($cachedLast)) {
+            return min($closedEnd, max(0, (int) $cachedLast - $bucketSeconds));
+        }
+
+        /** @var mixed $maxDbBucket */
+        $maxDbBucket = DB::table($table)->max('bucket_ts');
+        if (is_numeric($maxDbBucket) && (int) $maxDbBucket > 0) {
+            return min($closedEnd, max(0, (int) $maxDbBucket - $bucketSeconds));
+        }
+
+        return max(0, intdiv($defaultLookback, $bucketSeconds) * $bucketSeconds);
+    }
+
+    /**
+     * Upsert aggregated rollup records into the target rollup table in chunks.
+     *
+     * @param  list<array<string, int|null>>  $records
+     */
+    private function upsertRollupRecords(string $table, array $records): void
+    {
+        if ($records === []) {
+            return;
+        }
+
+        $updateColumns = $this->upsertUpdateColumns();
+        foreach (array_chunk($records, self::UPSERT_CHUNK_SIZE) as $chunk) {
+            DB::table($table)->upsert(
+                $chunk,
+                ['virtual_machine_id', 'bucket_ts'],
+                $updateColumns,
+            );
+        }
     }
 
     /**

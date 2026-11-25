@@ -527,8 +527,8 @@ final class VmSnapshotServiceAndJobsTest extends TestCase
         ];
         $this->fakeDriver->statuses[$this->vm->name] = 'Stopped';
 
-        // Run reconciliation via artisan command (which invokes VmReconciliationService -> syncFromHypervisor)
-        $this->artisan('vm:reconcile', ['host' => $this->host->id])
+        // Run snapshot sync via dedicated artisan command (which invokes VmSnapshotService -> syncFromHypervisor)
+        $this->artisan('snapshots:sync', ['host' => $this->host->id])
             ->assertExitCode(0);
 
         // Stale snapshot was removed

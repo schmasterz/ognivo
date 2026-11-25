@@ -8,6 +8,7 @@
     "require": {
         "php": "^8.5",
         "ext-openssl": "*",
+        "ext-pcntl": "*",
         "composer/semver": "^3.4",
         "dedoc/scramble": "^0.13.52",
         "guzzlehttp/guzzle": "^7.8.2",

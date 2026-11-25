@@ -30,13 +30,12 @@ class VmReconciliationService
 
     public function __construct(
         protected readonly HypervisorManager $hypervisorManager,
-        protected readonly ?VmSnapshotService $snapshotService = null,
     ) {}
 
     /**
      * Reconcile instances for all active hosts or a specific host.
      *
-     * @return array{hosts_checked: int, drifts_detected: int, drifts_resolved: int, snapshots_synced: int}
+     * @return array{hosts_checked: int, drifts_detected: int, drifts_resolved: int}
      */
     public function reconcile(?Host $targetHost = null): array
     {
@@ -50,7 +49,6 @@ class VmReconciliationService
                 'hosts_checked' => 0,
                 'drifts_detected' => 0,
                 'drifts_resolved' => 0,
-                'snapshots_synced' => 0,
             ];
 
             foreach ($hosts as $host) {
@@ -58,20 +56,6 @@ class VmReconciliationService
                 $hostStats = $this->reconcileHost($host);
                 $stats['drifts_detected'] += $hostStats['drifts_detected'];
                 $stats['drifts_resolved'] += $hostStats['drifts_resolved'];
-                $stats['snapshots_synced'] += $hostStats['snapshots_synced'];
-            }
-
-            if ($targetHost === null) {
-                $unassignedVms = VirtualMachine::query()
-                    ->whereNull('host_id')
-                    ->whereNotIn('status', ['deleted'])
-                    ->get();
-
-                foreach ($unassignedVms as $vm) {
-                    if ($this->syncVmSnapshots($vm)) {
-                        $stats['snapshots_synced']++;
-                    }
-                }
             }
 
             return $stats;
@@ -83,13 +67,12 @@ class VmReconciliationService
     /**
      * Reconcile instances for a single host.
      *
-     * @return array{drifts_detected: int, drifts_resolved: int, snapshots_synced: int}
+     * @return array{drifts_detected: int, drifts_resolved: int}
      */
     public function reconcileHost(Host $host): array
     {
         $detected = 0;
         $resolved = 0;
-        $snapshotsSynced = 0;
 
         $driver = $this->hypervisorManager->driverForHost($host);
 
@@ -104,7 +87,7 @@ class VmReconciliationService
             }
 
             // Do not report false missing_on_host when the host is down
-            return ['drifts_detected' => 0, 'drifts_resolved' => 0, 'snapshots_synced' => 0];
+            return ['drifts_detected' => 0, 'drifts_resolved' => 0];
         }
 
         if ($host->status === 'unreachable' || $host->status === 'offline') {
@@ -252,8 +235,8 @@ class VmReconciliationService
                 ]);
                 $detected++;
             } else {
-                // 5. Instance exists on both: verify live status using getInstanceStatus()
-                $actualStatus = $driver->getInstanceStatus($vm);
+                // 5. Instance exists on both: verify live status from gathered host instances
+                $actualStatus = $hostInstances[$key]['status'];
                 $normalizedActual = $this->normalizeStatus($actualStatus);
                 $normalizedExpected = $this->normalizeStatus($vm->status->getValue());
 
@@ -285,37 +268,12 @@ class VmReconciliationService
                     }
                 }
             }
-
-            // Reconcile snapshots when instance is present on host (or when hostInstances list was empty in fake mode)
-            if (isset($hostInstances[$key]) || $hostInstances === []) {
-                if ($this->syncVmSnapshots($vm)) {
-                    $snapshotsSynced++;
-                }
-            }
         }
 
         return [
             'drifts_detected' => $detected,
             'drifts_resolved' => $resolved,
-            'snapshots_synced' => $snapshotsSynced,
         ];
-    }
-
-    /**
-     * Synchronize snapshots for a single virtual machine from its hypervisor backup target.
-     */
-    protected function syncVmSnapshots(VirtualMachine $vm): bool
-    {
-        try {
-            $service = $this->snapshotService ?? app(VmSnapshotService::class);
-            $service->syncFromHypervisor($vm);
-
-            return true;
-        } catch (\Throwable $e) {
-            Log::warning(sprintf('Failed to reconcile snapshots for VM #%d (%s): %s', $vm->id, $vm->name, $e->getMessage()));
-
-            return false;
-        }
     }
 
     /**

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Jobs\Concerns\InteractsWithHypervisorNetwork;
+use App\Jobs\Enums\QueueName;
 use App\Models\VirtualMachine;
 use App\Services\Hypervisor\HypervisorManager;
 use App\States\Vm\Deleted;
@@ -62,7 +63,9 @@ final class ReinstallVmJob implements ShouldQueue
         public readonly ?string $osImage = null,
         public readonly array|string|null $cloudInit = null,
         public readonly ?int $allocationId = null,
-    ) {}
+    ) {
+        $this->onQueue(QueueName::Heavy);
+    }
 
     /**
      * Get the middleware the job should pass through.

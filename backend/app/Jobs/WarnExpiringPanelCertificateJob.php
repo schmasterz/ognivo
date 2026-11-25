@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Jobs\Enums\QueueName;
 use App\Models\PanelCertificate;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -18,6 +19,11 @@ final class WarnExpiringPanelCertificateJob implements ShouldQueue
     use InteractsWithQueue;
     use Queueable;
     use SerializesModels;
+
+    public function __construct()
+    {
+        $this->onQueue(QueueName::Default);
+    }
 
     /**
      * Execute the job.

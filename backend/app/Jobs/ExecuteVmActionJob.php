@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Jobs\Enums\QueueName;
 use App\Models\VirtualMachine;
 use App\Services\VmLifecycleService;
 use App\States\Vm\Deleted;
@@ -36,7 +37,9 @@ final class ExecuteVmActionJob implements ShouldQueue
         public readonly VirtualMachine $vm,
         public readonly string $action,
         public readonly bool $force = false,
-    ) {}
+    ) {
+        $this->onQueue(QueueName::High);
+    }
 
     /**
      * Get the middleware the job should pass through.

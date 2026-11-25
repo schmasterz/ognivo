@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Jobs\Enums\QueueName;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -26,7 +27,9 @@ final class PurgeVmMetricsJob implements ShouldQueue
 
     public function __construct(
         public readonly int $virtualMachineId,
-    ) {}
+    ) {
+        $this->onQueue(QueueName::Default);
+    }
 
     /**
      * @return list<WithoutOverlapping>
