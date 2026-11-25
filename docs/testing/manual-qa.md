@@ -30,7 +30,7 @@ Open the development panel at **`http://localhost`**.
 
 ### Scenario E: Quota Groups & Multi-Tenant Synchronization
 1. Log in as Administrator and navigate to **Users & Quotas** (`/users`).
-2. Click **Quota Groups & Plans** to inspect `Standard Tier` (`★ Default`), `Developer Tier`, and `Enterprise Unlimited`.
+2. Click **Quota Groups & Plans** to inspect `Standard Tier` (`★ Default`), `Developer Tier`, and `Performance Unlimited`.
 3. Edit any Quota Group and save: all tenants assigned to that group immediately receive the updated resource boundaries.
 4. In the Create/Edit User modal, verify that individual quota inputs are locked while a preset Quota Group is selected, and unlock only when **No Group (Custom)** is chosen.
 

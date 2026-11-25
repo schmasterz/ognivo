@@ -22,13 +22,13 @@ Step-by-step guide to configure, build, deploy, and operate the **Ognivo** produ
 make secrets
 ```
 
-If deploying on a custom domain (e.g., `panel.example.com`), edit `.env.production` **before** building the images:
+If deploying on a custom domain (e.g., `panel.example.com`), edit `.env.production`:
 ```ini
 APP_URL=https://panel.example.com
 REVERB_ALLOWED_ORIGINS=https://panel.example.com
 SANCTUM_STATEFUL_DOMAINS=panel.example.com
 ```
-*(Note: `NEXT_PUBLIC_REVERB_APP_KEY` and `NEXT_PUBLIC_API_URL` are embedded into the Next.js bundle at build time.)*
+*(Note: Frontend configuration is runtime-driven — Node.js reads container environment variables upon request and feeds `<ConfigProvider>` and `GET /api/v1/config`. Changing variables in `.env.production` only requires recreating or restarting the container with `make up-prod` or `docker compose restart frontend`, without `make build-prod`.)*
 
 ### Step 2: Build & Start the Production Stack
 ```bash
@@ -40,7 +40,7 @@ make up-prod
 ```
 
 > [!TIP]
-> If the `ognivo-*:prod` images have never been built on the host, `make up-prod` will build them automatically. However, running `make build-prod` explicitly is recommended whenever deploying code updates or changing `NEXT_PUBLIC_*` variables in `.env.production`.
+> If the `ognivo-*:prod` images have never been built on the host, `make up-prod` will build them automatically. Running `make build-prod` explicitly is only needed when deploying code or dependency updates, not when changing environment variables in `.env.production`.
 
 Verify that all containers report `Up ... (healthy)`:
 

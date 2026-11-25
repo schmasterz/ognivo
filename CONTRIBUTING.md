@@ -74,15 +74,15 @@ Pull requests are evaluated based on:
 
 Contributors are encouraged to discuss substantial integrations and architectural changes before starting implementation.
 
-## Commercial Modules
+## External Extensions
 
-Ognivo may offer optional commercial modules and services alongside its open-source Core.
+Ognivo may offer optional external extensions / modules and services alongside its open-source Core.
 
-Commercial modules are maintained and distributed separately under their respective licenses.
+External extensions / modules are maintained and distributed separately under their respective licenses.
 
-Contributions to Ognivo Core do not automatically grant contribution rights, ownership, or licensing rights over separately maintained commercial modules.
+Contributions to Ognivo Core do not automatically grant contribution rights, ownership, or licensing rights over separately maintained external extensions / modules.
 
-Contributions to commercial modules, if accepted, may require a separate written agreement and will be governed by the applicable commercial license and contribution terms.
+Contributions to external extensions / modules, if accepted, may require a separate written agreement and will be governed by the applicable license and contribution terms.
 
 ## Development Setup
 
@@ -164,7 +164,7 @@ By submitting a contribution to Ognivo Core, you agree that your contribution wi
 
 You retain the copyright to your contributions while granting the rights provided by the project's license.
 
-Commercial modules and other separately maintained components may be distributed under different licenses.
+External extensions / modules and other separately maintained components may be distributed under different licenses.
 
 ## Questions
 

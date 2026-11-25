@@ -71,7 +71,7 @@ Seeded by `backend/database/seeders/DatabaseSeeder.php`. The seeder refuses to r
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Standard Tier** | Yes (`★`) | `2` | `4` | `4 GB` | `80 GB` | `1` | `3` |
 | **Developer Tier** | No | `8` | `16` | `16 GB` | `300 GB` | `4` | `10` |
-| **Enterprise Tier** | No | `32` | `64` | `64 GB` | `1500 GB` | `16` | `30` |
+| **Performance Tier** | No | `32` | `64` | `64 GB` | `1500 GB` | `16` | `30` |
 
 All three tiers have finite limits. Unlimited (`∞`, stored as `-1`) is only used for the seeded administrator's personal quota. You can create an unlimited group yourself under **Users & Quotas → Quota Groups & Plans**.
 

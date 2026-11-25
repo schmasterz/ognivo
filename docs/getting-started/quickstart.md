@@ -39,7 +39,7 @@ Runs [`scripts/gen-secrets.sh`](../../scripts/gen-secrets.sh), which creates `.e
 > [!NOTE]
 > - **Idempotent by design:** Running `make secrets` multiple times will **never** overwrite existing valid secrets.
 > - **Auto-triggered:** Running `make up-dev`, `make up-prod`, `make build-dev`, or `make build-prod` automatically runs `make secrets` if the corresponding `.env.*` file does not exist yet.
-> - **Applying `.env` changes / key rotations:** Whenever you manually edit `.env.development` or `.env.production` or rotate keys, run `make up-dev` or `make up-prod` so Docker Compose recreates the containers with the updated environment variables.
+> - **Applying `.env` changes / key rotations:** Whenever you manually edit `.env.development` or `.env.production` or rotate keys, run `make up-dev` or `make up-prod` (or `docker compose restart frontend` when restarting the frontend process) so the containers pick up the updated environment variables. Frontend configuration is runtime-driven (Node.js reads container environment variables upon request and feeds `<ConfigProvider>` and `GET /api/v1/config`), so `make build-prod` is not required.
 
 ---
 
@@ -48,7 +48,7 @@ Runs [`scripts/gen-secrets.sh`](../../scripts/gen-secrets.sh), which creates `.e
 > [!IMPORTANT]
 > ### Does `make up-dev` / `make up-prod` build Docker images automatically?
 > - **Yes, on first run:** If the local Docker images (`ognivo-backend`, `ognivo-frontend`, `ognivo-console-proxy`) do not exist yet, running `make up-dev` or `make up-prod` will **automatically build them** before starting the containers.
-> - **When to run `make build-dev` or `make build-prod` explicitly:** Once the images exist locally, Docker Compose reuses them on subsequent `make up-*` runs. Run `make build-dev` or `make build-prod` whenever you pull updates that modify a `Dockerfile`, `composer.json`, `package.json`, or (in Production) frontend `NEXT_PUBLIC_*` environment variables and source code.
+> - **When to run `make build-dev` or `make build-prod` explicitly:** Once the images exist locally, Docker Compose reuses them on subsequent `make up-*` runs. Run `make build-dev` or `make build-prod` whenever you pull updates that modify a `Dockerfile`, `composer.json`, `package.json`, or application source code. Changing environment variables in `.env` only requires restarting or recreating the containers (`make up-prod` / `make up-dev` or `docker compose restart frontend`), without `make build-prod`.
 
 Choose either **Option A (Development)** or **Option B (Production)** below. Starting one environment automatically stops the other to prevent host port conflicts.
 
@@ -81,7 +81,7 @@ Wait ~20–30 seconds on the very first run for MySQL initialization and migrati
 
 | Role | Email | Password | Quota Tier |
 | :--- | :--- | :--- | :--- |
-| **Administrator** | `admin@ognivo.local` | `password` | **Enterprise Unlimited** (`∞` resources) |
+| **Administrator** | `admin@ognivo.local` | `password` | **Performance Unlimited** (`∞` resources) |
 | **Customer** | `customer@ognivo.local` | `password` | **Standard Tier** (`3` VMs, `6` vCPU, `8 GB` RAM) |
 
 ![Ognivo Web Panel](../assets/dashboard-overview.png)
@@ -98,7 +98,7 @@ Wait ~20–30 seconds on the very first run for MySQL initialization and migrati
 Hardened, self-contained deployment with HTTPS on port `443`, strict MySQL privilege separation, and zero internal port exposure.
 
 #### Step 1: Configure Domain (Optional — Defaults to `localhost`)
-If deploying on a real domain (e.g., `panel.example.com`), update `.env.production` **before** building:
+If deploying on a real domain (e.g., `panel.example.com`), update `.env.production`:
 ```ini
 APP_URL=https://panel.example.com
 REVERB_ALLOWED_ORIGINS=https://panel.example.com

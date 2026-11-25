@@ -1,6 +1,6 @@
 # Ognivo Documentation Hub
 
-Welcome to the **Ognivo** technical documentation. All guides are organized into five categories. For a short overview of the project, see the [main README](../README.md).
+Welcome to the **Ognivo** technical documentation. All guides are organized into six categories. For a short overview of the project, see the [main README](../README.md).
 
 ![Ognivo Dashboard Overview](assets/dashboard-overview.png)
 
@@ -34,6 +34,15 @@ Welcome to the **Ognivo** technical documentation. All guides are organized into
 - **[Automated Testing & Static Analysis](testing/automated-testing.md)** - Running SQLite unit tests, MySQL 8.4 + Redis 7 integration tests, PHPStan Level 10, Psalm ErrorLevel 1, and frontend checks.
 - **[Manual QA & API Verification](testing/manual-qa.md)** - End-to-end browser verification scenarios and ready-to-use `curl` API commands.
 - **[Manual Incus Network Tests](testing/manual-incus-network-tests.md)** - Hands-on runbook for testing routed, bridged, macvlan, and manual IP pools against a real Incus host.
+
+## 6. Extension Points & Developer Guides (`docs/extensions/`)
+- **[Extension Architecture & Manifest](extensions/index.md)** - Architecture overview, `ognivo-extension.json` manifest specification, Composer PSR-4 discovery via `ExtensionRegistry`, and `/api/v1/extensions` API.
+- **[Domain Events Catalog](extensions/events-catalog.md)** - Transaction-safe event dispatching (`ShouldDispatchAfterCommit`), payload schemas, and event catalog for all 17 domain events.
+- **[Service Contracts](extensions/service-contracts.md)** - Core extension interfaces (`DnsProviderInterface`, `NotificationChannelInterface`, `BillingProviderInterface`, `BackupTargetInterface`) and container binding.
+- **[Frontend Slots & Theming](extensions/frontend-slots.md)** - UI slot registry (`slotRegistry.ts`), navigation registry, and theme token customizations.
+- **[Webhooks & Service Tokens](extensions/webhooks-and-tokens.md)** - HMAC-SHA256 webhook delivery, retry policies, and `srv_` service tokens with scoped abilities and system audit logging.
+- **[Idempotency Engine](extensions/idempotency.md)** - `Idempotency-Key` header, request fingerprinting, atomic locks, and replay responses.
+- **[Stability Policy](extensions/stability-policy.md)** - SemVer contract freeze from 1.0.0, deprecation cycle, and breaking change guarantees.
 
 ---
 
