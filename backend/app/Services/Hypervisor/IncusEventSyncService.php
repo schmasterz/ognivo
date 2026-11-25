@@ -99,6 +99,7 @@ class IncusEventSyncService
                             $vm->save();
                             Log::info(sprintf('Incus event: VM [%s] transitioned to Stopped on host [%s].', $vm->name, $host->name));
                         }
+                        Cache::forget("metrics:counters:{$vm->id}");
                         break;
 
                     case 'instance-deleted':
@@ -108,6 +109,8 @@ class IncusEventSyncService
                             app(IpManagementService::class)->releaseIp($vm);
                             Log::info(sprintf('Incus event: VM [%s] transitioned to Deleted on host [%s].', $vm->name, $host->name));
                         }
+                        Cache::forget("metrics:counters:{$vm->id}");
+                        Cache::forget("metrics:totals_latest:{$vm->id}");
                         break;
 
                     case 'instance-paused':
