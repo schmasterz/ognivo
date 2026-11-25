@@ -74,6 +74,7 @@ To diagnose failures in specific background daemons:
 ```bash
 docker logs -f ognivo-backend-dev
 docker logs -f ognivo-queue-dev
+docker logs -f ognivo-queue-dev-heavy
 docker logs -f ognivo-incus-events-dev
 docker logs -f ognivo-console-proxy-dev
 docker logs -f ognivo-frontend-dev

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Jobs\Enums\QueueName;
 use App\Models\Host;
 use App\Services\Metrics\VmMetricsCollectorService;
 use App\Services\Metrics\VmMetricsConfigService;
@@ -30,7 +31,9 @@ final class CollectHostMetricsJob implements ShouldQueue
     public function __construct(
         public readonly int $hostId,
         public readonly ?int $nowEpoch = null,
-    ) {}
+    ) {
+        $this->onQueue(QueueName::Metrics);
+    }
 
     /**
      * @return list<WithoutOverlapping>

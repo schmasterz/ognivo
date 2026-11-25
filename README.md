@@ -90,9 +90,9 @@ flowchart TB
     Backend["Laravel 13 API (PHP 8.5-FPM)<br/>(:9000)"]
     Reverb["Laravel Reverb WS<br/>(:8080)"]
     ConsoleProxy["Console proxy (Node.js)<br/>(:8085)"]
-    Workers["Background daemons<br/>(queue-worker, scheduler, incus-events)"]
+    Workers["Background daemons<br/>(queue-worker, queue-worker-heavy, scheduler, incus-events)"]
     MySQL[("MySQL 8.4 LTS<br/>(app and audit grants)")]
-    Redis[("Redis 7<br/>(queues, locks, terminal tickets)")]
+    Redis[("Redis 7<br/>(queues [high, metrics, default, heavy], locks, terminal tickets)")]
   end
 
   Incus["Incus / LXD hypervisor<br/>(mTLS REST and WSS API :8443)"]

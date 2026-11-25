@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Jobs\Enums\QueueName;
 use App\Models\WebhookDelivery;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -36,7 +37,9 @@ final class DeliverWebhookJob implements ShouldQueue
 
     public function __construct(
         public readonly WebhookDelivery $delivery,
-    ) {}
+    ) {
+        $this->onQueue(QueueName::Default);
+    }
 
     /**
      * Execute the webhook HTTP delivery and record the outcome.
