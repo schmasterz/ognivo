@@ -54,7 +54,7 @@ Open the development panel at **`http://localhost`**.
    - Click **Console** on a running instance.
    - Verify the `xterm.js` terminal connects (`Connected` badge), echoes shell commands, supports **Fullscreen**, **Boot Log** viewing, and **Reconnect**.
 2. **As Administrator (`admin@ognivo.local`):**
-   - Attempt to open a tenant's console or call `POST /api/vms/{id}/console`.
+   - Attempt to open a tenant's console or call `POST /api/v1/vms/{id}/console`.
    - Confirm access is rejected with `403 Forbidden` (*"Console access is restricted to the workload owner only. Administrators are denied guest access."*) and logged in the Audit Log as `vm.action.denied` (`console.ticket`).
 
 ---
@@ -63,7 +63,7 @@ Open the development panel at **`http://localhost`**.
 
 ### 2.1 Authenticate & Obtain Bearer Token
 ```bash
-curl -s -X POST http://localhost/api/login \
+curl -s -X POST http://localhost/api/v1/login \
   -H "Content-Type: application/json" \
   -d '{"email":"admin@ognivo.local","password":"password"}'
 ```
@@ -71,11 +71,11 @@ curl -s -X POST http://localhost/api/login \
 ### 2.2 Quota Groups Management
 ```bash
 # List Quota Groups
-curl -s http://localhost/api/admin/quota-groups \
+curl -s http://localhost/api/v1/admin/quota-groups \
   -H "Authorization: Bearer <ADMIN_TOKEN>"
 
 # Update a Quota Group (automatically syncs all assigned tenants)
-curl -s -X PUT http://localhost/api/admin/quota-groups/1 \
+curl -s -X PUT http://localhost/api/v1/admin/quota-groups/1 \
   -H "Authorization: Bearer <ADMIN_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -93,36 +93,36 @@ curl -s -X PUT http://localhost/api/admin/quota-groups/1 \
 ### 2.3 Host Nodes & IP Pools
 ```bash
 # List active compute nodes
-curl -s http://localhost/api/hosts \
+curl -s http://localhost/api/v1/hosts \
   -H "Authorization: Bearer <USER_TOKEN>"
 
 # Filter compute nodes as admin (search, status, is_active, driver)
-curl -s "http://localhost/api/admin/hosts?search=Frankfurt&status=ok&is_active=true&driver=fake" \
+curl -s "http://localhost/api/v1/admin/hosts?search=Frankfurt&status=ok&is_active=true&driver=fake" \
   -H "Authorization: Bearer <ADMIN_TOKEN>"
 
 # Filter virtual machines by host node
-curl -s "http://localhost/api/vms?host_id=1" \
+curl -s "http://localhost/api/v1/vms?host_id=1" \
   -H "Authorization: Bearer <USER_TOKEN>"
 ```
 
 ### 2.4 Virtual Machine Snapshots
 ```bash
 # List snapshots for VM #1 (with quota metadata)
-curl -s http://localhost/api/vms/1/snapshots \
+curl -s http://localhost/api/v1/vms/1/snapshots \
   -H "Authorization: Bearer <USER_TOKEN>"
 
 # Create a manual snapshot asynchronously (202 Accepted)
-curl -s -X POST http://localhost/api/vms/1/snapshots \
+curl -s -X POST http://localhost/api/v1/vms/1/snapshots \
   -H "Authorization: Bearer <USER_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{"name": "daily-backup-01"}'
 
 # Restore a ready snapshot (202 Accepted)
-curl -s -X POST http://localhost/api/vms/1/snapshots/1/restore \
+curl -s -X POST http://localhost/api/v1/vms/1/snapshots/1/restore \
   -H "Authorization: Bearer <USER_TOKEN>"
 
 # Delete a snapshot (202 Accepted)
-curl -s -X DELETE http://localhost/api/vms/1/snapshots/1 \
+curl -s -X DELETE http://localhost/api/v1/vms/1/snapshots/1 \
   -H "Authorization: Bearer <USER_TOKEN>"
 ```
 

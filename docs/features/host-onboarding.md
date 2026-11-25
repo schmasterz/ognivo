@@ -6,11 +6,11 @@ Ognivo manages **Incus** and **LXD** hypervisor nodes using mutual TLS (**mTLS**
 
 ## 1. Panel Client Certificate Management
 
-The panel automatically generates and manages a self-signed elliptic-curve X.509 client certificate (`secp384r1`, `sha384`, CN `incus-panel`, Extended Key Usage: `clientAuth`). If no active certificate exists in the database yet, one is automatically provisioned when an administrator opens **Compute Nodes** (`GET /api/admin/incus/certificate`), downloads the public certificate (`GET /api/admin/incus/certificate/download`), or runs `php artisan incus:generate-cert`.
+The panel automatically generates and manages a self-signed elliptic-curve X.509 client certificate (`secp384r1`, `sha384`, CN `incus-panel`, Extended Key Usage: `clientAuth`). If no active certificate exists in the database yet, one is automatically provisioned when an administrator opens **Compute Nodes** (`GET /api/v1/admin/incus/certificate`), downloads the public certificate (`GET /api/v1/admin/incus/certificate/download`), or runs `php artisan incus:generate-cert`.
 
 - **Private Key Security:** Stored encrypted in the database (`encrypted` Eloquent cast using AES-256-CBC), hidden from model serialization, and supplied in-memory via `CURLOPT_SSLCERT_BLOB` / `CURLOPT_SSLKEY_BLOB` (with a transient `0600` tempfile fallback in `sys_get_temp_dir()` unlinked immediately after use).
-- **Zero-Downtime Rotation:** When rotating via `POST /api/admin/incus/certificate/rotate` or `php artisan incus:generate-cert --force`, the previous certificate transitions to `retiring` status and all existing hosts are flagged with `needs_retrust = true`.
-- **Revocation Safety Guard:** Retiring certificates cannot be revoked (`POST /api/admin/incus/certificate/revoke-old`) until all hosts have confirmed re-trust (`pending_retrust_hosts_count === 0`). In the **Compute Nodes** (`/nodes`) UI, the **Revoke Old Certificate** button is displayed in the retiring certificate banner and remains disabled until all hosts have confirmed re-trust (`pending_retrust_hosts_count === 0`).
+- **Zero-Downtime Rotation:** When rotating via `POST /api/v1/admin/incus/certificate/rotate` or `php artisan incus:generate-cert --force`, the previous certificate transitions to `retiring` status and all existing hosts are flagged with `needs_retrust = true`.
+- **Revocation Safety Guard:** Retiring certificates cannot be revoked (`POST /api/v1/admin/incus/certificate/revoke-old`) until all hosts have confirmed re-trust (`pending_retrust_hosts_count === 0`). In the **Compute Nodes** (`/nodes`) UI, the **Revoke Old Certificate** button is displayed in the retiring certificate banner and remains disabled until all hosts have confirmed re-trust (`pending_retrust_hosts_count === 0`).
 - **Expiry Monitoring:** `WarnExpiringPanelCertificateJob` runs daily and logs warnings when the active certificate is within 30 days of expiration.
 
 ---
@@ -72,7 +72,7 @@ eyJjbGllbnRfbmFtZSI6InBhbmVsIiwiZmluZ2VycHJpbnQiOiI5YjkzNWY5...
 Use this path when manual trust store management or firewall rules require out-of-band certificate registration.
 
 #### Step 1: Download the Panel Public Certificate
-In the Admin UI under **Compute Nodes**, click **Download public certificate** (or call `GET /api/admin/incus/certificate/download`). The file is named `incus-panel.crt`.
+In the Admin UI under **Compute Nodes**, click **Download public certificate** (or call `GET /api/v1/admin/incus/certificate/download`). The file is named `incus-panel.crt`.
 
 #### Step 2: Trust the Certificate on the Hypervisor Host
 Copy `incus-panel.crt` to your server and register it in the trust store:
@@ -110,7 +110,7 @@ Copy the 64-character SHA-256 `certificate_fingerprint` value from the `environm
 
 ## 3. Connection Verification States
 
-The **Verify connection** action (`POST /api/admin/hosts/verify-connection` or `POST /api/admin/hosts/{host}/verify-connection`) returns one of the following states:
+The **Verify connection** action (`POST /api/v1/admin/hosts/verify-connection` or `POST /api/v1/admin/hosts/{host}/verify-connection`) returns one of the following states:
 
 | State | Meaning |
 | :--- | :--- |

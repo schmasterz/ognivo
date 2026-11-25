@@ -215,14 +215,14 @@ In `manual` mode, guest networking is managed externally by the infrastructure o
   - `excluded_ips` stores only administrator-defined exclusions.
   - When a `gateway` is set, changed, or cleared (on pools where `gateway` is mutable), effective exclusions update immediately: the new gateway becomes unavailable for allocation, and the previous gateway address returns to circulation unless explicitly listed in `excluded_ips`.
   - Link-local addresses in `169.254.0.0/16` are rejected for pool CIDRs, `gateway`, and `excluded_ips` (`169.254.0.1` is reserved exclusively as the routed guest link-local next-hop).
-- **Host Interface Recommendations:** When discovering host networks (`GET /api/admin/hosts/{host}/resources`), Ognivo recommends `bridged` and `routed` for `bridge` interfaces, and `routed` and `macvlan` for `physical`, `bond`, and `vlan` interfaces.
+- **Host Interface Recommendations:** When discovering host networks (`GET /api/v1/admin/hosts/{host}/resources`), Ognivo recommends `bridged` and `routed` for `bridge` interfaces, and `routed` and `macvlan` for `physical`, `bond`, and `vlan` interfaces.
 
 ---
 
 ## 6. Allocation Cooldown Period
 
 - **IP Cooling Period:** Released IP allocations enter a `cooling` state (`released_at`) for a pool-configured duration (`cooldown_seconds`) before returning to general circulation. During this quarantine window, the address cannot be immediately reassigned, preventing network disruption and traffic leakage from previous instances.
-- **Expiration & Cleanup:** `GET /api/ips` does not delete rows on read and validates query parameters (`user_id`, `host_id`, `pool_id`, `status` in `allocated`/`cooling`, `search`, `per_page`, `page`). Expired `cooling` rows are removed only by the scheduled `ipam:prune-cooling` command (every minute); until pruned, an expired row is shown with status `'released'` and `cooldown_remaining_seconds` `0`, and `allocateIp` already treats it as reusable.
+- **Expiration & Cleanup:** `GET /api/v1/ips` does not delete rows on read and validates query parameters (`user_id`, `host_id`, `pool_id`, `status` in `allocated`/`cooling`, `search`, `per_page`, `page`). Expired `cooling` rows are removed only by the scheduled `ipam:prune-cooling` command (every minute); until pruned, an expired row is shown with status `'released'` and `cooldown_remaining_seconds` `0`, and `allocateIp` already treats it as reusable.
 - **Allocation Ordering:** The allocations list is ordered by pool, then numerically by IPv4 address.
 - **Allocation Search:** The allocations `search` filter trims whitespace and classifies the query: IPv4 terms (e.g. `10.0.0.1`, `10.0`) match `ip_string` by prefix (`term%`), MAC prefixes containing `:` (e.g. `02:54:ab`) match `mac_address` by case-insensitive prefix (`term%`), and other text matches user `name`/`email` (as well as VM and pool names) by substring (`%term%`) with SQL `LIKE` wildcards (`%`, `_`, `\`) escaped.
 
@@ -230,7 +230,7 @@ In `manual` mode, guest networking is managed externally by the infrastructure o
 
 ## 7. Preflight Pool Verification
 
-Before putting an IP pool into production, administrators can trigger a preflight check (`POST /api/admin/ip-pools/{ipPool}/preflight`), which evaluates:
+Before putting an IP pool into production, administrators can trigger a preflight check (`POST /api/v1/admin/ip-pools/{ipPool}/preflight`), which evaluates:
 1. **`Host reachable`:** Authenticated mTLS reachability to the assigned host node (`GET /1.0/networks?recursion=1`).
 2. **`Parent interface exists`:** Confirms the pool's `parent_interface` exists on the remote host (passes as not used in `manual` mode; fails if empty or absent on the host).
 3. **`Parent interface type matches mode`:**
@@ -250,7 +250,7 @@ Before putting an IP pool into production, administrators can trigger a prefligh
 
 ## 8. Pool Address & Free-IP Inspector
 
-Administrators can inspect every IPv4 address across a pool's usable range (`first_usable` through `last_usable`) via `GET /api/admin/ip-pools/{ipPool}/addresses` and the **PoolDetailModal** in the Admin UI (**Networking & IPAM** — accessible via the Eye button, clickable pool name, or `Free: N` badge on any pool card).
+Administrators can inspect every IPv4 address across a pool's usable range (`first_usable` through `last_usable`) via `GET /api/v1/admin/ip-pools/{ipPool}/addresses` and the **PoolDetailModal** in the Admin UI (**Networking & IPAM** — accessible via the Eye button, clickable pool name, or `Free: N` badge on any pool card).
 
 ![IPAM Pool Address Inspector](../assets/ipam-pool-inspector.png)
 
@@ -277,7 +277,7 @@ Ognivo 1.0 allocates and tracks **IPv4 addresses only**.
 
 | Aspect | Behavior in 1.0 |
 | :--- | :--- |
-| Pool creation | `POST /api/admin/ip-pools` rejects an `ip_version` other than `4` with a validation error on `ip_version` (`messages.ip.ipv6_not_supported_v1`: "IPv6 is not supported in v1.0."). Omitting `ip_version` creates an IPv4 pool |
+| Pool creation | `POST /api/v1/admin/ip-pools` rejects an `ip_version` other than `4` with a validation error on `ip_version` (`messages.ip.ipv6_not_supported_v1`: "IPv6 is not supported in v1.0."). Omitting `ip_version` creates an IPv4 pool |
 | Pool CIDR | Must be a valid **IPv4** CIDR with a prefix length between `/16` and `/32` (`/16` to `/30` for `bridged` and `macvlan`). An IPv6 CIDR fails validation |
 | Instance NIC | Only IPv4 addresses are configured (`ipv4.address` on `routed` NICs, Netplan IPv4 `addresses` for `bridged`/`macvlan` and `routed` instances). No IPv6 address is assigned or tracked by Ognivo |
 | Host configuration | The required `sysctl` settings in [Section 1](#1-routed-network-mode-routed) are IPv4 settings (`ip_forward`, `proxy_arp`). No IPv6 forwarding or NDP proxy setup is needed or managed |
