@@ -86,6 +86,15 @@ The development example (`.env.development.example`) differs from the production
 | `QUEUE_CONNECTION` | `redis` | `redis` | Asynchronous queue driver |
 | `CACHE_STORE` | `redis` | `redis` | Cache store driver |
 
+**Queue routing topology:** Two dedicated workers (`queue-worker` consuming `high,metrics,default` with a `120s` timeout, and `queue-worker-heavy` consuming `heavy,default` with a `600s` timeout) prevent long-running hypervisor operations from blocking interactive VM actions or telemetry:
+
+| Queue | Worker(s) | Timeout | Jobs |
+| :--- | :--- | :--- | :--- |
+| `high` | `queue-worker` | `120s` | User-initiated VM actions (`ExecuteVmActionJob`, low latency) |
+| `metrics` | `queue-worker` | `15s` | Scheduled host telemetry (`CollectHostMetricsJob`) |
+| `default` | `queue-worker`, `queue-worker-heavy` | — | Webhook delivery, metrics cleanup, and panel certificate alerts (`DeliverWebhookJob`, `PurgeVmMetricsJob`, `WarnExpiringPanelCertificateJob`) |
+| `heavy` | `queue-worker-heavy` | `600s` | Long-running instance provisioning, reinstalls, snapshots, and tenant deletions (`ProvisionVmJob`, `ReinstallVmJob`, `CreateSnapshotJob`, `RestoreSnapshotJob`, `DeleteSnapshotJob`, `SuspendUserWorkloadsJob`, `DeleteUserWorkloadsJob`) |
+
 ### Sessions & API Tokens
 | Variable | Code default | In `.env.production.example` | Description |
 | :--- | :--- | :--- | :--- |
@@ -208,6 +217,11 @@ Read from `backend/config/scramble.php`.
 > [!NOTE]
 > **Production Content-Security-Policy:** The interactive Scramble UI uses Stoplight Elements web-components loaded from `https://unpkg.com`. `docker/nginx.prod.conf` whitelists `https://unpkg.com` in the `script-src` and `style-src` directives of the `Content-Security-Policy` header so those UI assets can load.
 
+### Server & Concurrency (PHP-FPM & Nginx)
+| Variable | Code default | In `.env.production.example` | Description |
+| :--- | :--- | :--- | :--- |
+| `PHP_FPM_MAX_CHILDREN` | `30` | `30` | Maximum child worker processes spawned by PHP-FPM (`pm.max_children`). Each child processes up to 1000 requests before recycling |
+
 ### Development vs production examples
 
 | Variable | `.env.development.example` | `.env.production.example` |
@@ -231,7 +245,7 @@ Read from `backend/config/scramble.php`.
 
 ---
 
-## 4. Container Healthchecks
+## 4. Container Healthchecks & Performance Tuning
 
 In production these services define native Docker healthchecks:
 - **Backend (`php-fpm`):** FastCGI ping (`cgi-fcgi` against `127.0.0.1:9000/ping`)
@@ -241,7 +255,11 @@ In production these services define native Docker healthchecks:
 - **Console proxy:** HTTP probe (`wget --spider`) to `http://127.0.0.1:8085/health`
 - **MySQL & Redis:** Native CLI pings with credentials (`mysqladmin ping`, `redis-cli -a "$REDIS_PASSWORD" ping`)
 
-The queue worker, scheduler, Incus events listener, and cert-init containers do not define a healthcheck.
+The queue worker containers (`queue-worker`, `queue-worker-heavy`), scheduler, Incus events listener, and cert-init containers do not define a healthcheck.
+
+### Performance Tuning
+- **OPcache Production Settings:** Bytecode validation is disabled (`opcache.validate_timestamps=0`), memory is allocated at 256MB with 20,000 max accelerated files, eliminating filesystem `stat()` overhead on immutable container environments.
+- **Nginx FastCGI Timeout:** Configured to `90s` (`fastcgi_read_timeout 90;` and `fastcgi_connect_timeout 90;`) preventing hanging backend calls from monopolizing FPM worker slots.
 
 ---
 

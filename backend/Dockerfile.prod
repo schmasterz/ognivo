@@ -18,6 +18,10 @@ RUN php -m | grep -qi '^openssl$' && php -m | grep -qi '^mbstring$'
 # Configure PHP-FPM ping endpoint for container healthchecks
 RUN echo -e "[www]\nping.path = /ping\nping.response = pong\n" > /usr/local/etc/php-fpm.d/docker-ping.conf
 
+# Copy custom OPcache and PHP-FPM pool configuration
+COPY docker/php/opcache.ini /usr/local/etc/php/conf.d/opcache.ini
+COPY docker/php/fpm-pool.conf /usr/local/etc/php-fpm.d/zz-pool.conf
+
 # Builder stage to install PHP dependencies with Composer
 FROM base AS builder
 
