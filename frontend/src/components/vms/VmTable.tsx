@@ -17,6 +17,7 @@ import {
   Server,
   Box,
   Camera,
+  Activity,
 } from "lucide-react";
 import { VirtualMachine } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
@@ -315,6 +316,18 @@ export const VmTableRow = React.memo(function VmTableRow({
 
       <td className="sticky right-0 z-10 px-4 sm:px-6 py-3.5 text-right bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800 border-l border-gray-200/80 dark:border-gray-800/80 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)] transition-colors">
         <div className="flex items-center justify-end space-x-1.5">
+          {/* Details & Metrics Button */}
+          {onOpenDetails && (
+            <button
+              onClick={() => onOpenDetails(vm, "overview")}
+              disabled={isActing}
+              title={t("vmActionDetailsMetrics")}
+              className="p-1.5 rounded-lg bg-gray-100 hover:bg-blue-500/20 dark:bg-gray-800 dark:hover:bg-blue-500/20 text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition disabled:opacity-50"
+            >
+              <Activity className="w-4 h-4" />
+            </button>
+          )}
+
           {/* Snapshots Button */}
           {onOpenDetails && (
             <button
