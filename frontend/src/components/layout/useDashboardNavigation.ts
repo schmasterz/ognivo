@@ -10,7 +10,7 @@ import {
   type SetStateAction,
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { VirtualMachine } from "@/lib/api";
+import { VirtualMachine, VmNetworkPrimary } from "@/lib/api";
 
 export type TabType =
   | "vms"
@@ -138,6 +138,59 @@ export function useDashboardNavigation({
     return () => clearTimeout(timer);
   }, [vms, pathname]);
 
+  const detailsVmId = detailsVm?.vm.id ?? null;
+
+  // Synchronize detailsVm with updated VM in vms list (e.g. from refetch, poll, or mergeVmUpdate)
+  useEffect(() => {
+    if (detailsVmId === null) return;
+    const matched = vms.find((v) => v.id === detailsVmId);
+    if (!matched) return;
+
+    const timer = setTimeout(() => {
+      setDetailsVm((prev) => {
+        if (!prev || prev.vm.id !== detailsVmId || prev.vm === matched) {
+          return prev;
+        }
+        return { ...prev, vm: matched };
+      });
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [vms, detailsVmId]);
+
+  const handleVmRealtimeUpdate = useCallback(
+    (updatedVm: Partial<VirtualMachine> & { id: number; ipv4?: string }) => {
+      setDetailsVm((prev) => {
+        if (!prev || prev.vm.id !== updatedVm.id) return prev;
+        const ipv4Val =
+          updatedVm.ipv4_address ?? updatedVm.ipv4 ?? prev.vm.ipv4_address;
+        const networkStatusVal =
+          updatedVm.network_status ?? prev.vm.network_status;
+        const updatedNetwork = prev.vm.network
+          ? {
+              ...prev.vm.network,
+              primary: {
+                ...prev.vm.network.primary,
+                address: ipv4Val,
+                status: (networkStatusVal as VmNetworkPrimary["status"]) ?? null,
+              },
+            }
+          : prev.vm.network;
+
+        return {
+          ...prev,
+          vm: {
+            ...prev.vm,
+            ...updatedVm,
+            ipv4_address: ipv4Val,
+            network_status: networkStatusVal,
+            network: updatedNetwork,
+          },
+        };
+      });
+    },
+    []
+  );
+
   const handleTabChange = useCallback(
     (tab: TabType) => {
       const pathMap: Record<TabType, string> = {
@@ -180,6 +233,7 @@ export function useDashboardNavigation({
     setActiveTab,
     detailsVm,
     handleSetDetailsVm,
+    handleVmRealtimeUpdate,
     handleTabChange,
     handleAuditNavigate,
   };

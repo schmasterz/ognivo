@@ -156,6 +156,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     setActiveTab,
     detailsVm,
     handleSetDetailsVm,
+    handleVmRealtimeUpdate,
     handleTabChange,
     handleAuditNavigate,
   } = useDashboardNavigation({
@@ -244,11 +245,13 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     isAdmin,
     activeTab,
     adminUsers,
+    detailsVm,
     loadData,
     loadQuotaAndStats,
     refetchNetworking,
     refetchUsers,
     mergeVmUpdate,
+    onVmRealtimeUpdate: handleVmRealtimeUpdate,
   });
 
   const { confirmDialog, setConfirmDialog, requestConfirm } = useConfirmDialog(

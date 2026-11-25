@@ -425,8 +425,8 @@ export function ConsoleModal({ vm, onClose }: ConsoleModalProps) {
     <div
       className={
         isFullscreen
-          ? "fixed inset-0 z-50 flex flex-col bg-black animate-in fade-in duration-150"
-          : "fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 dark:bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
+          ? "fixed inset-0 z-[60] flex flex-col bg-black animate-in fade-in duration-150"
+          : "fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 dark:bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
       }
     >
       <div
