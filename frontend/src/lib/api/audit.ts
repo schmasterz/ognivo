@@ -2,7 +2,7 @@
  * Audit Log API Client Module.
  */
 
-import { request, API_BASE, ApiError } from "./client";
+import { request, apiFetch, API_BASE, ApiError } from "./client";
 import {
   AuditEntry,
   AdminAuditEntry,
@@ -86,25 +86,22 @@ export async function getAdminAuditEntry(
 }
 
 /**
- * Stream and download exported audit logs in NDJSON or CSV format using Bearer token.
+ * Stream and download exported audit logs in NDJSON or CSV format.
  */
 export async function exportAdminAudit(
   filters: AuditFilters = {},
   format: "ndjson" | "csv" = "ndjson"
 ): Promise<void> {
-  const token =
-    typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
   const qs = buildAuditQueryString(filters);
   const params = new URLSearchParams(qs);
   params.set("format", format);
 
   const url = `${API_BASE}/admin/audit/export?${params.toString()}`;
 
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     method: "GET",
     headers: {
       Accept: format === "csv" ? "text/csv" : "application/x-ndjson",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   });
 

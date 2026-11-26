@@ -1,5 +1,19 @@
 import { request } from "./client";
-import { User } from "./types";
+import type { User } from "./types";
+
+export interface ImpersonationStatus {
+  active: true;
+  impersonator_id: number;
+  impersonator_name: string;
+  expires_at: string;
+}
+
+export interface MeResponse {
+  user: User;
+  roles: string[];
+  impersonation: ImpersonationStatus | null;
+  session_expires_at: string | null;
+}
 
 /**
  * Authentication and User Profile API Methods.
@@ -9,29 +23,18 @@ export const authApi = {
     name: string,
     email: string,
     password: string
-  ): Promise<{ user: User; token: string | null; message?: string }> {
-    const res = await request<{ user: User; token: string | null; message?: string }>("/register", {
+  ): Promise<{ user: User; message?: string }> {
+    return request<{ user: User; message?: string }>("/register", {
       method: "POST",
       body: JSON.stringify({ name, email, password }),
     });
-    if (res.token && typeof window !== "undefined") {
-      localStorage.setItem("auth_token", res.token);
-    }
-    return res;
   },
 
-  async login(
-    email: string,
-    password: string
-  ): Promise<{ user: User; token: string }> {
-    const res = await request<{ user: User; token: string }>("/login", {
+  async login(email: string, password: string): Promise<{ user: User }> {
+    return request<{ user: User }>("/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
     });
-    if (typeof window !== "undefined") {
-      localStorage.setItem("auth_token", res.token);
-    }
-    return res;
   },
 
   async logout(): Promise<void> {
@@ -41,19 +44,15 @@ export const authApi = {
       });
     } catch {
       // Ignore network errors or unauthenticated state on logout
-    } finally {
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("auth_token");
-      }
     }
   },
 
-  async getMe(): Promise<{ user: User; roles: string[] }> {
-    return request<{ user: User; roles: string[] }>("/me");
+  async getMe(): Promise<MeResponse> {
+    return request<MeResponse>("/me");
   },
 
-  async stopImpersonation(): Promise<{ user: User; token: string; message?: string }> {
-    return request<{ user: User; token: string; message?: string }>("/impersonation/stop", {
+  async stopImpersonation(): Promise<{ user: User; message?: string }> {
+    return request<{ user: User; message?: string }>("/impersonation/stop", {
       method: "POST",
     });
   },

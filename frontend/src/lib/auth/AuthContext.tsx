@@ -1,21 +1,32 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
-import { api, User, AdminUserItem, SystemSettings } from "@/lib/api";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
+import { api, User, AdminUserItem, SystemSettings, MeResponse } from "@/lib/api";
 import { clearAllCachedFetchEntries } from "@/lib/hooks/useCachedFetch";
-import { disconnectEcho } from "@/lib/echo";
+import {
+  disconnectEcho,
+  enableEcho,
+  scheduleEchoDisconnectAt,
+} from "@/lib/echo";
 import { useI18n } from "@/lib/i18n/I18nContext";
 import { useToast } from "@/lib/toast/ToastContext";
-import {
-  ImpersonatedUserInfo,
-  cleanupLegacyStorage,
-  startImpersonationStorage,
-  stopImpersonationStorage,
-  clearAllAuthStorage,
-  getImpersonatedUserMetadata,
-} from "./impersonationStorage";
+import { purgeLegacyAuthStorage } from "./legacyStoragePurge";
 
-export type { ImpersonatedUserInfo };
+export interface ImpersonatedUserInfo {
+  id: number;
+  name: string;
+  email: string;
+}
+
+const MAX_TIMEOUT_MS = 2_147_483_647;
 
 export interface AuthContextValue {
   user: User | null;
@@ -38,9 +49,14 @@ export interface AuthContextValue {
   setImpersonatedUser: (target: ImpersonatedUserInfo | null) => void;
   isStoppingImpersonation: boolean;
   setIsStoppingImpersonation: React.Dispatch<React.SetStateAction<boolean>>;
+  refreshAuth: () => Promise<MeResponse>;
   startImpersonation: (targetUser: AdminUserItem) => Promise<void>;
   stopImpersonation: () => Promise<boolean>;
-  handleAuthSuccess: (loggedInUser: User, userRoles?: string[]) => void;
+  handleAuthSuccess: (
+    loggedInUser: User,
+    userRoles?: string[],
+    sessionExpiresAt?: string | null
+  ) => void;
   handleLogout: () => Promise<void>;
 }
 
@@ -63,13 +79,92 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [allowVmState, setAllowVmState] = useState<boolean>(true);
   const [allowContainersState, setAllowContainersState] = useState<boolean>(true);
 
-  const [impersonatedUserState, setImpersonatedUserState] = useState<ImpersonatedUserInfo | null>(null);
+  const [impersonatedUserState, setImpersonatedUserState] =
+    useState<ImpersonatedUserInfo | null>(null);
   const [impersonatingState, setImpersonatingState] = useState<boolean>(false);
   const [isStoppingImpersonation, setIsStoppingImpersonation] = useState<boolean>(false);
+
+  const sessionExpiryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isAdmin =
     (user?.roles?.some((r) => r.name === "admin") ?? false) ||
     roles.includes("admin");
+
+  const clearSessionExpiryTimer = useCallback(() => {
+    if (sessionExpiryTimerRef.current !== null) {
+      clearTimeout(sessionExpiryTimerRef.current);
+      sessionExpiryTimerRef.current = null;
+    }
+  }, []);
+
+  const clearAuthSession = useCallback(() => {
+    clearSessionExpiryTimer();
+    disconnectEcho();
+    clearAllCachedFetchEntries();
+    setUser(null);
+    setRoles([]);
+    setImpersonatedUserState(null);
+    setImpersonatingState(false);
+  }, [clearSessionExpiryTimer]);
+
+  const scheduleSessionExpiry = useCallback(
+    (expiresAtIso: string | null) => {
+      clearSessionExpiryTimer();
+
+      if (!expiresAtIso) {
+        return;
+      }
+
+      const expiresAtMs = Date.parse(expiresAtIso);
+      if (!Number.isFinite(expiresAtMs)) {
+        return;
+      }
+
+      const scheduleAt = (targetMs: number) => {
+        const remainingMs = targetMs - Date.now();
+        if (remainingMs <= 0) {
+          clearAuthSession();
+          return;
+        }
+
+        const waitMs = Math.min(remainingMs, MAX_TIMEOUT_MS);
+        sessionExpiryTimerRef.current = setTimeout(() => {
+          sessionExpiryTimerRef.current = null;
+          if (Date.now() >= targetMs) {
+            clearAuthSession();
+          } else {
+            scheduleAt(targetMs);
+          }
+        }, waitMs);
+      };
+
+      scheduleAt(expiresAtMs);
+    },
+    [clearAuthSession, clearSessionExpiryTimer]
+  );
+
+  const applyMeResponse = useCallback(
+    (res: MeResponse) => {
+      setUser(res.user);
+      setRoles(res.roles);
+
+      const impersonatedInfo: ImpersonatedUserInfo | null = res.impersonation?.active
+        ? {
+            id: res.user.id,
+            name: res.user.name,
+            email: res.user.email,
+          }
+        : null;
+
+      setImpersonatedUserState(impersonatedInfo);
+      setImpersonatingState(Boolean(impersonatedInfo));
+
+      enableEcho();
+      scheduleEchoDisconnectAt(res.session_expires_at);
+      scheduleSessionExpiry(res.session_expires_at);
+    },
+    [scheduleSessionExpiry]
+  );
 
   const setSystemSettings = useCallback((settings: SystemSettings) => {
     setSystemSettingsState(settings);
@@ -117,25 +212,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let isMounted = true;
 
+    const handleUnauthenticated = () => {
+      if (!isMounted) return;
+      clearAuthSession();
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("ognivo:unauthenticated", handleUnauthenticated);
+    }
+
     async function checkAuth() {
       try {
-        cleanupLegacyStorage();
-        const { user: currentUser, roles: currentRoles } = await api.getMe();
+        purgeLegacyAuthStorage();
+        const me = await api.getMe();
         if (!isMounted) return;
-        setUser(currentUser);
-        setRoles(currentRoles);
-        const stored = getImpersonatedUserMetadata();
-        if (stored) {
-          setImpersonatedUserState(stored);
-          setImpersonatingState(true);
-        }
+        applyMeResponse(me);
       } catch {
         if (!isMounted) return;
-        clearAllAuthStorage();
-        setUser(null);
-        setRoles([]);
-        setImpersonatedUserState(null);
-        setImpersonatingState(false);
+        clearAuthSession();
       } finally {
         if (isMounted) {
           setAuthLoading(false);
@@ -147,67 +241,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       isMounted = false;
+      clearSessionExpiryTimer();
+      if (typeof window !== "undefined") {
+        window.removeEventListener("ognivo:unauthenticated", handleUnauthenticated);
+      }
     };
-  }, []);
+  }, [applyMeResponse, clearAuthSession, clearSessionExpiryTimer]);
+
+  const refreshAuth = useCallback(async (): Promise<MeResponse> => {
+    const me = await api.getMe();
+    applyMeResponse(me);
+    return me;
+  }, [applyMeResponse]);
 
   const startImpersonation = useCallback(
     async (targetUser: AdminUserItem) => {
       const res = await api.adminImpersonateUser(targetUser.id);
 
-      startImpersonationStorage(res.token, {
-        id: targetUser.id,
-        name: targetUser.name,
-        email: targetUser.email,
-      });
-
       disconnectEcho();
+      clearAllCachedFetchEntries();
+      clearSessionExpiryTimer();
 
-      setImpersonatedUser({
-        id: targetUser.id,
-        name: targetUser.name,
-        email: targetUser.email,
-      });
+      const me = await api.getMe();
+      applyMeResponse(me);
 
       toast.success(res.message || t("impersonationStarted"));
-
-      // Refresh session to reflect impersonated user state and permissions
-      const { user: newUser, roles: newRoles } = await api.getMe();
-      clearAllCachedFetchEntries();
-      setUser(newUser);
-      setRoles(newRoles);
     },
-    [setImpersonatedUser, toast, t]
+    [applyMeResponse, clearSessionExpiryTimer, toast, t]
   );
 
   const stopImpersonation = useCallback(async (): Promise<boolean> => {
     setIsStoppingImpersonation(true);
     try {
       const stopRes = await api.stopImpersonation();
-      if (!stopRes?.token) {
-        throw new Error("No admin token returned from server");
-      }
 
-      stopImpersonationStorage(stopRes.token);
       disconnectEcho();
       clearAllCachedFetchEntries();
-      setImpersonatedUser(null);
+      clearSessionExpiryTimer();
+
+      const me = await api.getMe();
+      applyMeResponse(me);
       setIsStoppingImpersonation(false);
       toast.info(stopRes.message || t("impersonationEnded"));
-
-      // Refresh session to reflect restored admin
-      const { user: restoredUser, roles: restoredRoles } = await api.getMe();
-      clearAllCachedFetchEntries();
-      setUser(restoredUser);
-      setRoles(restoredRoles);
       return true;
     } catch (err) {
       console.warn("Failed to stop impersonation:", err);
-      clearAllAuthStorage();
-      disconnectEcho();
-      clearAllCachedFetchEntries();
-      setImpersonatedUser(null);
-      setUser(null);
-      setRoles([]);
+      clearAuthSession();
       setIsStoppingImpersonation(false);
       toast.error(t("sessionExpired"));
       if (typeof window !== "undefined") {
@@ -215,41 +294,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       return false;
     }
-  }, [setImpersonatedUser, toast, t]);
+  }, [applyMeResponse, clearAuthSession, clearSessionExpiryTimer, toast, t]);
 
   const handleAuthSuccess = useCallback(
-    (loggedInUser: User, userRoles?: string[]) => {
+    (
+      loggedInUser: User,
+      userRoles?: string[],
+      sessionExpiresAt?: string | null
+    ) => {
       disconnectEcho();
       clearAllCachedFetchEntries();
+      clearSessionExpiryTimer();
+
       const resolvedRoles =
         userRoles ?? loggedInUser.roles?.map((r) => r.name) ?? [];
       setUser(loggedInUser);
       setRoles(resolvedRoles);
-      if (typeof window !== "undefined") {
-        window.history.pushState(null, "", "/instances");
+      setImpersonatedUserState(null);
+      setImpersonatingState(false);
+
+      enableEcho();
+      if (sessionExpiresAt !== undefined) {
+        scheduleEchoDisconnectAt(sessionExpiresAt);
+        scheduleSessionExpiry(sessionExpiresAt);
+      } else {
+        void refreshAuth().catch(() => {});
       }
+
       toast.success(`Welcome back, ${loggedInUser.name}!`);
     },
-    [toast]
+    [clearSessionExpiryTimer, refreshAuth, scheduleSessionExpiry, toast]
   );
 
   const handleLogout = useCallback(async () => {
     disconnectEcho();
+    clearSessionExpiryTimer();
     try {
       await api.logout();
     } finally {
-      clearAllCachedFetchEntries();
-      clearAllAuthStorage();
-      setImpersonatedUserState(null);
-      setImpersonatingState(false);
-      setUser(null);
-      setRoles([]);
+      clearAuthSession();
       if (typeof window !== "undefined") {
         window.history.pushState(null, "", "/");
       }
       toast.info("You have signed out.");
     }
-  }, [toast]);
+  }, [clearAuthSession, clearSessionExpiryTimer, toast]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -273,6 +362,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setImpersonatedUser,
       isStoppingImpersonation,
       setIsStoppingImpersonation,
+      refreshAuth,
       startImpersonation,
       stopImpersonation,
       handleAuthSuccess,
@@ -296,6 +386,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       impersonatedUserState,
       setImpersonatedUser,
       isStoppingImpersonation,
+      refreshAuth,
       startImpersonation,
       stopImpersonation,
       handleAuthSuccess,

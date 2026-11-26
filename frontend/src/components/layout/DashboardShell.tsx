@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 import { Navbar } from "./Navbar";
 import { Sidebar } from "./Sidebar";
@@ -12,11 +13,13 @@ import { AuthView } from "@/components/auth/AuthView";
 import { useDashboard } from "./DashboardContext";
 import { useI18n } from "@/lib/i18n/I18nContext";
 import { useAuth } from "@/lib/auth/AuthContext";
+import { sanitizeNextPath } from "@/lib/auth/sanitizeNextPath";
 import { useGlobalFilters } from "@/lib/filters/GlobalFilterContext";
 import { getSlotComponents } from "@/lib/registry/slotRegistry";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const { t } = useI18n();
+  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const {
@@ -77,10 +80,20 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
   const onAuthSuccess = (
     authenticatedUser: NonNullable<typeof user>,
-    userRoles: string[]
+    userRoles: string[],
+    sessionExpiresAt?: string | null
   ) => {
-    handleAuthSuccess(authenticatedUser, userRoles);
-    setActiveTab("vms");
+    handleAuthSuccess(authenticatedUser, userRoles, sessionExpiresAt);
+    if (typeof window !== "undefined") {
+      const nextParam = new URLSearchParams(window.location.search).get("next");
+      if (nextParam !== null) {
+        router.replace(sanitizeNextPath(nextParam, "/instances"));
+        return;
+      }
+      if (window.location.pathname === "/") {
+        router.replace("/instances");
+      }
+    }
   };
 
   const onLogout = async () => {
