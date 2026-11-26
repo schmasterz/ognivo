@@ -68,8 +68,8 @@ src/
 │   ├── settings/                     # Platform SettingsModal
 │   └── ui/                           # Reusable primitives (ConfirmModal, PaginationBar, SearchableUserSelect)
 └── lib/
-    ├── api/                          # Typed HTTP client (client.ts, ApiError) and domain API modules (vms, hosts, images, networking, quotas, snapshots, audit, admin, auth)
-    ├── auth/                         # AuthContext.tsx (session state, login/logout, tenant impersonation) and impersonationStorage.ts
+    ├── api/                          # Typed HTTP client (client.ts, csrf.ts, ApiError) and domain API modules (vms, hosts, images, networking, quotas, snapshots, audit, admin, auth)
+    ├── auth/                         # AuthContext.tsx (cookie session state, login/logout, tenant impersonation), legacyStoragePurge.ts, and sanitizeNextPath.ts
     ├── filters/GlobalFilterContext.tsx # Global tenant/host/status/search/perPage filters with debounce
     ├── hooks/
     │   ├── useCachedFetch.ts         # Session-scoped TTL cache with AbortController & force-refetch
@@ -80,7 +80,7 @@ src/
     ├── i18n/                         # I18nContext.tsx, loaders.ts, and useI18n() hook (translation data in frontend/locale/ via @locale/*)
     ├── theme/                        # Dark/Light/System theme provider
     ├── toast/                        # Toast notifications (useToast())
-    └── echo.ts                       # Laravel Echo / Reverb client setup
+    └── echo.ts                       # Laravel Echo / Reverb client setup (authenticates via session cookie + X-XSRF-TOKEN; exports enableEcho() and scheduleEchoDisconnectAt())
 
 tests/
 ├── components/
@@ -89,7 +89,9 @@ tests/
 │       ├── coolingRefresh.test.ts
 │       └── ipStatusFilter.test.ts
 └── lib/
-    ├── auth/impersonationStorage.test.ts
+    ├── auth/
+    │   ├── legacyStoragePurge.test.ts
+    │   └── sanitizeNextPath.test.ts
     ├── hooks/
     │   ├── useCachedFetch.test.ts
     │   ├── useConfirmDialog.test.ts
@@ -112,6 +114,7 @@ tests/
 5. **Cache & Session Isolation:**
    - Domain hooks using `useCachedFetch` must include `sessionUserId` (`user?.id`) in their cache key.
    - Explicit `refetch()` calls bypass TTL cache (`force: true`). Session transitions (login, logout, impersonation) must call `clearAllCachedFetchEntries()`.
+   - **Never** store tokens, session identifiers, or credentials in `localStorage` or `sessionStorage`; browser authentication relies exclusively on `HttpOnly` Sanctum session cookies. Always use `apiFetch` (not raw `fetch`) for any API request so `credentials: "include"`, `X-XSRF-TOKEN`, and `401`/`419` handling are applied consistently.
 6. **Unit Test Compatibility (`node --test`):**
    - Pure logic and state helpers tested by `tests/**/*.test.ts` files (placed under `frontend/tests/` mirroring the `src/` directory structure) are executed directly by Node's native TypeScript runner (`node --test`). Avoid TypeScript parameter properties (`constructor(public x: number)`) and path aliases (`@/`) inside files imported directly by `.test.ts` files, and use `import { type Foo }` for type-only imports.
 7. **Web Terminal:**

@@ -2,7 +2,7 @@
 
 ## 1. Tech Stack & Runtime
 - **Language & Framework:** PHP `8.5` (`declare(strict_types=1)` across all files), Laravel `13`
-- **Authentication & RBAC:** Laravel Sanctum `4` (personal API bearer tokens via `HasApiTokens`; the stateful SPA cookie middleware is not enabled), `spatie/laravel-permission` (`admin` / `customer` roles), tenant impersonation middleware
+- **Authentication & RBAC:** Laravel Sanctum `4` stateful SPA cookie sessions (`HttpOnly`, `Secure` in production, `SameSite=Strict`, `Path=/`, no `Domain`; `__Host-ognivo_session` in prod, `ognivo_session` otherwise) with CSRF (`X-XSRF-TOKEN`) and same-origin verification, session-based tenant impersonation (30-minute cap), `spatie/laravel-permission` (`admin` / `customer` roles). The HTTP API is for the first-party web interface only; Bearer token authentication is disabled (`401`).
 - **Routing & OpenAPI:** `spatie/laravel-route-attributes` (PHP 8 attributes on Controllers), Dedoc Scramble (`/docs/api`)
 - **State Machine & Async:** `spatie/laravel-model-states` (`VmState`), Redis queues/locks (`predis`), Laravel Reverb `1.12` WebSockets
 - **Code Style, Static Analysis & Testing:** Laravel Pint, Larastan / PHPStan (**Level 10**), Vimeo Psalm (**ErrorLevel 1**), both with baseline files, Pest PHP `5` / PHPUnit `13` (SQLite unit/feature suite + MySQL 8.4/Redis 7 integration suite)

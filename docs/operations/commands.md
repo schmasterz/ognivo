@@ -84,6 +84,7 @@ docker exec -it ognivo-backend php artisan <command> [arguments] [options]
 | `admin:create {email} [--name=] [--password=]` | Create an administrator with the `admin` role and unlimited quotas. A 16-character password is generated and printed when `--password` is omitted. Required in production, because seeders are disabled |
 | `app:check-production-config` | Validate that no unsafe defaults or placeholder secrets are in use. Runs automatically on production container start and exits with code `1` on failure |
 | `app:reencrypt-secrets [--dry-run] [--include-users] [--status]` | Re-encrypt all encrypted database attributes, user secrets, and the SMTP password with the current `APP_KEY`. Accepts `--dry-run` to simulate, `--include-users` to force immediate migration of user secrets, and `--status` to inspect key migration status. Used during [key rotation](configuration.md#6-app_key-rotation-procedure). Exits 0 on success, 1 on failure. |
+| `auth:purge-legacy-tokens [--dry-run] [--force]` | One-time upgrade command to delete legacy database-backed Sanctum personal access tokens after migrating to browser cookie authentication. `--dry-run` counts tokens without deleting; `--force` skips the confirmation prompt |
 | `migrate --force` | Run database migrations (done automatically when `RUN_MIGRATIONS=true`) |
 | `optimize:clear`, `optimize` | Clear and rebuild Laravel caches (production) |
 | `scramble:analyze` | Analyze API routes and surface any OpenAPI documentation generation issues |
@@ -97,6 +98,8 @@ docker exec -it ognivo-backend php artisan app:check-production-config
 docker exec -it ognivo-backend php artisan app:reencrypt-secrets --dry-run
 docker exec -it ognivo-backend php artisan app:reencrypt-secrets --include-users
 docker exec -it ognivo-backend php artisan app:reencrypt-secrets --status
+docker exec -it ognivo-backend php artisan auth:purge-legacy-tokens --dry-run
+docker exec -it ognivo-backend php artisan auth:purge-legacy-tokens --force
 docker exec -it ognivo-backend php artisan optimize:clear && docker exec -it ognivo-backend php artisan optimize
 docker exec -it ognivo-backend php artisan scramble:analyze
 docker exec -it ognivo-backend php artisan scramble:export --path=api.json

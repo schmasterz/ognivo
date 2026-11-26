@@ -127,9 +127,12 @@ Two running instances owned by `customer@ognivo.local`, both on `eu-west-1` in t
 | Service | Local URL / Address | Purpose |
 | :--- | :--- | :--- |
 | **Unified Web Panel (Nginx)** | `http://localhost` | Main entry point for UI, API, WebSockets, and Console Proxy |
-| **Next.js Dev Server** | `http://localhost:3000` | Direct frontend access with HMR |
+| **Next.js Dev Server** | `http://localhost:3000` | Internal Next.js dev server with HMR (use `http://localhost` via Nginx for browser auth and API requests) |
 | **Backend REST API** | `http://localhost/api` | Laravel API routes |
 | **OpenAPI / Swagger UI** | `http://localhost/docs/api` | Interactive API documentation (`http://localhost/docs/api.json`) |
 | **Health Check** | `http://localhost/up` | Returns `200 OK` when healthy |
 | **Reverb WebSockets** | `ws://localhost:8080` *(or `/app/{appKey}`)* | Real-time UI event broadcasting |
 | **MySQL Database** | `127.0.0.1:3306` | Database `ognivo`, user `ognivo_user` (password in `.env.development`) |
+
+> [!NOTE]
+> **Same-origin cookie & CSRF requirement:** Always open the panel in your browser at `http://localhost` (port `80` via Nginx, same-origin across the frontend, `/api/v1`, `/sanctum/csrf-cookie`, `/broadcasting/auth`, and `/console`) so `httpOnly` session cookies and CSRF tokens (`XSRF-TOKEN` / `X-XSRF-TOKEN`) work properly. Because local development runs over plain HTTP, `.env.development.example` uses the plain cookie name `SESSION_COOKIE=ognivo_session` (without the `__Host-` prefix), `SESSION_SECURE_COOKIE=false`, `SESSION_SAME_SITE=strict`, and `CONSOLE_ALLOWED_ORIGINS=http://localhost`.

@@ -94,6 +94,8 @@ The following areas are particularly important to Ognivo's security model.
 
 ### Authentication and Authorization
 
+**Browser authentication:** Ognivo authenticates browser sessions using Laravel Sanctum stateful SPA cookies (`HttpOnly`, `Secure` in production, `SameSite=Strict`, `Path=/`, with no `Domain`; `__Host-ognivo_session` in production, `ognivo_session` otherwise) protected by CSRF double-submit tokens (`GET /sanctum/csrf-cookie` + `X-XSRF-TOKEN`) and same-origin `Origin`/`Referer` verification. The Nginx reverse proxy enforces a same-origin topology without CORS. The HTTP API is currently intended for the first-party web interface only; public Bearer token authentication is not enabled (Bearer tokens are rejected with `401`).
+
 - Authentication bypass.
 - Session and token compromise.
 - Broken access control.
