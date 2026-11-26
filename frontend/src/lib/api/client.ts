@@ -1,12 +1,22 @@
 /**
  * Core HTTP Request Engine and Error Handling for LXD/Incus API Client.
  */
-import { getRuntimeConfig } from "@/lib/config";
+import { getRuntimeConfig } from "../config.ts";
+import {
+  ensureCsrfCookie,
+  isUnsafeMethod,
+  readXsrfToken,
+  resetCsrfCookiePromise,
+} from "./csrf.ts";
 
 export const API_BASE =
   typeof window !== "undefined"
     ? (getRuntimeConfig().api_base_url || "/api/v1")
     : process.env.NEXT_PUBLIC_API_URL || "http://webserver/api/v1";
+
+export const PASSIVE_ACTIVITY_HEADER = {
+  "X-Ognivo-Activity": "passive",
+} as const;
 
 let currentLocale: string | null = null;
 
@@ -15,49 +25,129 @@ export function setApiLocale(locale: string | null): void {
 }
 
 export class ApiError extends Error {
+  status: number;
+  errors?: Record<string, string[]> | null;
+  retryAfter?: number | null;
+
   constructor(
-    public status: number,
+    status: number,
     message: string,
-    public errors?: Record<string, string[]> | null,
-    public retryAfter?: number | null
+    errors?: Record<string, string[]> | null,
+    retryAfter?: number | null
   ) {
     super(message);
     this.name = "ApiError";
+    this.status = status;
+    this.errors = errors;
+    this.retryAfter = retryAfter;
   }
+}
+
+export interface ApiFetchDeps {
+  fetchFn?: (input: string, init?: RequestInit) => Promise<Response>;
+  readToken?: () => string | null;
+}
+
+function isAuthEndpointUrl(input: string): boolean {
+  const pathname = input.split("?")[0].split("#")[0];
+  return pathname.endsWith("/login") || pathname.endsWith("/register");
+}
+
+/**
+ * Shared cookie-aware fetch wrapper handling same-origin credentials,
+ * passive activity headers, Sanctum CSRF tokens, single 419 retry, and 401 session-expiry events.
+ */
+export async function apiFetch(
+  input: string,
+  init?: RequestInit & { passive?: boolean },
+  deps?: ApiFetchDeps
+): Promise<Response> {
+  const fetchFn = deps?.fetchFn ?? fetch;
+  const getToken = deps?.readToken ?? (() => readXsrfToken());
+
+  const { passive, ...restInit } = init ?? {};
+  const method = (restInit.method ?? "GET").toUpperCase();
+  const headers = new Headers(restInit.headers);
+
+  if (passive && method === "GET") {
+    headers.set("X-Ognivo-Activity", PASSIVE_ACTIVITY_HEADER["X-Ognivo-Activity"]);
+  }
+
+  if (isUnsafeMethod(method)) {
+    let token = getToken();
+    if (!token) {
+      await ensureCsrfCookie(fetchFn);
+      token = getToken();
+    }
+    if (token) {
+      headers.set("X-XSRF-TOKEN", token);
+    }
+  }
+
+  const buildRequestInit = (): RequestInit => ({
+    ...restInit,
+    method,
+    headers: new Headers(headers),
+    credentials: "same-origin",
+  });
+
+  let response = await fetchFn(input, buildRequestInit());
+
+  if (response.status === 419) {
+    resetCsrfCookiePromise();
+    await ensureCsrfCookie(fetchFn);
+    const refreshedToken = getToken();
+    if (isUnsafeMethod(method)) {
+      if (refreshedToken) {
+        headers.set("X-XSRF-TOKEN", refreshedToken);
+      } else {
+        headers.delete("X-XSRF-TOKEN");
+      }
+    }
+    response = await fetchFn(input, buildRequestInit());
+  }
+
+  if (
+    response.status === 401 &&
+    !isAuthEndpointUrl(input) &&
+    typeof window !== "undefined"
+  ) {
+    window.dispatchEvent(new CustomEvent("ognivo:unauthenticated"));
+  }
+
+  return response;
 }
 
 export async function request<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit & { passive?: boolean } = {}
 ): Promise<T> {
-  const token =
-    typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Accept: "application/json",
-    ...(options.headers as Record<string, string>),
-  };
-
-  if (currentLocale) {
-    headers["Accept-Language"] = currentLocale;
-    headers["X-Locale"] = currentLocale;
+  const headers = new Headers(options.headers);
+  if (!headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  if (!headers.has("Accept")) {
+    headers.set("Accept", "application/json");
   }
 
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
+  if (currentLocale) {
+    headers.set("Accept-Language", currentLocale);
+    headers.set("X-Locale", currentLocale);
   }
 
   const url = `${API_BASE}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
   let response: Response;
-  
+
   try {
-    response = await fetch(url, {
+    response = await apiFetch(url, {
       ...options,
       headers,
     });
   } catch (fetchError) {
-    if (fetchError instanceof TypeError && (fetchError.message?.includes("fetch failed") || fetchError.name === "TypeError")) {
+    if (
+      fetchError instanceof TypeError &&
+      (fetchError.message?.includes("fetch failed") || fetchError.name === "TypeError")
+    ) {
       throw new ApiError(0, fetchError.message, null);
     }
     throw fetchError;
@@ -67,8 +157,8 @@ export async function request<T>(
 
   if (!response.ok) {
     // Parse retryAfter from Response header for rate limit handling (Task 7)
-    const retryAfterSeconds = parseInt(response.headers.get('Retry-After') || '0');
-    
+    const retryAfterSeconds = parseInt(response.headers.get("Retry-After") || "0", 10);
+
     if (retryAfterSeconds > 0 && response.status === 429) {
       throw new ApiError(
         response.status,
@@ -77,7 +167,7 @@ export async function request<T>(
         retryAfterSeconds
       );
     }
-    
+
     const message = data.message || "An unexpected error occurred.";
     throw new ApiError(response.status, message, data.errors);
   }
@@ -131,4 +221,3 @@ export function extractPaginationMeta<T = unknown>(
     per_page: perPage,
   };
 }
-

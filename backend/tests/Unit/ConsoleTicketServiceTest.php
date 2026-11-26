@@ -519,6 +519,7 @@ final class ConsoleTicketServiceTest extends TestCase
             'virtual_machine_id' => $this->vm->id,
             'console_type' => 'console',
             'session_id' => $sessionId,
+            'session_expires_at' => now()->addHour()->timestamp,
         ];
 
         $this->fakeRedis->setex('console:ticket:'.$ticket, 60, $this->service->encryptTicketPayload($payload, $ticket));
@@ -605,6 +606,7 @@ final class ConsoleTicketServiceTest extends TestCase
             'virtual_machine_id' => $this->vm->id,
             'console_type' => 'console',
             'session_id' => 'rotated-session-1',
+            'session_expires_at' => now()->addHour()->timestamp,
         ];
 
         config([

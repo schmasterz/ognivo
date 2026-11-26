@@ -39,25 +39,6 @@ final class RouteThrottleAndChannelAuthTest extends TestCase
         RateLimiter::clear('vm-actions:user:'.$this->customer->id);
     }
 
-    public function test_tokens_store_is_throttled_after_exceeding_limit(): void
-    {
-        Sanctum::actingAs($this->customer);
-
-        for ($i = 0; $i < 10; $i++) {
-            $response = $this->postJson('/api/v1/tokens', [
-                'name' => "token-{$i}",
-            ]);
-            $response->assertStatus(201);
-        }
-
-        $throttledResponse = $this->postJson('/api/v1/tokens', [
-            'name' => 'token-overflow',
-        ]);
-
-        $throttledResponse->assertStatus(429);
-        $throttledResponse->assertHeader('Retry-After');
-    }
-
     public function test_vm_store_is_throttled_for_non_admin_users(): void
     {
         Sanctum::actingAs($this->customer);

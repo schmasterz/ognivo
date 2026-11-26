@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Audit\AuditAction;
-use App\Audit\AuditContext;
 use App\Audit\AuditOutcome;
 use App\Models\AuditLog;
 use App\Models\User;
@@ -14,8 +13,9 @@ use App\Services\VmLifecycleService;
 use App\States\Vm\Stopped;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
-use Laravel\Sanctum\PersonalAccessToken;
+use Illuminate\Testing\TestResponse;
 use Spatie\Permission\Models\Role;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
@@ -30,6 +30,11 @@ final class AdminImpersonationTest extends TestCase
     private User $activeTenant;
 
     private User $suspendedTenant;
+
+    /** @var array<string, string> */
+    private array $sessionCookies = [];
+
+    private ?string $xsrfToken = null;
 
     protected function setUp(): void
     {
@@ -63,56 +68,150 @@ final class AdminImpersonationTest extends TestCase
         ]);
         $this->suspendedTenant->assignRole('customer');
 
-        // Reset audit context
-        $this->app->instance(AuditContext::class, new AuditContext);
+        // Reset browser session state
+        $this->resetBrowserSession();
     }
 
-    private function withTokenHeader(string $token): static
+    private function resetBrowserSession(): void
+    {
+        $this->sessionCookies = [];
+        $this->xsrfToken = null;
+        $this->app['auth']->forgetGuards();
+        $this->withUnencryptedCookies([]);
+    }
+
+    /**
+     * @param  TestResponse<Response>  $response
+     */
+    private function captureSessionCookies(TestResponse $response): void
+    {
+        foreach ($response->headers->getCookies() as $cookie) {
+            $value = $cookie->getValue();
+            if ($value !== null) {
+                $this->sessionCookies[$cookie->getName()] = $value;
+            }
+        }
+
+        $xsrf = $response->getCookie('XSRF-TOKEN')?->getValue();
+        if (is_string($xsrf) && $xsrf !== '') {
+            $this->xsrfToken = $xsrf;
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return TestResponse<Response>
+     */
+    private function statefulRequest(string $method, string $uri, array $data = []): TestResponse
     {
         $this->app['auth']->forgetGuards();
 
-        return $this->withHeader('Authorization', "Bearer {$token}");
+        $headers = ['Origin' => 'http://localhost'];
+        if ($this->xsrfToken !== null) {
+            $headers['X-XSRF-TOKEN'] = $this->xsrfToken;
+        }
+
+        $response = $this->withCredentials()
+            ->withUnencryptedCookies($this->sessionCookies)
+            ->withHeaders($headers)
+            ->json($method, $uri, $data);
+
+        $this->captureSessionCookies($response);
+
+        return $response;
+    }
+
+    /**
+     * @return TestResponse<Response>
+     */
+    private function loginAsStatefulUser(User $user, string $password = 'password'): TestResponse
+    {
+        $this->resetBrowserSession();
+
+        $csrfResponse = $this->withHeader('Origin', 'http://localhost')
+            ->get('/sanctum/csrf-cookie');
+        $csrfResponse->assertNoContent();
+        $this->captureSessionCookies($csrfResponse);
+
+        $loginResponse = $this->statefulRequest('POST', '/api/v1/login', [
+            'email' => $user->email,
+            'password' => $password,
+        ]);
+        $loginResponse->assertOk()->assertJsonMissingPath('token');
+
+        return $loginResponse;
+    }
+
+    /**
+     * @return TestResponse<Response>
+     */
+    private function startImpersonation(User $targetUser): TestResponse
+    {
+        return $this->statefulRequest('POST', "/api/v1/admin/users/{$targetUser->id}/impersonate");
+    }
+
+    public function test_bearer_tokens_are_rejected_for_authenticated_and_impersonation_routes(): void
+    {
+        $token = $this->admin->createToken('legacy-bearer')->plainTextToken;
+
+        $this->withHeader('Authorization', "Bearer {$token}")
+            ->getJson('/api/v1/me')
+            ->assertStatus(401);
+
+        $this->withHeader('Authorization', "Bearer {$token}")
+            ->postJson("/api/v1/admin/users/{$this->activeTenant->id}/impersonate")
+            ->assertStatus(401);
     }
 
     public function test_non_admin_cannot_impersonate(): void
     {
-        $this->actingAs($this->activeTenant)
-            ->postJson("/api/v1/admin/users/{$this->suspendedTenant->id}/impersonate")
+        $this->loginAsStatefulUser($this->activeTenant);
+
+        $this->startImpersonation($this->suspendedTenant)
             ->assertForbidden();
     }
 
     public function test_admin_cannot_impersonate_themself(): void
     {
-        $this->actingAs($this->admin)
-            ->postJson("/api/v1/admin/users/{$this->admin->id}/impersonate")
-            ->assertStatus(403);
+        $this->loginAsStatefulUser($this->admin);
+
+        $this->startImpersonation($this->admin)
+            ->assertStatus(403)
+            ->assertJsonFragment(['message' => 'Cannot impersonate yourself.']);
     }
 
     public function test_admin_cannot_impersonate_another_admin(): void
     {
-        $this->actingAs($this->admin)
-            ->postJson("/api/v1/admin/users/{$this->otherAdmin->id}/impersonate")
-            ->assertStatus(403);
+        $this->loginAsStatefulUser($this->admin);
+
+        $this->startImpersonation($this->otherAdmin)
+            ->assertStatus(403)
+            ->assertJsonFragment(['message' => 'Cannot impersonate another administrator.']);
     }
 
     public function test_admin_cannot_impersonate_inactive_user(): void
     {
-        $this->actingAs($this->admin)
-            ->postJson("/api/v1/admin/users/{$this->suspendedTenant->id}/impersonate")
-            ->assertStatus(403);
+        $this->loginAsStatefulUser($this->admin);
+
+        $this->startImpersonation($this->suspendedTenant)
+            ->assertStatus(403)
+            ->assertJsonFragment(['message' => 'Cannot impersonate an inactive user.']);
     }
 
-    public function test_admin_impersonate_issues_token_and_records_audit_with_impersonator_id(): void
+    public function test_admin_impersonate_establishes_session_and_records_audit_with_impersonator_id(): void
     {
-        $response = $this->actingAs($this->admin)
-            ->postJson("/api/v1/admin/users/{$this->activeTenant->id}/impersonate")
-            ->assertOk();
+        $this->loginAsStatefulUser($this->admin);
 
-        $token = $response->json('token');
-        $this->assertNotEmpty($token);
+        $response = $this->startImpersonation($this->activeTenant)
+            ->assertOk()
+            ->assertJsonMissingPath('token')
+            ->assertJsonStructure(['user', 'expires_at', 'message'])
+            ->assertJsonPath('user.id', $this->activeTenant->id);
+
+        $this->assertNotEmpty($response->json('expires_at'));
 
         // Verify impersonation.started audit row
-        /** @var AuditLog $log */
+        /** @var AuditLog|null $log */
         $log = AuditLog::where('action', AuditAction::ImpersonationStarted->value)->latest('id')->first();
         $this->assertNotNull($log);
         $outcomeVal = is_string($log->outcome) ? $log->outcome : $log->outcome->value;
@@ -121,10 +220,16 @@ final class AdminImpersonationTest extends TestCase
         $this->assertSame($this->activeTenant->id, $log->tenant_user_id);
         $this->assertSame('tenant', $log->visibility);
 
-        // Verify tenant sees this session in Activity tab (GET /api/audit)
-        $auditRes = $this->withTokenHeader($token)
-            ->getJson('/api/v1/audit')
-            ->assertOk();
+        // Verify /me reflects impersonated user and active impersonation metadata
+        $this->statefulRequest('GET', '/api/v1/me')
+            ->assertOk()
+            ->assertJsonPath('user.id', $this->activeTenant->id)
+            ->assertJsonPath('impersonation.active', true)
+            ->assertJsonPath('impersonation.impersonator_id', $this->admin->id)
+            ->assertJsonPath('impersonation.impersonator_name', $this->admin->name);
+
+        // Verify tenant sees this session in Activity tab (GET /api/v1/audit)
+        $auditRes = $this->statefulRequest('GET', '/api/v1/audit')->assertOk();
 
         $data = $auditRes->json('data');
         $this->assertNotEmpty($data);
@@ -137,19 +242,14 @@ final class AdminImpersonationTest extends TestCase
 
     public function test_impersonator_id_is_present_on_every_row_created_during_session(): void
     {
-        $impersonateRes = $this->actingAs($this->admin)
-            ->postJson("/api/v1/admin/users/{$this->activeTenant->id}/impersonate")
-            ->assertOk();
-
-        $token = $impersonateRes->json('token');
+        $this->loginAsStatefulUser($this->admin);
+        $this->startImpersonation($this->activeTenant)->assertOk();
 
         // Execute profile update (permitted: updating name only)
-        $this->withTokenHeader($token)
-            ->putJson('/api/v1/me', [
-                'name' => 'Alice Support Updated',
-                'email' => 'alice@example.com',
-            ])
-            ->assertOk();
+        $this->statefulRequest('PUT', '/api/v1/me', [
+            'name' => 'Alice Support Updated',
+            'email' => 'alice@example.com',
+        ])->assertOk();
 
         // Check user.updated audit log
         $updateLog = AuditLog::where('action', AuditAction::UserUpdated->value)->latest('id')->first();
@@ -160,21 +260,16 @@ final class AdminImpersonationTest extends TestCase
 
     public function test_forbidden_actions_are_rejected_and_audited_as_denied(): void
     {
-        $impersonateRes = $this->actingAs($this->admin)
-            ->postJson("/api/v1/admin/users/{$this->activeTenant->id}/impersonate")
-            ->assertOk();
-
-        $token = $impersonateRes->json('token');
+        $this->loginAsStatefulUser($this->admin);
+        $this->startImpersonation($this->activeTenant)->assertOk();
 
         // 1. Password changes: rejected and audited as denied
-        $this->withTokenHeader($token)
-            ->putJson('/api/v1/me', [
-                'name' => 'Alice',
-                'email' => 'alice@example.com',
-                'password' => 'new-secret-password-1234',
-                'password_confirmation' => 'new-secret-password-1234',
-            ])
-            ->assertStatus(403);
+        $this->statefulRequest('PUT', '/api/v1/me', [
+            'name' => 'Alice',
+            'email' => 'alice@example.com',
+            'password' => 'new-secret-password-1234',
+            'password_confirmation' => 'new-secret-password-1234',
+        ])->assertStatus(403);
 
         $passwordLog = AuditLog::where('action', AuditAction::AuthPasswordChanged->value)
             ->where('outcome', AuditOutcome::Denied->value)
@@ -185,12 +280,10 @@ final class AdminImpersonationTest extends TestCase
         $this->assertSame($this->activeTenant->id, $passwordLog->tenant_user_id);
 
         // 2. Email changes: rejected and audited as denied
-        $this->withTokenHeader($token)
-            ->putJson('/api/v1/me', [
-                'name' => 'Alice',
-                'email' => 'alice-hacked@example.com',
-            ])
-            ->assertStatus(403);
+        $this->statefulRequest('PUT', '/api/v1/me', [
+            'name' => 'Alice',
+            'email' => 'alice-hacked@example.com',
+        ])->assertStatus(403);
 
         $emailLog = AuditLog::where('action', AuditAction::AuthEmailChanged->value)
             ->where('outcome', AuditOutcome::Denied->value)
@@ -200,49 +293,14 @@ final class AdminImpersonationTest extends TestCase
         $this->assertSame($this->admin->id, $emailLog->impersonator_id);
         $this->assertSame($this->activeTenant->id, $emailLog->tenant_user_id);
 
-        // 3. Creating API credentials: rejected and audited as denied
-        $this->withTokenHeader($token)
-            ->postJson('/api/v1/tokens', [
-                'name' => 'backdoor-token',
-            ])
-            ->assertStatus(403);
-
-        $tokenCreateLog = AuditLog::where('action', AuditAction::AuthTokensRevoked->value)
-            ->where('outcome', AuditOutcome::Denied->value)
-            ->latest('id')
-            ->first();
-        $this->assertNotNull($tokenCreateLog, 'Denied token creation must be audited');
-        $this->assertSame($this->admin->id, $tokenCreateLog->impersonator_id);
-
-        // 4. Token management: rejected and audited as denied
-        $this->withTokenHeader($token)
-            ->getJson('/api/v1/tokens')
-            ->assertStatus(403);
-
-        $this->withTokenHeader($token)
-            ->deleteJson('/api/v1/tokens')
-            ->assertStatus(403);
-
-        // 5. Console ticket issuing: rejected and audited as denied
+        // 3. Console ticket issuing: rejected and audited as denied
         $vm = VirtualMachine::factory()->create([
             'user_id' => $this->activeTenant->id,
             'name' => 'alice-vm',
             'status' => Stopped::class,
         ]);
 
-        $this->withTokenHeader($token)
-            ->postJson("/api/v1/vms/{$vm->id}/console-ticket")
-            ->assertStatus(403);
-
-        $consoleLog = AuditLog::where('action', AuditAction::VmActionDenied->value)
-            ->where('outcome', AuditOutcome::Denied->value)
-            ->latest('id')
-            ->first();
-        $this->assertNotNull($consoleLog, 'Denied console ticket must be audited');
-        $this->assertSame($this->admin->id, $consoleLog->impersonator_id);
-
-        $this->withTokenHeader($token)
-            ->postJson("/api/v1/vms/{$vm->id}/console")
+        $this->statefulRequest('POST', "/api/v1/vms/{$vm->id}/console")
             ->assertStatus(403);
 
         $consolePostLog = AuditLog::where('action', AuditAction::VmActionDenied->value)
@@ -252,17 +310,16 @@ final class AdminImpersonationTest extends TestCase
         $this->assertNotNull($consolePostLog, 'Denied console request must be audited');
         $this->assertSame($this->admin->id, $consolePostLog->impersonator_id);
 
-        // Also test directly on VmLifecycleService
+        // Also test directly on VmLifecycleService using active impersonation AuditContext
         try {
-            app(VmLifecycleService::class)->issueConsoleTicket($vm, $this->activeTenant->withAccessToken($this->activeTenant->tokens()->latest()->first()));
+            app(VmLifecycleService::class)->issueConsoleTicket($vm, $this->activeTenant);
             $this->fail('Expected 403 HttpException');
         } catch (HttpException $e) {
             $this->assertSame(403, $e->getStatusCode());
         }
 
-        // 6. Deleting account: rejected and audited as denied
-        $this->withTokenHeader($token)
-            ->deleteJson('/api/v1/me')
+        // 4. Deleting account: rejected and audited as denied
+        $this->statefulRequest('DELETE', '/api/v1/me')
             ->assertStatus(403);
 
         $deleteLog = AuditLog::where('action', AuditAction::UserDeleted->value)
@@ -273,35 +330,36 @@ final class AdminImpersonationTest extends TestCase
         $this->assertSame($this->admin->id, $deleteLog->impersonator_id);
     }
 
-    public function test_impersonation_stop_revokes_token_and_records_audit(): void
+    public function test_impersonation_stop_restores_admin_session_and_records_audit(): void
     {
-        $impersonateRes = $this->actingAs($this->admin)
-            ->postJson("/api/v1/admin/users/{$this->activeTenant->id}/impersonate")
-            ->assertOk();
+        $this->loginAsStatefulUser($this->admin);
+        $this->startImpersonation($this->activeTenant)->assertOk();
 
-        $token = $impersonateRes->json('token');
-
-        // Request succeeds before stop
-        $this->withTokenHeader($token)->getJson('/api/v1/me')->assertOk();
+        // Impersonated session is active before stop
+        $this->statefulRequest('GET', '/api/v1/me')
+            ->assertOk()
+            ->assertJsonPath('user.id', $this->activeTenant->id)
+            ->assertJsonPath('impersonation.active', true);
 
         // Call stop
-        $stopRes = $this->withTokenHeader($token)
-            ->postJson('/api/v1/impersonation/stop')
-            ->assertOk();
+        $stopRes = $this->statefulRequest('POST', '/api/v1/impersonation/stop')
+            ->assertOk()
+            ->assertJsonMissingPath('token')
+            ->assertJsonStructure(['user', 'message'])
+            ->assertJsonPath('user.id', $this->admin->id);
 
-        // Stop returns token and user matching login endpoint shape
-        $adminToken = $stopRes->json('token');
-        $this->assertNotEmpty($adminToken);
         $this->assertSame($this->admin->id, $stopRes->json('user.id'));
 
-        // Issued token does not carry impersonated ability and works for admin operations
-        $pat = PersonalAccessToken::findToken($adminToken);
-        $this->assertNotNull($pat);
-        $this->assertNotContains('impersonated', $pat->abilities ?? [], 'Issued admin token must not carry impersonated ability');
-        $this->withTokenHeader($adminToken)->getJson('/api/v1/admin/users')->assertOk();
+        // Restored session belongs to the admin with impersonation cleared
+        $this->statefulRequest('GET', '/api/v1/me')
+            ->assertOk()
+            ->assertJsonPath('user.id', $this->admin->id)
+            ->assertJsonPath('impersonation', null);
+
+        $this->statefulRequest('GET', '/api/v1/admin/users')->assertOk();
 
         // Audit row impersonation.ended is recorded with admin_session_issued context
-        /** @var AuditLog $endLog */
+        /** @var AuditLog|null $endLog */
         $endLog = AuditLog::where('action', AuditAction::ImpersonationEnded->value)->latest('id')->first();
         $this->assertNotNull($endLog);
         $outcomeVal = is_string($endLog->outcome) ? $endLog->outcome : $endLog->outcome->value;
@@ -311,96 +369,89 @@ final class AdminImpersonationTest extends TestCase
         $this->assertSame('tenant', $endLog->visibility);
         $this->assertTrue($endLog->context['admin_session_issued'] ?? false, 'Audit context must note admin session issued');
 
-        // Token cannot be used after stop
-        $this->withTokenHeader($token)->getJson('/api/v1/me')->assertStatus(401);
+        // Stop cannot be called again once impersonation keys have been cleared
+        $this->statefulRequest('POST', '/api/v1/impersonation/stop')
+            ->assertStatus(403);
     }
 
     public function test_impersonation_stop_refuses_when_impersonator_demoted(): void
     {
-        $impersonateRes = $this->actingAs($this->admin)
-            ->postJson("/api/v1/admin/users/{$this->activeTenant->id}/impersonate")
-            ->assertOk();
-
-        $token = $impersonateRes->json('token');
+        $this->loginAsStatefulUser($this->admin);
+        $this->startImpersonation($this->activeTenant)->assertOk();
 
         // Demote admin to customer
         $this->admin->removeRole('admin');
 
-        $stopRes = $this->withTokenHeader($token)
-            ->postJson('/api/v1/impersonation/stop')
-            ->assertStatus(403);
+        $this->statefulRequest('POST', '/api/v1/impersonation/stop')
+            ->assertStatus(403)
+            ->assertJsonMissingPath('token');
 
-        $this->assertNull($stopRes->json('token'));
+        $this->statefulRequest('GET', '/api/v1/me')
+            ->assertOk()
+            ->assertJsonPath('user.id', $this->activeTenant->id);
     }
 
     public function test_impersonation_stop_refuses_when_impersonator_suspended(): void
     {
-        $impersonateRes = $this->actingAs($this->admin)
-            ->postJson("/api/v1/admin/users/{$this->activeTenant->id}/impersonate")
-            ->assertOk();
-
-        $token = $impersonateRes->json('token');
+        $this->loginAsStatefulUser($this->admin);
+        $this->startImpersonation($this->activeTenant)->assertOk();
 
         // Suspend admin
         $this->admin->update(['status' => 'suspended']);
 
-        $stopRes = $this->withTokenHeader($token)
-            ->postJson('/api/v1/impersonation/stop')
-            ->assertStatus(403);
-
-        $this->assertNull($stopRes->json('token'));
+        $this->statefulRequest('POST', '/api/v1/impersonation/stop')
+            ->assertStatus(403)
+            ->assertJsonMissingPath('token');
     }
 
     public function test_impersonation_stop_refuses_when_impersonator_deleted(): void
     {
-        $impersonateRes = $this->actingAs($this->admin)
-            ->postJson("/api/v1/admin/users/{$this->activeTenant->id}/impersonate")
-            ->assertOk();
-
-        $token = $impersonateRes->json('token');
+        $this->loginAsStatefulUser($this->admin);
+        $this->startImpersonation($this->activeTenant)->assertOk();
 
         // Delete admin
         $this->admin->delete();
 
-        $stopRes = $this->withTokenHeader($token)
-            ->postJson('/api/v1/impersonation/stop')
-            ->assertStatus(403);
-
-        $this->assertNull($stopRes->json('token'));
+        $this->statefulRequest('POST', '/api/v1/impersonation/stop')
+            ->assertStatus(403)
+            ->assertJsonMissingPath('token');
     }
 
-    public function test_non_impersonation_token_cannot_call_stop(): void
+    public function test_non_impersonating_session_cannot_call_stop(): void
     {
-        // Normal tenant login token
-        $tenantToken = $this->activeTenant->createToken('tenant-normal')->plainTextToken;
-        $this->withTokenHeader($tenantToken)
-            ->postJson('/api/v1/impersonation/stop')
+        // Normal tenant browser session
+        $this->loginAsStatefulUser($this->activeTenant);
+        $this->statefulRequest('POST', '/api/v1/impersonation/stop')
             ->assertStatus(403);
 
-        // Normal admin login token
-        $adminToken = $this->admin->createToken('admin-normal')->plainTextToken;
-        $this->withTokenHeader($adminToken)
-            ->postJson('/api/v1/impersonation/stop')
+        // Normal admin browser session
+        $this->loginAsStatefulUser($this->admin);
+        $this->statefulRequest('POST', '/api/v1/impersonation/stop')
             ->assertStatus(403);
     }
 
-    public function test_token_expires_after_30_minutes(): void
+    public function test_impersonation_session_expires_after_30_minutes(): void
     {
-        $impersonateRes = $this->actingAs($this->admin)
-            ->postJson("/api/v1/admin/users/{$this->activeTenant->id}/impersonate")
-            ->assertOk();
+        // Active before 30 minutes elapse
+        $this->loginAsStatefulUser($this->admin);
+        $this->startImpersonation($this->activeTenant)->assertOk();
+        $this->statefulRequest('GET', '/api/v1/me')->assertOk();
 
-        $token = $impersonateRes->json('token');
+        // Simulate impersonation started 31 minutes ago so impersonation_expires_at <= time()
+        $this->loginAsStatefulUser($this->admin);
+        Carbon::setTestNow(Carbon::createFromTimestamp(time() - (31 * 60)));
+        try {
+            $this->startImpersonation($this->activeTenant)->assertOk();
+        } finally {
+            Carbon::setTestNow();
+        }
 
-        // Active at minute 0
-        $this->withTokenHeader($token)->getJson('/api/v1/me')->assertOk();
+        $this->statefulRequest('GET', '/api/v1/me')
+            ->assertStatus(401)
+            ->assertJsonFragment(['message' => 'Impersonation session expired.']);
 
-        // Travel 31 minutes into the future
-        Carbon::setTestNow(now()->addMinutes(31));
-
-        // Token has expired
-        $this->withTokenHeader($token)->getJson('/api/v1/me')->assertStatus(401);
-
-        Carbon::setTestNow();
+        // Session was invalidated on expiry
+        $this->statefulRequest('GET', '/api/v1/me')
+            ->assertStatus(401);
     }
 }

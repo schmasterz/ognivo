@@ -149,6 +149,11 @@ final class VmActionHostReachabilityTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->tenant)
+            ->withHeader('Origin', 'http://localhost')
+            ->withSession([
+                'login_at' => now()->timestamp,
+                'last_activity_at' => now()->timestamp,
+            ])
             ->postJson("/api/v1/vms/{$vm->id}/console", [
                 'type' => 'console',
             ]);

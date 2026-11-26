@@ -1,4 +1,4 @@
-import { API_BASE, ApiError, request } from "./client";
+import { API_BASE, ApiError, apiFetch, request } from "./client";
 import {
   HostNode,
   HostResourcesResponse,
@@ -202,15 +202,12 @@ export const hostsApi = {
   },
 
   async adminDownloadPanelCertificate(): Promise<void> {
-    const token =
-      typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
     const url = `${API_BASE}/admin/incus/certificate/download`;
 
-    const response = await fetch(url, {
+    const response = await apiFetch(url, {
       method: "GET",
       headers: {
         Accept: "application/x-x509-ca-cert, application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
     });
 

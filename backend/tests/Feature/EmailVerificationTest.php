@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Notifications\QueuedVerifyEmailNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Testing\TestResponse;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -36,12 +37,42 @@ final class EmailVerificationTest extends TestCase
         Role::firstOrCreate(['name' => 'admin']);
     }
 
+    /**
+     * Send a stateful JSON POST request with Origin and CSRF headers obtained from /sanctum/csrf-cookie.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function postStatefulJson(string $uri, array $data = []): TestResponse
+    {
+        $csrfResponse = $this->withHeader('Origin', 'http://localhost')
+            ->getJson('/sanctum/csrf-cookie');
+        $csrfResponse->assertNoContent();
+
+        $xsrfCookie = $csrfResponse->getCookie('XSRF-TOKEN', false);
+        $xsrfToken = $xsrfCookie !== null ? $xsrfCookie->getValue() : '';
+
+        $sessionCookieName = (string) config('session.cookie');
+        $sessionCookie = $csrfResponse->getCookie($sessionCookieName, false);
+
+        $request = $this->withHeaders([
+            'Origin' => 'http://localhost',
+            'X-XSRF-TOKEN' => $xsrfToken,
+        ]);
+
+        if ($sessionCookie !== null) {
+            $request = $request->withCredentials()
+                ->withUnencryptedCookie($sessionCookieName, $sessionCookie->getValue());
+        }
+
+        return $request->postJson($uri, $data);
+    }
+
     public function test_user_registration_sets_status_pending_and_sends_verification_email_with_frontend_url(): void
     {
         Notification::fake();
         SystemSetting::updateOrCreate(['key' => 'frontend_url'], ['value' => 'https://panel.example.com']);
 
-        $res = $this->postJson('/api/v1/register', [
+        $res = $this->postStatefulJson('/api/v1/register', [
             'name' => 'John Doe',
             'email' => 'john.doe@example.com',
             'password' => 'SecurePass123!@#',
@@ -51,6 +82,7 @@ final class EmailVerificationTest extends TestCase
         $res->assertJsonPath('user.status', 'pending');
         $res->assertJsonPath('user.email_verified_at', null);
         $res->assertJsonStructure(['message', 'user']);
+        $res->assertJsonMissingPath('token');
 
         $user = User::where('email', 'john.doe@example.com')->firstOrFail();
         $this->assertEquals('pending', $user->status);
@@ -71,7 +103,7 @@ final class EmailVerificationTest extends TestCase
             'email_verified_at' => null,
         ]);
 
-        $res = $this->postJson('/api/v1/login', [
+        $res = $this->postStatefulJson('/api/v1/login', [
             'email' => 'pending@example.com',
             'password' => 'password123',
         ]);
@@ -87,7 +119,7 @@ final class EmailVerificationTest extends TestCase
             'status' => 'suspended',
         ]);
 
-        $resSuspended = $this->postJson('/api/v1/login', [
+        $resSuspended = $this->postStatefulJson('/api/v1/login', [
             'email' => 'suspended@example.com',
             'password' => 'password123',
         ]);
@@ -98,7 +130,7 @@ final class EmailVerificationTest extends TestCase
             'status' => 'inactive',
         ]);
 
-        $resInactive = $this->postJson('/api/v1/login', [
+        $resInactive = $this->postStatefulJson('/api/v1/login', [
             'email' => 'inactive@example.com',
             'password' => 'password123',
         ]);
@@ -133,12 +165,13 @@ final class EmailVerificationTest extends TestCase
         $this->assertNotNull($user->email_verified_at);
 
         // Now user can log in
-        $loginRes = $this->postJson('/api/v1/login', [
+        $loginRes = $this->postStatefulJson('/api/v1/login', [
             'email' => 'verify.me@example.com',
             'password' => 'password123',
         ]);
         $loginRes->assertOk();
-        $loginRes->assertJsonStructure(['token', 'user']);
+        $loginRes->assertJsonStructure(['user']);
+        $loginRes->assertJsonMissingPath('token');
     }
 
     public function test_verification_with_expired_link_fails(): void

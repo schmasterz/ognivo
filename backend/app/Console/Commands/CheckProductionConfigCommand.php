@@ -172,9 +172,10 @@ final class CheckProductionConfigCommand extends Command
         $sessionSecure = config('session.secure');
         $envSessionSecure = Env::get('SESSION_SECURE_COOKIE');
         if (
-            filter_var($sessionSecure ?? $envSessionSecure, FILTER_VALIDATE_BOOLEAN) !== true
+            $sessionSecure !== true
             || $envSessionSecure === 'false'
             || $envSessionSecure === '0'
+            || $envSessionSecure === false
         ) {
             $violations[] = 'SESSION_SECURE_COOKIE is disabled or unset. Session cookies must be restricted to HTTPS in production.';
         }
@@ -195,6 +196,42 @@ final class CheckProductionConfigCommand extends Command
             if (in_array($host, ['localhost', '127.0.0.1', '::1'], true)) {
                 $violations[] = "APP_URL points to a local/loopback address ('{$appUrl}'). A public production hostname is required.";
             }
+        }
+
+        // 19. SESSION_SAME_SITE check: must be 'strict' in production
+        $sessionSameSite = strtolower(Cast::string(config('session.same_site')));
+        if ($sessionSameSite !== 'strict') {
+            $violations[] = "SESSION_SAME_SITE must be 'strict' in production (got '{$sessionSameSite}').";
+        }
+
+        // 20. SESSION_DOMAIN check: must be empty in production
+        $sessionDomain = config('session.domain');
+        if (! empty($sessionDomain)) {
+            $domainStr = Cast::string($sessionDomain);
+            $violations[] = "SESSION_DOMAIN must be empty in production (got '{$domainStr}').";
+        }
+
+        // 21. SESSION_COOKIE check: must use '__Host-' prefix in production
+        $sessionCookie = Cast::string(config('session.cookie'));
+        if (! str_starts_with($sessionCookie, '__Host-')) {
+            $violations[] = "SESSION_COOKIE must start with '__Host-' in production (got '{$sessionCookie}').";
+        }
+
+        // 22. SANCTUM_STATEFUL_DOMAINS check: must be configured and non-empty in production
+        $rawStateful = config('sanctum.stateful');
+        $statefulDomains = is_array($rawStateful)
+            ? array_filter(array_map(static fn (mixed $item): string => trim(Cast::string($item)), $rawStateful))
+            : [];
+        if ($statefulDomains === []) {
+            $violations[] = 'SANCTUM_STATEFUL_DOMAINS is empty. At least one stateful frontend domain is required in production.';
+        }
+
+        // 23. CONSOLE_ALLOWED_ORIGINS check: must be non-empty and must not contain wildcard '*'
+        $consoleAllowedOrigins = trim(Cast::string(Env::get('CONSOLE_ALLOWED_ORIGINS', '')));
+        if ($consoleAllowedOrigins === '') {
+            $violations[] = 'CONSOLE_ALLOWED_ORIGINS is empty. Explicit allowed origins are required for WebSocket console access in production.';
+        } elseif (str_contains($consoleAllowedOrigins, '*')) {
+            $violations[] = "CONSOLE_ALLOWED_ORIGINS contains wildcard '*' ('{$consoleAllowedOrigins}'). Wildcard origins are forbidden in production.";
         }
 
         if (! empty($violations)) {

@@ -75,7 +75,7 @@ make up-dev
 #### Step 2: Sign In to the Web Panel
 Wait ~20–30 seconds on the very first run for MySQL initialization and migrations to finish (check with `make ps`), then open:
 
-- **Web Panel URL:** `http://localhost` *(or `http://localhost:3000`)*
+- **Web Panel URL:** `http://localhost` *(via Nginx; required for same-origin session cookies and CSRF)*
 - **Interactive API Docs (OpenAPI):** `http://localhost/docs/api`
 - **Health Check:** `http://localhost/up`
 
@@ -103,6 +103,12 @@ If deploying on a real domain (e.g., `panel.example.com`), update `.env.producti
 APP_URL=https://panel.example.com
 REVERB_ALLOWED_ORIGINS=https://panel.example.com
 SANCTUM_STATEFUL_DOMAINS=panel.example.com
+CONSOLE_ALLOWED_ORIGINS=https://panel.example.com
+SESSION_COOKIE=__Host-ognivo_session
+SESSION_SAME_SITE=strict
+SESSION_ABSOLUTE_LIFETIME=1440
+SCRAMBLE_ALLOW_PUBLIC=false
+SCRAMBLE_TRY_IT_ENABLED=false
 ```
 
 #### Step 2: Build & Start the Production Stack
@@ -113,7 +119,7 @@ make up-prod
 
 #### What happens automatically under the hood on first boot:
 1. **TLS Bootstrap (`cert-init`):** Checks `./docker/certs/` on the host. If `server.crt` and `server.key` are not present, it automatically generates a self-signed X.509 TLS certificate so Nginx can start immediately over HTTPS.
-2. **Production Safety Check:** `ognivo-backend` executes `php artisan app:check-production-config` and refuses to boot if any unsafe default passwords, debug flags, or wildcard origins exist.
+2. **Production Safety Check:** `ognivo-backend` executes `php artisan app:check-production-config` and refuses to boot if any unsafe default passwords, debug flags, wildcard origins, or invalid session/origin settings (`SESSION_SECURE_COOKIE`, `SESSION_SAME_SITE`, `SESSION_DOMAIN`, `SESSION_COOKIE`, `SANCTUM_STATEFUL_DOMAINS`, `CONSOLE_ALLOWED_ORIGINS`) exist.
 3. **Automated Migrations & Strict Audit Grants:** Runs `php artisan migrate --force` and `php artisan audit:grants --force` (enforcing `INSERT`/`SELECT`-only privileges on audit tables). Database seeders are strictly disabled (`RUN_SEEDERS=false`).
 4. **HTTPS Ingress:** `ognivo-nginx` starts on ports `80` (redirects to HTTPS) and `443` (TLS 1.2/1.3).
 

@@ -26,7 +26,7 @@ return [
     /*
      * Whether API documentation is publicly accessible outside local/testing environments.
      */
-    'allow_public' => (bool) env('SCRAMBLE_ALLOW_PUBLIC', true),
+    'allow_public' => (bool) env('SCRAMBLE_ALLOW_PUBLIC', false),
 
     /*
      * Your API domain. By default, app domain is used. This is also a part of the default API routes
@@ -63,7 +63,7 @@ return [
         /*
          * Description rendered on the home page of the API documentation (`/docs/api`).
          */
-        'description' => 'Interactive OpenAPI documentation for Ognivo hypervisor management platform.',
+        'description' => 'Interactive OpenAPI documentation for Ognivo hypervisor management platform. Authentication is a browser session cookie (httpOnly). State-changing requests (POST, PUT, PATCH, DELETE) require the X-XSRF-TOKEN header: call GET /sanctum/csrf-cookie first and send the value of the XSRF-TOKEN cookie. This API is for the first-party web interface only; there is no token authentication.',
     ],
 
     'ui' => [
@@ -87,10 +87,11 @@ return [
         'elements' => [
             'view' => 'scramble::docs',
             'theme' => 'light',
-            'hideTryIt' => false,
+            // Disable "Try it out" by default because the docs UI does not inject X-XSRF-TOKEN on state-changing requests.
+            'hideTryIt' => ! (bool) env('SCRAMBLE_TRY_IT_ENABLED', false),
             'hideSchemas' => false,
             'logo' => '',
-            'tryItCredentialsPolicy' => 'include',
+            'tryItCredentialsPolicy' => 'same-origin',
             'layout' => 'responsive',
             'router' => 'hash',
         ],
@@ -105,7 +106,8 @@ return [
             'darkMode' => false,
             'showDeveloperTools' => 'never',
             'agent' => ['disabled' => true],
-            'credentials' => 'include',
+            // Restrict credentials to same-origin; the docs UI does not inject X-XSRF-TOKEN on state-changing requests.
+            'credentials' => 'same-origin',
         ],
         'fabric' => [
             'view' => 'scramble::fabric',
@@ -193,7 +195,7 @@ return [
         MiddlewareAuthSecurityStrategy::class,
         [
             'middleware' => ['auth', 'auth:*'],
-            'scheme' => SecurityScheme::http('bearer'),
+            'scheme' => SecurityScheme::apiKey('cookie', (string) env('SESSION_COOKIE', 'ognivo_session'))->as('cookieAuth'),
         ],
     ],
 ];

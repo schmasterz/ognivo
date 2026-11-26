@@ -5,7 +5,7 @@ declare(strict_types=1);
 use App\Models\User;
 use Illuminate\Support\Facades\Broadcast;
 
-Broadcast::routes(['prefix' => 'api/v1', 'middleware' => ['auth:sanctum', 'active']]);
+Broadcast::routes(['prefix' => 'api/v1', 'middleware' => ['api', 'auth:sanctum', 'active']]);
 
 Broadcast::channel('users.{id}', function (User $user, int $id): bool {
     return (int) $user->id === (int) $id;

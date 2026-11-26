@@ -10,15 +10,21 @@ use App\Models\AuditLog;
 use App\Models\Host;
 use App\Models\User;
 use App\Models\VirtualMachine;
+use App\Services\ConsoleTicketService;
 use App\Services\Hypervisor\Drivers\FakeHypervisorDriver;
 use App\Services\Hypervisor\HypervisorManager;
 use App\States\Vm\Running;
 use App\States\Vm\Stopped;
+use Illuminate\Contracts\Encryption\Encrypter;
+use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\Redis;
+use Illuminate\Testing\TestResponse;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Role;
+use Symfony\Component\HttpFoundation\Response;
 use Tests\Support\FakeRedis;
 use Tests\TestCase;
 
@@ -53,6 +59,15 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
         Role::firstOrCreate(['name' => 'customer', 'guard_name' => 'web']);
 
         $this->withoutMiddleware(ThrottleRequests::class);
+
+        // Enforce CSRF verification during tests so missing/invalid X-XSRF-TOKEN returns 419.
+        $this->app->bind(ValidateCsrfToken::class, static fn (Application $app): ValidateCsrfToken => new class($app, $app->make(Encrypter::class)) extends ValidateCsrfToken
+        {
+            protected function runningUnitTests(): bool
+            {
+                return false;
+            }
+        });
 
         $this->owner = User::factory()->create([
             'status' => 'active',
@@ -113,11 +128,83 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
         parent::tearDown();
     }
 
+    /**
+     * Establish a stateful browser cookie session and return stateful CSRF request headers.
+     *
+     * @return array<string, string>
+     */
+    private function actingAsStatefulUser(User $user, string $password = 'password'): array
+    {
+        $csrfRes = $this->withCredentials()
+            ->withHeaders(['Origin' => 'http://localhost'])
+            ->getJson('/sanctum/csrf-cookie');
+        $csrfRes->assertNoContent();
+
+        $xsrfCookie = (string) ($csrfRes->getCookie('XSRF-TOKEN', false)?->getValue() ?? '');
+        $sessionCookieName = (string) config('session.cookie');
+        $sessionCookie = (string) ($csrfRes->getCookie($sessionCookieName, false)?->getValue() ?? '');
+
+        $loginRes = $this->withCredentials()
+            ->withUnencryptedCookies([
+                'XSRF-TOKEN' => $xsrfCookie,
+                $sessionCookieName => $sessionCookie,
+            ])
+            ->withHeaders([
+                'Origin' => 'http://localhost',
+                'X-XSRF-TOKEN' => $xsrfCookie,
+            ])
+            ->postJson('/api/v1/login', [
+                'email' => $user->email,
+                'password' => $password,
+            ]);
+        $loginRes->assertOk();
+
+        return $this->syncStatefulCookies($loginRes, [
+            'Origin' => 'http://localhost',
+            'Accept' => 'application/json',
+            'X-XSRF-TOKEN' => $xsrfCookie,
+        ], $sessionCookie);
+    }
+
+    /**
+     * Sync updated session and XSRF cookies from a stateful response into the test client.
+     *
+     * @param  TestResponse<Response>  $response
+     * @param  array<string, string>  $headers
+     * @return array<string, string>
+     */
+    private function syncStatefulCookies(TestResponse $response, array $headers, string $fallbackSessionCookie = ''): array
+    {
+        $sessionCookieName = (string) config('session.cookie');
+        $newSessionCookie = $response->getCookie($sessionCookieName, false)?->getValue();
+        $sessionCookie = is_string($newSessionCookie) && $newSessionCookie !== ''
+            ? $newSessionCookie
+            : $fallbackSessionCookie;
+
+        $xsrfCookie = $headers['X-XSRF-TOKEN'] ?? '';
+        $newXsrfCookie = $response->getCookie('XSRF-TOKEN', false)?->getValue();
+        if (is_string($newXsrfCookie) && $newXsrfCookie !== '') {
+            $xsrfCookie = $newXsrfCookie;
+            $headers['X-XSRF-TOKEN'] = $xsrfCookie;
+        }
+
+        $cookies = ['XSRF-TOKEN' => $xsrfCookie];
+        if ($sessionCookie !== '') {
+            $cookies[$sessionCookieName] = $sessionCookie;
+        }
+
+        $this->withCredentials()->withUnencryptedCookies($cookies);
+        $this->app['auth']->forgetGuards();
+
+        return $headers;
+    }
+
     public function test_owner_can_request_console_session_and_host_url_is_never_returned(): void
     {
-        Sanctum::actingAs($this->owner);
+        $headers = $this->actingAsStatefulUser($this->owner);
 
-        $response = $this->postJson("/api/v1/vms/{$this->vm->id}/console");
+        $response = $this->withHeaders($headers)
+            ->postJson("/api/v1/vms/{$this->vm->id}/console");
 
         $response->assertStatus(200);
         $response->assertJsonStructure([
@@ -154,9 +241,10 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
 
     public function test_container_opens_exec_session_and_records_audit_event(): void
     {
-        Sanctum::actingAs($this->owner);
+        $headers = $this->actingAsStatefulUser($this->owner);
 
-        $response = $this->postJson("/api/v1/vms/{$this->container->id}/console");
+        $response = $this->withHeaders($headers)
+            ->postJson("/api/v1/vms/{$this->container->id}/console");
 
         $response->assertStatus(200);
         $response->assertJson([
@@ -196,9 +284,10 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
         $fakeDriver->setInstanceState($this->vm, ['agent_running' => false]);
         HypervisorManager::fake($fakeDriver);
 
-        Sanctum::actingAs($this->owner);
+        $headers = $this->actingAsStatefulUser($this->owner);
 
-        $response = $this->postJson("/api/v1/vms/{$this->vm->id}/console");
+        $response = $this->withHeaders($headers)
+            ->postJson("/api/v1/vms/{$this->vm->id}/console");
 
         $response->assertStatus(200);
         $response->assertJson([
@@ -223,18 +312,20 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
 
     public function test_delete_console_session_closes_session_and_records_audit(): void
     {
-        Sanctum::actingAs($this->owner);
+        $headers = $this->actingAsStatefulUser($this->owner);
 
         // Open an active session
-        $openResponse = $this->postJson("/api/v1/vms/{$this->vm->id}/console");
+        $openResponse = $this->withHeaders($headers)
+            ->postJson("/api/v1/vms/{$this->vm->id}/console");
         $openResponse->assertStatus(200);
         $sessionId = (string) $openResponse->json('session_id');
         $this->assertNotEmpty($sessionId);
 
         // Close the active session
-        $deleteResponse = $this->deleteJson("/api/v1/vms/{$this->vm->id}/console/{$sessionId}", [
-            'reason' => 'user_closed_terminal',
-        ]);
+        $deleteResponse = $this->withHeaders($headers)
+            ->deleteJson("/api/v1/vms/{$this->vm->id}/console/{$sessionId}", [
+                'reason' => 'user_closed_terminal',
+            ]);
 
         $deleteResponse->assertStatus(200);
         $deleteResponse->assertJson(['closed' => true]);
@@ -259,7 +350,8 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
         $this->assertArrayNotHasKey('input', $log->context);
 
         // Calling DELETE a second time is idempotent and does not duplicate audit log entry
-        $deleteResponse2 = $this->deleteJson("/api/v1/vms/{$this->vm->id}/console/{$sessionId}");
+        $deleteResponse2 = $this->withHeaders($headers)
+            ->deleteJson("/api/v1/vms/{$this->vm->id}/console/{$sessionId}");
         $deleteResponse2->assertStatus(200);
         $deleteResponse2->assertJson(['closed' => false]);
 
@@ -273,27 +365,27 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
 
     public function test_boot_log_works_for_vms_and_containers_with_or_without_agent_and_while_sessions_open(): void
     {
-        Sanctum::actingAs($this->owner);
+        $headers = $this->actingAsStatefulUser($this->owner);
 
         // 1. Boot log succeeds for VM
-        $vmLog = $this->getJson("/api/v1/vms/{$this->vm->id}/console-log");
+        $vmLog = $this->withHeaders($headers)->getJson("/api/v1/vms/{$this->vm->id}/console-log");
         $vmLog->assertStatus(200);
         $this->assertNotEmpty($vmLog->json('output'));
 
         // 2. Boot log succeeds for Container
-        $ctLog = $this->getJson("/api/v1/vms/{$this->container->id}/console-log");
+        $ctLog = $this->withHeaders($headers)->getJson("/api/v1/vms/{$this->container->id}/console-log");
         $ctLog->assertStatus(200);
         $this->assertNotEmpty($ctLog->json('output'));
 
         // 3. Open exec session on VM, boot log still succeeds
-        $this->postJson("/api/v1/vms/{$this->vm->id}/console")->assertStatus(200);
-        $vmLogDuringSession = $this->getJson("/api/v1/vms/{$this->vm->id}/console-log");
+        $this->withHeaders($headers)->postJson("/api/v1/vms/{$this->vm->id}/console")->assertStatus(200);
+        $vmLogDuringSession = $this->withHeaders($headers)->getJson("/api/v1/vms/{$this->vm->id}/console-log");
         $vmLogDuringSession->assertStatus(200);
         $this->assertNotEmpty($vmLogDuringSession->json('output'));
 
         // 4. Open exec session on Container, boot log still succeeds
-        $this->postJson("/api/v1/vms/{$this->container->id}/console")->assertStatus(200);
-        $ctLogDuringSession = $this->getJson("/api/v1/vms/{$this->container->id}/console-log");
+        $this->withHeaders($headers)->postJson("/api/v1/vms/{$this->container->id}/console")->assertStatus(200);
+        $ctLogDuringSession = $this->withHeaders($headers)->getJson("/api/v1/vms/{$this->container->id}/console-log");
         $ctLogDuringSession->assertStatus(200);
         $this->assertNotEmpty($ctLogDuringSession->json('output'));
 
@@ -305,29 +397,31 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
         // Clean previous sessions on VM so we can open a fallback console session
         Redis::del('console:vm_sessions:'.$this->vm->id);
 
-        $fallbackRes = $this->postJson("/api/v1/vms/{$this->vm->id}/console");
+        $fallbackRes = $this->withHeaders($headers)->postJson("/api/v1/vms/{$this->vm->id}/console");
         $fallbackRes->assertStatus(200);
         $this->assertSame('console', $fallbackRes->json('driver'));
 
-        $vmLogFallback = $this->getJson("/api/v1/vms/{$this->vm->id}/console-log");
+        $vmLogFallback = $this->withHeaders($headers)->getJson("/api/v1/vms/{$this->vm->id}/console-log");
         $vmLogFallback->assertStatus(200);
         $this->assertNotEmpty($vmLogFallback->json('output'));
     }
 
     public function test_other_user_is_forbidden_from_requesting_console(): void
     {
-        Sanctum::actingAs($this->intruder);
+        $headers = $this->actingAsStatefulUser($this->intruder);
 
-        $response = $this->postJson("/api/v1/vms/{$this->vm->id}/console");
+        $response = $this->withHeaders($headers)
+            ->postJson("/api/v1/vms/{$this->vm->id}/console");
 
         $response->assertStatus(403);
     }
 
     public function test_admin_is_strictly_forbidden_from_requesting_console(): void
     {
-        Sanctum::actingAs($this->admin);
+        $headers = $this->actingAsStatefulUser($this->admin);
 
-        $response = $this->postJson("/api/v1/vms/{$this->vm->id}/console");
+        $response = $this->withHeaders($headers)
+            ->postJson("/api/v1/vms/{$this->vm->id}/console");
 
         $response->assertStatus(403);
         $this->assertStringContainsString('Console access is restricted to the workload owner only', (string) $response->json('message'));
@@ -348,9 +442,10 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
             'os_image' => 'images:ubuntu/24.04',
         ]);
 
-        Sanctum::actingAs($this->admin);
+        $headers = $this->actingAsStatefulUser($this->admin);
 
-        $response = $this->postJson("/api/v1/vms/{$adminVm->id}/console");
+        $response = $this->withHeaders($headers)
+            ->postJson("/api/v1/vms/{$adminVm->id}/console");
 
         $response->assertStatus(200);
         $response->assertJsonStructure([
@@ -372,9 +467,10 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
         $this->vm->status->transitionTo(Stopped::class);
         $this->vm->save();
 
-        Sanctum::actingAs($this->owner);
+        $headers = $this->actingAsStatefulUser($this->owner);
 
-        $response = $this->postJson("/api/v1/vms/{$this->vm->id}/console");
+        $response = $this->withHeaders($headers)
+            ->postJson("/api/v1/vms/{$this->vm->id}/console");
 
         $response->assertStatus(409);
         $response->assertJsonFragment([
@@ -384,11 +480,12 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
 
     public function test_container_rejects_vga_type(): void
     {
-        Sanctum::actingAs($this->owner);
+        $headers = $this->actingAsStatefulUser($this->owner);
 
-        $response = $this->postJson("/api/v1/vms/{$this->container->id}/console", [
-            'type' => 'vga',
-        ]);
+        $response = $this->withHeaders($headers)
+            ->postJson("/api/v1/vms/{$this->container->id}/console", [
+                'type' => 'vga',
+            ]);
 
         $response->assertStatus(422);
         $response->assertJsonFragment([
@@ -396,24 +493,22 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
         ]);
     }
 
-    public function test_legacy_console_ticket_route_still_works(): void
+    public function test_deprecated_console_ticket_route_is_removed(): void
     {
-        Sanctum::actingAs($this->owner);
+        $headers = $this->actingAsStatefulUser($this->owner);
 
-        $response = $this->postJson("/api/v1/vms/{$this->vm->id}/console-ticket");
+        $response = $this->withHeaders($headers)
+            ->postJson("/api/v1/vms/{$this->vm->id}/console-ticket");
 
-        $response->assertStatus(200);
-        $response->assertJsonStructure([
-            'virtual_machine_id',
-            'ticket',
-        ]);
+        $this->assertContains($response->status(), [404, 405]);
     }
 
     public function test_console_log_endpoint_records_audit_log_entry(): void
     {
-        Sanctum::actingAs($this->owner);
+        $headers = $this->actingAsStatefulUser($this->owner);
 
-        $response = $this->getJson("/api/v1/vms/{$this->vm->id}/console-log");
+        $response = $this->withHeaders($headers)
+            ->getJson("/api/v1/vms/{$this->vm->id}/console-log");
 
         $response->assertStatus(200);
 
@@ -434,12 +529,15 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
 
     public function test_console_post_is_forbidden_and_audited_while_impersonating(): void
     {
-        $token = $this->owner->createToken(
-            name: 'impersonation:'.$this->admin->id,
-            abilities: ['impersonated', 'impersonator:'.$this->admin->id],
-        )->plainTextToken;
+        $adminHeaders = $this->actingAsStatefulUser($this->admin);
 
-        $response = $this->withHeader('Authorization', 'Bearer '.$token)
+        $impersonateRes = $this->withHeaders($adminHeaders)
+            ->postJson("/api/v1/admin/users/{$this->owner->id}/impersonate");
+        $impersonateRes->assertOk();
+
+        $impersonatedHeaders = $this->syncStatefulCookies($impersonateRes, $adminHeaders);
+
+        $response = $this->withHeaders($impersonatedHeaders)
             ->postJson("/api/v1/vms/{$this->vm->id}/console");
 
         $response->assertStatus(403);
@@ -462,25 +560,116 @@ final class VirtualMachineConsoleEndpointTest extends TestCase
         $this->assertArrayNotHasKey('data', $log->context);
     }
 
-    public function test_owner_can_request_console_session_with_sanctum_bearer_token(): void
+    public function test_ticket_reuse_is_rejected(): void
     {
-        $token = $this->owner->createToken('auth-token')->plainTextToken;
+        $headers = $this->actingAsStatefulUser($this->owner);
 
-        $response = $this->withHeader('Authorization', 'Bearer '.$token)
+        $response = $this->withHeaders($headers)
+            ->postJson("/api/v1/vms/{$this->vm->id}/console");
+        $response->assertStatus(200);
+
+        $ticket = (string) $response->json('ticket');
+        $this->assertNotEmpty($ticket);
+
+        $service = app(ConsoleTicketService::class);
+        $firstRedeem = $service->redeemTicket($ticket);
+        $this->assertIsArray($firstRedeem);
+        $this->assertSame($this->vm->id, $firstRedeem['virtual_machine_id']);
+
+        $secondRedeem = $service->redeemTicket($ticket);
+        $this->assertNull($secondRedeem);
+    }
+
+    public function test_expired_ticket_and_past_session_expires_at_are_rejected(): void
+    {
+        $service = app(ConsoleTicketService::class);
+
+        $pastSessionDto = $service->issueTicket(
+            $this->vm,
+            $this->owner,
+            sessionExpiresAt: time() - 10,
+        );
+        $this->assertNull($service->redeemTicket($pastSessionDto->ticket));
+
+        $missingSessionExpiryDto = $service->issueTicket(
+            $this->vm,
+            $this->owner,
+            sessionExpiresAt: null,
+        );
+        $this->assertNull($service->redeemTicket($missingSessionExpiryDto->ticket));
+    }
+
+    public function test_ticket_is_bound_to_requested_virtual_machine_id(): void
+    {
+        $otherVm = VirtualMachine::create([
+            'user_id' => $this->owner->id,
+            'host_id' => $this->host->id,
+            'name' => 'api-console-vm-b',
+            'incus_project' => 'default',
+            'instance_type' => 'virtual-machine',
+            'status' => Running::class,
+            'cpu_cores' => 2,
+            'ram_mb' => 2048,
+            'disk_gb' => 20,
+            'os_image' => 'images:ubuntu/24.04',
+        ]);
+
+        $headers = $this->actingAsStatefulUser($this->owner);
+
+        $response = $this->withHeaders($headers)
+            ->postJson("/api/v1/vms/{$this->vm->id}/console");
+        $response->assertStatus(200);
+
+        $payload = app(ConsoleTicketService::class)->redeemTicket((string) $response->json('ticket'));
+        $this->assertIsArray($payload);
+        $this->assertSame($this->vm->id, $payload['virtual_machine_id']);
+        $this->assertNotSame($otherVm->id, $payload['virtual_machine_id']);
+    }
+
+    public function test_issuance_without_session_returns_401(): void
+    {
+        // Unauthenticated stateless request
+        $this->postJson("/api/v1/vms/{$this->vm->id}/console")
+            ->assertStatus(401);
+
+        // Bearer token is disabled and has no session
+        $token = $this->owner->createToken('auth-token')->plainTextToken;
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson("/api/v1/vms/{$this->vm->id}/console")
+            ->assertStatus(401);
+
+        // Authenticated guard without an HTTP session
+        Sanctum::actingAs($this->owner);
+        $this->postJson("/api/v1/vms/{$this->vm->id}/console")
+            ->assertStatus(401)
+            ->assertJson(['message' => 'Session required.']);
+    }
+
+    public function test_issuance_with_session_but_without_xsrf_token_returns_419(): void
+    {
+        $headers = $this->actingAsStatefulUser($this->owner);
+        unset($headers['X-XSRF-TOKEN']);
+
+        $response = $this->withHeaders($headers)
             ->postJson("/api/v1/vms/{$this->vm->id}/console");
 
+        $response->assertStatus(419);
+    }
+
+    public function test_ticket_payload_contains_session_expires_at_matching_login_at_and_absolute_lifetime(): void
+    {
+        config(['session.absolute_lifetime' => 120]);
+
+        $headers = $this->actingAsStatefulUser($this->owner);
+        $loginAt = app('session.store')->get('login_at');
+        $this->assertIsInt($loginAt);
+
+        $response = $this->withHeaders($headers)
+            ->postJson("/api/v1/vms/{$this->vm->id}/console");
         $response->assertStatus(200);
-        $response->assertJsonStructure([
-            'ticket',
-            'websocket_path',
-            'expires_at',
-            'type',
-            'driver',
-            'session_id',
-            'fallback_reason',
-            'idle_timeout',
-        ]);
-        $this->assertSame('/console', $response->json('websocket_path'));
-        $this->assertStringNotContainsString($response->json('ticket'), $response->json('websocket_path'));
+
+        $payload = app(ConsoleTicketService::class)->redeemTicket((string) $response->json('ticket'));
+        $this->assertIsArray($payload);
+        $this->assertSame($loginAt + (120 * 60), $payload['session_expires_at'] ?? null);
     }
 }

@@ -20,7 +20,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
-use Laravel\Sanctum\PersonalAccessToken;
 use RuntimeException;
 use Spatie\Permission\Models\Role;
 
@@ -164,7 +163,7 @@ final class AuthService
     /**
      * Register a new tenant user and provision default quotas and permissions.
      *
-     * @return array{user: User, token: string|null, message: string}
+     * @return array{user: User, message: string}
      */
     public function register(RegisterDTO $dto): array
     {
@@ -219,28 +218,17 @@ final class AuthService
 
             return [
                 'user' => $user,
-                'token' => null,
                 'message' => (string) __('messages.auth.verification_email_sent'),
             ];
         });
     }
 
     /**
-     * Issue a standard authentication API access token for the specified user with default abilities and expiry.
-     */
-    public function issueAuthToken(User $user, string $name = 'auth-token'): string
-    {
-        return $user->createToken($name)->plainTextToken;
-    }
-
-    /**
-     * Authenticate an existing user and generate an API access token.
-     *
-     * @return array{user: User, token: string}
+     * Authenticate an existing user.
      *
      * @throws ValidationException
      */
-    public function login(LoginDTO $dto): array
+    public function login(LoginDTO $dto): User
     {
         $attemptedEmail = strtolower(trim($dto->email));
 
@@ -295,8 +283,6 @@ final class AuthService
             ]);
         }
 
-        $token = $this->issueAuthToken($user);
-
         $this->logger()->record(new AuditEntry(
             action: AuditAction::AuthLoginSuccess,
             outcome: AuditOutcome::Success,
@@ -308,10 +294,7 @@ final class AuthService
             ],
         ));
 
-        return [
-            'user' => $user,
-            'token' => $token,
-        ];
+        return $user;
     }
 
     /**
@@ -326,10 +309,7 @@ final class AuthService
         $passwordChanged = $dto->password !== null && $dto->password !== '';
 
         $auditContext = app(AuditContext::class);
-        /** @var mixed $userToken */
-        $userToken = $user->currentAccessToken();
-        $isImpersonated = $auditContext->getImpersonatorId() !== null
-            || ($userToken instanceof PersonalAccessToken && $user->tokenCan('impersonated'));
+        $isImpersonated = $auditContext->getImpersonatorId() !== null;
 
         if ($isImpersonated) {
             if ($passwordChanged) {
@@ -376,13 +356,6 @@ final class AuthService
         return DB::transaction(function () use ($user, $dto, $oldEmail, $emailChanged, $passwordChanged): User {
             if ($passwordChanged) {
                 $this->applyPassword($user, (string) $dto->password);
-
-                // Revoke all tokens except the current one
-                /** @var mixed $currentToken */
-                $currentToken = $user->currentAccessToken();
-                if (is_object($currentToken) && isset($currentToken->id)) {
-                    $user->tokens()->where('id', '!=', $currentToken->id)->delete();
-                }
 
                 $this->logger()->record(new AuditEntry(
                     action: AuditAction::AuthPasswordChanged,
@@ -484,7 +457,7 @@ final class AuthService
     }
 
     /**
-     * Invalidate current access token session.
+     * Record user logout in the audit log.
      */
     public function logout(User $user): void
     {
@@ -498,11 +471,5 @@ final class AuthService
                 'email' => $user->email,
             ],
         ));
-
-        /** @var mixed $currentAccessToken */
-        $currentAccessToken = $user->currentAccessToken();
-        if ($currentAccessToken instanceof PersonalAccessToken) {
-            $currentAccessToken->delete();
-        }
     }
 }

@@ -17,6 +17,7 @@ use App\States\Vm\Stopped;
 use App\States\Vm\Suspended;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Testing\TestResponse;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -234,6 +235,36 @@ final class AdminUserAndPoolManagementTest extends TestCase
         $this->assertDatabaseMissing('ip_pools', ['id' => $pool->id]);
     }
 
+    /**
+     * Send a stateful JSON POST request with Origin and CSRF headers obtained from /sanctum/csrf-cookie.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function postStatefulJson(string $uri, array $data = []): TestResponse
+    {
+        $csrfResponse = $this->withHeader('Origin', 'http://localhost')
+            ->getJson('/sanctum/csrf-cookie');
+        $csrfResponse->assertNoContent();
+
+        $xsrfCookie = $csrfResponse->getCookie('XSRF-TOKEN', false);
+        $xsrfToken = $xsrfCookie !== null ? $xsrfCookie->getValue() : '';
+
+        $sessionCookieName = (string) config('session.cookie');
+        $sessionCookie = $csrfResponse->getCookie($sessionCookieName, false);
+
+        $request = $this->withHeaders([
+            'Origin' => 'http://localhost',
+            'X-XSRF-TOKEN' => $xsrfToken,
+        ]);
+
+        if ($sessionCookie !== null) {
+            $request = $request->withCredentials()
+                ->withUnencryptedCookie($sessionCookieName, $sessionCookie->getValue());
+        }
+
+        return $request->postJson($uri, $data);
+    }
+
     public function test_admin_can_toggle_registration_and_register_is_blocked_when_disabled(): void
     {
         // 1. Initial state: public endpoint returns registration enabled
@@ -249,7 +280,8 @@ final class AdminUserAndPoolManagementTest extends TestCase
         $updateRes->assertJsonPath('settings.registration_enabled', false);
 
         // 3. New registration is rejected with 403 Forbidden
-        $regRes = $this->postJson('/api/v1/register', [
+        $this->app['auth']->forgetGuards();
+        $regRes = $this->postStatefulJson('/api/v1/register', [
             'name' => 'Blocked User',
             'email' => 'blocked@example.com',
             'password' => 'SecurePass123!#',
@@ -263,12 +295,14 @@ final class AdminUserAndPoolManagementTest extends TestCase
         $reEnableRes->assertOk();
 
         // 5. Registration succeeds
-        $allowRes = $this->postJson('/api/v1/register', [
+        $this->app['auth']->forgetGuards();
+        $allowRes = $this->postStatefulJson('/api/v1/register', [
             'name' => 'Allowed User',
             'email' => 'allowed@example.com',
             'password' => 'SecurePass123!#',
         ]);
         $allowRes->assertCreated();
+        $allowRes->assertJsonMissingPath('token');
     }
 
     public function test_admin_can_toggle_virtualization_modes_and_cannot_disable_both(): void

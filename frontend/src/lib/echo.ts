@@ -1,6 +1,7 @@
 import Echo from "laravel-echo";
 import Pusher from "pusher-js";
 import { getRuntimeConfig } from "@/lib/config";
+import { apiFetch, PASSIVE_ACTIVITY_HEADER } from "@/lib/api/client";
 
 declare global {
   interface Window {
@@ -16,10 +17,20 @@ export type EchoConnectionState =
   | "unavailable"
   | "failed";
 
+const MAX_TIMEOUT_MS = 2_147_483_647;
+
 let echoInstance: Echo<"reverb"> | null = null;
-let echoAuthToken: string | null = null;
+let echoEnabled = false;
+let echoDisconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
 const stateListeners = new Set<(state: EchoConnectionState) => void>();
+
+function clearDisconnectTimer(): void {
+  if (echoDisconnectTimer !== null) {
+    clearTimeout(echoDisconnectTimer);
+    echoDisconnectTimer = null;
+  }
+}
 
 function notifyStateListeners(state: EchoConnectionState): void {
   stateListeners.forEach((listener) => {
@@ -32,30 +43,62 @@ function notifyStateListeners(state: EchoConnectionState): void {
 }
 
 /**
- * Returns a singleton Laravel Echo instance configured for Laravel Reverb.
- * Automatically recreates the connection if the Bearer auth token has changed.
+ * Enables Echo connections for an authenticated browser session.
+ */
+export function enableEcho(): void {
+  echoEnabled = true;
+}
+
+/**
+ * Schedules Echo disconnection at the given ISO-8601 expiration timestamp.
+ */
+export function scheduleEchoDisconnectAt(expiresAtIso: string | null): void {
+  clearDisconnectTimer();
+
+  if (!expiresAtIso) {
+    return;
+  }
+
+  const expiresAtMs = Date.parse(expiresAtIso);
+  if (!Number.isFinite(expiresAtMs)) {
+    return;
+  }
+
+  const scheduleAt = (targetMs: number): void => {
+    const remainingMs = targetMs - Date.now();
+    if (remainingMs <= 0) {
+      disconnectEcho();
+      return;
+    }
+
+    const waitMs = Math.min(remainingMs, MAX_TIMEOUT_MS);
+    echoDisconnectTimer = setTimeout(() => {
+      echoDisconnectTimer = null;
+      if (Date.now() >= targetMs) {
+        disconnectEcho();
+      } else {
+        scheduleAt(targetMs);
+      }
+    }, waitMs);
+  };
+
+  scheduleAt(expiresAtMs);
+}
+
+/**
+ * Returns a singleton Laravel Echo instance configured for Laravel Reverb
+ * when Echo is enabled for the active browser session.
  */
 export function getEcho(): Echo<"reverb"> | null {
   if (typeof window === "undefined") {
     return null;
   }
 
-  const currentToken = localStorage.getItem("auth_token");
-  if (!currentToken) {
+  if (!echoEnabled) {
     if (echoInstance) {
       disconnectEcho();
     }
     return null;
-  }
-
-  if (echoInstance && echoAuthToken !== currentToken) {
-    try {
-      echoInstance.disconnect();
-    } catch {
-      // Ignore disconnect errors on stale instance
-    }
-    echoInstance = null;
-    echoAuthToken = null;
   }
 
   if (echoInstance) {
@@ -96,7 +139,8 @@ export function getEcho(): Echo<"reverb"> | null {
     return null;
   }
 
-  echoAuthToken = currentToken;
+  const authEndpoint = `${runtimeConfig.api_base_url || "/api/v1"}/broadcasting/auth`;
+
   echoInstance = new Echo({
     broadcaster: "reverb",
     key: reverbAppKey,
@@ -105,11 +149,39 @@ export function getEcho(): Echo<"reverb"> | null {
     wssPort: isHttps ? port : 443,
     forceTLS: isHttps,
     enabledTransports: ["ws", "wss"],
-    authEndpoint: `${runtimeConfig.api_base_url || "/api/v1"}/broadcasting/auth`,
-    auth: {
-      headers: {
-        Authorization: `Bearer ${currentToken}`,
-        Accept: "application/json",
+    channelAuthorization: {
+      customHandler: (params, callback) => {
+        void apiFetch(authEndpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            ...PASSIVE_ACTIVITY_HEADER,
+          },
+          body: JSON.stringify({
+            socket_id: params.socketId,
+            channel_name: params.channelName,
+          }),
+        })
+          .then(async (response) => {
+            if (!response.ok) {
+              throw new Error(
+                `Unable to retrieve auth string from channel-authorization endpoint - received status: ${response.status} from ${authEndpoint}.`
+              );
+            }
+            const data = (await response.json()) as {
+              auth: string;
+              channel_data?: string;
+              shared_secret?: string;
+            };
+            callback(null, data);
+          })
+          .catch((error: unknown) => {
+            callback(
+              error instanceof Error ? error : new Error(String(error)),
+              null
+            );
+          });
       },
     },
   });
@@ -161,7 +233,7 @@ export function getEchoConnectionState(): EchoConnectionState {
 
 /**
  * Subscribes to Reverb connection state transitions (e.g. connected, unavailable, disconnected).
- * Remains bound across Echo instance re-initializations and token changes.
+ * Remains bound across Echo instance re-initializations.
  */
 export function onEchoConnectionStateChange(
   callback: (state: EchoConnectionState) => void
@@ -179,9 +251,13 @@ export function onEchoConnectionStateChange(
 }
 
 /**
- * Forces manual reconnect attempt to Reverb.
+ * Forces manual reconnect attempt to Reverb when Echo is enabled.
  */
 export function reconnectEcho(): void {
+  if (!echoEnabled) {
+    return;
+  }
+
   if (echoInstance) {
     try {
       const connector = echoInstance.connector as unknown as {
@@ -190,6 +266,7 @@ export function reconnectEcho(): void {
       connector?.pusher?.connect?.();
     } catch {
       disconnectEcho();
+      enableEcho();
       getEcho();
     }
   } else {
@@ -198,9 +275,12 @@ export function reconnectEcho(): void {
 }
 
 /**
- * Disconnects the active Echo instance and cleans up memory.
+ * Disables Echo, clears any scheduled expiry disconnect timer,
+ * disconnects the active Echo instance, and notifies listeners.
  */
 export function disconnectEcho(): void {
+  echoEnabled = false;
+  clearDisconnectTimer();
   if (echoInstance) {
     try {
       echoInstance.disconnect();
@@ -209,6 +289,8 @@ export function disconnectEcho(): void {
     }
     echoInstance = null;
   }
-  echoAuthToken = null;
+  if (typeof window !== "undefined") {
+    delete window.Echo;
+  }
   notifyStateListeners("disconnected");
 }

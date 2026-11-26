@@ -34,7 +34,7 @@ flowchart TB
 
     Browser --> Nginx
     Nginx -->|"/"| Frontend
-    Nginx -->|"/api, /sanctum, /docs"| Backend
+    Nginx -->|"/api/v1, /sanctum, /docs"| Backend
     Nginx -->|"/app/{key}"| Reverb
     Nginx -->|"/console?ticket=..."| ConsoleProxy
 
@@ -141,6 +141,6 @@ sequenceDiagram
 
 ### 4.2 WebSocket Broadcasting Channels (`backend/routes/channels.php`)
 
-- **Endpoint:** `/api/v1/broadcasting/auth` (authenticated via Sanctum Bearer token).
+- **Endpoint:** `/api/v1/broadcasting/auth` (authenticated via the session cookie and `X-XSRF-TOKEN`, with `X-Ognivo-Activity: passive`).
 - **`private-users.{id}`:** Receives `VirtualMachineStatusUpdated` and `SnapshotStatusUpdated` events for workloads owned by user `{id}`.
 - **`private-admin.workloads`:** Receives cluster-wide workload and snapshot updates for users with the `admin` role.

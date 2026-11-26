@@ -203,8 +203,17 @@ make secrets
 ```ini
 APP_URL=https://panel.example.com
 REVERB_ALLOWED_ORIGINS=https://panel.example.com
-SANCTUM_STATEFUL_DOMAINS=panel.example.com   # add this line if it is not in the file yet
+CONSOLE_ALLOWED_ORIGINS=https://panel.example.com
+SANCTUM_STATEFUL_DOMAINS=panel.example.com
+SESSION_COOKIE=__Host-ognivo_session
+SESSION_SAME_SITE=strict
+SESSION_ABSOLUTE_LIFETIME=1440
+SCRAMBLE_ALLOW_PUBLIC=false
+SCRAMBLE_TRY_IT_ENABLED=false
 ```
+
+> [!NOTE]
+> When upgrading an existing installation to cookie-based browser sessions, add the keys above (`SESSION_COOKIE`, `SESSION_SAME_SITE`, `SESSION_ABSOLUTE_LIFETIME`, `CONSOLE_ALLOWED_ORIGINS`, `SANCTUM_STATEFUL_DOMAINS`, `SCRAMBLE_ALLOW_PUBLIC`, `SCRAMBLE_TRY_IT_ENABLED`) to `.env.production`. All users will need to sign in again, and operators should run `docker exec ognivo-backend php artisan auth:purge-legacy-tokens` to purge legacy personal access tokens.
 
 **3. Allow private node addresses if needed.** By default production refuses to add Incus nodes on private (RFC 1918) or loopback addresses (an SSRF protection). If your nodes are on a LAN, add:
 
@@ -323,11 +332,15 @@ Alternative flow with a pre-trusted certificate and full details: [Host Onboardi
 - **IPv4 only.** IPAM supports IPv4 pools and allocation. IPv6 and dual-stack guests are planned for 1.1.
 - **Standalone nodes.** Each Incus endpoint is one compute node. Cross-cluster migration, cluster-wide storage pools, SSO/OIDC and object storage buckets are out of scope for 1.0.
 - **No plans or products yet.** Tenants pick CPU, RAM and disk within their quota. Overcommit is a global setting in `.env`.
-- **Bearer tokens in `localStorage`.** API tokens are stored in the browser and mitigated by a strict CSP and XSS hygiene. Migration to `httpOnly` SameSite cookies is planned (tracked in [issues](https://github.com/schmasterz/ognivo/issues)).
+- **First-party web interface only.** Browser sessions use `httpOnly`, `Secure` (in production), `SameSite=Strict` cookies (`__Host-ognivo_session` in production) with CSRF and same-origin verification. There is no public Bearer token authentication for external clients yet (Bearer tokens are rejected with `401`).
 
 ## Roadmap
 
-Planned work is tracked [`CHANGELOG.md`](CHANGELOG.md). Current priorities: finishing 1.0 (instance access provisioning, VM metrics), `httpOnly` cookie authentication, IPv6 IPAM, storage pool selection and more backup targets.
+Planned work is tracked [`CHANGELOG.md`](CHANGELOG.md). Current priorities: finishing 1.0 (instance access provisioning, VM metrics), IPv6 IPAM, storage pool selection and more backup targets.
+
+### Planned, not scheduled
+
+- **API access for external clients:** personal API tokens (Bearer) created by the user in the UI, scopes, per-token rate limiting, token revocation, audit log entries, and public API documentation. The browser session uses `httpOnly` cookies; token authentication would be an additional, separate mechanism. Not scheduled.
 
 ## Upgrading and backups
 

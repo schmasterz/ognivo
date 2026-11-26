@@ -162,8 +162,8 @@ export const adminApi = {
 
   async adminImpersonateUser(
     userId: number
-  ): Promise<{ token: string; user: User; expires_at: string; message: string }> {
-    return request<{ token: string; user: User; expires_at: string; message: string }>(
+  ): Promise<{ user: User; expires_at: string; message?: string }> {
+    return request<{ user: User; expires_at: string; message?: string }>(
       `/admin/users/${userId}/impersonate`,
       {
         method: "POST",

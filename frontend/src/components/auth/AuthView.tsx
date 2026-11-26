@@ -1,18 +1,23 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Server, Lock, Mail, User as UserIcon, AlertCircle, Loader2, ArrowRight, ArrowLeft, Eye, EyeOff, CheckCircle2 } from "lucide-react";
 import { api, User } from "@/lib/api";
+import { useAuth } from "@/lib/auth/AuthContext";
+import { sanitizeNextPath } from "@/lib/auth/sanitizeNextPath";
 import { useI18n } from "@/lib/i18n/I18nContext";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { LanguageToggle } from "@/components/layout/LanguageToggle";
 
 interface AuthViewProps {
-  onAuthSuccess: (user: User, roles: string[]) => void;
+  onAuthSuccess: (user: User, roles: string[], sessionExpiresAt?: string | null) => void;
 }
 
 export function AuthView({ onAuthSuccess }: AuthViewProps) {
   const { t } = useI18n();
+  const router = useRouter();
+  const { user, authLoading } = useAuth();
   const [isRegister, setIsRegister] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -68,6 +73,13 @@ export function AuthView({ onAuthSuccess }: AuthViewProps) {
   };
 
   useEffect(() => {
+    if (!authLoading && user && typeof window !== "undefined") {
+      const nextParam = new URLSearchParams(window.location.search).get("next");
+      router.replace(sanitizeNextPath(nextParam, "/instances"));
+    }
+  }, [authLoading, user, router]);
+
+  useEffect(() => {
     api.getPublicSettings().then((res) => {
       setRegistrationEnabled(res.registration_enabled);
       if (!res.registration_enabled) {
@@ -93,7 +105,7 @@ export function AuthView({ onAuthSuccess }: AuthViewProps) {
       await api.login(email, password);
 
       const me = await api.getMe();
-      onAuthSuccess(me.user, me.roles);
+      onAuthSuccess(me.user, me.roles, me.session_expires_at);
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message);
@@ -104,6 +116,17 @@ export function AuthView({ onAuthSuccess }: AuthViewProps) {
       setLoading(false);
     }
   };
+
+  if (authLoading || user) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-[#090d16] text-gray-900 dark:text-white transition-colors">
+        <div className="flex flex-col items-center space-y-3 text-gray-500 dark:text-gray-400">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+          <span className="text-xs font-medium tracking-wide">{t("loading")}</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-[#090d16] text-gray-900 dark:text-white transition-colors relative">

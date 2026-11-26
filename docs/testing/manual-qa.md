@@ -61,76 +61,96 @@ Open the development panel at **`http://localhost`**.
 
 ## 2. API Verification via `curl`
 
-### 2.1 Authenticate & Obtain Bearer Token
+Ognivo's API serves the first-party web interface only. It uses cookie-based Sanctum stateful sessions rather than API tokens: there is no endpoint to obtain a token, and `Authorization: Bearer ...` headers are rejected with `401`.
+
+- **Session cookies & security:** `POST /api/v1/login` sets an `httpOnly`, `SameSite=Strict` session cookie (`ognivo_session` in development, `__Host-ognivo_session` in production) and returns `{ "user": ... }` with no token. A cookie jar holds a live authenticated session—never share it, and delete `"$JAR"` (`rm -f "$JAR"`) when finished.
+- **`Origin` header:** Stateful requests require an `Origin` (or `Referer`) header whose host matches `SANCTUM_STATEFUL_DOMAINS` (which includes `localhost` in development) so Sanctum treats the request as stateful.
+- **`X-XSRF-TOKEN` header:** State-changing requests (`POST`, `PUT`, `PATCH`, `DELETE`) require `X-XSRF-TOKEN` set to the URL-decoded `XSRF-TOKEN` cookie obtained from `GET /sanctum/csrf-cookie`; missing or mismatched tokens return `419`.
+- **Dev vs. Prod base URL:** Use `BASE=http://localhost` locally and `BASE=https://panel.example.com` in production (add `-k` to `curl` only if testing against self-signed TLS certificates).
+
+### 2.1 Session Setup & Authentication (Cookie Jar + CSRF)
 ```bash
-curl -s -X POST http://localhost/api/v1/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@ognivo.local","password":"password"}'
+BASE=http://localhost            # production: https://panel.example.com (add -k for self-signed certs)
+JAR=$(mktemp)                    # cookie jar; delete it when done (rm -f "$JAR")
+
+xsrf() {                         # current CSRF token, URL-decoded
+  awk '$6=="XSRF-TOKEN"{print $7}' "$JAR" | tail -n1 | python3 -c 'import sys,urllib.parse;print(urllib.parse.unquote(sys.stdin.read().strip()))'
+}
+
+api() {                          # usage: api METHOD /path [json-body]
+  curl -s -b "$JAR" -c "$JAR" -X "$1" "$BASE/api/v1$2" \
+    -H "Origin: $BASE" -H "Accept: application/json" -H "Content-Type: application/json" \
+    -H "X-XSRF-TOKEN: $(xsrf)" ${3:+-d "$3"}
+}
+
+# Log in (sets the httpOnly session cookie; the response contains the user and no token)
+curl -s -o /dev/null -c "$JAR" -H "Origin: $BASE" "$BASE/sanctum/csrf-cookie"
+api POST /login '{"email":"admin@ognivo.local","password":"password"}'
+
+# Following calls reuse the cookie jar
+api GET /me
+```
+
+To switch accounts (for example, to test tenant-scoped actions as `customer@ognivo.local`), log out and log back in or use a separate cookie jar:
+```bash
+api POST /logout
 ```
 
 ### 2.2 Quota Groups Management
 ```bash
 # List Quota Groups
-curl -s http://localhost/api/v1/admin/quota-groups \
-  -H "Authorization: Bearer <ADMIN_TOKEN>"
+api GET /admin/quota-groups
 
 # Update a Quota Group (automatically syncs all assigned tenants)
-curl -s -X PUT http://localhost/api/v1/admin/quota-groups/1 \
-  -H "Authorization: Bearer <ADMIN_TOKEN>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Standard Tier (Upgraded)",
-    "description": "Upgraded base plan",
-    "max_vms": 5,
-    "max_cpu_cores": 8,
-    "max_ram_mb": 16384,
-    "max_storage_gb": 200,
-    "max_ips": 3,
-    "max_snapshots": 5
-  }'
+api PUT /admin/quota-groups/1 '{
+  "name": "Standard Tier (Upgraded)",
+  "description": "Upgraded base plan",
+  "max_vms": 5,
+  "max_cpu_cores": 8,
+  "max_ram_mb": 16384,
+  "max_storage_gb": 200,
+  "max_ips": 3,
+  "max_snapshots": 5
+}'
 ```
 
 ### 2.3 Host Nodes & IP Pools
 ```bash
 # List active compute nodes
-curl -s http://localhost/api/v1/hosts \
-  -H "Authorization: Bearer <USER_TOKEN>"
+api GET /hosts
 
 # Filter compute nodes as admin (search, status, is_active, driver)
-curl -s "http://localhost/api/v1/admin/hosts?search=Frankfurt&status=ok&is_active=true&driver=fake" \
-  -H "Authorization: Bearer <ADMIN_TOKEN>"
+api GET "/admin/hosts?search=Frankfurt&status=ok&is_active=true&driver=fake"
 
 # Filter virtual machines by host node
-curl -s "http://localhost/api/v1/vms?host_id=1" \
-  -H "Authorization: Bearer <USER_TOKEN>"
+api GET "/vms?host_id=1"
 ```
 
 ### 2.4 Virtual Machine Snapshots
 ```bash
 # List snapshots for VM #1 (with quota metadata)
-curl -s http://localhost/api/v1/vms/1/snapshots \
-  -H "Authorization: Bearer <USER_TOKEN>"
+api GET /vms/1/snapshots
 
 # Create a manual snapshot asynchronously (202 Accepted)
-curl -s -X POST http://localhost/api/v1/vms/1/snapshots \
-  -H "Authorization: Bearer <USER_TOKEN>" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "daily-backup-01"}'
+api POST /vms/1/snapshots '{"name": "daily-backup-01"}'
 
 # Restore a ready snapshot (202 Accepted)
-curl -s -X POST http://localhost/api/v1/vms/1/snapshots/1/restore \
-  -H "Authorization: Bearer <USER_TOKEN>"
+api POST /vms/1/snapshots/1/restore
 
 # Delete a snapshot (202 Accepted)
-curl -s -X DELETE http://localhost/api/v1/vms/1/snapshots/1 \
-  -H "Authorization: Bearer <USER_TOKEN>"
+api DELETE /vms/1/snapshots/1
 ```
+
+#### Troubleshooting
+- **`419` (CSRF token mismatch):** Refresh the CSRF cookie (`curl -s -o /dev/null -b "$JAR" -c "$JAR" -H "Origin: $BASE" "$BASE/sanctum/csrf-cookie"`) and retry.
+- **`401` right after login:** Confirm `-H "Origin: $BASE"` is included and its host is listed in `SANCTUM_STATEFUL_DOMAINS`.
+- **`401` / `403` later in a session:** Sessions expire after the 24-hour absolute cap or 120 minutes of inactivity; sign in again with `POST /api/v1/login`.
 
 ### 2.5 Interactive OpenAPI Documentation
 - **Swagger / Scramble UI:** `http://localhost/docs/api`
 - **OpenAPI v3.1 JSON Spec:** `http://localhost/docs/api.json`
 
-**Access Control:** Access is governed by the `viewApiDocs` authorization gate. The endpoints are public in `local` and `testing` environments, and restricted to authenticated users with the `admin` role in `production`.
+**Access Control & Interactive Try-It:** Access is governed by the `viewApiDocs` authorization gate and Scramble environment flags. In `production`, `SCRAMBLE_ALLOW_PUBLIC=false` is the default, restricting `/docs/api` and `/docs/api.json` to authenticated users with the `admin` role (only `local` and `testing` environments allow public access when enabled). The interactive "Try it out" panel is also disabled by default (`SCRAMBLE_TRY_IT_ENABLED=false`).
 
 **Automatic Updates:** The OpenAPI specification updates automatically. Dedoc Scramble statically analyzes PHP 8 controller route attributes (`Spatie\RouteAttributes\Attributes\*`), `FormRequest` validation rules, and `JsonResource` return types dynamically on request.
 

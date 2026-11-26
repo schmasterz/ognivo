@@ -266,6 +266,15 @@ final class VirtualMachineController extends Controller
     #[Post('{virtualMachine}/console', name: 'vms.console', middleware: ['throttle:6,1'])]
     public function console(Request $request, VirtualMachine $virtualMachine): JsonResponse
     {
+        if (! $request->hasSession()) {
+            return response()->json(['message' => 'Session required.'], 401);
+        }
+
+        $loginAt = $request->session()->get('login_at');
+        if (! is_int($loginAt) && ! is_numeric($loginAt)) {
+            return response()->json(['message' => 'Session required.'], 401);
+        }
+
         $rawType = $request->input('type');
         $type = is_string($rawType) && $rawType !== '' ? $rawType : 'console';
         if (! in_array($type, ['console', 'vga'], true)) {
@@ -285,13 +294,16 @@ final class VirtualMachineController extends Controller
         $cols = Cast::int($request->input('cols') ?? $request->input('width'), 80);
         $rows = Cast::int($request->input('rows') ?? $request->input('height'), 24);
 
+        $sessionExpiresAt = (int) $loginAt + (max(1, Cast::int(config('session.absolute_lifetime', 1440), 1440)) * 60);
+
         $session = $this->ticketService()->issueTicket(
             $virtualMachine,
             $request->user(),
             $type,
             $cols,
             $rows,
-            $driver
+            $driver,
+            $sessionExpiresAt,
         );
 
         return response()->json($session->toArray());
@@ -316,19 +328,5 @@ final class VirtualMachineController extends Controller
         );
 
         return response()->json(['closed' => $closed]);
-    }
-
-    /**
-     * Issue an interactive console ticket for the virtual machine (legacy endpoint).
-     */
-    #[Post('{virtualMachine}/console-ticket', name: 'vms.console_ticket', middleware: ['throttle:6,1'])]
-    public function consoleTicket(Request $request, VirtualMachine $virtualMachine): JsonResponse
-    {
-        $session = $this->ticketService()->issueTicket($virtualMachine, $request->user(), 'console');
-
-        return response()->json([
-            'virtual_machine_id' => $virtualMachine->id,
-            'ticket' => $session->ticket,
-        ]);
     }
 }

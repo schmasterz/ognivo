@@ -5,10 +5,9 @@ declare(strict_types=1);
 namespace App\Http\Middleware;
 
 use App\Audit\AuditContext;
-use App\Models\User;
 use Closure;
 use Illuminate\Http\Request;
-use Laravel\Sanctum\PersonalAccessToken;
+use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\Response;
 
 final class SetImpersonationContext
@@ -24,68 +23,46 @@ final class SetImpersonationContext
      */
     public function handle(Request $request, Closure $next): Response
     {
-        /** @var User|null $user */
-        $user = $request->user();
-        if ($user === null && $request->bearerToken() !== null) {
-            /** @var User|null $sanctumUser */
-            $sanctumUser = auth('sanctum')->user();
-            $user = $sanctumUser;
+        if ($this->hasExpiredImpersonationSession($request)) {
+            Auth::guard('web')->logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            return response()->json(['message' => 'Impersonation session expired.'], 401);
         }
 
-        if ($user !== null) {
-            /** @var mixed $currentToken */
-            $currentToken = $user->currentAccessToken();
-            if ($currentToken instanceof PersonalAccessToken && AuditContext::isImpersonatedToken($currentToken)) {
-                $impersonatorId = $this->extractImpersonatorId($currentToken);
-                if ($impersonatorId !== null) {
-                    $this->auditContext->setImpersonatorId($impersonatorId);
-                    $request->attributes->set('impersonator_id', $impersonatorId);
-                    $request->attributes->set('is_impersonated', true);
-                }
-            }
+        $id = $this->auditContext->impersonatorIdFromRequest($request);
+        if ($id !== null) {
+            $this->auditContext->setImpersonatorId($id);
+            $request->attributes->set('impersonator_id', $id);
+            $request->attributes->set('is_impersonated', true);
         }
 
-        $response = $next($request);
-
-        // In case user was resolved during downstream request processing
-        /** @var User|null $postUser */
-        $postUser = $request->user();
-        if ($this->auditContext->getImpersonatorId() === null && $postUser !== null) {
-            /** @var mixed $currentToken */
-            $currentToken = $postUser->currentAccessToken();
-            if ($currentToken instanceof PersonalAccessToken && AuditContext::isImpersonatedToken($currentToken)) {
-                $impersonatorId = $this->extractImpersonatorId($currentToken);
-                if ($impersonatorId !== null) {
-                    $this->auditContext->setImpersonatorId($impersonatorId);
-                    $request->attributes->set('impersonator_id', $impersonatorId);
-                    $request->attributes->set('is_impersonated', true);
-                }
-            }
-        }
-
-        return $response;
+        return $next($request);
     }
 
-    private function extractImpersonatorId(PersonalAccessToken $token): ?int
+    /**
+     * Determine whether the request session contains an expired or incomplete impersonation state.
+     */
+    private function hasExpiredImpersonationSession(Request $request): bool
     {
-        if (is_array($token->abilities)) {
-            foreach ($token->abilities as $ability) {
-                if (is_string($ability) && str_starts_with($ability, 'impersonator:')) {
-                    $id = substr($ability, 13);
-                    if (is_numeric($id)) {
-                        return (int) $id;
-                    }
-                }
-            }
+        if (! $request->hasSession()) {
+            return false;
         }
 
-        if (isset($token->name) && str_starts_with($token->name, 'impersonation:')) {
-            $id = substr($token->name, 14);
-            if (is_numeric($id)) {
-                return (int) $id;
-            }
+        $session = $request->session();
+        $hasImpersonator = $session->has('impersonator_id');
+        $hasExpiresAt = $session->has('impersonation_expires_at');
+
+        if (! $hasImpersonator && ! $hasExpiresAt) {
+            return false;
         }
 
-        return null;
+        $expiresAt = $session->get('impersonation_expires_at');
+        if (! is_int($expiresAt) && ! (is_string($expiresAt) && ctype_digit($expiresAt))) {
+            return true;
+        }
+
+        return (int) $expiresAt <= time();
     }
 }

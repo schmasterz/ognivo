@@ -39,6 +39,7 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Sanctum\Sanctum;
 use Override;
 use Spatie\ModelStates\Events\StateChanged;
 
@@ -66,6 +67,9 @@ final class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Browser-only API: Bearer tokens are not accepted until external API access is designed; remove this callback to re-enable.
+        Sanctum::getAccessTokenFromRequestUsing(static fn (): ?string => null);
+
         Queue::createPayloadUsing(static function (): array {
             return [
                 'audit_context' => app(AuditContext::class)->toPayload(),

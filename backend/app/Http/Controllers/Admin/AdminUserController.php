@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 use Spatie\RouteAttributes\Attributes\Delete;
 use Spatie\RouteAttributes\Attributes\Get;
@@ -207,12 +208,15 @@ final class AdminUserController extends Controller
     }
 
     /**
-     * Start an impersonation session for the specified tenant user.
-     * Issues a short-lived Sanctum token (30 min, ability 'impersonated') and records impersonation.started.
+     * Start a session-based impersonation for the specified tenant user (30-minute TTL) and record impersonation.started.
      */
     #[Post('{user}/impersonate', name: 'admin.users.impersonate')]
     public function impersonate(Request $request, User $user): JsonResponse
     {
+        if (! $request->hasSession()) {
+            abort(403, 'This endpoint is available to the browser session only.');
+        }
+
         /** @var User $admin */
         $admin = $request->user();
 
@@ -229,11 +233,6 @@ final class AdminUserController extends Controller
         }
 
         $expiresAt = Carbon::now()->addMinutes(30);
-        $token = $user->createToken(
-            name: 'impersonation:'.$admin->id,
-            abilities: ['impersonated', 'impersonator:'.$admin->id],
-            expiresAt: $expiresAt,
-        );
 
         $this->logger()->record(new AuditEntry(
             action: AuditAction::ImpersonationStarted,
@@ -254,8 +253,14 @@ final class AdminUserController extends Controller
             ],
         ));
 
+        Auth::guard('web')->login($user);
+        $request->session()->regenerate();
+        $request->session()->put([
+            'impersonator_id' => $admin->id,
+            'impersonation_expires_at' => $expiresAt->timestamp,
+        ]);
+
         return response()->json([
-            'token' => $token->plainTextToken,
             'user' => new UserResource($user),
             'expires_at' => $expiresAt->toISOString(),
             'message' => 'Impersonation session started successfully.',

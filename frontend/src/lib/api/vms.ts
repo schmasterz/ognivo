@@ -1,4 +1,4 @@
-import { API_BASE, ApiError, request } from "./client";
+import { API_BASE, ApiError, apiFetch, request } from "./client";
 import {
   PaginatedResponse,
   VirtualMachine,
@@ -164,6 +164,7 @@ export const vmsApi = {
       maxPoints?: number;
       etag?: string | null;
       signal?: AbortSignal;
+      passive?: boolean;
     }
   ): Promise<
     | { status: 200; data: VmMetricsResponse; etag: string | null }
@@ -179,25 +180,20 @@ export const vmsApi = {
     }
     const qs = params.toString() ? `?${params.toString()}` : "";
 
-    const token =
-      typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
-
     const headers: Record<string, string> = {
       Accept: "application/json",
     };
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
     if (options?.etag) {
       headers["If-None-Match"] = options.etag;
     }
 
     let response: Response;
     try {
-      response = await fetch(`${API_BASE}/vms/${vmId}/metrics${qs}`, {
+      response = await apiFetch(`${API_BASE}/vms/${vmId}/metrics${qs}`, {
         method: "GET",
         headers,
         signal: options?.signal,
+        passive: options?.passive ?? false,
       });
     } catch (fetchError) {
       if (

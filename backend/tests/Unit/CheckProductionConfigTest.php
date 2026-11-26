@@ -49,6 +49,10 @@ final class CheckProductionConfigTest extends TestCase
         'AUDIT_PSEUDONYM_SALT',
         'AUDIT_STRICT_GRANTS',
         'SESSION_SECURE_COOKIE',
+        'SESSION_SAME_SITE',
+        'SESSION_DOMAIN',
+        'SESSION_COOKIE',
+        'CONSOLE_ALLOWED_ORIGINS',
     ];
 
     private const TRACKED_CONFIGS = [
@@ -73,6 +77,10 @@ final class CheckProductionConfigTest extends TestCase
         'audit.pseudonym_salt',
         'audit.strict_grants',
         'session.secure',
+        'session.same_site',
+        'session.domain',
+        'session.cookie',
+        'sanctum.stateful',
     ];
 
     protected function setUp(): void
@@ -164,6 +172,10 @@ final class CheckProductionConfigTest extends TestCase
             'audit.pseudonym_salt' => 'super_secure_audit_salt_7890',
             'audit.strict_grants' => true,
             'session.secure' => true,
+            'session.same_site' => 'strict',
+            'session.domain' => null,
+            'session.cookie' => '__Host-ognivo_session',
+            'sanctum.stateful' => ['panel.example.com'],
         ]);
 
         $this->setEnv('APP_KEY', $validKey);
@@ -185,6 +197,10 @@ final class CheckProductionConfigTest extends TestCase
         $this->setEnv('AUDIT_PSEUDONYM_SALT', 'super_secure_audit_salt_7890');
         $this->setEnv('AUDIT_STRICT_GRANTS', 'true');
         $this->setEnv('SESSION_SECURE_COOKIE', 'true');
+        $this->setEnv('SESSION_SAME_SITE', 'strict');
+        $this->setEnv('SESSION_DOMAIN', '');
+        $this->setEnv('SESSION_COOKIE', '__Host-ognivo_session');
+        $this->setEnv('CONSOLE_ALLOWED_ORIGINS', 'https://panel.example.com');
     }
 
     public function test_valid_configuration_passes(): void

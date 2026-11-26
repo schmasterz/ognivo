@@ -109,22 +109,27 @@ If a virtual machine is still booting when the user opens the console, the initi
 
 ### Authentication
 
-The ticket is read in this order:
+The **only** supported ticket transport is the WebSocket subprotocol `ticket.<ticket>` passed in `Sec-WebSocket-Protocol`:
 
-1. `Sec-WebSocket-Protocol: ognivo-terminal, ticket.<ticket>` (**used by the web panel**; keeps the ticket out of URLs and access logs).
-2. `Authorization: Bearer <ticket>` header.
-3. `?ticket=<ticket>` query string (legacy; avoid it, because URLs end up in logs and browser history).
+```text
+Sec-WebSocket-Protocol: ognivo-terminal, ticket.<ticket>
+```
 
-The proxy answers the subprotocol handshake with `ognivo-terminal`.
+This keeps tickets out of URLs, query strings, and HTTP access logs. The proxy answers the subprotocol handshake with `ognivo-terminal`.
+
+`console-proxy` also enforces two session and origin controls on every connection:
+
+- **`Origin` allowlist (`CONSOLE_ALLOWED_ORIGINS`):** Every WebSocket upgrade request must carry an `Origin` header matching an exact origin in `CONSOLE_ALLOWED_ORIGINS` (comma-separated, no wildcard `*`). In production, `CONSOLE_ALLOWED_ORIGINS` is mandatory and the proxy fails closed if empty or containing `*`.
+- **Session expiry enforcement (`session_expires_at`):** Each encrypted ticket payload carries the user's `session_expires_at` timestamp. Upgrades with a missing or already-expired `session_expires_at` are rejected with `403`, and active terminal sockets are closed with WebSocket code `1008` (`Session expired`) as soon as the browser session expires.
 
 ### Handshake failures
 
 | HTTP status | Meaning |
 | :--- | :--- |
 | `404` | Path is not `/console` |
-| `401` | No ticket supplied |
+| `401` | No `ticket.<ticket>` subprotocol supplied |
 | `400` | Ticket is not 16 to 128 characters of `A-Z a-z 0-9 _ -` |
-| `403` | Ticket unknown, expired or already used |
+| `403` | `Origin` missing or not in `CONSOLE_ALLOWED_ORIGINS`; or ticket unknown, expired, already used, undecryptable, or past `session_expires_at` |
 | `500` | Unexpected error while redeeming the ticket |
 
 ### Frames
@@ -141,6 +146,7 @@ Messages larger than the session's `max_message_bytes` (default 64 KiB) close th
 
 | Code | Meaning |
 | :--- | :--- |
+| `1008` | Browser session expired (`session_expires_at` reached) or policy violation (for example, fake driver disabled in production) |
 | `4000` | Idle timeout exceeded (the proxy sends a notice line first) |
 | `1009` | Message too big |
 | `1011` | Upstream connection to the hypervisor failed |
@@ -207,7 +213,7 @@ This policy protects tenants from the panel's staff. It does not protect them fr
 
 ## 6. REST API Reference
 
-All endpoints require a Sanctum bearer token and are under `/api`. Interactive documentation is available at `/docs/api`.
+All endpoints require an authenticated browser session (cookie + `X-XSRF-TOKEN` on state-changing requests) and live under `/api/v1`. Interactive documentation is available at `/docs/api`.
 
 ### Issue a terminal session
 
@@ -269,11 +275,11 @@ GET /api/v1/vms/{id}/console-log
 
 See [Boot log](#7-boot-log).
 
-### Legacy endpoints
+### Removed and invalid endpoints
 
 | Endpoint | Behavior |
 | :--- | :--- |
-| `POST /api/v1/vms/{id}/console-ticket` | **Deprecated.** Issues an automatic-driver `console` ticket and returns only `{ "virtual_machine_id", "ticket" }`. Without a `session_id` the session cannot be closed explicitly |
+| `POST /api/v1/vms/{id}/console-ticket` | **Removed.** Returns `404`; use `POST /api/v1/vms/{id}/console` instead |
 | `GET /api/v1/vms/{id}/console` | Always `404`. Terminals are only issued with `POST` |
 
 ---
@@ -351,6 +357,7 @@ Returns the container's retained console buffer (`GET /1.0/instances/{name}/cons
 | Variable | Default | Description |
 | :--- | :--- | :--- |
 | `PORT` | `8085` | Listening port |
+| `CONSOLE_ALLOWED_ORIGINS` | `http://localhost` (dev); required in prod | Comma-separated exact `Origin` allowlist for WebSocket upgrades (no `*`). Fails closed in production if empty or containing `*` |
 | `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | `127.0.0.1` / `6379` / none | Redis used to redeem tickets and clean up sessions. Must be the same Redis as the backend |
 | `REDIS_PREFIX` | none | Laravel Redis key prefix. If you changed the backend's Redis prefix, set it here too, otherwise tickets are not found. Common default prefixes are tried automatically |
 | `CLIENT_CERT_PATH` / `CLIENT_KEY_PATH` | none | Fallback client certificate and key files, used only when the ticket carries none |

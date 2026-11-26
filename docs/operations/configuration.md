@@ -98,13 +98,15 @@ The development example (`.env.development.example`) differs from the production
 ### Sessions & API Tokens
 | Variable | Code default | In `.env.production.example` | Description |
 | :--- | :--- | :--- | :--- |
+| `SESSION_COOKIE` | `ognivo_session` | `__Host-ognivo_session` | Session cookie name. Production requires the `__Host-` prefix, which enforces HTTPS (`SESSION_SECURE_COOKIE=true`), `Path=/`, and an unset `SESSION_DOMAIN` |
 | `SESSION_DRIVER` | `redis` | `redis` | Session storage driver |
-| `SESSION_LIFETIME` | `120` | `120` | Session lifetime in minutes |
+| `SESSION_LIFETIME` | `120` | `120` | Idle session lifetime in minutes |
+| `SESSION_ABSOLUTE_LIFETIME` | `1440` | `1440` | Hard cap on browser session lifetime in minutes since login (24 hours) |
 | `SESSION_SECURE_COOKIE` | *(unset)* | `true` | Send the session cookie over HTTPS only. Set to `false` for plain-HTTP development |
-| `SESSION_SAME_SITE` | `lax` | not in file | `SameSite` attribute of the session cookie |
-| `SESSION_DOMAIN` | *(unset)* | not in file | Cookie domain |
-| `SANCTUM_EXPIRATION` | `1440` | `1440` | API token lifetime in minutes (24 hours) |
-| `SANCTUM_STATEFUL_DOMAINS` | `localhost,localhost:3000,127.0.0.1,127.0.0.1:8000,::1` plus the host from `APP_URL` | `panel.example.com` | Hostnames (without scheme, `host[:port]`) treated as stateful SPA origins. In production set it to the panel's hostname(s), matching `APP_URL`; otherwise localhost and loopback origins stay trusted |
+| `SESSION_SAME_SITE` | `strict` | `strict` | `SameSite` attribute of the session cookie (must be `strict` in production) |
+| `SESSION_DOMAIN` | *(unset)* | not in file | Cookie domain. Must remain empty/unset in production when using `__Host-` cookies |
+| `SANCTUM_EXPIRATION` | `1440` | `1440` | Token lifetime in minutes (24 hours). No longer affects browser sessions (Bearer tokens are disabled; kept for a future token auth mechanism) |
+| `SANCTUM_STATEFUL_DOMAINS` | `localhost,localhost:3000,127.0.0.1,127.0.0.1:8000,::1` plus the host from `APP_URL` | `panel.example.com` | Hostnames (without scheme, `host[:port]`) treated as stateful SPA origins. Required in production and should match `APP_URL`; otherwise localhost and loopback origins stay trusted |
 | `SANCTUM_TOKEN_PREFIX` | *(empty)* | not in file | Optional prefix for newly issued API tokens |
 
 ### Broadcasting & Frontend
@@ -189,9 +191,10 @@ Read from `config/hypervisor.php` by the backend. Each value is copied into the 
 | `TERMINAL_MAX_EXEC_SESSIONS` | `5` | `5` | Concurrent `exec` shells per instance (minimum `1`) |
 | `TERMINAL_MAX_CONSOLE_SESSIONS` | `1` | `1` | Concurrent serial console sessions per instance (minimum `1`) |
 | `TERMINAL_MAX_MESSAGE_BYTES` | `65536` | `65536` | Largest accepted WebSocket message in bytes (minimum `1024`) |
+| `CONSOLE_ALLOWED_ORIGINS` | `http://localhost` in non-prod; fails closed in prod | `https://panel.example.com` | Comma-separated exact WebSocket `Origin` allowlist for `console-proxy` (no wildcard `*`). Compose falls back to `APP_URL` in production if unset |
 
 > [!NOTE]
-> The `console-proxy` container does not read `.env.production`. Compose passes it only `PORT`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_PREFIX`, `APP_KEY`, `APP_PREVIOUS_KEYS`, `NODE_ENV` and `ALLOW_FAKE_DRIVER`. Its own defaults for `MAX_MESSAGE_BYTES` and `IDLE_TIMEOUT_SECONDS` (`65536` / `900`) are used only when a ticket does not carry the value, which the backend always provides. To change them, edit the `console-proxy` service in the Compose file.
+> The `console-proxy` container does not read `.env.production` directly. Compose passes it only `PORT`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_PREFIX`, `APP_KEY`, `APP_PREVIOUS_KEYS`, `NODE_ENV`, `ALLOW_FAKE_DRIVER`, and `CONSOLE_ALLOWED_ORIGINS`. Its own defaults for `MAX_MESSAGE_BYTES` and `IDLE_TIMEOUT_SECONDS` (`65536` / `900`) are used only when a ticket does not carry the value, which the backend always provides. To change them, edit the `console-proxy` service in the Compose file.
 
 ### 3.11 Instance Metrics & Telemetry
 Read from `backend/config/metrics.php`. Details: [Instance Metrics](../features/metrics.md).
@@ -212,7 +215,8 @@ Read from `backend/config/scramble.php`.
 
 | Variable | Code default | In `.env.production.example` | Description |
 | :--- | :--- | :--- | :--- |
-| `SCRAMBLE_ALLOW_PUBLIC` | `true` | `true` | Controls whether interactive OpenAPI documentation (`/docs/api` and `/docs/api.json`) is publicly accessible in production. When `false`, access requires an authenticated user with the `admin` role |
+| `SCRAMBLE_ALLOW_PUBLIC` | `false` | `false` | Controls whether interactive OpenAPI documentation (`/docs/api` and `/docs/api.json`) is publicly accessible outside `local`/`testing`. Default `false` makes it admin-only in production (requires an authenticated user with the `admin` role) |
+| `SCRAMBLE_TRY_IT_ENABLED` | `false` | `false` | Enables or disables the interactive "Try it out" requests in Stoplight Elements. Disabled (`false`) because the docs UI cannot attach the `X-XSRF-TOKEN` header on state-changing requests |
 
 > [!NOTE]
 > **Production Content-Security-Policy:** The interactive Scramble UI uses Stoplight Elements web-components loaded from `https://unpkg.com`. `docker/nginx.prod.conf` whitelists `https://unpkg.com` in the `script-src` and `style-src` directives of the `Content-Security-Policy` header so those UI assets can load.
@@ -233,8 +237,14 @@ Read from `backend/config/scramble.php`.
 | `REVERB_ALLOWED_ORIGINS` | `*` | `https://panel.example.com` (replace with your domain) |
 | `NEXT_PUBLIC_REVERB_PORT` | `8080` | `443` |
 | `RUN_SEEDERS` | `true` | `false` |
+| `SESSION_COOKIE` | `ognivo_session` | `__Host-ognivo_session` |
 | `SESSION_SECURE_COOKIE` | `false` | `true` |
+| `SESSION_SAME_SITE` | `strict` | `strict` |
+| `SESSION_ABSOLUTE_LIFETIME` | `1440` | `1440` |
 | `SANCTUM_STATEFUL_DOMAINS` | `localhost,localhost:3000,127.0.0.1,127.0.0.1:8000,::1` | `panel.example.com` (replace with your domain) |
+| `CONSOLE_ALLOWED_ORIGINS` | `http://localhost` | `https://panel.example.com` (replace with your domain) |
+| `SCRAMBLE_ALLOW_PUBLIC` | `true` | `false` |
+| `SCRAMBLE_TRY_IT_ENABLED` | `false` | `false` |
 | `HYPERVISOR_ALLOW_PRIVATE_ENDPOINTS` | `true` | `false` |
 | `ALLOW_FAKE_DRIVER` | `true` (enables backend emulation and `features.fake_driver` via `/api/v1/config`) | `false` |
 | `PROVISION_HOST_*_RESERVE_*` | `0` / `0` / `0` | `1` core / `2048` MB / `20` GB |
@@ -284,10 +294,15 @@ When `APP_ENV=production`, `backend/docker-entrypoint.sh` runs `php artisan app:
 16. `AUDIT_STRICT_GRANTS=false` (or `0` / disabled).
 17. `SESSION_SECURE_COOKIE=false` (or `0` / unset).
 18. `APP_URL` empty, not using `https://`, or pointing to a local/loopback host (`localhost`, `127.0.0.1`, `::1`).
+19. `SESSION_SAME_SITE` not set to `strict`.
+20. `SESSION_DOMAIN` non-empty.
+21. `SESSION_COOKIE` not starting with `__Host-`.
+22. `SANCTUM_STATEFUL_DOMAINS` empty.
+23. `CONSOLE_ALLOWED_ORIGINS` empty or containing wildcard `*`.
 
 Run `make secrets` to generate valid values for all secret entries above.
 
-The check does **not** validate every security-relevant setting. Review these yourself before going live: `APP_URL` (must match your real domain rather than the example `https://panel.example.com`), `SANCTUM_STATEFUL_DOMAINS` (your real domain), `HYPERVISOR_ALLOW_PRIVATE_ENDPOINTS` (only `true` if your nodes are on private addresses), and `TRUSTED_PROXIES` if Nginx is not on a private Docker network.
+The check does **not** validate every security-relevant setting. Review these yourself before going live: `APP_URL` (must match your real domain rather than the example `https://panel.example.com`), `SANCTUM_STATEFUL_DOMAINS` (your real domain), `CONSOLE_ALLOWED_ORIGINS` (your real origin), `SCRAMBLE_ALLOW_PUBLIC` (keep `false` for admin-only API docs), `HYPERVISOR_ALLOW_PRIVATE_ENDPOINTS` (only `true` if your nodes are on private addresses), and `TRUSTED_PROXIES` if Nginx is not on a private Docker network.
 
 ---
 

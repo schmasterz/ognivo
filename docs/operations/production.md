@@ -27,8 +27,24 @@ If deploying on a custom domain (e.g., `panel.example.com`), edit `.env.producti
 APP_URL=https://panel.example.com
 REVERB_ALLOWED_ORIGINS=https://panel.example.com
 SANCTUM_STATEFUL_DOMAINS=panel.example.com
+CONSOLE_ALLOWED_ORIGINS=https://panel.example.com
+SESSION_COOKIE=__Host-ognivo_session
+SESSION_SAME_SITE=strict
+SESSION_ABSOLUTE_LIFETIME=1440
+SCRAMBLE_ALLOW_PUBLIC=false
+SCRAMBLE_TRY_IT_ENABLED=false
 ```
 *(Note: Frontend configuration is runtime-driven — Node.js reads container environment variables upon request and feeds `<ConfigProvider>` and `GET /api/v1/config`. Changing variables in `.env.production` only requires recreating or restarting the container with `make up-prod` or `docker compose restart frontend`, without `make build-prod`.)*
+
+> [!IMPORTANT]
+> **First-Party Web Interface & Upgrade Deployment Order:**
+> - The HTTP API uses `httpOnly` browser session cookies (`X-XSRF-TOKEN` on state-changing requests) and is intended for the **first-party web interface only** (personal Bearer tokens are disabled).
+> - Always rebuild and deploy `backend`, `frontend`, and `console-proxy` **together** (`make build-prod && make up-prod`), because session cookie handling, CSRF initialization, and encrypted WebSocket console tickets (`session_expires_at` and the `ticket.<ticket>` subprotocol) must stay in sync across all three services.
+> - **Upgrading from a Bearer-token release:** After deploying, purge legacy database-backed personal access tokens and note that all users must sign in again:
+>   ```bash
+>   docker exec -it ognivo-backend php artisan auth:purge-legacy-tokens --dry-run
+>   docker exec -it ognivo-backend php artisan auth:purge-legacy-tokens --force
+>   ```
 
 ### Step 2: Build & Start the Production Stack
 ```bash

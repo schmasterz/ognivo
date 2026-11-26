@@ -87,18 +87,23 @@ it('records windowed cross-tenant audit entries when an admin views metrics whil
         'host_id' => $host->id,
     ]);
 
-    $token = $tenant->createToken(
-        "impersonation:{$admin->id}",
-        ['impersonated', "impersonator:{$admin->id}"]
-    )->plainTextToken;
+    $session = [
+        'login_at' => now()->timestamp,
+        'last_activity_at' => now()->timestamp,
+        'impersonator_id' => $admin->id,
+        'impersonation_expires_at' => now()->addMinutes(30)->timestamp,
+    ];
 
-    $this->app['auth']->forgetGuards();
-    $this->withHeader('Authorization', "Bearer {$token}")
+    $this->actingAs($tenant, 'web')
+        ->withSession($session)
+        ->withHeader('Origin', 'http://localhost')
         ->getJson("/api/v1/vms/{$tenantVm->id}/metrics?range=1h")
         ->assertOk();
 
     $this->app['auth']->forgetGuards();
-    $this->withHeader('Authorization', "Bearer {$token}")
+    $this->actingAs($tenant, 'web')
+        ->withSession($session)
+        ->withHeader('Origin', 'http://localhost')
         ->getJson("/api/v1/vms/{$tenantVm->id}/metrics?range=1h")
         ->assertOk();
 

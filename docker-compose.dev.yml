@@ -329,6 +329,7 @@ services:
       PORT: 8085
       NODE_ENV: development
       ALLOW_FAKE_DRIVER: ${ALLOW_FAKE_DRIVER:-true}
+      CONSOLE_ALLOWED_ORIGINS: ${CONSOLE_ALLOWED_ORIGINS:-http://localhost}
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}

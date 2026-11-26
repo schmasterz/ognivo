@@ -24,6 +24,9 @@ Only endpoints with `is_active = true` receive deliveries.
 
 All webhook management endpoints live under `/api/v1/webhooks` (`App\Http\Controllers\Api\V1\WebhookController`) and require `auth:sanctum`, `active`, and `admin` middleware:
 
+> [!NOTE]
+> The browser UI authenticates via `httpOnly` session cookies (`X-XSRF-TOKEN` on state-changing requests). Personal Bearer tokens are currently disabled — the HTTP API serves the first-party web interface only.
+
 | Method & Path | Description |
 | --- | --- |
 | `GET /api/v1/webhooks` | Lists configured endpoints (`id`, `url`, `subscribed_events`, `is_active`, `failure_count`, timestamps). Signing `secret` is hidden. |
@@ -164,7 +167,10 @@ Each service token stores a JSON array of string abilities (`abilities`), evalua
 
 ### Administrative Service Token API
 
-Managed via `App\Http\Controllers\Api\V1\ServiceTokenController` under `/api/v1/service-tokens` (`auth:sanctum`, `active`, `admin` middleware):
+Managed via `App\Http\Controllers\Api\V1\ServiceTokenController` under `/api/v1/service-tokens` (`auth:sanctum`, `active`, and `admin` middleware via the administrator's cookie-authenticated browser session):
+
+> [!NOTE]
+> Bearer personal access tokens are currently disabled (the HTTP API serves the first-party web interface via browser session cookies only), and `srv_` service token authentication (`AuthenticateServiceToken`) is not yet attached to any route.
 
 | Method & Path | Description |
 | --- | --- |
@@ -176,7 +182,10 @@ Creating a service token also emits the [`access.service_token_created`](./event
 
 ### Authentication & Automatic Audit Attribution
 
-`App\Http\Middleware\AuthenticateServiceToken` authenticates requests bearing `Authorization: Bearer srv_<secret>`:
+> [!NOTE]
+> `App\Http\Middleware\AuthenticateServiceToken` is implemented in the codebase, but it is **not yet attached to any route**. Currently, the browser UI uses cookie sessions (`httpOnly` cookie + `X-XSRF-TOKEN`), personal Bearer tokens are disabled (first-party web interface only), and `srv_` service tokens cannot yet be used against API endpoints.
+
+When attached to a route, `App\Http\Middleware\AuthenticateServiceToken` authenticates requests bearing `Authorization: Bearer srv_<secret>`:
 
 1. Extracts `<secret>` after `srv_` and computes `hash('sha256', $secret)`.
 2. Looks up the matching `ServiceToken` by `token_hash` and checks `isValid()` (`expires_at === null || expires_at->isFuture()`).

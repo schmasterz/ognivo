@@ -108,7 +108,8 @@ export function VmMetricsTab({ vm }: VmTabComponentProps) {
     async (
       range: VmMetricsRange,
       useConditionalEtag: boolean,
-      signal?: AbortSignal
+      signal?: AbortSignal,
+      passive = false
     ) => {
       try {
         const res = await vmsApi.getVmMetrics(vm.id, {
@@ -116,6 +117,7 @@ export function VmMetricsTab({ vm }: VmTabComponentProps) {
           maxPoints: 500,
           etag: useConditionalEtag ? etagRef.current : null,
           signal,
+          passive,
         });
 
         if (signal?.aborted) return;
@@ -187,7 +189,7 @@ export function VmMetricsTab({ vm }: VmTabComponentProps) {
     const periodMs = getRefreshPeriodMs(effectiveRange, collectionIntervalSeconds);
     const timer = setInterval(() => {
       setRefreshing(true);
-      void fetchMetrics(effectiveRange, true, controller.signal);
+      void fetchMetrics(effectiveRange, true, controller.signal, true);
     }, periodMs);
 
     return () => {

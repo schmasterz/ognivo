@@ -136,7 +136,7 @@ The first start takes a few minutes. Wait until the containers with a healthchec
 
 | What | URL |
 | :--- | :--- |
-| Web panel | `http://localhost` (also `http://localhost:3000`) |
+| Web panel | `http://localhost` (via Nginx; required for same-origin session cookies and CSRF) |
 | API documentation (OpenAPI) | `http://localhost/docs/api` |
 | Health check | `http://localhost/up` |
 
@@ -180,7 +180,10 @@ Frontend configuration is runtime-driven: Node.js reads container environment va
 | :--- | :--- |
 | `APP_URL` | The public URL, for example `https://panel.example.com` |
 | `REVERB_ALLOWED_ORIGINS` | The same origin, `https://panel.example.com`. A wildcard is rejected in production |
-| `SANCTUM_STATEFUL_DOMAINS` | The panel's hostname without scheme, `panel.example.com`. Add the line if it is missing |
+| `SANCTUM_STATEFUL_DOMAINS` | The panel's hostname without scheme, `panel.example.com`. Required in production |
+| `CONSOLE_ALLOWED_ORIGINS` | The same exact origin, `https://panel.example.com` (no wildcard `*`). Required in production for `console-proxy` WebSocket `Origin` checks |
+| `SESSION_COOKIE` / `SESSION_SAME_SITE` / `SESSION_ABSOLUTE_LIFETIME` | Keep the production defaults (`__Host-ognivo_session`, `strict`, `1440`) and leave `SESSION_DOMAIN` unset (`__Host-` requires HTTPS, `Path=/`, and no `Domain`) |
+| `SCRAMBLE_ALLOW_PUBLIC` / `SCRAMBLE_TRY_IT_ENABLED` | Defaults to `false` in production so `/docs/api` is admin-only and interactive "Try it out" is disabled |
 | `HYPERVISOR_ALLOW_PRIVATE_ENDPOINTS` | `true` if any Incus node is on a private (RFC 1918) or loopback address. Production rejects those by default |
 | `MAIL_*` | Optional. Mail falls back to the log until SMTP is configured; see [Configuration](../operations/configuration.md) |
 
@@ -199,7 +202,7 @@ make ps
 On first start:
 
 1. `cert-init` creates a self-signed certificate in `./docker/certs/` if `server.crt` and `server.key` are not there yet.
-2. The backend runs `php artisan app:check-production-config` and **refuses to start** if it finds a placeholder secret, `APP_DEBUG=true`, `RUN_SEEDERS=true`, a wildcard origin, a non-HTTPS or `localhost` `APP_URL`, `ALLOW_FAKE_DRIVER=true`, `AUDIT_STRICT_GRANTS=false`, or `SESSION_SECURE_COOKIE=false`.
+2. The backend runs `php artisan app:check-production-config` and **refuses to start** if it finds a placeholder secret, `APP_DEBUG=true`, `RUN_SEEDERS=true`, a wildcard origin, a non-HTTPS or `localhost` `APP_URL`, `ALLOW_FAKE_DRIVER=true`, `AUDIT_STRICT_GRANTS=false`, or unsafe session/origin settings (`SESSION_SECURE_COOKIE=false`, `SESSION_SAME_SITE!=strict`, non-empty `SESSION_DOMAIN`, `SESSION_COOKIE` without `__Host-`, empty `SANCTUM_STATEFUL_DOMAINS`, or empty/wildcard `CONSOLE_ALLOWED_ORIGINS`).
 3. Migrations and strict audit grants are applied. Seeders are disabled.
 4. Nginx starts on `80` (redirects to HTTPS) and `443`.
 
