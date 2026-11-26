@@ -2,13 +2,14 @@
 
 declare(strict_types=1);
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Api\V1;
 
 use App\Exceptions\DuplicateSnapshotNameException;
 use App\Exceptions\InvalidSnapshotNameException;
 use App\Exceptions\InvalidSnapshotStateException;
 use App\Exceptions\InvalidVmStateException;
 use App\Exceptions\SnapshotQuotaExceededException;
+use App\Http\Controllers\Controller;
 use App\Http\Requests\Vm\CreateSnapshotRequest;
 use App\Http\Requests\Vm\DeleteSnapshotRequest;
 use App\Http\Requests\Vm\RestoreSnapshotRequest;
