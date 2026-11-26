@@ -8,6 +8,7 @@ use App\Models\QuotaGroup;
 use App\Models\User;
 use App\Models\UserQuota;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Testing\TestResponse;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -51,15 +52,46 @@ final class QuotaGroupManagementTest extends TestCase
         ]);
     }
 
+    /**
+     * Send a stateful JSON POST request with Origin and CSRF headers obtained from /sanctum/csrf-cookie.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function postStatefulJson(string $uri, array $data = []): TestResponse
+    {
+        $csrfResponse = $this->withHeader('Origin', 'http://localhost')
+            ->getJson('/sanctum/csrf-cookie');
+        $csrfResponse->assertNoContent();
+
+        $xsrfCookie = $csrfResponse->getCookie('XSRF-TOKEN', false);
+        $xsrfToken = $xsrfCookie !== null ? $xsrfCookie->getValue() : '';
+
+        $sessionCookieName = (string) config('session.cookie');
+        $sessionCookie = $csrfResponse->getCookie($sessionCookieName, false);
+
+        $request = $this->withHeaders([
+            'Origin' => 'http://localhost',
+            'X-XSRF-TOKEN' => $xsrfToken,
+        ]);
+
+        if ($sessionCookie !== null) {
+            $request = $request->withCredentials()
+                ->withUnencryptedCookie($sessionCookieName, $sessionCookie->getValue());
+        }
+
+        return $request->postJson($uri, $data);
+    }
+
     public function test_user_registration_automatically_assigns_default_quota_group(): void
     {
-        $response = $this->postJson('/api/v1/register', [
+        $response = $this->postStatefulJson('/api/v1/register', [
             'name' => 'New Customer',
             'email' => 'newcustomer@test.local',
             'password' => 'Password123!@#',
         ]);
 
         $response->assertStatus(201);
+        $response->assertJsonMissingPath('token');
         $userId = (int) $response->json('user.id');
 
         /** @var User $newUser */

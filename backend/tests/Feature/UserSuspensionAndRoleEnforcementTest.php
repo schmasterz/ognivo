@@ -11,6 +11,58 @@ use App\Services\UserService;
 use App\Services\VmProvisioningService;
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role;
+use Tests\TestCase;
+
+/**
+ * Establish a stateful browser cookie session and return stateful request headers.
+ *
+ * @return array<string, string>
+ */
+function establishStatefulCustomerSession(TestCase $test, string $email, string $password = 'password'): array
+{
+    $csrfRes = $test->withCredentials()
+        ->withHeaders(['Origin' => 'http://localhost'])
+        ->getJson('/sanctum/csrf-cookie');
+    $csrfRes->assertNoContent();
+
+    $xsrfCookie = (string) $csrfRes->getCookie('XSRF-TOKEN', false);
+    $sessionCookieName = (string) config('session.cookie');
+    $sessionCookie = (string) $csrfRes->getCookie($sessionCookieName, false);
+
+    $loginRes = $test->withCredentials()
+        ->withUnencryptedCookies([
+            'XSRF-TOKEN' => $xsrfCookie,
+            $sessionCookieName => $sessionCookie,
+        ])
+        ->withHeaders([
+            'Origin' => 'http://localhost',
+            'X-XSRF-TOKEN' => $xsrfCookie,
+        ])
+        ->postJson('/api/v1/login', [
+            'email' => $email,
+            'password' => $password,
+        ]);
+
+    $loginRes->assertOk();
+
+    $newSessionCookie = (string) $loginRes->getCookie($sessionCookieName, false);
+    $newXsrfCookie = $loginRes->getCookie('XSRF-TOKEN', false);
+    if (is_string($newXsrfCookie) && $newXsrfCookie !== '') {
+        $xsrfCookie = $newXsrfCookie;
+    }
+
+    $test->withCredentials()->withUnencryptedCookies([
+        'XSRF-TOKEN' => $xsrfCookie,
+        $sessionCookieName => $newSessionCookie,
+    ]);
+    app('auth')->forgetGuards();
+
+    return [
+        'Origin' => 'http://localhost',
+        'Accept' => 'application/json',
+        'X-XSRF-TOKEN' => $xsrfCookie,
+    ];
+}
 
 beforeEach(function (): void {
     Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
@@ -49,9 +101,9 @@ beforeEach(function (): void {
     );
 });
 
-test('suspended user with an already issued token gets 403 on /api/vms (GET and POST) and cannot dispatch actions', function (): void {
-    // 1. Issue token while active
-    $token = $this->customer->createToken('test-device')->plainTextToken;
+test('suspended user with an active session gets 403 on /api/vms (GET and POST) and cannot dispatch actions', function (): void {
+    // 1. Establish stateful browser session while active
+    $headers = establishStatefulCustomerSession($this, $this->customer->email);
 
     // Create a VM belonging to the customer
     $vm = VirtualMachine::create([
@@ -69,11 +121,7 @@ test('suspended user with an already issued token gets 403 on /api/vms (GET and 
 
     // 2. Suspend the customer
     $this->customer->update(['status' => 'suspended']);
-
-    $headers = [
-        'Authorization' => 'Bearer '.$token,
-        'Accept' => 'application/json',
-    ];
+    $this->app['auth']->forgetGuards();
 
     // GET /api/vms must return 403 with account_suspended message
     $getRes = $this->withHeaders($headers)->getJson('/api/v1/vms');
@@ -100,26 +148,19 @@ test('suspended user with an already issued token gets 403 on /api/vms (GET and 
     $actionRes->assertJsonFragment(['message' => __('messages.auth.account_suspended')]);
 });
 
-test('GET /api/me and POST /api/logout remain accessible for suspended users with active token', function (): void {
-    $token = $this->customer->createToken('logout-device')->plainTextToken;
+test('GET /api/me and POST /api/logout remain accessible for suspended users with active session', function (): void {
+    $headers = establishStatefulCustomerSession($this, $this->customer->email);
     $this->customer->update(['status' => 'suspended']);
-
-    $headers = [
-        'Authorization' => 'Bearer '.$token,
-        'Accept' => 'application/json',
-    ];
+    $this->app['auth']->forgetGuards();
 
     // GET /api/me is exempt from EnsureUserIsActive
     $meRes = $this->withHeaders($headers)->getJson('/api/v1/me');
     $meRes->assertOk();
     $meRes->assertJsonPath('user.status', 'suspended');
 
-    // POST /api/logout is exempt and successfully revokes current token
+    // POST /api/logout is exempt and invalidates the current browser session
     $logoutRes = $this->withHeaders($headers)->postJson('/api/v1/logout');
     $logoutRes->assertOk();
-
-    // After logout, token is deleted from database
-    expect($this->customer->tokens()->count())->toBe(0);
 
     // Forget cached auth state in test application and verify request fails
     $this->app['auth']->forgetGuards();

@@ -43,7 +43,7 @@ final class AuditAuthCoverageTest extends TestCase
             password: 'SecretPass123!',
         ));
 
-        $this->assertNotEmpty($result['token']);
+        $this->assertSame($user->id, $result->id);
 
         $row = $this->assertAuditRow(
             action: 'auth.login.success',

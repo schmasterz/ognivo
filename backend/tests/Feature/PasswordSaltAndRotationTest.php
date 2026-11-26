@@ -166,12 +166,12 @@ final class PasswordSaltAndRotationTest extends TestCase
         ]);
 
         // Login should succeed using previous_keys fallback and atomically upgrade salt + hash to newKey
-        $loginResult = $authService->login(new LoginDTO(
+        $loggedInUser = $authService->login(new LoginDTO(
             email: 'rotate@example.com',
             password: 'KeyRotationPass123!',
         ));
 
-        $this->assertNotEmpty($loginResult['token']);
+        $this->assertSame($user->id, $loggedInUser->id);
 
         $user->refresh();
         $this->assertNotSame($oldSalt, $user->password_salt);

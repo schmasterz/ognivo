@@ -29,35 +29,70 @@ final class AuthenticationHardeningTest extends TestCase
         RateLimiter::clear('auth-register:127.0.0.1');
     }
 
+    /**
+     * Prepare a stateful browser session context with Origin and CSRF cookies for auth endpoints.
+     *
+     * @return array<string, string>
+     */
+    private function prepareStatefulHeaders(): array
+    {
+        $csrfResponse = $this->withHeader('Origin', 'http://localhost')
+            ->get('/sanctum/csrf-cookie');
+        $csrfResponse->assertNoContent();
+
+        $cookies = [];
+        foreach ($csrfResponse->headers->getCookies() as $cookie) {
+            $value = $cookie->getValue();
+            if ($value !== null) {
+                $cookies[$cookie->getName()] = $value;
+            }
+        }
+
+        $this->withCredentials()->withUnencryptedCookies($cookies);
+
+        $headers = ['Origin' => 'http://localhost'];
+        $xsrfToken = $csrfResponse->getCookie('XSRF-TOKEN')?->getValue();
+        if (is_string($xsrfToken) && $xsrfToken !== '') {
+            $headers['X-XSRF-TOKEN'] = $xsrfToken;
+        }
+
+        return $headers;
+    }
+
     public function test_login_rate_limiting_returns_429_on_sixth_attempt(): void
     {
+        $headers = $this->prepareStatefulHeaders();
         $payload = [
             'email' => 'test@example.com',
             'password' => 'WrongPassword123!',
         ];
 
         for ($i = 0; $i < 5; $i++) {
-            $response = $this->postJson('/api/v1/login', $payload);
-            $this->assertNotEquals(429, $response->status());
+            $response = $this->withHeaders($headers)->postJson('/api/v1/login', $payload);
+            $response->assertStatus(422);
         }
 
-        $sixthResponse = $this->postJson('/api/v1/login', $payload);
+        $sixthResponse = $this->withHeaders($headers)->postJson('/api/v1/login', $payload);
         $sixthResponse->assertStatus(429);
     }
 
     public function test_register_rate_limiting_returns_429_on_sixth_attempt(): void
     {
+        Notification::fake();
+        $headers = $this->prepareStatefulHeaders();
+
         for ($i = 0; $i < 5; $i++) {
-            $response = $this->postJson('/api/v1/register', [
+            $response = $this->withHeaders($headers)->postJson('/api/v1/register', [
                 'name' => "User {$i}",
                 'email' => "user{$i}@example.com",
                 'password' => 'StrongPassword123!',
                 'password_confirmation' => 'StrongPassword123!',
             ]);
-            $this->assertNotEquals(429, $response->status());
+            $response->assertStatus(201);
+            $response->assertJsonMissingPath('token');
         }
 
-        $sixthResponse = $this->postJson('/api/v1/register', [
+        $sixthResponse = $this->withHeaders($headers)->postJson('/api/v1/register', [
             'name' => 'User 6',
             'email' => 'user6@example.com',
             'password' => 'StrongPassword123!',
