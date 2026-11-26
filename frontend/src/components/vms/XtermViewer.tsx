@@ -66,12 +66,20 @@ export function XtermViewer({
 
   // Initialize xterm instance once on mount so reconnects reuse the same terminal & canvas
   useEffect(() => {
-    if (!containerRef.current || typeof window === "undefined") return;
+    const container = containerRef.current;
+    if (!container || typeof window === "undefined") return;
 
     let disposed = false;
     let term: Terminal | null = null;
     let dataDisposable: IDisposable | null = null;
     let removeResize: (() => void) | null = null;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.defaultPrevented || e.deltaY === 0 || !terminalRef.current) return;
+      const lines = Math.round(e.deltaY / 25) || (e.deltaY > 0 ? 1 : -1);
+      terminalRef.current.scrollLines(lines);
+    };
+    container.addEventListener("wheel", handleWheel, { passive: false });
 
     const initTerminal = async () => {
       const [{ Terminal: XTerminal }, { FitAddon }] = await Promise.all([
@@ -85,6 +93,9 @@ export function XtermViewer({
 
       const xterm = new XTerminal({
         cursorBlink: true,
+        scrollback: 10000,
+        scrollSensitivity: 1,
+        smoothScrollDuration: 100,
         fontSize: 13,
         fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
         theme: {
@@ -176,6 +187,7 @@ export function XtermViewer({
     return () => {
       disposed = true;
       setTermReady(false);
+      container.removeEventListener("wheel", handleWheel);
       removeResize?.();
       dataDisposable?.dispose();
       term?.dispose();

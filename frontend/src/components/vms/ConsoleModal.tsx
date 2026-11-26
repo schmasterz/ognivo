@@ -194,7 +194,7 @@ export function ConsoleModal({ vm, onClose }: ConsoleModalProps) {
                 <span>Acquiring secure console ticket...</span>
               </div>
             ) : (
-              <div className="flex-1 w-full h-full relative">
+              <div className="flex-1 min-h-0 w-full relative">
                 <XtermViewer
                   isActive={activeTab === "terminal"}
                   wsUrl={wsUrl}

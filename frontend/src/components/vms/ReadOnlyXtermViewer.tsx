@@ -124,11 +124,19 @@ export const ReadOnlyXtermViewer = forwardRef<
 
   // Initialize read-only xterm instance once on mount
   useEffect(() => {
-    if (!containerRef.current || typeof window === "undefined") return;
+    const container = containerRef.current;
+    if (!container || typeof window === "undefined") return;
 
     let disposed = false;
     let term: Terminal | null = null;
     let removeResize: (() => void) | null = null;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.defaultPrevented || e.deltaY === 0 || !terminalRef.current) return;
+      const lines = Math.round(e.deltaY / 25) || (e.deltaY > 0 ? 1 : -1);
+      terminalRef.current.scrollLines(lines);
+    };
+    container.addEventListener("wheel", handleWheel, { passive: false });
 
     const initTerminal = async () => {
       const [{ Terminal: XTerminal }, { FitAddon: XFitAddon }] = await Promise.all([
@@ -141,6 +149,9 @@ export const ReadOnlyXtermViewer = forwardRef<
       const xterm = new XTerminal({
         disableStdin: true,
         cursorBlink: false,
+        scrollback: 20000,
+        scrollSensitivity: 1,
+        smoothScrollDuration: 100,
         fontSize: 13,
         fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
         theme: {
@@ -223,6 +234,7 @@ export const ReadOnlyXtermViewer = forwardRef<
     return () => {
       disposed = true;
       setTermReady(false);
+      container.removeEventListener("wheel", handleWheel);
       removeResize?.();
       term?.dispose();
       terminalRef.current = null;
@@ -398,15 +410,29 @@ export const ReadOnlyXtermViewer = forwardRef<
       return;
     }
 
+    const isAtBottom = term.buffer.active.baseY === term.buffer.active.viewportY;
     const prevText = lastTextOutputRef.current;
     if (prevText && nextText.startsWith(prevText)) {
       const delta = nextText.slice(prevText.length);
       if (delta) {
-        term.write(delta.replace(/\r?\n/g, "\r\n"));
+        term.write(
+          delta.replace(/\r?\n/g, "\r\n"),
+          isAtBottom
+            ? () => {
+                if (terminalRef.current === term) {
+                  term.scrollToBottom();
+                }
+              }
+            : undefined
+        );
       }
     } else {
       term.reset();
-      term.write(nextText.replace(/\r?\n/g, "\r\n"));
+      term.write(nextText.replace(/\r?\n/g, "\r\n"), () => {
+        if (terminalRef.current === term) {
+          term.scrollToBottom();
+        }
+      });
     }
 
     lastTextOutputRef.current = nextText;
