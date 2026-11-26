@@ -1,26 +1,17 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import {
-  X,
-  Settings,
-  Server,
-  UserCheck,
-  Check,
-  AlertCircle,
-  Loader2,
-  Shield,
-  Mail,
-  Lock,
-  Eye,
-  EyeOff,
-  Send,
-  CheckCircle2,
-  Globe,
-} from "lucide-react";
+import { X, Settings, Check, AlertCircle, Loader2, Shield, Mail } from "lucide-react";
 import { api, SystemSettings } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
 import { useModalEscape } from "@/lib/hooks/useModalEscape";
+import { GeneralSettingsTab } from "./GeneralSettingsTab";
+import { SmtpSettingsTab } from "./SmtpSettingsTab";
+import { useSmtpTest } from "./useSmtpTest";
+import {
+  AdminSettingsFormValues, SmtpEncryption, buildAdminSettingsPayload,
+  canToggleVirtualizationMode, getDefaultPortForEncryption, isVirtualizationConfigValid,
+} from "./settingsSchema";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -29,156 +20,82 @@ interface SettingsModalProps {
   onSuccess: (updated: SystemSettings) => void;
 }
 
-export function SettingsModal({
-  isOpen,
-  onClose,
-  settings,
-  onSuccess,
-}: SettingsModalProps) {
+function getInitialFormValues(settings: SystemSettings): AdminSettingsFormValues {
+  return {
+    allowVm: settings.allow_virtual_machines,
+    allowContainers: settings.allow_containers,
+    registrationEnabled: settings.registration_enabled,
+    frontendUrl: settings.frontend_url ?? "",
+    smtpEnabled: settings.smtp?.enabled ?? true,
+    smtpHost: settings.smtp?.host ?? "",
+    smtpPort: settings.smtp?.port ?? 587,
+    smtpEncryption: settings.smtp?.encryption ?? "tls",
+    smtpUsername: settings.smtp?.username ?? "",
+    smtpPassword: "",
+    smtpFromAddress: settings.smtp?.from_address ?? "",
+    smtpFromName: settings.smtp?.from_name ?? "",
+  };
+}
+
+export function SettingsModal({ isOpen, onClose, settings, onSuccess }: SettingsModalProps) {
   const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<"general" | "smtp">("general");
-
-  // Platform & Virtualization state
-  const [allowVm, setAllowVm] = useState(settings.allow_virtual_machines);
-  const [allowContainers, setAllowContainers] = useState(settings.allow_containers);
-  const [registrationEnabled, setRegistrationEnabled] = useState(settings.registration_enabled);
-  const [frontendUrl, setFrontendUrl] = useState(settings.frontend_url ?? "");
-
-  // SMTP Settings state
-  const [smtpEnabled, setSmtpEnabled] = useState(settings.smtp?.enabled ?? true);
-  const [smtpHost, setSmtpHost] = useState(settings.smtp?.host ?? "");
-  const [smtpPort, setSmtpPort] = useState<number | string>(settings.smtp?.port ?? 587);
-  const [smtpEncryption, setSmtpEncryption] = useState<"tls" | "ssl" | "none">(
-    settings.smtp?.encryption ?? "tls"
-  );
-  const [smtpUsername, setSmtpUsername] = useState(settings.smtp?.username ?? "");
-  const [smtpPassword, setSmtpPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
+  const [form, setForm] = useState<AdminSettingsFormValues>(() => getInitialFormValues(settings));
   const [hasPassword, setHasPassword] = useState(settings.smtp?.has_password ?? false);
-  const [smtpFromAddress, setSmtpFromAddress] = useState(settings.smtp?.from_address ?? "");
-  const [smtpFromName, setSmtpFromName] = useState(settings.smtp?.from_name ?? "");
-
-  // Test Email state
-  const [testRecipient, setTestRecipient] = useState("");
-  const [testingEmail, setTestingEmail] = useState(false);
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
-
-  // Form submission state
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { testRecipient, setTestRecipient, testingEmail, testResult, sendTestEmail, resetTestResult } =
+    useSmtpTest(t("testEmailSuccess"));
 
   useModalEscape(onClose, isOpen && !saving && !testingEmail);
 
   const prevIsOpenRef = useRef(false);
-
   useEffect(() => {
     // Only re-initialize form state when modal transitions from closed to open
     if (isOpen && !prevIsOpenRef.current) {
-      setAllowVm(settings.allow_virtual_machines);
-      setAllowContainers(settings.allow_containers);
-      setRegistrationEnabled(settings.registration_enabled);
-      setFrontendUrl(settings.frontend_url ?? "");
-
-      setSmtpEnabled(settings.smtp?.enabled ?? true);
-      setSmtpHost(settings.smtp?.host ?? "");
-      setSmtpPort(settings.smtp?.port ?? 587);
-      setSmtpEncryption(settings.smtp?.encryption ?? "tls");
-      setSmtpUsername(settings.smtp?.username ?? "");
-      setSmtpPassword("");
+      setForm(getInitialFormValues(settings));
       setHasPassword(settings.smtp?.has_password ?? false);
-      setSmtpFromAddress(settings.smtp?.from_address ?? "");
-      setSmtpFromName(settings.smtp?.from_name ?? "");
-
       setError(null);
-      setTestResult(null);
+      resetTestResult();
     }
     prevIsOpenRef.current = isOpen;
-  }, [isOpen, settings]);
+  }, [isOpen, settings, resetTestResult]);
 
   if (!isOpen) return null;
 
-  const handleToggleVm = () => {
-    if (allowVm && !allowContainers) {
+  const setField = <K extends keyof AdminSettingsFormValues>(
+    key: K,
+    value: AdminSettingsFormValues[K]
+  ) => setForm((prev) => ({ ...prev, [key]: value }));
+
+  const handleToggleMode = (mode: "allowVm" | "allowContainers") => {
+    const other = mode === "allowVm" ? form.allowContainers : form.allowVm;
+    if (!canToggleVirtualizationMode(form[mode], other)) {
       setError(t("atLeastOneModeRequired"));
       return;
     }
     setError(null);
-    setAllowVm(!allowVm);
+    setField(mode, !form[mode]);
   };
 
-  const handleToggleContainers = () => {
-    if (allowContainers && !allowVm) {
-      setError(t("atLeastOneModeRequired"));
-      return;
-    }
-    setError(null);
-    setAllowContainers(!allowContainers);
-  };
-
-  const handleEncryptionChange = (enc: "tls" | "ssl" | "none") => {
-    setSmtpEncryption(enc);
-    if (enc === "ssl") {
-      setSmtpPort(465);
-    } else if (enc === "tls") {
-      setSmtpPort(587);
-    } else if (enc === "none") {
-      setSmtpPort(25);
-    }
-  };
-
-  const handleSendTestEmail = async () => {
-    setTestingEmail(true);
-    setTestResult(null);
-    try {
-      const res = await api.testSmtp(testRecipient.trim() || undefined);
-      setTestResult({
-        success: true,
-        message: res.message || t("testEmailSuccess"),
-      });
-    } catch (err: unknown) {
-      setTestResult({
-        success: false,
-        message: err instanceof Error ? err.message : "Failed to send test email.",
-      });
-    } finally {
-      setTestingEmail(false);
-    }
+  const handleEncryptionChange = (enc: SmtpEncryption) => {
+    setForm((prev) => ({ ...prev, smtpEncryption: enc, smtpPort: getDefaultPortForEncryption(enc) }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!allowVm && !allowContainers) {
+    if (!isVirtualizationConfigValid(form.allowVm, form.allowContainers)) {
       setError(t("atLeastOneModeRequired"));
       return;
     }
-
     try {
       setSaving(true);
       setError(null);
-      const res = await api.updateAdminSettings({
-        registration_enabled: registrationEnabled,
-        allow_virtual_machines: allowVm,
-        allow_containers: allowContainers,
-        frontend_url: frontendUrl.trim() || undefined,
-        smtp: {
-          enabled: smtpEnabled,
-          host: smtpHost.trim() || null,
-          port: Number(smtpPort) || 587,
-          encryption: smtpEncryption,
-          username: smtpUsername.trim() || null,
-          password: smtpPassword ? smtpPassword : null,
-          from_address: smtpFromAddress.trim() || null,
-          from_name: smtpFromName.trim() || null,
-        },
-      });
+      const res = await api.updateAdminSettings(buildAdminSettingsPayload(form));
       onSuccess(res.settings);
       onClose();
     } catch (err: unknown) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("Failed to update system settings.");
-      }
+      setError(err instanceof Error ? err.message : "Failed to update system settings.");
     } finally {
       setSaving(false);
     }
@@ -194,18 +111,11 @@ export function SettingsModal({
               <Settings className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-gray-900 dark:text-white tracking-tight">
-                {t("settingsTitle")}
-              </h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                {t("settingsSubtitle")}
-              </p>
+              <h2 className="text-base font-bold text-gray-900 dark:text-white tracking-tight">{t("settingsTitle")}</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t("settingsSubtitle")}</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-          >
+          <button onClick={onClose} className="p-2 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -224,7 +134,6 @@ export function SettingsModal({
             <Shield className="w-4 h-4" />
             <span>{t("tabGeneral")}</span>
           </button>
-
           <button
             type="button"
             onClick={() => setActiveTab("smtp")}
@@ -236,9 +145,7 @@ export function SettingsModal({
           >
             <Mail className="w-4 h-4" />
             <span>{t("tabSmtp")}</span>
-            {smtpEnabled && (
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            )}
+            {form.smtpEnabled && <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />}
           </button>
         </div>
 
@@ -252,410 +159,32 @@ export function SettingsModal({
           )}
 
           {activeTab === "general" && (
-            <div className="space-y-6">
-              {/* Section 1: Virtualization Modes */}
-              <div className="space-y-3">
-                <div className="flex items-center space-x-2 text-xs font-semibold uppercase tracking-wider text-purple-600 dark:text-purple-400">
-                  <Shield className="w-3.5 h-3.5" />
-                  <span>{t("virtualizationModes")}</span>
-                </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {t("virtualizationModesDesc")}
-                </p>
-
-                <div className="space-y-3 pt-1">
-                  {/* Full Virtual Machine Switch */}
-                  <div
-                    onClick={handleToggleVm}
-                    className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-start justify-between gap-4 ${
-                      allowVm
-                        ? "bg-blue-500/5 border-blue-500/30 dark:bg-blue-950/20"
-                        : "bg-gray-50 dark:bg-gray-900/40 border-gray-200 dark:border-gray-800 opacity-60"
-                    }`}
-                  >
-                    <div className="flex items-start space-x-3.5 min-w-0">
-                      <div
-                        className={`p-2 rounded-xl mt-0.5 ${
-                          allowVm
-                            ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
-                            : "bg-gray-200 dark:bg-gray-800 text-gray-400"
-                        }`}
-                      >
-                        <Server className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-gray-900 dark:text-white flex items-center space-x-2">
-                          <span>{t("fullVm")}</span>
-                          {allowVm && !allowContainers && (
-                            <span className="text-[10px] px-2 py-0.2 rounded-full font-normal bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
-                              {t("atLeastOneModeRequired")}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-                          {t("fullVmDescLong")}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div
-                      className={`w-11 h-6 rounded-full transition-colors relative flex-shrink-0 p-0.5 ${
-                        allowVm ? "bg-blue-600" : "bg-gray-300 dark:bg-gray-700"
-                      }`}
-                    >
-                      <div
-                        className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform ${
-                          allowVm ? "translate-x-5" : "translate-x-0"
-                        }`}
-                      />
-                    </div>
-                  </div>
-
-                  {/* LXC Container Switch */}
-                  <div
-                    onClick={handleToggleContainers}
-                    className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-start justify-between gap-4 ${
-                      allowContainers
-                        ? "bg-indigo-500/5 border-indigo-500/30 dark:bg-indigo-950/20"
-                        : "bg-gray-50 dark:bg-gray-900/40 border-gray-200 dark:border-gray-800 opacity-60"
-                    }`}
-                  >
-                    <div className="flex items-start space-x-3.5 min-w-0">
-                      <div
-                        className={`p-2 rounded-xl mt-0.5 ${
-                          allowContainers
-                            ? "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"
-                            : "bg-gray-200 dark:bg-gray-800 text-gray-400"
-                        }`}
-                      >
-                        <Server className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-gray-900 dark:text-white flex items-center space-x-2">
-                          <span>{t("lxcContainer")}</span>
-                          {allowContainers && !allowVm && (
-                            <span className="text-[10px] px-2 py-0.2 rounded-full font-normal bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">
-                              {t("atLeastOneModeRequired")}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-                          {t("lxcDescLong")}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div
-                      className={`w-11 h-6 rounded-full transition-colors relative flex-shrink-0 p-0.5 ${
-                        allowContainers ? "bg-indigo-600" : "bg-gray-300 dark:bg-gray-700"
-                      }`}
-                    >
-                      <div
-                        className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform ${
-                          allowContainers ? "translate-x-5" : "translate-x-0"
-                        }`}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 2: Tenant Public Registration */}
-              <div className="space-y-3 pt-2">
-                <div className="flex items-center space-x-2 text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                  <UserCheck className="w-3.5 h-3.5" />
-                  <span>{t("accessAndRegistration")}</span>
-                </div>
-
-                <div
-                  onClick={() => setRegistrationEnabled(!registrationEnabled)}
-                  className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-start justify-between gap-4 ${
-                    registrationEnabled
-                      ? "bg-emerald-500/5 border-emerald-500/30 dark:bg-emerald-950/20"
-                      : "bg-gray-50 dark:bg-gray-900/40 border-gray-200 dark:border-gray-800 opacity-60"
-                  }`}
-                >
-                  <div className="flex items-start space-x-3.5 min-w-0">
-                    <div
-                      className={`p-2 rounded-xl mt-0.5 ${
-                        registrationEnabled
-                          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                          : "bg-gray-200 dark:bg-gray-800 text-gray-400"
-                      }`}
-                    >
-                      <UserCheck className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-gray-900 dark:text-white">
-                        {t("publicRegistration")}
-                      </div>
-                      <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-                        {t("publicRegistrationDesc")}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div
-                    className={`w-11 h-6 rounded-full transition-colors relative flex-shrink-0 p-0.5 ${
-                      registrationEnabled ? "bg-emerald-600" : "bg-gray-300 dark:bg-gray-700"
-                    }`}
-                  >
-                    <div
-                      className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform ${
-                        registrationEnabled ? "translate-x-5" : "translate-x-0"
-                      }`}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 3: Public Web Panel URL */}
-              <div className="space-y-3 pt-2">
-                <div className="flex items-center space-x-2 text-xs font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400">
-                  <Globe className="w-3.5 h-3.5" />
-                  <span>{t("frontendUrl")}</span>
-                </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {t("frontendUrlDesc")}
-                </p>
-                <div className="relative">
-                  <input
-                    type="url"
-                    value={frontendUrl}
-                    onChange={(e) => setFrontendUrl(e.target.value)}
-                    placeholder={t("frontendUrlPlaceholder")}
-                    className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl px-3.5 py-2 pl-9 text-xs text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 transition font-mono"
-                  />
-                  <Globe className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
-                </div>
-              </div>
-            </div>
+            <GeneralSettingsTab
+              allowVm={form.allowVm}
+              allowContainers={form.allowContainers}
+              registrationEnabled={form.registrationEnabled}
+              frontendUrl={form.frontendUrl}
+              onToggleVm={() => handleToggleMode("allowVm")}
+              onToggleContainers={() => handleToggleMode("allowContainers")}
+              onToggleRegistration={() => setField("registrationEnabled", !form.registrationEnabled)}
+              onFrontendUrlChange={(val) => setField("frontendUrl", val)}
+            />
           )}
 
           {activeTab === "smtp" && (
-            <div className="space-y-5">
-              {/* SMTP Enable / Disable Toggle Banner */}
-              <div
-                onClick={() => setSmtpEnabled(!smtpEnabled)}
-                className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-start justify-between gap-4 ${
-                  smtpEnabled
-                    ? "bg-blue-500/5 border-blue-500/30 dark:bg-blue-950/20"
-                    : "bg-gray-50 dark:bg-gray-900/40 border-gray-200 dark:border-gray-800 opacity-60"
-                }`}
-              >
-                <div className="flex items-start space-x-3.5 min-w-0">
-                  <div
-                    className={`p-2 rounded-xl mt-0.5 ${
-                      smtpEnabled
-                        ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
-                        : "bg-gray-200 dark:bg-gray-800 text-gray-400"
-                    }`}
-                  >
-                    <Mail className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-bold text-gray-900 dark:text-white">
-                      {t("smtpEnabled")}
-                    </div>
-                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-                      {t("smtpDesc")}
-                    </p>
-                  </div>
-                </div>
-
-                <div
-                  className={`w-11 h-6 rounded-full transition-colors relative flex-shrink-0 p-0.5 ${
-                    smtpEnabled ? "bg-blue-600" : "bg-gray-300 dark:bg-gray-700"
-                  }`}
-                >
-                  <div
-                    className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform ${
-                      smtpEnabled ? "translate-x-5" : "translate-x-0"
-                    }`}
-                  />
-                </div>
-              </div>
-
-              {/* Host and Encryption */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {t("smtpHost")}
-                  </label>
-                  <input
-                    type="text"
-                    value={smtpHost}
-                    onChange={(e) => setSmtpHost(e.target.value)}
-                    placeholder="e.g. smtp.gmail.com or mail.example.com"
-                    className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl px-3.5 py-2 text-xs text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 transition font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {t("smtpEncryption")}
-                  </label>
-                  <select
-                    value={smtpEncryption}
-                    onChange={(e) => handleEncryptionChange(e.target.value as "tls" | "ssl" | "none")}
-                    className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 transition cursor-pointer"
-                  >
-                    <option value="tls">TLS (STARTTLS - 587)</option>
-                    <option value="ssl">SSL (SMTPS - 465)</option>
-                    <option value="none">None (Plain - 25)</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Port and Username */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {t("smtpPort")}
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="65535"
-                    value={smtpPort}
-                    onChange={(e) => setSmtpPort(e.target.value === "" ? "" : Number(e.target.value))}
-                    placeholder="587"
-                    className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl px-3.5 py-2 text-xs text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 transition font-mono"
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {t("smtpUsername")}
-                  </label>
-                  <input
-                    type="text"
-                    value={smtpUsername}
-                    onChange={(e) => setSmtpUsername(e.target.value)}
-                    placeholder="e.g. user@example.com or apikey"
-                    className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl px-3.5 py-2 text-xs text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 transition"
-                  />
-                </div>
-              </div>
-
-              {/* Password */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">
-                    {t("smtpPassword")}
-                  </label>
-                  {hasPassword && (
-                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">
-                      ✓ {t("smtpPasswordConfigured")}
-                    </span>
-                  )}
-                </div>
-                <div className="relative">
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    value={smtpPassword}
-                    onChange={(e) => setSmtpPassword(e.target.value)}
-                    placeholder={t("smtpPasswordPlaceholder")}
-                    className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl px-3.5 py-2 pl-9 pr-9 text-xs text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 transition font-mono"
-                  />
-                  <Lock className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 absolute right-2.5 top-2 transition"
-                  >
-                    {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* From Address and From Name */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {t("smtpFromAddress")}
-                  </label>
-                  <input
-                    type="email"
-                    value={smtpFromAddress}
-                    onChange={(e) => setSmtpFromAddress(e.target.value)}
-                    placeholder="noreply@example.com"
-                    className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl px-3.5 py-2 text-xs text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 transition"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {t("smtpFromName")}
-                  </label>
-                  <input
-                    type="text"
-                    value={smtpFromName}
-                    onChange={(e) => setSmtpFromName(e.target.value)}
-                    placeholder="Ognivo"
-                    className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl px-3.5 py-2 text-xs text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 transition"
-                  />
-                </div>
-              </div>
-
-              {/* Live Test Email Section */}
-              <div className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-800 space-y-3 mt-4">
-                <div>
-                  <div className="text-xs font-bold text-gray-900 dark:text-white flex items-center space-x-1.5">
-                    <Send className="w-3.5 h-3.5 text-blue-500" />
-                    <span>{t("testEmailTitle")}</span>
-                  </div>
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-                    {t("testEmailDesc")}
-                  </p>
-                </div>
-
-                {testResult && (
-                  <div
-                    className={`p-3 rounded-xl border text-xs flex items-start space-x-2 ${
-                      testResult.success
-                        ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
-                        : "bg-red-50 dark:bg-red-950/30 border-red-500/30 text-red-700 dark:text-red-300"
-                    }`}
-                  >
-                    {testResult.success ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
-                    ) : (
-                      <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-                    )}
-                    <span className="break-all">{testResult.message}</span>
-                  </div>
-                )}
-
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <input
-                    type="email"
-                    value={testRecipient}
-                    onChange={(e) => setTestRecipient(e.target.value)}
-                    placeholder="recipient@example.com (optional)"
-                    className="flex-1 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 transition"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSendTestEmail}
-                    disabled={testingEmail || !smtpHost}
-                    className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 transition disabled:opacity-50 flex items-center justify-center space-x-1.5 shadow-sm"
-                  >
-                    {testingEmail ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500" />
-                        <span>{t("testEmailSending")}</span>
-                      </>
-                    ) : (
-                      <>
-                        <Send className="w-3.5 h-3.5 text-blue-500" />
-                        <span>{t("testEmailAction")}</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
+            <SmtpSettingsTab
+              smtpEnabled={form.smtpEnabled} onToggleSmtpEnabled={() => setField("smtpEnabled", !form.smtpEnabled)}
+              smtpHost={form.smtpHost} onSmtpHostChange={(val) => setField("smtpHost", val)}
+              smtpPort={form.smtpPort} onSmtpPortChange={(val) => setField("smtpPort", val)}
+              smtpEncryption={form.smtpEncryption} onEncryptionChange={handleEncryptionChange}
+              smtpUsername={form.smtpUsername} onSmtpUsernameChange={(val) => setField("smtpUsername", val)}
+              smtpPassword={form.smtpPassword} onSmtpPasswordChange={(val) => setField("smtpPassword", val)}
+              hasPassword={hasPassword}
+              smtpFromAddress={form.smtpFromAddress} onSmtpFromAddressChange={(val) => setField("smtpFromAddress", val)}
+              smtpFromName={form.smtpFromName} onSmtpFromNameChange={(val) => setField("smtpFromName", val)}
+              testRecipient={testRecipient} onTestRecipientChange={setTestRecipient}
+              testingEmail={testingEmail} testResult={testResult} onSendTestEmail={sendTestEmail}
+            />
           )}
 
           {/* Footer Controls */}
@@ -673,11 +202,7 @@ export function SettingsModal({
               disabled={saving}
               className="px-5 py-2 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 transition shadow-md shadow-blue-500/25 flex items-center space-x-2 disabled:opacity-50"
             >
-              {saving ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Check className="w-4 h-4" />
-              )}
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
               <span>{t("saveSettings")}</span>
             </button>
           </div>

@@ -17,15 +17,15 @@ import { useI18n } from "@/lib/i18n/I18nContext";
 import { useModalEscape } from "@/lib/hooks/useModalEscape";
 import {
   HOST_DEFAULTS,
+  HostDriver,
   hostRamMbToGb,
-  isHostNameValid,
-  isValidHttpUrl,
-  isCapacityValid,
+  validateHostForm,
+  buildUpdateHostPayload,
 } from "./hostFormSchema";
 import { useHostVerify } from "./useHostVerify";
 import { useHostImageSelection } from "./useHostImageSelection";
 import { HostCapacityFields, HostCapacityValues } from "./HostCapacityFields";
-import { HostConnectionFields, HostDriver } from "./HostConnectionFields";
+import { HostConnectionFields } from "./HostConnectionFields";
 
 interface EditHostModalProps {
   host: HostNode;
@@ -115,18 +115,12 @@ export function EditHostModal({ host, onClose, onSuccess }: EditHostModalProps) 
     });
   }, [host, resetVerify, resetImageSelection]);
 
-  const isFormValid = Boolean(
-    isHostNameValid(name) &&
-      isValidHttpUrl(endpointUrl) &&
-      isCapacityValid({
-        cpuCores: capacity.totalCpuCores,
-        ramGb: capacity.totalRamGb,
-        storageGb: capacity.totalStorageGb,
-        cpuOvercommit: capacity.cpuOvercommit,
-        ramOvercommit: capacity.ramOvercommit,
-        diskOvercommit: capacity.diskOvercommit,
-      })
-  );
+  const isFormValid = validateHostForm({
+    mode: "edit",
+    name,
+    endpointUrl,
+    capacity,
+  });
 
   const executeHostUpdate = async (payload: Parameters<typeof api.adminUpdateHost>[1]) => {
     try {
@@ -162,36 +156,22 @@ export function EditHostModal({ host, onClose, onSuccess }: EditHostModalProps) 
       return;
     }
 
-    const updatePayload: Parameters<typeof api.adminUpdateHost>[1] = {
-      name: name.trim().toLowerCase(),
-      region: region.trim() || undefined,
-      endpoint_url: endpointUrl.trim(),
-      driver,
-      is_active: isActive,
-      cpu_overcommit: capacity.cpuOvercommit,
-      ram_overcommit: capacity.ramOvercommit,
-      disk_overcommit: capacity.diskOvercommit,
-      auto_attach_images: autoAttachImages,
-    };
-
-    if (capacity.totalCpuCores !== (host.total_cpu_cores || HOST_DEFAULTS.cpuCores)) {
-      updatePayload.total_cpu_cores = capacity.totalCpuCores;
-    }
-    if (capacity.totalRamGb !== hostRamMbToGb(host.total_ram_mb)) {
-      updatePayload.total_ram_mb = capacity.totalRamGb * 1024;
-    }
-    if (capacity.totalStorageGb !== (host.total_storage_gb || HOST_DEFAULTS.storageGb)) {
-      updatePayload.total_storage_gb = capacity.totalStorageGb;
-    }
-
-    if (tokenModified) {
-      updatePayload.token = token.trim() || null;
-    }
-
     const imagesPayload = toSelectionPayload(imageSelection, "edit");
-    if (imagesPayload !== undefined) {
-      updatePayload.images = imagesPayload;
-    }
+    const updatePayload = buildUpdateHostPayload(
+      {
+        name,
+        region,
+        endpointUrl,
+        driver,
+        isActive,
+        capacity,
+        token,
+        tokenModified,
+        autoAttachImages,
+        images: imagesPayload,
+      },
+      host
+    );
 
     if (updatePayload.images !== undefined) {
       try {

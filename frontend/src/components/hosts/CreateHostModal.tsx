@@ -13,16 +13,16 @@ import { api, HostNode } from "@/lib/api";
 import { toSelectionPayload } from "@/lib/images/imageSelection";
 import { HostImagesSection } from "./HostImagesSection";
 import { HostCapacityFields, HostCapacityValues } from "./HostCapacityFields";
-import { HostConnectionFields, HostDriver } from "./HostConnectionFields";
+import { HostConnectionFields } from "./HostConnectionFields";
 import { useHostVerify } from "./useHostVerify";
 import { useHostImageSelection } from "./useHostImageSelection";
 import {
   HOST_DEFAULTS,
-  isHostNameValid,
+  HostDriver,
   isValidHttpUrl,
-  isCapacityValid,
-  isTokenValid,
-  isFingerprintValid,
+  validateHostForm,
+  buildCreateHostWithTokenPayload,
+  buildCreateHostWithCertPayload,
 } from "./hostFormSchema";
 import { useI18n } from "@/lib/i18n/I18nContext";
 import { useModalEscape } from "@/lib/hooks/useModalEscape";
@@ -92,27 +92,24 @@ export function CreateHostModal({ onClose, onSuccess }: CreateHostModalProps) {
   useModalEscape(onClose, !loading && !verifyLoading);
 
   // Validation
-  const capacityValid = isCapacityValid(
-    {
-      cpuCores: capacity.totalCpuCores,
-      ramGb: capacity.totalRamGb,
-      storageGb: capacity.totalStorageGb,
-      cpuOvercommit: capacity.cpuOvercommit,
-      ramOvercommit: capacity.ramOvercommit,
-      diskOvercommit: capacity.diskOvercommit,
-    },
-    { skipTotals: autoDiscoverCapacity }
-  );
-
-  const isFormValid =
+  const isFormValid = validateHostForm(
     mode === "token"
-      ? Boolean(isHostNameValid(name) && isTokenValid(token) && capacityValid)
-      : Boolean(
-          isHostNameValid(name) &&
-            isValidHttpUrl(endpointUrl) &&
-            isFingerprintValid(expectedFingerprint) &&
-            capacityValid
-        );
+      ? {
+          mode: "token",
+          name,
+          token,
+          autoDiscoverCapacity,
+          capacity,
+        }
+      : {
+          mode: "cert",
+          name,
+          endpointUrl,
+          expectedFingerprint,
+          autoDiscoverCapacity,
+          capacity,
+        }
+  );
 
   const handleVerifyConnection = () => {
     void verify({
@@ -140,46 +137,37 @@ export function CreateHostModal({ onClose, onSuccess }: CreateHostModalProps) {
       setLoading(true);
 
       const imagesPayload = toSelectionPayload(imageSelection, "create");
-      let createdHost: HostNode;
+      const res =
+        mode === "token"
+          ? await api.adminConnectWithToken(
+              buildCreateHostWithTokenPayload({
+                name,
+                token,
+                driver,
+                region,
+                isActive,
+                autoDiscoverCapacity,
+                capacity,
+                autoAttachImages,
+                images: imagesPayload,
+              })
+            )
+          : await api.adminAddWithCertificate(
+              buildCreateHostWithCertPayload({
+                name,
+                endpointUrl,
+                expectedFingerprint,
+                driver,
+                region,
+                isActive,
+                autoDiscoverCapacity,
+                capacity,
+                autoAttachImages,
+                images: imagesPayload,
+              })
+            );
 
-      if (mode === "token") {
-        const res = await api.adminConnectWithToken({
-          name: name.trim().toLowerCase(),
-          token: token.trim(),
-          driver,
-          region: region.trim() || undefined,
-          is_active: isActive,
-          total_cpu_cores: autoDiscoverCapacity ? undefined : capacity.totalCpuCores,
-          total_ram_mb: autoDiscoverCapacity ? undefined : capacity.totalRamGb * 1024,
-          total_storage_gb: autoDiscoverCapacity ? undefined : capacity.totalStorageGb,
-          cpu_overcommit: capacity.cpuOvercommit,
-          ram_overcommit: capacity.ramOvercommit,
-          disk_overcommit: capacity.diskOvercommit,
-          auto_attach_images: autoAttachImages,
-          images: imagesPayload,
-        });
-        createdHost = res.host;
-      } else {
-        const res = await api.adminAddWithCertificate({
-          name: name.trim().toLowerCase(),
-          address: endpointUrl.trim(),
-          expected_fingerprint: expectedFingerprint.trim().toLowerCase(),
-          driver,
-          region: region.trim() || undefined,
-          is_active: isActive,
-          total_cpu_cores: autoDiscoverCapacity ? undefined : capacity.totalCpuCores,
-          total_ram_mb: autoDiscoverCapacity ? undefined : capacity.totalRamGb * 1024,
-          total_storage_gb: autoDiscoverCapacity ? undefined : capacity.totalStorageGb,
-          cpu_overcommit: capacity.cpuOvercommit,
-          ram_overcommit: capacity.ramOvercommit,
-          disk_overcommit: capacity.diskOvercommit,
-          auto_attach_images: autoAttachImages,
-          images: imagesPayload,
-        });
-        createdHost = res.host;
-      }
-
-      onSuccess(createdHost);
+      onSuccess(res.host);
       onClose();
     } catch (err: unknown) {
       if (err instanceof Error) {
