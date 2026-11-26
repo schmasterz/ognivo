@@ -4,12 +4,12 @@ Ognivo gives the owner of a container or virtual machine an interactive terminal
 
 The terminal is opened through one of two **drivers**. Each driver maps to a different Incus endpoint:
 
-| Driver | Incus endpoint | What the user gets | Used for |
-| :--- | :--- | :--- | :--- |
-| `exec` | `POST /1.0/instances/{name}/exec` | A new login shell (`bash -l`, falling back to `sh -l`) running as `root` in `/root`, with `TERM=xterm-256color` | **Default.** All containers, and virtual machines that run the Incus guest agent |
-| `console` | `POST /1.0/instances/{name}/console` | The instance's serial console (`/dev/console`, `ttyS0`) | Fallback for virtual machines without a running guest agent, and an explicit choice through the API |
+| Driver | Incus endpoint | Transport | What the user gets | Used for |
+| :--- | :--- | :--- | :--- | :--- |
+| `exec` | `POST /1.0/instances/{name}/exec` | virtio vsock (`incus-agent`) | A new login shell (`bash -l`, falling back to `sh -l`) running as `root` in `/root`, with `TERM=xterm-256color` | **Default.** All containers, and virtual machines that run the Incus guest agent |
+| `console` | `POST /1.0/instances/{name}/console` | QEMU `chardev:console` (`ttyS0`) / instance console | The instance's serial/system console (`/dev/console`, `ttyS0`) | Fallback for virtual machines without a running guest agent, live VM boot streaming, and an explicit choice through the API |
 
-Alongside the interactive terminal there is a separate, read-only **boot log** (see [Boot log](#7-boot-log)). It does not depend on either driver.
+Alongside the interactive terminal there is a separate, read-only **Boot Log** tab (see [Boot log](#7-boot-log)). For containers it fetches the retained liblxc console ring buffer via the API; for running virtual machines it attaches or mirrors the live `ttyS0` serial console stream.
 
 ---
 
@@ -78,10 +78,28 @@ Details:
 > [!NOTE]
 > **VGA is not usable from the UI today.** The API accepts `type: "vga"` for virtual machines and opens the Incus VGA console operation, but Ognivo ships no graphical (noVNC/RFB) client, and the web panel never requests it. Treat `vga` as experimental until a client is added.
 
+### Channel independence (`exec` vs. `console`)
+
+The two drivers operate over completely independent transport channels inside Incus and QEMU:
+
+- **`ExecDriver` (`POST /1.0/instances/{name}/exec`)** runs over Incus `/exec` via **virtio vsock** directly to `incus-agent` inside the guest.
+- **`ConsoleDriver` (`POST /1.0/instances/{name}/console`)** runs over Incus `/console` via QEMU **`chardev:console` (`ttyS0`)**.
+
+Because these channels do not share a socket or multiplexer, a running virtual machine can simultaneously maintain an interactive `exec` shell in the **Terminal** tab and a read-only serial stream in the **Boot Log** tab.
+
+### Non-disruptive transition when the guest agent starts
+
+If a virtual machine is still booting when the user opens the console, the initial `exec` probe fails fast and the Terminal tab falls back to `console` (`fallback_reason: "agent_unavailable"`). While the Terminal tab is in serial fallback mode:
+
+1. The backend `IncusEventSyncService` listens for Incus 6.23+ `instance-agent-started` lifecycle events and broadcasts `VirtualMachineAgentStarted` on the owner's private Laravel Echo channel (`users.{id}`).
+2. The console modal listens for `VirtualMachineAgentStarted` over Laravel Echo (and users can also trigger a manual **Reconnect** on older hypervisors or if WebSocket broadcasting is disabled).
+3. Once the guest agent comes online, a non-disruptive banner appears above the terminal: **`"⚡ Guest agent is now online. [Switch to Shell]"`** (and live boot capture in the Boot Log tab freezes automatically).
+4. Clicking **Switch to Shell** closes the serial session and explicitly opens a new `driver: "exec"` session (`bash -l`). Ognivo **never** performs silent driver switching mid-session, so any in-progress serial login or diagnostic output is preserved until the user chooses to switch.
+
 ### Guest agent and serial console requirements
 
 - `exec` on a virtual machine needs the Incus agent running inside the guest (images with the `/agent` variant, or the agent installed manually).
-- The `console` driver shows whatever the guest writes to its serial console. The guest must have a login `getty` on `ttyS0` and, in most cases, a password set. A guest with no login prompt on the serial line shows nothing useful. Use the [boot log](#7-boot-log) to inspect what the guest printed at boot.
+- The `console` driver shows whatever the guest writes to its serial console. The guest must have a login `getty` on `ttyS0` and, in most cases, a password set, and the guest kernel should be configured with `console=ttyS0` to emit boot messages. A guest with no login prompt on the serial line shows nothing useful once booted. Use the [Boot log](#7-boot-log) tab during startup to inspect what the guest printed at boot.
 
 ---
 
@@ -152,9 +170,13 @@ The idle timeout and message limit are copied into the ticket, so they apply to 
 > [!NOTE]
 > **Activity tracking and unredeemed tickets.** When the browser opens the WebSocket connection, `console-proxy` marks the session as redeemed (`redeemed_at`) in Redis and refreshes `last_activity_at` (along with the Redis key TTL) approximately every 30 seconds while traffic flows. Active sessions therefore retain their concurrency slot as long as the terminal is in use, and unredeemed tickets automatically release their concurrency slot once `TERMINAL_TICKET_TTL_SECONDS` expires.
 
-### Closing a session
+### Closing a session & tab persistence
 
-The web panel calls `DELETE /api/v1/vms/{id}/console/{sessionId}` when the modal is closed or the terminal reconnects. This removes the session from the concurrency count and cancels the Incus operation. If the browser disappears without calling it, the proxy cleans up the Redis records itself when the socket closes.
+- **Closing sessions:** The web panel calls `DELETE /api/v1/vms/{id}/console/{sessionId}` when the modal is closed or the terminal reconnects. This removes the session from the concurrency count and cancels the Incus operation. If the browser disappears without calling it, the proxy cleans up the Redis records itself when the socket closes.
+- **Single serial slot coordination:** Because Incus permits only one concurrent `console` (`ttyS0`) session per instance (`TERMINAL_MAX_CONSOLE_SESSIONS=1`), the Terminal and Boot Log tabs coordinate usage on virtual machines:
+  - When the Terminal tab runs on `exec` (virtio vsock), the serial slot is free and the Boot Log tab lazily attaches its own read-only `console` session when opened.
+  - When the Terminal tab runs in `console` fallback mode, it holds the sole serial slot and the Boot Log tab mirrors incoming serial output instead of opening a second WebSocket. If a separate Boot Log serial session was open when the Terminal tab switches to `console`, it is released first (`reason: "terminal_took_serial"`).
+- **Persistent DOM mounting:** Both the Terminal and Boot Log tab containers remain mounted in the DOM and are toggled with CSS (`hidden`). Switching between tabs never closes active WebSockets, clears terminal history, or forces `xterm.js` re-initialization.
 
 ---
 
@@ -258,22 +280,57 @@ See [Boot log](#7-boot-log).
 
 ## 7. Boot Log
 
+In the web panel, the **Boot Log** tab sits alongside the **Terminal** tab inside the console modal. Because Incus handles console output differently for containers and QEMU virtual machines, Ognivo uses a distinct source strategy for each instance type:
+
+| Instance type | Primary Boot Log source | Retention & behavior | Buffer cap |
+| :--- | :--- | :--- | :--- |
+| **LXC Container** | `GET /api/v1/vms/{id}/console-log` → Incus `GET /1.0/instances/{name}/console?buffer=true` | Reads liblxc's in-memory ring buffer; retains historical boot logs even hours after boot (and while stopped, if retained by Incus) | **Last 50 KB** (tail) |
+| **Virtual Machine (running, `exec` Terminal)** | `POST /api/v1/vms/{id}/console` (`driver: "console"`) → Incus `POST /1.0/instances/{name}/console` | Opens an independent, read-only live WebSocket stream to QEMU `chardev:console` (`ttyS0`) alongside the `exec` shell | **First 50 KB** (`51,200` chars HEAD cap) |
+| **Virtual Machine (running, `console` fallback Terminal)** | Mirrored from the Terminal tab's active `console` WebSocket | Mirrors incoming `ttyS0` chunks into the Boot Log viewer without opening a second serial socket | **First 50 KB** (`51,200` chars HEAD cap) |
+| **Virtual Machine (stopped)** | `GET /api/v1/vms/{id}/console-log` | Returns an explanatory notice (QEMU VMs do not expose a retained console ring buffer) | N/A |
+
+### Why VMs stream `ttyS0` instead of polling `/console?buffer=true`
+
+- **No hypervisor buffer for QEMU VMs:** On Incus, `GET /1.0/instances/{name}/console?buffer=true` only applies to containers and returns `404` (`"Instance is not container type"` / `"no such file or directory"`) for virtual machines. VM boot output exists strictly on the emulated serial port (`ttyS0`).
+- **Channel independence:** When a running VM already has its guest agent online and the Terminal tab uses `ExecDriver` (virtio vsock), the serial channel (`ConsoleDriver` over QEMU `chardev:console`) remains completely free, allowing the Boot Log tab to attach a live read-only serial stream simultaneously.
+
+### Incus serial replay limits and post-boot notice
+
+When a client attaches to a VM's serial console WebSocket, Incus streams output **live** from QEMU's `chardev` and does **not** dump or replay historical ringbuffer output across the newly opened socket.
+
+If you open the console modal **after** a VM has finished booting and `ttyS0` is idle, no bytes arrive on the serial socket. After a 2-second grace period with no output, the Boot Log tab displays an informational overlay notice explaining that serial output is streamed live during boot and is not retained by the hypervisor once booted (and reminding you to verify `console=ttyS0` in the guest kernel command line if output never appears even during startup).
+
+### Boot log freeze strategy (HEAD cap & prompt/agent transition)
+
+When capturing or mirroring a VM's `ttyS0` stream during boot, the Boot Log buffer automatically **freezes** as soon as any of the following occurs:
+
+1. **Login prompt detected:** A `login:` prompt appears at the tail of the serial output (evaluated after stripping ANSI escape sequences).
+2. **Guest agent becomes ready:** Incus emits `instance-agent-started` and the frontend receives `VirtualMachineAgentStarted`.
+3. **50 KB HEAD limit reached:** Captured VM boot output reaches `51,200` characters (`50 KB` from the start of the stream).
+
+Using a hard **HEAD cap** rather than a rolling tail guarantees that interactive keystrokes, login attempts, passwords, or post-boot shell commands entered in serial fallback mode never push out earlier UEFI/OVMF, GRUB, or kernel initialization messages. Clicking **Refresh** in the Boot Log tab resets the freeze state and re-attaches (or clears and resumes mirroring) for a new capture.
+
+### Read-only `xterm.js` rendering and persistent DOM mounting
+
+- **Full terminal emulation (`ReadOnlyXtermViewer`):** Rather than stripping ANSI codes into plain text, the Boot Log tab renders both container logs and VM serial streams inside a read-only `xterm.js` instance (`disableStdin: true`, `cursorBlink: false`). This keeps UEFI/GRUB menus, cursor positioning, and colorized boot status indicators (`[  OK  ]`, `[FAILED]`) intact while still allowing one-click **Copy Boot Log** from the rendered terminal buffer.
+- **Persistent DOM mounting:** The Boot Log tab container stays mounted in the DOM alongside the Terminal tab and toggles visibility via CSS (`hidden`), preventing WebSocket disconnections or terminal state loss when switching tabs.
+
+### REST API endpoint (`GET /api/v1/vms/{id}/console-log`)
+
 ```http
 GET /api/v1/vms/{id}/console-log
 ```
 
-Returns the text that the guest has written to its console buffer (`GET /1.0/instances/{name}/console?buffer=true` on Incus), for example to see why a guest failed to boot or which IP it received.
+Returns the container's retained console buffer (`GET /1.0/instances/{name}/console?buffer=true` on Incus), or an informational notice for virtual machines:
 
 ```json
-{ "virtual_machine_id": 42, "name": "vm-example", "output": "..." }
+{ "virtual_machine_id": 42, "name": "ct-example", "output": "..." }
 ```
 
-- **Read-only**, independent of the exec/console drivers and of the guest agent. It works for stopped instances too, as long as Incus still holds a buffer.
-- Capped to the **last 50 KB**.
-- Same owner-only policy and `6 per minute` throttle as terminal tickets. Each view is audited.
-- If Incus cannot return the buffer, the endpoint still answers `200` with an explanatory message in `output` (for example, `Unable to fetch console log from hypervisor. Instance status: ...`, or `Console buffer is empty.`).
-
-In the web panel this is the **Boot log** tab next to the **Terminal** tab.
+- **Read-only**, independent of active `exec`/`console` sessions and of the guest agent. Works for stopped containers too, as long as Incus still holds a buffer.
+- Container responses are capped to the **last 50 KB**.
+- Enforces the same owner-only policy and `6 per minute` throttle as terminal tickets. Each view is audited (`vm.action.requested`, `action: console_log.viewed`).
+- If Incus cannot return a container buffer, the endpoint still answers `200` with an explanatory message in `output` (for example, `Unable to fetch console log from hypervisor. Instance status: ...` or `Console buffer is empty.`). For virtual machines, `output` states that boot output is streamed in real time via `ttyS0` during startup.
 
 ---
 
@@ -314,11 +371,13 @@ When the host driver is `fake` (the seeded demo nodes), the proxy does not conta
 
 | Symptom | Likely cause | What to check |
 | :--- | :--- | :--- |
-| `409` "only available while the instance is running" | Instance is stopped, starting or in error | Start it, or use the boot log |
-| `409` "serial console session is already active" | Only one serial session per instance is allowed | Close the other session, or wait for the idle timeout |
+| `409` "only available while the instance is running" | Instance is stopped, starting or in error | Start it, or use the Boot Log tab (containers retain logs; VMs stream live during startup) |
+| `409` "serial console session is already active" | Only one `console` (`ttyS0`) session per instance is allowed (`TERMINAL_MAX_CONSOLE_SESSIONS=1`) | Close the other terminal/tab holding the serial slot, or wait for the idle timeout |
 | `429` "Maximum number of concurrent terminal sessions" | 5 `exec` sessions already open | Close old sessions, or raise `TERMINAL_MAX_EXEC_SESSIONS` |
-| VM terminal opens a serial login prompt instead of a shell | Guest agent not running, so the fallback was used | `fallback_reason` is `agent_unavailable`; use an agent-enabled image or install the agent in the guest |
-| Serial console is blank | No `getty` on `ttyS0`, or the guest has no password | Check the boot log; configure a serial login |
+| VM terminal opens a serial login prompt instead of a shell | Guest agent not running yet or not installed (`fallback_reason: "agent_unavailable"`) | If the VM is still booting, wait for the **`"⚡ Guest agent is now online. [Switch to Shell]"`** banner (or click **Reconnect**) once `incus-agent` starts; otherwise use an agent-enabled image or install the agent in the guest |
+| VM Boot Log shows `"Waiting for serial console output..."` | Console modal opened after the VM already booted (Incus does not replay past `ttyS0` output on attach), or guest kernel lacks `console=ttyS0` | Reboot the VM with the Boot Log tab open to capture live startup output, and verify `console=ttyS0` in the guest kernel cmdline |
+| VM Boot Log stops updating after `login:` or 50 KB | Expected freeze behavior (`Boot log capture completed.`) | Preserves early UEFI/kernel boot output from being overwritten by typing; click **Refresh** in the Boot Log tab to start a new capture |
+| Serial console is blank | No `getty` on `ttyS0`, or the guest has no password | Check the Boot Log during startup; configure a serial `getty` on `ttyS0` |
 | Socket fails with HTTP `403` | Ticket expired (over 60 s between the POST and the WebSocket), already used, or the proxy uses a different Redis or prefix | Request a new ticket; check `REDIS_*` and `REDIS_PREFIX` on `console-proxy` |
 | Socket closes with `1011` | The proxy cannot reach Incus, or the SPKI pin does not match | Check the node status and the host's stored pin (`hosts:backfill-pins`); see [Host Onboarding](host-onboarding.md) |
 | Terminal closes after 15 minutes of silence | Idle timeout (`4000`) | Raise `TERMINAL_IDLE_TIMEOUT_SECONDS` |

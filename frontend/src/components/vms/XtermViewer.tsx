@@ -9,6 +9,7 @@ interface XtermViewerProps {
   ticket: string;
   onStatusChange?: (status: "connecting" | "connected" | "disconnected" | "error") => void;
   onSessionError?: (errorMessage: string) => void;
+  onDataChunk?: (chunk: string) => void;
 }
 
 export function XtermViewer({
@@ -16,10 +17,26 @@ export function XtermViewer({
   ticket,
   onStatusChange,
   onSessionError,
+  onDataChunk,
 }: XtermViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const onStatusChangeRef = useRef(onStatusChange);
+  const onSessionErrorRef = useRef(onSessionError);
+  const onDataChunkRef = useRef(onDataChunk);
+
+  useEffect(() => {
+    onStatusChangeRef.current = onStatusChange;
+  }, [onStatusChange]);
+
+  useEffect(() => {
+    onSessionErrorRef.current = onSessionError;
+  }, [onSessionError]);
+
+  useEffect(() => {
+    onDataChunkRef.current = onDataChunk;
+  }, [onDataChunk]);
 
   useEffect(() => {
     if (!containerRef.current || typeof window === "undefined" || !wsUrl || !ticket) return;
@@ -29,7 +46,7 @@ export function XtermViewer({
     let term: Terminal | null = null;
     let removeResize: (() => void) | null = null;
 
-    onStatusChange?.("connecting");
+    onStatusChangeRef.current?.("connecting");
 
     const initTerminal = async () => {
       const [{ Terminal: XTerminal }, { FitAddon }] = await Promise.all([
@@ -38,6 +55,9 @@ export function XtermViewer({
       ]);
 
       if (disposed || !containerRef.current) return;
+
+      // Clear any leftover terminal DOM and reset buffer for the new session
+      containerRef.current.replaceChildren();
 
       term = new XTerminal({
         cursorBlink: true,
@@ -54,6 +74,7 @@ export function XtermViewer({
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
       term.open(containerRef.current);
+      term.reset();
       try {
         fitAddon.fit();
       } catch {
@@ -73,20 +94,31 @@ export function XtermViewer({
       };
 
       ws.onopen = () => {
-        onStatusChange?.("connected");
+        if (disposed) return;
+        onStatusChangeRef.current?.("connected");
         term?.focus();
         sendResize();
       };
 
+      const decoder = new TextDecoder("utf-8", { fatal: false });
+
       ws.onmessage = (event) => {
+        if (disposed) return;
         if (typeof event.data === "string") {
           term?.write(event.data);
+          onDataChunkRef.current?.(event.data);
         } else if (event.data instanceof ArrayBuffer) {
-          term?.write(new Uint8Array(event.data));
+          const bytes = new Uint8Array(event.data);
+          term?.write(bytes);
+          const decoded = decoder.decode(bytes, { stream: true });
+          if (decoded) {
+            onDataChunkRef.current?.(decoded);
+          }
         }
       };
 
       term.onData((data) => {
+        if (disposed) return;
         if (ws?.readyState === WebSocket.OPEN) {
           const encoder = new TextEncoder();
           ws.send(encoder.encode(data));
@@ -94,13 +126,15 @@ export function XtermViewer({
       });
 
       ws.onerror = () => {
-        onStatusChange?.("error");
-        onSessionError?.("WebSocket connection error");
+        if (disposed) return;
+        onStatusChangeRef.current?.("error");
+        onSessionErrorRef.current?.("WebSocket connection error");
         term?.write("\r\n\x1b[31m[WebSocket connection error]\x1b[0m\r\n");
       };
 
       ws.onclose = (event: CloseEvent) => {
-        onStatusChange?.("disconnected");
+        if (disposed) return;
+        onStatusChangeRef.current?.("disconnected");
         let reasonMsg = "[Console session disconnected]";
         if (event.code === 4000) {
           reasonMsg = "[Console session closed: idle timeout exceeded]";
@@ -113,7 +147,7 @@ export function XtermViewer({
         }
         term?.write(`\r\n\x1b[33m${reasonMsg}\x1b[0m\r\n`);
         if (event.code === 4000 || event.code === 1009 || event.code === 1011) {
-          onSessionError?.(reasonMsg);
+          onSessionErrorRef.current?.(reasonMsg);
         }
       };
 
@@ -147,14 +181,20 @@ export function XtermViewer({
     return () => {
       disposed = true;
       removeResize?.();
-      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
-        ws.close();
+      if (ws) {
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onerror = null;
+        ws.onclose = null;
+        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+          ws.close();
+        }
       }
       term?.dispose();
       terminalRef.current = null;
       wsRef.current = null;
     };
-  }, [wsUrl, ticket, onStatusChange, onSessionError]);
+  }, [wsUrl, ticket]);
 
   return <div ref={containerRef} className="w-full h-full p-2 bg-[#090d16]" />;
 }

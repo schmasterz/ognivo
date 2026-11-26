@@ -44,6 +44,7 @@ return [
         'container_mode_disabled' => 'LXC containers are currently disabled on this platform.',
         'rate_limit_exceeded' => 'Too many virtual machine lifecycle requests. Please wait :seconds seconds before trying again.',
         'invalid_state_transition' => 'Cannot execute action ":action" on virtual machine in ":state" state.',
+        'console_vm_serial_notice' => 'For virtual machines, boot output is streamed in real time via the serial console (ttyS0) during instance startup.',
     ],
     'snapshot' => [
         'creation_initiated' => 'Snapshot creation initiated successfully.',

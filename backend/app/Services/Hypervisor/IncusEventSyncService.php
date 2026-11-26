@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Hypervisor;
 
+use App\Events\VirtualMachineAgentStarted;
 use App\Models\DriftReport;
 use App\Models\Host;
 use App\Models\User;
@@ -129,6 +130,11 @@ class IncusEventSyncService
                             $vm->status->transitionTo(Stopped::class);
                             $vm->save();
                         }
+                        break;
+
+                    case 'instance-agent-started':
+                        Log::info(sprintf('Incus event: Guest agent started for VM [%s] on host [%s].', $vm->name, $host->name));
+                        event(new VirtualMachineAgentStarted($vm));
                         break;
 
                     default:

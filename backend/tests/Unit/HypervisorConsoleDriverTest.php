@@ -436,4 +436,46 @@ final class HypervisorConsoleDriverTest extends TestCase
         $this->assertSame('fake-op-console-'.$this->vm->id, $session['operation_id']);
         $this->assertStringContainsString('fake-sec-data-'.$this->vm->id, $session['websocket_path']);
     }
+
+    public function test_incus_driver_returns_empty_console_message_on_404_missing_buffer(): void
+    {
+        Http::fake([
+            'https://incus-console.local:8443/1.0/instances/ct-console-01/console*' => Http::response([
+                'type' => 'error',
+                'error_code' => 404,
+                'error' => 'open : no such file or directory',
+            ], 404),
+            'https://incus-console.local:8443/1.0/instances/vm-console-01/console*' => Http::response([
+                'type' => 'error',
+                'error_code' => 404,
+                'error' => 'Console log not found',
+            ], 404),
+        ]);
+
+        $driver = new IncusDriver($this->incusHost);
+
+        $this->assertSame('Console buffer is empty.', $driver->getInstanceConsoleLog($this->container));
+        $this->assertSame(__('messages.vm.console_vm_serial_notice'), $driver->getInstanceConsoleLog($this->vm));
+
+        Http::assertSent(function (Request $request): bool {
+            return $request->method() === 'GET'
+                && str_contains($request->url(), '/1.0/instances/ct-console-01/console')
+                && str_contains($request->url(), 'project=tenant-console-proj')
+                && str_contains($request->url(), 'buffer=true');
+        });
+    }
+
+    public function test_incus_driver_returns_vm_serial_notice_on_non_200_or_empty_buffer(): void
+    {
+        Http::fake([
+            'https://incus-console.local:8443/1.0/instances/vm-console-01/console*' => Http::sequence()
+                ->push(['type' => 'error', 'error_code' => 400, 'error' => 'Not supported for VMs'], 400)
+                ->push('', 200),
+        ]);
+
+        $driver = new IncusDriver($this->incusHost);
+
+        $this->assertSame(__('messages.vm.console_vm_serial_notice'), $driver->getInstanceConsoleLog($this->vm));
+        $this->assertSame(__('messages.vm.console_vm_serial_notice'), $driver->getInstanceConsoleLog($this->vm));
+    }
 }

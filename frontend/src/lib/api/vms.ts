@@ -126,6 +126,7 @@ export const vmsApi = {
           type?: "console" | "vga";
           cols?: number;
           rows?: number;
+          driver?: "auto" | "exec" | "console";
         }
       | "console"
       | "vga"
@@ -137,6 +138,7 @@ export const vmsApi = {
         type: opts?.type ?? "console",
         cols: opts?.cols ?? 80,
         rows: opts?.rows ?? 24,
+        driver: opts?.driver,
       }),
     });
   },

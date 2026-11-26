@@ -11,6 +11,10 @@ import {
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { VirtualMachine, VmNetworkPrimary } from "@/lib/api";
+import {
+  useDashboardModalActions,
+  useDashboardModalSelector,
+} from "./useDashboardModals";
 
 export type TabType =
   | "vms"
@@ -73,6 +77,8 @@ export function useDashboardNavigation({
     vm: VirtualMachine;
     initialTab?: string;
   } | null>(null);
+  const consoleVm = useDashboardModalSelector((s) => s.consoleVm);
+  const { setConsoleVm } = useDashboardModalActions();
   const handledDeepLinkRef = useRef<string | null>(null);
 
   const handleSetDetailsVm = useCallback(
@@ -157,38 +163,72 @@ export function useDashboardNavigation({
     return () => clearTimeout(timer);
   }, [vms, detailsVmId]);
 
+  const consoleVmId = consoleVm?.id ?? null;
+
+  // Synchronize consoleVm with updated VM in vms list (e.g. from refetch, poll, or mergeVmUpdate)
+  useEffect(() => {
+    if (consoleVmId === null) return;
+    const matched = vms.find((v) => v.id === consoleVmId);
+    if (!matched) return;
+
+    const timer = setTimeout(() => {
+      setConsoleVm((prev) => {
+        if (!prev || prev.id !== consoleVmId || prev === matched) {
+          return prev;
+        }
+        return matched;
+      });
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [vms, consoleVmId, setConsoleVm]);
+
+  const mergeRealtimeVm = useCallback(
+    (
+      prevVm: VirtualMachine,
+      updatedVm: Partial<VirtualMachine> & { id: number; ipv4?: string }
+    ): VirtualMachine => {
+      const ipv4Val =
+        updatedVm.ipv4_address ?? updatedVm.ipv4 ?? prevVm.ipv4_address;
+      const networkStatusVal =
+        updatedVm.network_status ?? prevVm.network_status;
+      const updatedNetwork = prevVm.network
+        ? {
+            ...prevVm.network,
+            primary: {
+              ...prevVm.network.primary,
+              address: ipv4Val,
+              status: (networkStatusVal as VmNetworkPrimary["status"]) ?? null,
+            },
+          }
+        : prevVm.network;
+
+      return {
+        ...prevVm,
+        ...updatedVm,
+        ipv4_address: ipv4Val,
+        network_status: networkStatusVal,
+        network: updatedNetwork,
+      };
+    },
+    []
+  );
+
   const handleVmRealtimeUpdate = useCallback(
     (updatedVm: Partial<VirtualMachine> & { id: number; ipv4?: string }) => {
       setDetailsVm((prev) => {
         if (!prev || prev.vm.id !== updatedVm.id) return prev;
-        const ipv4Val =
-          updatedVm.ipv4_address ?? updatedVm.ipv4 ?? prev.vm.ipv4_address;
-        const networkStatusVal =
-          updatedVm.network_status ?? prev.vm.network_status;
-        const updatedNetwork = prev.vm.network
-          ? {
-              ...prev.vm.network,
-              primary: {
-                ...prev.vm.network.primary,
-                address: ipv4Val,
-                status: (networkStatusVal as VmNetworkPrimary["status"]) ?? null,
-              },
-            }
-          : prev.vm.network;
-
         return {
           ...prev,
-          vm: {
-            ...prev.vm,
-            ...updatedVm,
-            ipv4_address: ipv4Val,
-            network_status: networkStatusVal,
-            network: updatedNetwork,
-          },
+          vm: mergeRealtimeVm(prev.vm, updatedVm),
         };
       });
+
+      setConsoleVm((prev) => {
+        if (!prev || prev.id !== updatedVm.id) return prev;
+        return mergeRealtimeVm(prev, updatedVm);
+      });
     },
-    []
+    [mergeRealtimeVm, setConsoleVm]
   );
 
   const handleTabChange = useCallback(
