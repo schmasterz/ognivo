@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Events\AdminVirtualMachineStatusUpdated;
+use App\Events\VirtualMachineAgentStarted;
 use App\Events\VirtualMachineStatusUpdated;
 use App\Exceptions\FingerprintMismatchException;
 use App\Exceptions\MissingPinException;
@@ -150,6 +151,56 @@ final class IncusEventSyncAndReconcileTest extends TestCase
 
         $syncService->handleLifecycleEvent($this->host, $deleteEvent);
         $this->assertInstanceOf(Deleted::class, $vm->fresh()->status);
+    }
+
+    public function test_instance_agent_started_event_broadcasts_virtual_machine_agent_started(): void
+    {
+        Event::fake([
+            VirtualMachineAgentStarted::class,
+        ]);
+
+        $vm = VirtualMachine::create([
+            'user_id' => $this->customer->id,
+            'host_id' => $this->host->id,
+            'name' => 'agent-vm-01',
+            'incus_project' => 'tenant-cust-1',
+            'instance_type' => 'virtual-machine',
+            'status' => 'running',
+            'cpu_cores' => 2,
+            'ram_mb' => 2048,
+            'disk_gb' => 20,
+            'os_image' => 'ubuntu:24.04',
+        ]);
+
+        $syncService = app(IncusEventSyncService::class);
+
+        $agentStartedEvent = [
+            'type' => 'lifecycle',
+            'metadata' => [
+                'action' => 'instance-agent-started',
+                'source' => '/1.0/instances/agent-vm-01',
+                'project' => 'tenant-cust-1',
+            ],
+        ];
+
+        $result = $syncService->handleLifecycleEvent($this->host, $agentStartedEvent);
+
+        $this->assertNotNull($result);
+        $this->assertSame($vm->id, $result->id);
+
+        Event::assertDispatched(VirtualMachineAgentStarted::class, function (VirtualMachineAgentStarted $event) use ($vm): bool {
+            $channels = $event->broadcastOn();
+
+            return $event->vm->id === $vm->id
+                && $event->broadcastAs() === 'VirtualMachineAgentStarted'
+                && count($channels) === 1
+                && $channels[0]->name === 'private-users.'.$vm->user_id
+                && $event->broadcastWith() === [
+                    'vm_id' => $vm->id,
+                    'status' => 'running',
+                    'agent_ready' => true,
+                ];
+        });
     }
 
     public function test_instance_deleted_event_releases_allocated_ip_and_ignores_provisioning_vm(): void

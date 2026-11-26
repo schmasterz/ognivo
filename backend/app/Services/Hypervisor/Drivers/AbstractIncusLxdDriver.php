@@ -453,6 +453,21 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
                 ->get(sprintf('/1.0/instances/%s/console', $vm->name));
 
             if (! $response->successful()) {
+                if ($response->status() === 404) {
+                    $err = Cast::string($response->json('error') ?? $response->body());
+                    if (str_contains($err, 'no such file or directory') || str_contains($err, 'not found')) {
+                        if ($vm->instance_type === 'virtual-machine') {
+                            return Cast::string(__('messages.vm.console_vm_serial_notice'));
+                        }
+
+                        return 'Console buffer is empty.';
+                    }
+                }
+
+                if ($vm->instance_type === 'virtual-machine') {
+                    return Cast::string(__('messages.vm.console_vm_serial_notice'));
+                }
+
                 return "Unable to fetch console log from hypervisor. Instance status: {$this->getInstanceStatus($vm)}.";
             }
 
@@ -461,7 +476,13 @@ abstract class AbstractIncusLxdDriver implements HypervisorDriverInterface
                 $body = substr($body, -51200);
             }
 
-            return $body !== '' ? $body : 'Console buffer is empty.';
+            if ($body !== '') {
+                return $body;
+            }
+
+            return $vm->instance_type === 'virtual-machine'
+                ? Cast::string(__('messages.vm.console_vm_serial_notice'))
+                : 'Console buffer is empty.';
         } catch (Throwable $e) {
             return "Error retrieving console log: {$e->getMessage()}";
         }

@@ -256,6 +256,7 @@ export function DashboardModals(props: DashboardModalsProps) {
           initialTab={detailsVm.initialTab || "overview"}
           onOpenConsole={(vm) => {
             setConsoleVm(vm);
+            setDetailsVm(null);
           }}
           onVmUpdated={(updatedVm) => {
             setDetailsVm({ ...detailsVm, vm: updatedVm });

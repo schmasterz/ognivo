@@ -13,12 +13,20 @@ export interface UseDashboardRealtimeParams {
   isAdmin: boolean;
   activeTab: string;
   adminUsers: AdminUserItem[];
+  detailsVm?: { vm: VirtualMachine; initialTab?: string } | null;
   loadData: () => Promise<void>;
   loadQuotaAndStats: () => Promise<void>;
   refetchNetworking: () => Promise<void>;
   refetchUsers: () => Promise<void>;
   mergeVmUpdate: (
     vmUpdate: Partial<VirtualMachine> & {
+      id: number;
+      is_delta?: boolean;
+      ipv4?: string;
+    }
+  ) => void;
+  onVmRealtimeUpdate?: (
+    vm: Partial<VirtualMachine> & {
       id: number;
       is_delta?: boolean;
       ipv4?: string;
@@ -31,11 +39,13 @@ export function useDashboardRealtime({
   isAdmin,
   activeTab,
   adminUsers,
+  detailsVm,
   loadData,
   loadQuotaAndStats,
   refetchNetworking,
   refetchUsers,
   mergeVmUpdate,
+  onVmRealtimeUpdate,
 }: UseDashboardRealtimeParams) {
   // Debounced quota/stats refetch upon WebSocket VM updates (max once per 2s)
   const quotaRefreshTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -102,6 +112,19 @@ export function useDashboardRealtime({
     return () => clearInterval(intervalId);
   }, [adminUsers, isAdmin, activeTab, refetchUsers]);
 
+  // Polling fallback when detailsVm is in 'provisioning' state
+  useEffect(() => {
+    if (detailsVm?.vm.status?.toLowerCase() !== "provisioning") {
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      void loadData();
+    }, 3000);
+
+    return () => clearInterval(intervalId);
+  }, [detailsVm?.vm.status, loadData]);
+
   // Real-time WebSocket subscriptions for instantaneous VM and resource state updates
   useEffect(() => {
     if (!user) {
@@ -126,6 +149,7 @@ export function useDashboardRealtime({
     }) => {
       if (!event?.vm) return;
       mergeVmUpdate(event.vm);
+      onVmRealtimeUpdate?.(event.vm);
       scheduleDebouncedQuotaRefresh();
       if (activeTabRef.current === "networking") {
         void refetchNetworkingRef.current();
@@ -152,5 +176,5 @@ export function useDashboardRealtime({
         echo.leave("admin.workloads");
       }
     };
-  }, [user, isAdmin, mergeVmUpdate, scheduleDebouncedQuotaRefresh]);
+  }, [user, isAdmin, mergeVmUpdate, onVmRealtimeUpdate, scheduleDebouncedQuotaRefresh]);
 }
