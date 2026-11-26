@@ -2,9 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Api\V1;
 
 use App\DTO\Cast;
+use App\Http\Controllers\Controller;
 use App\Models\SystemSetting;
 use App\Models\User;
 use Illuminate\Auth\Events\Verified;

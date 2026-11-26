@@ -2,13 +2,14 @@
 
 declare(strict_types=1);
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Api\V1;
 
 use App\Audit\AuditAction;
 use App\Audit\AuditEntry;
 use App\Audit\AuditLogger;
 use App\Audit\AuditOutcome;
 use App\DTO\Cast;
+use App\Http\Controllers\Controller;
 use App\Http\Requests\Vm\CreateVmRequest;
 use App\Http\Requests\Vm\VmActionRequest;
 use App\Http\Resources\VirtualMachineResource;

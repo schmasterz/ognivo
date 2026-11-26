@@ -2,9 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Api\V1;
 
 use App\DTO\Cast;
+use App\Http\Controllers\Controller;
 use App\Http\Requests\Ip\ListIpAllocationsRequest;
 use App\Http\Resources\IpAllocationResource;
 use App\Http\Resources\IpPoolResource;

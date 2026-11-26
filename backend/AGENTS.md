@@ -11,7 +11,7 @@
 
 ## 2. Routing & Request Pipeline Architecture
 
-API routes are **never** defined in `routes/api.php`. All HTTP endpoints are registered via PHP 8 attributes (`#[Get]`, `#[Post]`, `#[Put]`, `#[Patch]`, `#[Delete]`, `#[Prefix]`, `#[Middleware]`) directly on Controller classes under `app/Http/Controllers/` (auto-prefixed with `/api` via `config/route-attributes.php`).
+API routes are **never** defined in `routes/api.php`. All HTTP endpoints are registered via PHP 8 attributes (`#[Get]`, `#[Post]`, `#[Put]`, `#[Patch]`, `#[Delete]`, `#[Prefix]`, `#[Middleware]`) directly on Controller classes under `app/Http/Controllers/Api/V1/` (auto-prefixed with `/api/v1` via `config/route-attributes.php`).
 
 ```text
 HTTP Request (/api/*)
@@ -20,7 +20,7 @@ HTTP Request (/api/*)
         ├── API group:        SetAuditContext, SetImpersonationContext (prepended); ForbidImpersonationActions (appended)
         └── Route level:      auth:sanctum, active (EnsureUserIsActive), admin (EnsureUserIsAdmin) via #[Middleware]
               └── FormRequest (app/Http/Requests/**) -> Validation & Authorization
-                    └── Controller (app/Http/Controllers/**) -> Maps FormRequest to readonly DTO
+                    └── Controller (app/Http/Controllers/Api/V1/**) -> Maps FormRequest to readonly DTO
                           └── Domain Service (app/Services/**) -> Business logic, DB transactions, Redis locks, AuditLogger
                                 └── JsonResource (app/Http/Resources/**) -> Standardized API response
 ```
@@ -29,7 +29,7 @@ HTTP Request (/api/*)
 - **Attribute-Only Routing:** Keep `routes/api.php` empty. Declare routes with `Spatie\RouteAttributes\Attributes\*` on `final` controller classes.
 - **Thin Controllers:** Controllers must only authorize requests, convert validated input into a typed `readonly` DTO (`app/DTO/**`), invoke a domain Service, and return an Eloquent `JsonResource` or `JsonResponse`.
 - **Tenant vs. Admin Separation:**
-    - Admin-only controllers live in `app/Http/Controllers/Admin/` and must enforce `EnsureUserIsAdmin` (`admin` middleware).
+    - Admin-only controllers live in `app/Http/Controllers/Api/V1/Admin/` and must enforce `EnsureUserIsAdmin` (`admin` middleware).
     - Never expose admin fields (e.g., hypervisor internal endpoints, tokens, audit HMAC metadata, or cross-tenant records) in tenant resources; use dedicated resource classes (`TenantHostResource` vs. `HostNodeResource`, `TenantIpPoolResource` vs. `IpPoolResource`, `AuditEntryResource` vs. `AdminAuditEntryResource`).
 
 ---
@@ -45,7 +45,7 @@ app/
 ├── Events/                           # Reverb broadcast events (VirtualMachineStatusUpdated, AdminVirtualMachineStatusUpdated, Snapshot* events)
 ├── Exceptions/                       # Domain & HTTP exceptions with translated rendering
 ├── Http/
-│   ├── Controllers/                  # Tenant controllers & Admin/ controllers (route-attribute driven)
+│   ├── Controllers/                  # Base Controller and Api/V1/ (Tenant & Admin/) controllers
 │   ├── Middleware/                   # SetAuditContext, SetImpersonationContext, ForbidImpersonationActions, EnsureUserIsActive, EnsureUserIsAdmin, SetLocaleMiddleware
 │   ├── Requests/                     # FormRequest validation classes grouped by domain
 │   └── Resources/                    # API serialization resources (strictly separating tenant vs. admin views)
