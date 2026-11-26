@@ -4,7 +4,7 @@ import {
   parseCidrRange,
   validateGatewayField,
 } from "./cidrUtils.ts";
-import type { TranslationKey } from "../../lib/i18n/dictionaries.ts";
+import type { TranslationKey } from "@/lib/i18n/I18nContext";
 
 /** Minimum allowed cooldown (quarantine) in seconds. */
 export const MIN_COOLDOWN_SECONDS = 60;

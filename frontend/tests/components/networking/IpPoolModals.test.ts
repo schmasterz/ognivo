@@ -4,7 +4,10 @@ import fs from "node:fs";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
-import { dictionaries } from "../../../src/lib/i18n/dictionaries.ts";
+import en from "../../../locale/en/index.ts";
+import bg from "../../../locale/bg/index.ts";
+
+const dictionaries = { en, bg };
 
 type PoolNetworkMode = "routed" | "bridged" | "macvlan" | "manual";
 

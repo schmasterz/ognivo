@@ -1,0 +1,16 @@
+export default {
+  quotaTitle: "Ресурсни Квоти и Потребление",
+  quotaSubtitle: "Транзакционни квоти със заключване против race conditions преди Incus",
+  instances: "Инстанции (VM и Контейнери)",
+  vCpuCores: "vCPU Процесорни Ядра",
+  allocatedRam: "Заделена RAM Памет",
+  storage: "Дисково пространство",
+  allocated: "заделени",
+  nearQuota: "Близо до лимита",
+  machinesUnit: "машини",
+  coresUnit: "ядра",
+  unlimited: "Безкрайна",
+  infinite: "∞",
+  clusterTotal: "Общо за клъстера",
+  runningSubtitle: "работещи",
+}

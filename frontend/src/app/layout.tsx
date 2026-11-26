@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import React from "react";
 import { ThemeProvider } from "@/lib/theme/ThemeContext";
 import { I18nProvider } from "@/lib/i18n/I18nContext";
 import { ToastProvider } from "@/lib/toast/ToastContext";
@@ -8,6 +9,9 @@ import { AuthProvider } from "@/lib/auth/AuthContext";
 import { GlobalFilterProvider } from "@/lib/filters/GlobalFilterContext";
 import { ConfigProvider } from "@/lib/config/ConfigContext";
 import type { OgnivoRuntimeConfig } from "@/lib/config";
+import { cookies, headers } from "next/headers";
+import { loaders, type Locale } from "@/lib/i18n/loaders";
+import { resolveLocale } from "@/lib/i18n/resolve-locale";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -18,6 +22,8 @@ const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
+
+export const instant = false;
 
 export const metadata: Metadata = {
   title: "Ognivo",
@@ -30,11 +36,18 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const cookieStore = await cookies();
+  const headersList = await headers();
+  const rawLocale = cookieStore.get("locale")?.value;
+  const acceptLanguage = headersList.get("accept-language");
+  const locale: Locale = resolveLocale(rawLocale, acceptLanguage);
+  const messages = await loaders[locale]();
+
   const runtimeConfig: OgnivoRuntimeConfig = {
     app_name: process.env.NEXT_PUBLIC_APP_NAME || "Ognivo",
     app_env: process.env.NODE_ENV || "production",
@@ -49,7 +62,7 @@ export default function RootLayout({
   };
 
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang={locale} suppressHydrationWarning>
       <head>
         {/* Synchronous execution before first paint prevents theme FOUC */}
         {/* eslint-disable-next-line @next/next/no-sync-scripts */}
@@ -58,7 +71,7 @@ export default function RootLayout({
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <ConfigProvider initialConfig={runtimeConfig}>
           <ThemeProvider>
-            <I18nProvider>
+            <I18nProvider locale={locale} messages={messages}>
               <ToastProvider>
                 <AuthProvider>
                   <GlobalFilterProvider>{children}</GlobalFilterProvider>

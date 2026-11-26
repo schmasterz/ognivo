@@ -1,0 +1,16 @@
+export default {
+  quotaTitle: "Resource Quotas & Allocation",
+  quotaSubtitle: "Strict race-free quota locks applied before hypervisor provisioning",
+  instances: "Instances (VMs & Containers)",
+  vCpuCores: "vCPU Cores",
+  allocatedRam: "Allocated RAM",
+  storage: "Storage",
+  allocated: "allocated",
+  nearQuota: "Near quota",
+  machinesUnit: "machines",
+  coresUnit: "cores",
+  unlimited: "Unlimited",
+  infinite: "∞",
+  clusterTotal: "Cluster Aggregate",
+  runningSubtitle: "running",
+}

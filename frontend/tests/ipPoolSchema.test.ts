@@ -7,7 +7,10 @@ import {
   validateIpPoolForm,
   type IpPoolFormValues,
 } from "../src/components/networking/ipPoolSchema.ts";
-import { dictionaries, type TranslationKey } from "../src/lib/i18n/dictionaries.ts";
+import en from "../locale/en/index.ts";
+import type { TranslationKey } from "../src/lib/i18n/I18nContext.tsx";
+
+const dictionaries: { en: Record<string, string> } = { en };
 
 const tKey = (key: TranslationKey): string => key;
 const tEn = (key: TranslationKey): string => dictionaries.en[key];
