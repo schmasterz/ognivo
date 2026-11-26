@@ -1,0 +1,16 @@
+export default {
+  sidebarMenu: "Основна Навигация",
+  adminSection: "Контрол и Администрация",
+  menuInstances: "Инстанции и Машини",
+  menuNetworking: "Мрежа и IPAM",
+  menuIpPools: "IP Мрежови Пулове",
+  menuNodes: "Compute Нодове",
+  menuUsers: "Потребителски Акаунти",
+  menuQuotaGroups: "Групи и Планове с Квоти",
+  menuDefaultQuotas: "Квоти по Подразбиране",
+  menuSettings: "Настройки на Системата",
+  menuProfile: "Настройки на Профила",
+  menuOverview: "Заделени Ресурси",
+  openMenu: "Отвори Навигацията",
+  closeMenu: "Затвори Навигацията",
+}

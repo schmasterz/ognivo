@@ -1,12 +1,31 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, useTransition } from "react";
-import { Locale, TranslationKey, dictionaries } from "./dictionaries";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
+import { useRouter } from "next/navigation";
+import {
+  LOCALES,
+  type Locale,
+  DEFAULT_LOCALE,
+  isLocale,
+} from "./loaders";
 import { setApiLocale } from "@/lib/api";
+import { interpolate } from "./interpolate";
 
+export type { Locale };
+export type Messages = Record<string, string>;
+export type TranslationKey = string;
 export type LocalePreference = "browser" | Locale;
 
-interface I18nContextType {
+export interface I18nContextType {
   locale: Locale;
   preference: LocalePreference;
   setPreference: (pref: LocalePreference) => void;
@@ -18,11 +37,11 @@ const I18nContext = createContext<I18nContextType | null>(null);
 /**
  * Determine the user's preferred locale from browser language settings.
  * If a matching translation dictionary exists, it is returned.
- * Otherwise, falls back to English ("en").
+ * Otherwise, falls back to DEFAULT_LOCALE.
  */
 export function getBrowserLocale(): Locale {
   if (typeof navigator === "undefined") {
-    return "en";
+    return DEFAULT_LOCALE;
   }
 
   const candidates: readonly string[] =
@@ -33,85 +52,142 @@ export function getBrowserLocale(): Locale {
   for (const candidate of candidates) {
     if (!candidate) continue;
 
-    // Normalise e.g. "bg-BG" -> "bg", "en-US" -> "en", "de-DE" -> "de"
-    const baseCode = candidate.split("-")[0].toLowerCase();
+    const trimmed = candidate.trim().toLowerCase();
 
-    if (baseCode in dictionaries) {
-      return baseCode as Locale;
+    // 1. Try exact case-insensitive match against LOCALES (e.g. pt-BR)
+    const exact = (LOCALES as readonly string[]).find((l) => l.toLowerCase() === trimmed);
+    if (exact && isLocale(exact)) {
+      return exact;
+    }
+
+    // 2. Try match by base language code
+    const baseCode = trimmed.split("-")[0];
+    const baseMatch = (LOCALES as readonly string[]).find((l) => l.toLowerCase() === baseCode);
+    if (baseMatch && isLocale(baseMatch)) {
+      return baseMatch;
     }
   }
 
-  // Fallback to English if no matching language file exists
-  return "en";
+  // Fallback to DEFAULT_LOCALE if no matching language exists
+  return DEFAULT_LOCALE;
 }
 
-export function I18nProvider({ children }: { children: React.ReactNode }) {
+export interface I18nProviderProps {
+  children: React.ReactNode;
+  locale?: Locale;
+  messages?: Messages;
+}
+
+export function I18nProvider({
+  children,
+  locale = DEFAULT_LOCALE,
+  messages = {},
+}: I18nProviderProps) {
+  // Synchronous call in render before children's effects execute
+  setApiLocale(locale);
+
+  const router = useRouter();
+  // Server and client initial state match ("browser") to prevent hydration mismatch
   const [preference, setPreferenceState] = useState<LocalePreference>("browser");
-  const [locale, setLocaleState] = useState<Locale>("en");
+  const mountedRef = useRef(false);
   const [, startTransition] = useTransition();
 
-  const resolveAndApply = (pref: LocalePreference) => {
-    let resolved: Locale;
+  useEffect(() => {
+    if (mountedRef.current) return;
+    mountedRef.current = true;
 
-    if (pref === "browser") {
-      resolved = getBrowserLocale();
-    } else {
-      resolved = pref in dictionaries ? pref : "en";
+    // 1. Read app_locale_pref from localStorage
+    let savedPref: LocalePreference = "browser";
+    try {
+      const saved = localStorage.getItem("app_locale_pref");
+      if (saved === "browser" || isLocale(saved)) {
+        savedPref = saved as LocalePreference;
+      }
+    } catch {
+      // ignore storage errors
     }
 
-    setLocaleState(resolved);
-    setApiLocale(resolved);
-  };
+    setPreferenceState(savedPref);
+
+    // 2. Cookie migration using saved preference (only if no cookie exists yet)
+    const hasLocaleCookie = /(?:^|;\s*)locale=([^;]*)/.test(document.cookie);
+    if (!hasLocaleCookie) {
+      let resolved: Locale = DEFAULT_LOCALE;
+      if (savedPref === "browser") {
+        resolved = getBrowserLocale();
+      } else if (isLocale(savedPref)) {
+        resolved = savedPref;
+      }
+      document.cookie = `locale=${resolved}; path=/; max-age=31536000; SameSite=Lax`;
+      if (resolved !== locale) {
+        setApiLocale(resolved);
+        router.refresh();
+      }
+    }
+  }, [locale, router]);
 
   useEffect(() => {
-    // 1. Check saved user preference in localStorage
-    const saved = localStorage.getItem("app_locale_pref") as LocalePreference | null;
-    const initialPref: LocalePreference =
-      saved === "en" || saved === "bg" || saved === "browser" ? saved : "browser";
-
-    queueMicrotask(() => {
-      setPreferenceState(initialPref);
-      resolveAndApply(initialPref);
-    });
-
-    // 2. Listen to browser language changes (if available)
+    // Listen to browser language changes (if user preference is "browser")
     const handleLanguageChange = () => {
-      const current = localStorage.getItem("app_locale_pref") as LocalePreference | null;
-      if (!current || current === "browser") {
-        resolveAndApply("browser");
+      let currentPref: LocalePreference = "browser";
+      try {
+        const saved = localStorage.getItem("app_locale_pref");
+        if (saved === "browser" || isLocale(saved)) {
+          currentPref = saved as LocalePreference;
+        }
+      } catch {
+        // ignore storage errors
+      }
+
+      if (currentPref === "browser") {
+        const resolved = getBrowserLocale();
+        document.cookie = `locale=${resolved}; path=/; max-age=31536000; SameSite=Lax`;
+        setApiLocale(resolved);
+        router.refresh();
       }
     };
 
     window.addEventListener("languagechange", handleLanguageChange);
     return () => window.removeEventListener("languagechange", handleLanguageChange);
-  }, []);
+  }, [router]);
 
-  const setPreference = (newPref: LocalePreference) => {
-    startTransition(() => {
-      setPreferenceState(newPref);
-      localStorage.setItem("app_locale_pref", newPref);
-      resolveAndApply(newPref);
-    });
-  };
+  const setPreference = useCallback(
+    (newPref: LocalePreference) => {
+      startTransition(() => {
+        setPreferenceState(newPref);
+        try {
+          localStorage.setItem("app_locale_pref", newPref);
+        } catch {
+          // ignore storage errors
+        }
 
-  const t = (key: TranslationKey, params?: Record<string, string | number>): string => {
-    const dict = dictionaries[locale] || dictionaries.en;
-    let text: string = dict[key] || dictionaries.en[key] || key;
+        let resolved: Locale;
+        if (newPref === "browser") {
+          resolved = getBrowserLocale();
+        } else {
+          resolved = isLocale(newPref) ? newPref : DEFAULT_LOCALE;
+        }
 
-    if (params) {
-      Object.entries(params).forEach(([paramKey, val]) => {
-        text = text.replace(new RegExp(`:${paramKey}`, "g"), String(val));
+        document.cookie = `locale=${resolved}; path=/; max-age=31536000; SameSite=Lax`;
+        setApiLocale(resolved);
+        router.refresh();
       });
-    }
-
-    return text;
-  };
-
-  return (
-    <I18nContext.Provider value={{ locale, preference, setPreference, t }}>
-      {children}
-    </I18nContext.Provider>
+    },
+    [router]
   );
+
+  const t = useCallback(
+    (key: TranslationKey, params?: Record<string, string | number>): string =>
+      interpolate(messages[key] || key, params),
+    [messages]
+  );
+
+  const value = useMemo(
+    () => ({ locale, preference, setPreference, t }),
+    [locale, preference, setPreference, t]
+  );
+
+  return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
 
 export function useI18n(): I18nContextType {

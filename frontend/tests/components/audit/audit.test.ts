@@ -39,7 +39,10 @@ import {
   computeCursorPaginationMeta,
 } from "../../../src/components/audit/auditUrl.ts";
 import type { AuditEntry, AdminAuditEntry, AuditFilters } from "../../../src/lib/api/types.ts";
-import { dictionaries } from "../../../src/lib/i18n/dictionaries.ts";
+import en from "../../../locale/en/index.ts";
+import bg from "../../../locale/bg/index.ts";
+
+const dictionaries = { en, bg };
 
 /**
  * Loads `formatAuditType` from AuditTable.tsx via TypeScript transpilation so

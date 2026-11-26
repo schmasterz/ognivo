@@ -77,7 +77,7 @@ src/
     │   └── useModalEscape.ts         # Escape-key handling for modals
     ├── images/imageSelection.ts      # Pure helpers for the per-node image selection payload
     ├── registry/vmRegistry.ts        # Registry of VM details tabs
-    ├── i18n/                         # EN/BG dictionaries.ts, I18nContext.tsx and useI18n() hook
+    ├── i18n/                         # I18nContext.tsx, loaders.ts, and useI18n() hook (translation data in frontend/locale/ via @locale/*)
     ├── theme/                        # Dark/Light/System theme provider
     ├── toast/                        # Toast notifications (useToast())
     └── echo.ts                       # Laravel Echo / Reverb client setup
@@ -101,7 +101,7 @@ tests/
 
 ## 4. Coding Conventions & Strict Guardrails
 
-1. **Language:** All code, identifiers, comments, commit messages, and documentation MUST be in **English**. All user-facing UI strings must go through `useI18n()` (`src/lib/i18n/dictionaries.ts` with both `en` and `bg` entries).
+1. **Language:** All code, identifiers, comments, commit messages, and documentation MUST be in **English**. All user-facing UI strings must go through `useI18n()` (translation sections in `frontend/locale/en/` and `frontend/locale/bg/` imported via `@locale/*`).
 2. **React 19 Strict Hook Compliance:**
    - **Never** read or mutate `.current` of a `useRef` during render (`react-hooks/refs`). Sync refs inside `useEffect`.
    - **Never** use `any` (`@typescript-eslint/no-explicit-any`). Use `unknown` in `catch (err: unknown)` blocks and narrow with `err instanceof Error` or `err instanceof ApiError`.
@@ -118,7 +118,7 @@ tests/
    - The terminal WebSocket (`XtermViewer`) connects to the `websocket_path` returned by `POST /api/vms/{id}/console` and passes the single-use ticket through the subprotocols `["ognivo-terminal", "ticket.<ticket>"]`. Never put the ticket in a URL or log it.
    - Close the session with `DELETE /api/vms/{id}/console/{sessionId}` when the terminal is closed or reconnects.
 8. **Documentation:**
-   - When you change user-visible behavior or add UI text, update the matching page in `docs/` and both languages in `dictionaries.ts`.
+   - When you change user-visible behavior or add UI text, update the matching page in `docs/` and both languages in `frontend/locale/` (`@locale/*`). New translation sections go under `frontend/locale/{en,bg}/<section>.ts`.
 
 ---
 

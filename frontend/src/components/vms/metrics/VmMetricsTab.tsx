@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { ApiError, VmMetricPointDTO, VmMetricsResponse, vmsApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth/AuthContext";
-import { TranslationKey } from "@/lib/i18n/dictionaries";
+import type { TranslationKey } from "@/lib/i18n/I18nContext";
 import { useI18n } from "@/lib/i18n/I18nContext";
 import {
   VmMetricsRange,

@@ -1,0 +1,16 @@
+export default {
+  sidebarMenu: "Main Navigation",
+  adminSection: "Control & Administration",
+  menuInstances: "Workloads & Instances",
+  menuNetworking: "Networking & IPAM",
+  menuIpPools: "IP Subnet Pools",
+  menuNodes: "Compute Nodes",
+  menuUsers: "User Accounts",
+  menuQuotaGroups: "Quota Groups & Plans",
+  menuDefaultQuotas: "Default Quota Settings",
+  menuSettings: "Platform Settings",
+  menuProfile: "Profile Settings",
+  menuOverview: "Resource Allocation",
+  openMenu: "Open Navigation Menu",
+  closeMenu: "Close Navigation Menu",
+}

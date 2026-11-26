@@ -1,4 +1,4 @@
-import type { TranslationKey } from "@/lib/i18n/dictionaries";
+import type { TranslationKey } from "@/lib/i18n/I18nContext";
 
 export type PoolNetworkMode = "routed" | "bridged" | "macvlan" | "manual";
 
