@@ -23,7 +23,6 @@ use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
-use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Throwable;
 
@@ -69,6 +68,7 @@ final class ConsoleTicketService
      * @param  int  $width  Terminal columns (clamped to 20-500)
      * @param  int  $height  Terminal rows (clamped to 5-200)
      * @param  string|null  $preferredDriver  Preferred terminal driver ('auto', 'exec', 'console')
+     * @param  int|null  $sessionExpiresAt  Unix timestamp when the backing browser session expires
      */
     public function issueTicket(
         VirtualMachine $vm,
@@ -77,12 +77,10 @@ final class ConsoleTicketService
         int $width = 80,
         int $height = 24,
         ?string $preferredDriver = null,
+        ?int $sessionExpiresAt = null,
     ): ConsoleSessionDTO {
         $auditContext = $this->context();
-        /** @var mixed $userToken */
-        $userToken = $user?->currentAccessToken();
-        $isImpersonated = $auditContext->getImpersonatorId() !== null
-            || ($userToken instanceof PersonalAccessToken && AuditContext::isImpersonatedToken($userToken));
+        $isImpersonated = $auditContext->getImpersonatorId() !== null;
 
         if ($isImpersonated) {
             $this->logger()->recordIndependent(new AuditEntry(
@@ -306,6 +304,7 @@ final class ConsoleTicketService
             'client_certificate' => $usableCert?->certificate,
             'client_private_key' => $usableCert?->private_key,
             'created_at' => time(),
+            'session_expires_at' => $sessionExpiresAt,
             'session_id' => $sessionId,
             'driver' => $resolvedDriver,
             'operation_id' => $session['operation_id'],
@@ -396,6 +395,16 @@ final class ConsoleTicketService
         try {
             $data = $this->decryptTicketPayload($raw, $ticket);
             if (! is_array($data)) {
+                return null;
+            }
+
+            /** @var mixed $rawSessionExpiresAt */
+            $rawSessionExpiresAt = $data['session_expires_at'] ?? null;
+            if (! is_int($rawSessionExpiresAt) && ! is_numeric($rawSessionExpiresAt)) {
+                return null;
+            }
+
+            if ((int) $rawSessionExpiresAt <= time()) {
                 return null;
             }
 

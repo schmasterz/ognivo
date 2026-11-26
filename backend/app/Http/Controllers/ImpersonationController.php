@@ -11,10 +11,9 @@ use App\Audit\AuditLogger;
 use App\Audit\AuditOutcome;
 use App\Http\Resources\UserResource;
 use App\Models\User;
-use App\Services\AuthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Laravel\Sanctum\PersonalAccessToken;
+use Illuminate\Support\Facades\Auth;
 use Spatie\RouteAttributes\Attributes\Middleware;
 use Spatie\RouteAttributes\Attributes\Post;
 use Spatie\RouteAttributes\Attributes\Prefix;
@@ -29,44 +28,29 @@ final class ImpersonationController extends Controller
     public function __construct(
         private readonly AuditLogger $auditLogger,
         private readonly AuditContext $auditContext,
-        private readonly AuthService $authService,
     ) {}
 
     /**
-     * Stop active impersonation session, revoking the short-lived impersonation token.
+     * Stop the active impersonation session and restore the administrator browser session.
      */
     #[Post('stop', name: 'impersonation.stop')]
     public function stop(Request $request): JsonResponse
     {
-        /** @var User $user */
-        $user = $request->user();
-        /** @var PersonalAccessToken|null $token */
-        $token = $user->currentAccessToken();
-
-        $impersonatorId = $this->auditContext->getImpersonatorId();
-        if ($impersonatorId === null && $token !== null) {
-            foreach ($token->abilities ?? [] as $ability) {
-                if (is_string($ability) && str_starts_with($ability, 'impersonator:')) {
-                    $id = substr($ability, 13);
-                    if (is_numeric($id)) {
-                        $impersonatorId = (int) $id;
-                        break;
-                    }
-                }
-            }
-            if ($impersonatorId === null && isset($token->name) && str_starts_with((string) $token->name, 'impersonation:')) {
-                $id = substr((string) $token->name, 14);
-                if (is_numeric($id)) {
-                    $impersonatorId = (int) $id;
-                }
-            }
-        }
-
-        if ($token === null || ! in_array('impersonated', $token->abilities ?? [], true)) {
+        if (! $request->hasSession()) {
             abort(403, 'Not currently in an impersonation session.');
         }
 
-        $impersonator = $impersonatorId !== null ? User::find($impersonatorId) : null;
+        /** @var User $user */
+        $user = $request->user();
+
+        $impersonatorId = $this->auditContext->impersonatorIdFromRequest($request)
+            ?? $this->auditContext->getImpersonatorId();
+
+        if ($impersonatorId === null) {
+            abort(403, 'Not currently in an impersonation session.');
+        }
+
+        $impersonator = User::find($impersonatorId);
         if ($impersonator === null || $impersonator->status !== 'active' || ! $impersonator->hasRole('admin')) {
             abort(403, 'Impersonator is no longer an active administrator.');
         }
@@ -88,12 +72,11 @@ final class ImpersonationController extends Controller
             ],
         ));
 
-        $adminToken = $this->authService->issueAuthToken($impersonator);
-
-        $token->delete();
+        Auth::guard('web')->login($impersonator);
+        $request->session()->forget(['impersonator_id', 'impersonation_expires_at']);
+        $request->session()->regenerate();
 
         return response()->json([
-            'token' => $adminToken,
             'user' => new UserResource($impersonator),
             'message' => 'Impersonation session ended successfully.',
         ]);

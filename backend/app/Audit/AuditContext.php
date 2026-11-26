@@ -6,11 +6,9 @@ namespace App\Audit;
 
 use App\DTO\Cast;
 use App\Models\ServiceToken;
-use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
-use Laravel\Sanctum\PersonalAccessToken;
 
 final class AuditContext
 {
@@ -31,19 +29,35 @@ final class AuditContext
     private ?int $operationId = null;
 
     /**
-     * Determine if a personal access token is an impersonation token.
-     * Prevents Sanctum wildcard tokens (['*']) from falsely matching 'impersonated'.
+     * Extract a valid, non-expired impersonator ID from the request session.
      */
-    public static function isImpersonatedToken(?PersonalAccessToken $token): bool
+    public function impersonatorIdFromRequest(Request $request): ?int
     {
-        if ($token === null) {
-            return false;
-        }
-        if (is_array($token->abilities) && in_array('impersonated', $token->abilities, true)) {
-            return true;
+        if (! $request->hasSession()) {
+            return null;
         }
 
-        return isset($token->name) && str_starts_with($token->name, 'impersonation:');
+        $session = $request->session();
+        $rawImpersonatorId = $session->get('impersonator_id');
+        if (! is_int($rawImpersonatorId) && ! (is_string($rawImpersonatorId) && ctype_digit($rawImpersonatorId))) {
+            return null;
+        }
+
+        $impersonatorId = (int) $rawImpersonatorId;
+        if ($impersonatorId <= 0) {
+            return null;
+        }
+
+        $expiresAt = $session->get('impersonation_expires_at');
+        if (! is_int($expiresAt) && ! (is_string($expiresAt) && ctype_digit($expiresAt))) {
+            return null;
+        }
+
+        if ((int) $expiresAt <= time()) {
+            return null;
+        }
+
+        return $impersonatorId;
     }
 
     /**
@@ -69,44 +83,20 @@ final class AuditContext
         $serviceToken = $request->attributes->get('service_token');
         if ($serviceToken instanceof ServiceToken) {
             $this->forServiceToken($serviceToken);
-        } elseif (($user = $request->user()) !== null) {
-            $this->actorId = Cast::int($user->getAuthIdentifier());
-            $userLabel = Cast::string($user->email ?? $user->name);
-            $this->actorLabel = $userLabel !== '' ? $userLabel : "User #{$this->actorId}";
-
-            /** @var mixed $currentToken */
-            $currentToken = $user->currentAccessToken();
-            if ($currentToken instanceof PersonalAccessToken && self::isImpersonatedToken($currentToken)) {
-                $impId = null;
-                $abilities = is_iterable($currentToken->abilities) ? $currentToken->abilities : [];
-                foreach ($abilities as $ability) {
-                    if (is_string($ability) && str_starts_with($ability, 'impersonator:')) {
-                        $val = substr($ability, 13);
-                        if (is_numeric($val)) {
-                            $impId = (int) $val;
-                            break;
-                        }
-                    }
-                }
-                if ($impId === null && isset($currentToken->name) && str_starts_with($currentToken->name, 'impersonation:')) {
-                    $val = substr($currentToken->name, 14);
-                    if (is_numeric($val)) {
-                        $impId = (int) $val;
-                    }
-                }
-                if ($impId !== null) {
-                    $this->impersonatorId = $impId;
-                    $request->attributes->set('impersonator_id', $impId);
-                }
+        } else {
+            if (($user = $request->user()) !== null) {
+                $this->actorId = Cast::int($user->getAuthIdentifier());
+                $userLabel = Cast::string($user->email ?? $user->name);
+                $this->actorLabel = $userLabel !== '' ? $userLabel : "User #{$this->actorId}";
             }
-        }
 
-        $attrImpersonatorId = $request->attributes->get('impersonator_id');
-        if ($attrImpersonatorId === null && $request->hasSession()) {
-            $attrImpersonatorId = $request->session()->get('impersonator_id');
-        }
-        if ($attrImpersonatorId !== null) {
-            $this->impersonatorId = Cast::intOrNull($attrImpersonatorId);
+            $attrImpersonatorId = $request->attributes->get('impersonator_id');
+            if ($attrImpersonatorId !== null) {
+                $parsedAttrId = Cast::intOrNull($attrImpersonatorId);
+                $this->impersonatorId = $parsedAttrId !== null && $parsedAttrId > 0 ? $parsedAttrId : null;
+            } else {
+                $this->impersonatorId = $this->impersonatorIdFromRequest($request);
+            }
         }
 
         $opId = $request->header('X-Operation-Id') ?? $request->input('operation_id');
@@ -289,38 +279,7 @@ final class AuditContext
 
     public function getImpersonatorId(): ?int
     {
-        if ($this->impersonatorId !== null) {
-            return $this->impersonatorId;
-        }
-
-        $user = Auth::user();
-        if ($user instanceof User) {
-            /** @var mixed $currentToken */
-            $currentToken = $user->currentAccessToken();
-            if ($currentToken instanceof PersonalAccessToken && self::isImpersonatedToken($currentToken)) {
-                $abilities = is_iterable($currentToken->abilities) ? $currentToken->abilities : [];
-                foreach ($abilities as $ability) {
-                    if (is_string($ability) && str_starts_with($ability, 'impersonator:')) {
-                        $val = substr($ability, 13);
-                        if (is_numeric($val)) {
-                            $this->impersonatorId = (int) $val;
-
-                            return $this->impersonatorId;
-                        }
-                    }
-                }
-                if (isset($currentToken->name) && str_starts_with($currentToken->name, 'impersonation:')) {
-                    $val = substr($currentToken->name, 14);
-                    if (is_numeric($val)) {
-                        $this->impersonatorId = (int) $val;
-
-                        return $this->impersonatorId;
-                    }
-                }
-            }
-        }
-
-        return null;
+        return $this->impersonatorId;
     }
 
     public function setImpersonatorId(?int $impersonatorId): static

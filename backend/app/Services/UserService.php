@@ -23,7 +23,6 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Laravel\Sanctum\PersonalAccessToken;
 use Spatie\Permission\Models\Role;
 
 /**
@@ -443,10 +442,7 @@ final class UserService
     public function delete(User $admin, User $user): void
     {
         $auditContext = app(AuditContext::class);
-        /** @var mixed $adminToken */
-        $adminToken = $admin->currentAccessToken();
-        $isImpersonated = $auditContext->getImpersonatorId() !== null
-            || ($adminToken instanceof PersonalAccessToken && $admin->tokenCan('impersonated'));
+        $isImpersonated = $auditContext->getImpersonatorId() !== null;
 
         if ($isImpersonated) {
             $this->logger()->recordIndependent(new AuditEntry(

@@ -13,7 +13,6 @@ use App\Models\User;
 use App\Models\VirtualMachine;
 use Closure;
 use Illuminate\Http\Request;
-use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
 
 final class ForbidImpersonationActions
@@ -32,22 +31,13 @@ final class ForbidImpersonationActions
     {
         /** @var User|null $user */
         $user = $request->user();
-        if ($user === null && $request->bearerToken() !== null) {
-            /** @var User|null $sanctumUser */
-            $sanctumUser = auth('sanctum')->user();
-            $user = $sanctumUser;
-        }
 
-        $currentToken = $user?->currentAccessToken();
-        $isImpersonated = $this->auditContext->getImpersonatorId() !== null
-            || ($currentToken instanceof PersonalAccessToken && AuditContext::isImpersonatedToken($currentToken));
+        $impersonatorId = $this->auditContext->getImpersonatorId()
+            ?? $this->auditContext->impersonatorIdFromRequest($request);
 
-        if (! $isImpersonated || $user === null) {
+        if ($impersonatorId === null || $user === null) {
             return $next($request);
         }
-
-        $impersonatorId = $this->auditContext->getImpersonatorId();
-        $path = $request->path();
 
         // 1. Password changes
         if (($request->is('api/v1/me') || $request->is('api/v1/user/password') || $request->is('api/v1/reset-password')) && $request->filled('password')) {
@@ -86,43 +76,7 @@ final class ForbidImpersonationActions
             }
         }
 
-        // 3. Creating API credentials
-        if (($request->is('api/v1/tokens*') || $request->is('api/v1/api-credentials*')) && $request->isMethod('POST')) {
-            $this->auditLogger->recordIndependent(new AuditEntry(
-                action: AuditAction::AuthTokensRevoked,
-                outcome: AuditOutcome::Denied,
-                subject: $user,
-                tenantUserId: $user->id,
-                impersonatorId: $impersonatorId,
-                visibility: 'tenant',
-                context: [
-                    'action' => 'token.create',
-                    'reason' => 'forbidden_while_impersonating',
-                ],
-            ));
-
-            abort(403, 'Creating API credentials is forbidden while impersonating.');
-        }
-
-        // 4. Token management (GET, DELETE, etc. on tokens endpoints)
-        if ($request->is('api/v1/tokens*') || $request->is('api/v1/api-credentials*')) {
-            $this->auditLogger->recordIndependent(new AuditEntry(
-                action: AuditAction::AuthTokensRevoked,
-                outcome: AuditOutcome::Denied,
-                subject: $user,
-                tenantUserId: $user->id,
-                impersonatorId: $impersonatorId,
-                visibility: 'tenant',
-                context: [
-                    'action' => 'token.manage',
-                    'reason' => 'forbidden_while_impersonating',
-                ],
-            ));
-
-            abort(403, 'Token management is forbidden while impersonating.');
-        }
-
-        // 5. Console ticket issuing
+        // 3. Console ticket issuing
         if ($request->is('api/v1/vms/*/console-ticket')
             || $request->is('api/v1/vms/*/console/ticket')
             || ($request->is('api/v1/vms/*/console') && $request->isMethod('POST'))
@@ -144,7 +98,7 @@ final class ForbidImpersonationActions
             abort(403, 'Issuing console tickets is forbidden while impersonating.');
         }
 
-        // 6. Deleting the account
+        // 4. Deleting the account
         if ($request->isMethod('DELETE') && ($request->is('api/v1/me') || $request->is('api/v1/admin/users*') || $request->is('api/v1/users*'))) {
             $this->auditLogger->recordIndependent(new AuditEntry(
                 action: AuditAction::UserDeleted,
