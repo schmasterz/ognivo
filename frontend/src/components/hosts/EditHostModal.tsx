@@ -235,7 +235,7 @@ export function EditHostModal({ host, onClose, onSuccess }: EditHostModalProps) 
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form method="post" onSubmit={handleSubmit} className="space-y-4">
           <HostConnectionFields
             name={name}
             onNameChange={setName}

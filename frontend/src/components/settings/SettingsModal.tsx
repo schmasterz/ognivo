@@ -150,7 +150,7 @@ export function SettingsModal({ isOpen, onClose, settings, onSuccess }: Settings
         </div>
 
         {/* Content Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-6 overflow-y-auto flex-1">
+        <form method="post" onSubmit={handleSubmit} className="p-6 space-y-6 overflow-y-auto flex-1">
           {error && (
             <div className="p-3.5 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center space-x-2 text-xs text-red-600 dark:text-red-400">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
