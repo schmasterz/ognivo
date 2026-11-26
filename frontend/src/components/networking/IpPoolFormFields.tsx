@@ -261,7 +261,7 @@ export function IpPoolFormFields({
           </label>
           <input
             type="number"
-            min={0}
+            min={60}
             max={86400}
             value={cooldownSeconds}
             onChange={(e) => onCooldownSecondsChange(Number(e.target.value))}

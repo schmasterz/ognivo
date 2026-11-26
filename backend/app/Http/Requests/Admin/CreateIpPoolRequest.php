@@ -40,7 +40,7 @@ final class CreateIpPoolRequest extends FormRequest
             'dns_servers.*' => ['ipv4'],
             'excluded_ips' => ['nullable', 'array'],
             'excluded_ips.*' => ['ipv4'],
-            'cooldown_seconds' => ['nullable', 'integer', 'min:0', 'max:86400'],
+            'cooldown_seconds' => ['nullable', 'integer', 'min:60', 'max:86400'],
             'ip_version' => ['nullable', 'integer'],
             'is_public' => ['nullable', 'boolean'],
             'active' => ['nullable', 'boolean'],

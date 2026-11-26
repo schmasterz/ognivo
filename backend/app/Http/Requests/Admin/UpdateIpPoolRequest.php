@@ -35,7 +35,7 @@ final class UpdateIpPoolRequest extends FormRequest
             'dns_servers.*' => ['ipv4'],
             'excluded_ips' => ['nullable', 'array'],
             'excluded_ips.*' => ['ipv4'],
-            'cooldown_seconds' => ['nullable', 'integer', 'min:0', 'max:86400'],
+            'cooldown_seconds' => ['nullable', 'integer', 'min:60', 'max:86400'],
             'active' => ['nullable', 'boolean'],
             'is_public' => ['nullable', 'boolean'],
             'gateway' => ['nullable', 'ip'],

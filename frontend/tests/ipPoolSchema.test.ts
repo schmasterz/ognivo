@@ -256,15 +256,22 @@ describe("validateIpPoolForm", () => {
     assert.deepEqual(errors, {});
   });
 
-  it("validates cooldownSeconds >= 0", () => {
+  it("validates cooldownSeconds >= 60", () => {
     assert.deepEqual(
-      validateIpPoolForm(makeBaseValues({ cooldownSeconds: 0 }), tKey),
+      validateIpPoolForm(makeBaseValues({ cooldownSeconds: 60 }), tKey),
       {}
     );
     assert.deepEqual(
       validateIpPoolForm(makeBaseValues({ cooldownSeconds: 600 }), tKey),
       {}
     );
+
+    for (const tooLow of [0, 59]) {
+      assert.equal(
+        validateIpPoolForm(makeBaseValues({ cooldownSeconds: tooLow }), tKey).cooldown_seconds?.length,
+        1
+      );
+    }
 
     const negativeErrors = validateIpPoolForm(
       makeBaseValues({ cooldownSeconds: -1 }),
@@ -368,9 +375,10 @@ describe("buildIpPoolPayload", () => {
 });
 
 describe("buildIpPoolPayload cooldown handling", () => {
-  it("preserves a cooldown of 0 and falls back to 300 only for invalid values", () => {
+  it("keeps cooldown >= 60 and falls back to 300 for lower or invalid values", () => {
     for (const mode of ["create", "edit"] as const) {
-      assert.equal(buildIpPoolPayload(makeBaseValues({ mode, cooldownSeconds: 0 })).cooldown_seconds, 0);
+      assert.equal(buildIpPoolPayload(makeBaseValues({ mode, cooldownSeconds: 60 })).cooldown_seconds, 60);
+      assert.equal(buildIpPoolPayload(makeBaseValues({ mode, cooldownSeconds: 0 })).cooldown_seconds, 300);
       assert.equal(buildIpPoolPayload(makeBaseValues({ mode, cooldownSeconds: -5 })).cooldown_seconds, 300);
       assert.equal(buildIpPoolPayload(makeBaseValues({ mode, cooldownSeconds: Number.NaN })).cooldown_seconds, 300);
     }

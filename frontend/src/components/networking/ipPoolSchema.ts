@@ -6,6 +6,9 @@ import {
 } from "./cidrUtils.ts";
 import type { TranslationKey } from "../../lib/i18n/dictionaries.ts";
 
+/** Minimum allowed cooldown (quarantine) in seconds. */
+export const MIN_COOLDOWN_SECONDS = 60;
+
 export type IpPoolFormMode = "create" | "edit";
 
 export interface IpPoolFormValues {
@@ -155,7 +158,7 @@ export function validateIpPoolForm(
   }
 
   const cooldown = Number(values.cooldownSeconds);
-  if (!Number.isFinite(cooldown) || cooldown < 0) {
+  if (!Number.isFinite(cooldown) || cooldown < MIN_COOLDOWN_SECONDS) {
     errors.cooldown_seconds = [t("cooldownSecondsInvalid")];
   }
 
@@ -173,7 +176,7 @@ export function validateIpPoolForm(
  * 4. `gateway`: Create sends `undefined` when empty; Edit omits when `isGatewayLocked` and sends `null` when empty.
  * 5. `dns_servers` / `excluded_ips`: Create sends `undefined` for empty lists; Edit always sends arrays (including `[]`).
  * 6. `description`: Create sends `undefined` when empty; Edit sends `null` when empty.
- * 7. `cooldown_seconds`: `0` is preserved; invalid or negative values fall back to 300.
+ * 7. `cooldown_seconds`: values below 60 or invalid fall back to 300.
  */
 export function buildIpPoolPayload(
   values: IpPoolFormValues & { mode?: "create" }
@@ -191,9 +194,9 @@ export function buildIpPoolPayload(values: IpPoolFormValues): IpPoolCommonPayloa
   const lastUsable = values.lastUsable?.trim() || undefined;
   const trimmedGateway = values.gateway.trim();
   const trimmedDescription = values.description?.trim() ?? "";
-  // 0 is a valid cooldown; only invalid or negative values fall back to the default.
+  // Values below the minimum (or invalid) fall back to the default.
   const rawCooldown = Number(values.cooldownSeconds);
-  const cooldownSeconds = Number.isFinite(rawCooldown) && rawCooldown >= 0 ? rawCooldown : 300;
+  const cooldownSeconds = Number.isFinite(rawCooldown) && rawCooldown >= MIN_COOLDOWN_SECONDS ? rawCooldown : 300;
   const isPublic = values.isPublic ?? true;
 
   if (formMode === "edit") {
