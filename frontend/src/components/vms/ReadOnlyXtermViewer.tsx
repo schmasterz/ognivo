@@ -2,6 +2,7 @@
 
 import React, {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useRef,
@@ -10,13 +11,17 @@ import React, {
 import type { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
+import {
+  type ConnectionStatus,
+  formatConsoleCloseMessage,
+} from "./console/consoleHelpers";
 
 export interface ReadOnlyXtermViewerProps {
   isActive?: boolean;
   wsUrl?: string | null;
   ticket?: string | null;
   textOutput?: string | null;
-  onStatusChange?: (status: "connecting" | "connected" | "disconnected" | "error") => void;
+  onStatusChange?: (status: ConnectionStatus) => void;
   onFirstData?: () => void;
   onDataChunk?: (chunk: string) => void;
   emptyMessage?: string;
@@ -34,7 +39,7 @@ export const ReadOnlyXtermViewer = forwardRef<
   ReadOnlyXtermViewerProps
 >(function ReadOnlyXtermViewer(
   {
-    isActive,
+    isActive = true,
     wsUrl,
     ticket,
     textOutput,
@@ -52,6 +57,8 @@ export const ReadOnlyXtermViewer = forwardRef<
   const wsRef = useRef<WebSocket | null>(null);
   const lastTextOutputRef = useRef<string>("");
   const firstDataFiredRef = useRef<boolean>(false);
+  const lastSentSizeRef = useRef<{ cols: number; rows: number } | null>(null);
+  const isActiveRef = useRef(isActive);
 
   const onStatusChangeRef = useRef(onStatusChange);
   const onFirstDataRef = useRef(onFirstData);
@@ -59,6 +66,10 @@ export const ReadOnlyXtermViewer = forwardRef<
 
   const [termReady, setTermReady] = useState(false);
   const [hasData, setHasData] = useState(false);
+
+  useEffect(() => {
+    isActiveRef.current = isActive;
+  }, [isActive]);
 
   useEffect(() => {
     onStatusChangeRef.current = onStatusChange;
@@ -71,6 +82,16 @@ export const ReadOnlyXtermViewer = forwardRef<
   useEffect(() => {
     onDataChunkRef.current = onDataChunk;
   }, [onDataChunk]);
+
+  const sendResize = useCallback((term: Terminal) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const { cols, rows } = term;
+    const last = lastSentSizeRef.current;
+    if (last && last.cols === cols && last.rows === rows) return;
+    lastSentSizeRef.current = { cols, rows };
+    ws.send(JSON.stringify({ type: "resize", cols, rows }));
+  }, []);
 
   useImperativeHandle(
     ref,
@@ -103,11 +124,19 @@ export const ReadOnlyXtermViewer = forwardRef<
 
   // Initialize read-only xterm instance once on mount
   useEffect(() => {
-    if (!containerRef.current || typeof window === "undefined") return;
+    const container = containerRef.current;
+    if (!container || typeof window === "undefined") return;
 
     let disposed = false;
     let term: Terminal | null = null;
     let removeResize: (() => void) | null = null;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.defaultPrevented || e.deltaY === 0 || !terminalRef.current) return;
+      const lines = Math.round(e.deltaY / 25) || (e.deltaY > 0 ? 1 : -1);
+      terminalRef.current.scrollLines(lines);
+    };
+    container.addEventListener("wheel", handleWheel, { passive: false });
 
     const initTerminal = async () => {
       const [{ Terminal: XTerminal }, { FitAddon: XFitAddon }] = await Promise.all([
@@ -117,9 +146,12 @@ export const ReadOnlyXtermViewer = forwardRef<
 
       if (disposed || !containerRef.current) return;
 
-      term = new XTerminal({
+      const xterm = new XTerminal({
         disableStdin: true,
         cursorBlink: false,
+        scrollback: 20000,
+        scrollSensitivity: 1,
+        smoothScrollDuration: 100,
         fontSize: 13,
         fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
         theme: {
@@ -129,46 +161,72 @@ export const ReadOnlyXtermViewer = forwardRef<
           selectionBackground: "rgba(56, 189, 248, 0.3)",
         },
       });
+      term = xterm;
 
       const fitAddon = new XFitAddon();
-      term.loadAddon(fitAddon);
-      term.open(containerRef.current);
-      try {
-        fitAddon.fit();
-      } catch {
-        // ignore initial fit error when container is hidden
-      }
+      xterm.loadAddon(fitAddon);
+      xterm.open(containerRef.current);
 
-      terminalRef.current = term;
-      fitAddonRef.current = fitAddon;
-      setTermReady(true);
-
-      const handleResize = () => {
+      const initialContainer = containerRef.current;
+      if (
+        isActiveRef.current &&
+        initialContainer.clientWidth > 0 &&
+        initialContainer.clientHeight > 0
+      ) {
         try {
           fitAddon.fit();
-          const ws = wsRef.current;
-          if (term && ws?.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
-          }
         } catch {
-          // ignore resize errors on unmount/hidden elements
+          // ignore initial fit error when container is hidden
         }
+      }
+
+      terminalRef.current = xterm;
+      fitAddonRef.current = fitAddon;
+
+      let resizeRafId: number | null = null;
+      const scheduleResize = () => {
+        if (disposed || resizeRafId !== null) return;
+        resizeRafId = window.requestAnimationFrame(() => {
+          resizeRafId = null;
+          if (disposed) return;
+          const container = containerRef.current;
+          if (
+            !isActiveRef.current ||
+            !container ||
+            container.clientWidth === 0 ||
+            container.clientHeight === 0
+          ) {
+            return;
+          }
+          try {
+            fitAddon.fit();
+            sendResize(xterm);
+          } catch {
+            // ignore resize errors on unmount/hidden elements
+          }
+        });
       };
 
-      window.addEventListener("resize", handleResize);
+      window.addEventListener("resize", scheduleResize);
 
       let resizeObserver: ResizeObserver | null = null;
       if (typeof ResizeObserver !== "undefined" && containerRef.current) {
         resizeObserver = new ResizeObserver(() => {
-          handleResize();
+          scheduleResize();
         });
         resizeObserver.observe(containerRef.current);
       }
 
       removeResize = () => {
-        window.removeEventListener("resize", handleResize);
+        if (resizeRafId !== null) {
+          window.cancelAnimationFrame(resizeRafId);
+          resizeRafId = null;
+        }
+        window.removeEventListener("resize", scheduleResize);
         resizeObserver?.disconnect();
       };
+
+      setTermReady(true);
     };
 
     void initTerminal();
@@ -176,38 +234,57 @@ export const ReadOnlyXtermViewer = forwardRef<
     return () => {
       disposed = true;
       setTermReady(false);
+      container.removeEventListener("wheel", handleWheel);
       removeResize?.();
       term?.dispose();
       terminalRef.current = null;
       fitAddonRef.current = null;
     };
-  }, []);
+  }, [sendResize]);
 
   // Re-fit and refresh xterm canvas when tab becomes visible
   useEffect(() => {
-    if (isActive && termReady && terminalRef.current) {
+    if (!isActive || !termReady) return;
+
+    const rafId = window.requestAnimationFrame(() => {
+      const container = containerRef.current;
+      const term = terminalRef.current;
+      if (
+        !container ||
+        !term ||
+        container.clientWidth === 0 ||
+        container.clientHeight === 0
+      ) {
+        return;
+      }
       try {
         fitAddonRef.current?.fit();
-        if (terminalRef.current.rows > 0) {
-          terminalRef.current.refresh(0, terminalRef.current.rows - 1);
+        if (term.rows > 0) {
+          term.refresh(0, term.rows - 1);
         }
+        sendResize(term);
       } catch {
         // ignore layout errors when hidden
       }
-    }
-  }, [isActive, termReady]);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+    };
+  }, [isActive, termReady, sendResize]);
 
   // Live WebSocket streaming mode (for VM serial console ttyS0)
   useEffect(() => {
     if (!termReady || !wsUrl || !ticket) return;
 
     const term = terminalRef.current;
-    const fitAddon = fitAddonRef.current;
     if (!term) return;
 
     let disposed = false;
+    let ws: WebSocket | null = null;
     firstDataFiredRef.current = false;
     lastTextOutputRef.current = "";
+    lastSentSizeRef.current = null;
     queueMicrotask(() => {
       if (!disposed) {
         setHasData(false);
@@ -215,25 +292,23 @@ export const ReadOnlyXtermViewer = forwardRef<
     });
 
     term.reset();
-    try {
-      fitAddon?.fit();
-    } catch {
-      // ignore fit errors when hidden
+    const container = containerRef.current;
+    if (
+      isActiveRef.current &&
+      container &&
+      container.clientWidth > 0 &&
+      container.clientHeight > 0
+    ) {
+      try {
+        fitAddonRef.current?.fit();
+      } catch {
+        // ignore fit errors when hidden
+      }
     }
 
     onStatusChangeRef.current?.("connecting");
 
-    const ws = new WebSocket(wsUrl, ["ognivo-terminal", `ticket.${ticket}`]);
-    ws.binaryType = "arraybuffer";
-    wsRef.current = ws;
-
     const decoder = new TextDecoder("utf-8", { fatal: false });
-
-    const sendResize = () => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
-      }
-    };
 
     const markFirstData = () => {
       if (!firstDataFiredRef.current) {
@@ -243,61 +318,78 @@ export const ReadOnlyXtermViewer = forwardRef<
       }
     };
 
-    ws.onopen = () => {
+    // Defer socket creation so React 19 Strict Mode cleanup cancels mount #1 before burning the single-use ticket
+    const connectTimer = window.setTimeout(() => {
       if (disposed) return;
-      onStatusChangeRef.current?.("connected");
-      sendResize();
-    };
 
-    ws.onmessage = (event) => {
-      if (disposed) return;
-      if (typeof event.data === "string") {
-        term.write(event.data);
-        markFirstData();
-        onDataChunkRef.current?.(event.data);
-      } else if (event.data instanceof ArrayBuffer) {
-        const bytes = new Uint8Array(event.data);
-        term.write(bytes);
-        markFirstData();
-        const decoded = decoder.decode(bytes, { stream: true });
-        if (decoded) {
-          onDataChunkRef.current?.(decoded);
+      ws = new WebSocket(wsUrl, ["ognivo-terminal", `ticket.${ticket}`]);
+      ws.binaryType = "arraybuffer";
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        if (disposed) return;
+        onStatusChangeRef.current?.("connected");
+        lastSentSizeRef.current = null;
+        sendResize(term);
+      };
+
+      ws.onmessage = (event) => {
+        if (disposed) return;
+        if (typeof event.data === "string") {
+          term.write(event.data);
+          markFirstData();
+          onDataChunkRef.current?.(event.data);
+        } else if (event.data instanceof ArrayBuffer) {
+          const bytes = new Uint8Array(event.data);
+          term.write(bytes);
+          markFirstData();
+          const decoded = decoder.decode(bytes, { stream: true });
+          if (decoded) {
+            onDataChunkRef.current?.(decoded);
+          }
         }
-      }
-    };
+      };
 
-    ws.onerror = () => {
-      if (disposed) return;
-      onStatusChangeRef.current?.("error");
-      term.write("\r\n\x1b[31m[WebSocket connection error]\x1b[0m\r\n");
-    };
+      ws.onerror = () => {
+        if (disposed) return;
+        onStatusChangeRef.current?.("error");
+        term.write("\r\n\x1b[31m[WebSocket connection error]\x1b[0m\r\n");
+      };
 
-    ws.onclose = (event: CloseEvent) => {
-      if (disposed) return;
-      onStatusChangeRef.current?.("disconnected");
-      let reasonMsg = "[Serial console disconnected]";
-      if (event.code === 4000) {
-        reasonMsg = "[Serial console closed: idle timeout exceeded]";
-      } else if (event.code === 1009) {
-        reasonMsg = "[Serial console closed: message payload exceeded maximum limit]";
-      } else if (event.code === 1011) {
-        reasonMsg = "[Serial console closed: hypervisor upstream connection error]";
-      } else if (event.reason) {
-        reasonMsg = `[Serial console closed: ${event.reason}]`;
-      }
-      term.write(`\r\n\x1b[33m${reasonMsg}\x1b[0m\r\n`);
-    };
+      ws.onclose = (event: CloseEvent) => {
+        if (disposed) return;
+        onStatusChangeRef.current?.("disconnected");
+        const { message } = formatConsoleCloseMessage(
+          event.code,
+          event.reason,
+          "Serial console"
+        );
+        term.write(`\r\n\x1b[33m${message}\x1b[0m\r\n`);
+      };
+    }, 0);
 
     return () => {
       disposed = true;
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-        ws.close();
+      window.clearTimeout(connectTimer);
+      if (ws) {
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onerror = null;
+        ws.onclose = null;
+        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+          ws.close();
+        }
+        if (wsRef.current === ws) {
+          wsRef.current = null;
+        }
       }
-      if (wsRef.current === ws) {
-        wsRef.current = null;
+      try {
+        decoder.decode();
+      } catch {
+        // ignore decoder flush errors on cleanup
       }
     };
-  }, [termReady, wsUrl, ticket]);
+  }, [termReady, wsUrl, ticket, sendResize]);
 
   // Static / mirrored textOutput mode (LXC console log or mirrored VM serial buffer)
   useEffect(() => {
@@ -318,15 +410,29 @@ export const ReadOnlyXtermViewer = forwardRef<
       return;
     }
 
+    const isAtBottom = term.buffer.active.baseY === term.buffer.active.viewportY;
     const prevText = lastTextOutputRef.current;
     if (prevText && nextText.startsWith(prevText)) {
       const delta = nextText.slice(prevText.length);
       if (delta) {
-        term.write(delta.replace(/\r?\n/g, "\r\n"));
+        term.write(
+          delta.replace(/\r?\n/g, "\r\n"),
+          isAtBottom
+            ? () => {
+                if (terminalRef.current === term) {
+                  term.scrollToBottom();
+                }
+              }
+            : undefined
+        );
       }
     } else {
       term.reset();
-      term.write(nextText.replace(/\r?\n/g, "\r\n"));
+      term.write(nextText.replace(/\r?\n/g, "\r\n"), () => {
+        if (terminalRef.current === term) {
+          term.scrollToBottom();
+        }
+      });
     }
 
     lastTextOutputRef.current = nextText;

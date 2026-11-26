@@ -146,11 +146,13 @@ export const vmsApi = {
   async closeConsoleSession(
     vmId: number,
     sessionId: string,
-    reason: string = "client_disconnect"
+    reason: string = "client_disconnect",
+    options?: { keepalive?: boolean }
   ): Promise<{ closed: boolean }> {
     return request<{ closed: boolean }>(`/vms/${vmId}/console/${encodeURIComponent(sessionId)}`, {
       method: "DELETE",
       body: JSON.stringify({ reason }),
+      keepalive: options?.keepalive,
     });
   },
 

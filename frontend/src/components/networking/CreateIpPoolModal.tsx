@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { X, Network, Server, Loader2, CheckCircle2 } from "lucide-react";
-import { api, ApiError, IpPool, HostNode, HostDiscoveredNetwork } from "@/lib/api";
+import { api, ApiError, IpPool, HostNode } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
 import { useModalEscape } from "@/lib/hooks/useModalEscape";
 import {
@@ -10,8 +10,10 @@ import {
   parseCidrPrefix,
   calculateUsableRange,
   getFieldError,
-  validateGatewayField,
 } from "./cidrUtils";
+import { IpPoolFormFields } from "./IpPoolFormFields";
+import { useHostNetworkDiscovery } from "./useHostNetworkDiscovery";
+import { validateIpPoolForm, buildIpPoolPayload } from "./ipPoolSchema";
 
 interface CreateIpPoolModalProps {
   onClose: () => void;
@@ -36,8 +38,6 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
   const [isPublic, setIsPublic] = useState(true);
   const [hosts, setHosts] = useState<HostNode[]>([]);
   const [selectedHostId, setSelectedHostId] = useState<number | null>(null);
-  const [discoveredNetworks, setDiscoveredNetworks] = useState<HostDiscoveredNetwork[]>([]);
-  const [discoveringHost, setDiscoveringHost] = useState(false);
 
   const networkModeRef = useRef(networkMode);
   const parentInterfaceRef = useRef(parentInterface);
@@ -45,6 +45,19 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
   useEffect(() => {
     networkModeRef.current = networkMode;
     parentInterfaceRef.current = parentInterface;
+  });
+
+  const { discoveredNetworks, discoveringHost } = useHostNetworkDiscovery(selectedHostId, {
+    onDiscovered: (nets) => {
+      if (nets.length === 0) return;
+      const currentMode = networkModeRef.current;
+      const currentIface = parentInterfaceRef.current;
+      const preferred = nets.find((n) => n.recommended_modes.includes(currentMode)) || nets[0];
+      if (preferred && (currentIface === "" || !nets.some((n) => n.name === currentIface))) {
+        setParentInterface(preferred.name);
+        setIsCustomInterface(false);
+      }
+    },
   });
 
   const [loading, setLoading] = useState(false);
@@ -76,46 +89,6 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
         setSelectedHostId(res.data[0].id);
       }
     }).catch(console.error);
-  }, [selectedHostId]);
-
-  useEffect(() => {
-    if (!selectedHostId) {
-      queueMicrotask(() => {
-        setDiscoveredNetworks([]);
-      });
-      return;
-    }
-    let cancelled = false;
-    queueMicrotask(() => {
-      if (!cancelled) {
-        setDiscoveringHost(true);
-      }
-    });
-    api.adminGetHostResources(selectedHostId)
-      .then((res) => {
-        if (cancelled) return;
-        const nets = res.networks || [];
-        setDiscoveredNetworks(nets);
-        if (nets.length > 0) {
-          const currentMode = networkModeRef.current;
-          const currentIface = parentInterfaceRef.current;
-          const preferred = nets.find((n) => n.recommended_modes.includes(currentMode)) || nets[0];
-          if (preferred && (currentIface === "" || !nets.some((n) => n.name === currentIface))) {
-            setParentInterface(preferred.name);
-            setIsCustomInterface(false);
-          }
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setDiscoveredNetworks([]);
-      })
-      .finally(() => {
-        if (!cancelled) setDiscoveringHost(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
   }, [selectedHostId]);
 
   const handleModeChange = (mode: PoolNetworkMode) => {
@@ -182,64 +155,40 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
     setError(null);
     setFieldErrors({});
 
+    const values = {
+      mode: "create" as const,
+      name,
+      hostId: selectedHostId,
+      cidr,
+      firstUsable,
+      lastUsable,
+      parentInterface,
+      networkMode,
+      gateway,
+      dnsServers,
+      excludedIps,
+      cooldownSeconds,
+      description,
+      isPublic,
+    };
+    const validationErrors = validateIpPoolForm(values, t);
+    const firstError = Object.values(validationErrors)[0]?.[0];
+    if (firstError) {
+      setFieldErrors(validationErrors);
+      setError(firstError);
+      return;
+    }
     if (!selectedHostId) {
-      const msg = t("selectTargetHostNode");
-      setFieldErrors({ host_id: [msg] });
-      setError(msg);
-      return;
-    }
-
-    const trimmedParentInterface = parentInterface.trim();
-    if (networkMode !== "manual" && !trimmedParentInterface) {
-      const msg = t("parentInterfaceRequired");
-      setFieldErrors({ parent_interface: [msg] });
-      setError(msg);
-      return;
-    }
-
-    const isL2Mode = networkMode === "bridged" || networkMode === "macvlan";
-    const cidrPrefix = parseCidrPrefix(cidr);
-    if (isL2Mode && (cidrPrefix === 31 || cidrPrefix === 32)) {
-      const msg = t("l2ModePrefixUnsupported");
-      setFieldErrors({ cidr: [msg] });
-      setError(msg);
-      return;
-    }
-
-    const gatewayErr = validateGatewayField(gateway, cidr, networkMode, t);
-    if (gatewayErr) {
-      setFieldErrors({ gateway: [gatewayErr] });
-      setError(gatewayErr);
       return;
     }
 
     try {
       setLoading(true);
 
-      const parsedDns = dnsServers
-        .split(",")
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0);
-
-      const parsedExcluded = excludedIps
-        .split(",")
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0);
-
       const res = await api.adminCreateIpPool({
-        name,
+        ...buildIpPoolPayload(values),
         host_id: selectedHostId,
         cidr: cidr.trim(),
-        first_usable: firstUsable.trim() || undefined,
-        last_usable: lastUsable.trim() || undefined,
-        ...(networkMode !== "manual" ? { parent_interface: trimmedParentInterface } : {}),
-        network_mode: networkMode,
-        gateway: gateway.trim() || undefined,
-        dns_servers: parsedDns.length > 0 ? parsedDns : undefined,
-        excluded_ips: parsedExcluded.length > 0 ? parsedExcluded : undefined,
-        cooldown_seconds: Number(cooldownSeconds) || 300,
-        is_public: isPublic,
-        description: description.trim() || undefined,
       });
 
       onSuccess(res.pool);
@@ -270,13 +219,6 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
   const cidrError = getFieldError(fieldErrors, "cidr");
   const networkModeError = getFieldError(fieldErrors, "network_mode");
   const parentInterfaceError = getFieldError(fieldErrors, "parent_interface");
-  const gatewayError = getFieldError(fieldErrors, "gateway");
-  const firstUsableError = getFieldError(fieldErrors, "first_usable");
-  const lastUsableError = getFieldError(fieldErrors, "last_usable");
-  const dnsServersError = getFieldError(fieldErrors, "dns_servers");
-  const cooldownError = getFieldError(fieldErrors, "cooldown_seconds");
-  const excludedIpsError = getFieldError(fieldErrors, "excluded_ips");
-  const descriptionError = getFieldError(fieldErrors, "description");
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
@@ -305,7 +247,7 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form method="post" onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
@@ -407,8 +349,54 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {networkMode !== "manual" && (
+          <IpPoolFormFields
+            networkMode={networkMode}
+            gateway={gateway}
+            onGatewayChange={(v) => {
+              setGateway(v);
+              clearFieldError("gateway");
+            }}
+            firstUsable={firstUsable}
+            onFirstUsableChange={(v) => {
+              setFirstUsable(v);
+              clearFieldError("first_usable");
+            }}
+            lastUsable={lastUsable}
+            onLastUsableChange={(v) => {
+              setLastUsable(v);
+              clearFieldError("last_usable");
+            }}
+            dnsServers={dnsServers}
+            onDnsServersChange={(v) => {
+              setDnsServers(v);
+              clearFieldError("dns_servers");
+            }}
+            cooldownSeconds={cooldownSeconds}
+            onCooldownSecondsChange={(v) => {
+              setCooldownSeconds(v);
+              clearFieldError("cooldown_seconds");
+            }}
+            excludedIps={excludedIps}
+            onExcludedIpsChange={(v) => {
+              setExcludedIps(v);
+              clearFieldError("excluded_ips");
+            }}
+            description={description}
+            onDescriptionChange={(v) => {
+              setDescription(v);
+              clearFieldError("description");
+            }}
+            isPublic={isPublic}
+            onIsPublicChange={setIsPublic}
+            fieldErrors={fieldErrors}
+            isGatewayRequired={isGatewayRequired}
+            firstUsablePlaceholder="203.0.113.1"
+            lastUsablePlaceholder="203.0.113.254"
+            compactUsableInputs
+            cooldownPlaceholder="300"
+            showDescriptionPlaceholder
+            beforeGatewaySlot={
+              networkMode !== "manual" ? (
               <div>
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5 flex items-center justify-between">
                   <span>{t("hostParentInterface")}</span>
@@ -484,196 +472,9 @@ export function CreateIpPoolModal({ onClose, onSuccess }: CreateIpPoolModalProps
                   <span className="text-[11px] text-gray-400 mt-1 block">{t("hostParentInterfaceHint")}</span>
                 )}
               </div>
-            )}
-
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                {isGatewayRequired ? (
-                  <>
-                    {t("gatewayIpLabel")} <span className="text-red-500">*</span>
-                  </>
-                ) : networkMode === "routed" ? (
-                  t("gatewayIpOptionalReserved")
-                ) : (
-                  t("gatewayIpOptionalSmallSubnets")
-                )}
-              </label>
-              <input
-                type="text"
-                required={isGatewayRequired}
-                value={gateway}
-                onChange={(e) => {
-                  setGateway(e.target.value);
-                  clearFieldError("gateway");
-                }}
-                placeholder="203.0.113.1"
-                className={`w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
-                  gatewayError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
-                } text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono`}
-              />
-              {gatewayError && (
-                <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{gatewayError}</p>
-              )}
-              <span className="text-[11px] text-gray-400 mt-1 block">
-                {networkMode === "routed" ? t("gatewayRoutedHint") : t("gatewayReservedDesc")}
-              </span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                {t("firstUsableIp")}
-              </label>
-              <input
-                type="text"
-                value={firstUsable}
-                onChange={(e) => {
-                  setFirstUsable(e.target.value);
-                  clearFieldError("first_usable");
-                }}
-                placeholder="203.0.113.1"
-                className={`w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
-                  firstUsableError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
-                } text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono`}
-              />
-              {firstUsableError && (
-                <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{firstUsableError}</p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                {t("lastUsableIp")}
-              </label>
-              <input
-                type="text"
-                value={lastUsable}
-                onChange={(e) => {
-                  setLastUsable(e.target.value);
-                  clearFieldError("last_usable");
-                }}
-                placeholder="203.0.113.254"
-                className={`w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
-                  lastUsableError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
-                } text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono`}
-              />
-              {lastUsableError && (
-                <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{lastUsableError}</p>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                {t("dnsServersLabel")}
-              </label>
-              <input
-                type="text"
-                value={dnsServers}
-                onChange={(e) => {
-                  setDnsServers(e.target.value);
-                  clearFieldError("dns_servers");
-                }}
-                placeholder="1.1.1.1, 8.8.8.8"
-                className={`w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
-                  dnsServersError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
-                } text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50`}
-              />
-              {dnsServersError && (
-                <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{dnsServersError}</p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                {t("cooldownQuarantineSeconds")}
-              </label>
-              <input
-                type="number"
-                min={0}
-                max={86400}
-                value={cooldownSeconds}
-                onChange={(e) => {
-                  setCooldownSeconds(Number(e.target.value));
-                  clearFieldError("cooldown_seconds");
-                }}
-                placeholder="300"
-                className={`w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
-                  cooldownError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
-                } text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50`}
-              />
-              {cooldownError && (
-                <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{cooldownError}</p>
-              )}
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-              {t("excludedReservedIps")}
-            </label>
-            {gateway.trim() && (
-              <div className="mb-2 flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
-                  <span className="font-semibold">{t("gatewayReservedBadgeLabel")}:</span>
-                  <span className="font-mono">{gateway.trim()}</span>
-                </span>
-                <span className="text-[11px] text-gray-400">{t("gatewayReservedDesc")}</span>
-              </div>
-            )}
-            <input
-              type="text"
-              value={excludedIps}
-              onChange={(e) => {
-                setExcludedIps(e.target.value);
-                clearFieldError("excluded_ips");
-              }}
-              placeholder={t("excludedIpsPlaceholder")}
-              className={`w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
-                excludedIpsError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
-              } text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50`}
-            />
-            {excludedIpsError ? (
-              <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{excludedIpsError}</p>
-            ) : (
-              <span className="text-[11px] text-gray-400 mt-1 block">{t("excludedIpsHint")}</span>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-              {t("description")}
-            </label>
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => {
-                setDescription(e.target.value);
-                clearFieldError("description");
-              }}
-              placeholder={t("poolDescriptionPlaceholder")}
-              className={`w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
-                descriptionError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
-              } text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50`}
-            />
-            {descriptionError && (
-              <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{descriptionError}</p>
-            )}
-          </div>
-
-          <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/60">
-            <label className="flex items-center space-x-2.5 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isPublic}
-                onChange={(e) => setIsPublic(e.target.checked)}
-                className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
-              />
-              <span className="text-xs font-medium text-gray-800 dark:text-gray-200">{t("isPublic")}</span>
-            </label>
-          </div>
+              ) : null
+            }
+          />
 
           <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-100 dark:border-gray-800">
             <button
