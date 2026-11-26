@@ -22,6 +22,149 @@ const DEFAULT_ACTIVITY_REFRESH_INTERVAL_MS = parseInt(process.env.ACTIVITY_REFRE
 const TICKET_REGEX = /^[A-Za-z0-9_-]{16,128}$/;
 const TICKET_HKDF_INFO = 'ognivo-console-ticket-v1';
 
+/**
+ * Normalize an origin string to lowercase `scheme://host[:port]` without path or trailing slash.
+ * Returns null for invalid or wildcard origins.
+ */
+function normalizeOrigin(rawOrigin) {
+  if (typeof rawOrigin !== 'string') {
+    return null;
+  }
+  const trimmed = rawOrigin.trim();
+  if (!trimmed || trimmed.includes('*')) {
+    return null;
+  }
+  let parsed;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return null;
+  }
+  if (parsed.username || parsed.password) {
+    return null;
+  }
+  return parsed.origin.toLowerCase();
+}
+
+/**
+ * Parse comma-separated CONSOLE_ALLOWED_ORIGINS into normalized exact origins.
+ * Fails closed in production if empty or containing '*'.
+ */
+function parseAllowedOrigins(rawOrigins, nodeEnv = process.env.NODE_ENV) {
+  const isProduction = String(nodeEnv || '').toLowerCase() === 'production';
+  const entries = typeof rawOrigins === 'string'
+    ? rawOrigins.split(',').map((entry) => entry.trim()).filter(Boolean)
+    : [];
+
+  if (entries.some((entry) => entry === '*')) {
+    throw new Error(
+      isProduction
+        ? 'CONSOLE_ALLOWED_ORIGINS must not contain "*" in production'
+        : 'CONSOLE_ALLOWED_ORIGINS must not contain "*"'
+    );
+  }
+
+  if (entries.length === 0) {
+    if (isProduction) {
+      throw new Error('CONSOLE_ALLOWED_ORIGINS must be configured with at least one origin in production');
+    }
+    return ['http://localhost'];
+  }
+
+  const normalized = [];
+  for (const entry of entries) {
+    const origin = normalizeOrigin(entry);
+    if (!origin) {
+      throw new Error(`Invalid origin in CONSOLE_ALLOWED_ORIGINS: "${entry}"`);
+    }
+    normalized.push(origin);
+  }
+
+  return [...new Set(normalized)];
+}
+
+/**
+ * Validate an incoming HTTP Origin header against the normalized allowlist.
+ */
+function isOriginAllowed(originHeader, allowedOrigins) {
+  if (typeof originHeader !== 'string' || originHeader !== originHeader.trim() || originHeader === '' || originHeader.endsWith('/')) {
+    return false;
+  }
+  let parsed;
+  try {
+    parsed = new URL(originHeader);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return false;
+  }
+  if (parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) {
+    return false;
+  }
+  const normalized = parsed.origin.toLowerCase();
+  if (allowedOrigins instanceof Set) {
+    return allowedOrigins.has(normalized);
+  }
+  if (Array.isArray(allowedOrigins)) {
+    return allowedOrigins.includes(normalized);
+  }
+  return false;
+}
+
+function hasValidSessionExpiry(payload, nowSeconds = Math.floor(Date.now() / 1000)) {
+  if (!payload || typeof payload !== 'object') {
+    return false;
+  }
+  const expiresAt = payload.session_expires_at;
+  if (typeof expiresAt !== 'number' || !Number.isFinite(expiresAt)) {
+    return false;
+  }
+  return expiresAt > nowSeconds;
+}
+
+function scheduleSessionExpiryTimer(sessionExpiresAt, onExpire) {
+  if (typeof sessionExpiresAt !== 'number' || !Number.isFinite(sessionExpiresAt)) {
+    return null;
+  }
+  const MAX_TIMEOUT_MS = 2147483647;
+  let timer = null;
+  let cancelled = false;
+
+  function arm() {
+    if (cancelled) return;
+    const remainingMs = Math.max(0, sessionExpiresAt * 1000 - Date.now());
+    if (remainingMs > MAX_TIMEOUT_MS) {
+      timer = setTimeout(arm, MAX_TIMEOUT_MS);
+    } else {
+      timer = setTimeout(() => {
+        if (!cancelled) {
+          onExpire();
+        }
+      }, remainingMs);
+    }
+    if (typeof timer.unref === 'function') {
+      timer.unref();
+    }
+  }
+
+  arm();
+
+  return () => {
+    cancelled = true;
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  };
+}
+
+const ALLOWED_ORIGINS = parseAllowedOrigins(process.env.CONSOLE_ALLOWED_ORIGINS, process.env.NODE_ENV);
+const ALLOWED_ORIGIN_SET = new Set(ALLOWED_ORIGINS);
+
 function resolveTicketKeys() {
   const candidates = [
     process.env.APP_KEY || '',
@@ -150,11 +293,14 @@ const wss = new WebSocketServer({
   },
 });
 
-function extractTicket(req, url) {
+function extractTicket(req) {
   if (req && req.headers) {
     const wsProtocol = req.headers['sec-websocket-protocol'];
-    if (typeof wsProtocol === 'string') {
-      const parts = wsProtocol.split(',');
+    const rawProtocols = Array.isArray(wsProtocol)
+      ? wsProtocol.join(',')
+      : (typeof wsProtocol === 'string' ? wsProtocol : '');
+    if (rawProtocols) {
+      const parts = rawProtocols.split(',');
       for (const part of parts) {
         const trimmed = part.trim();
         if (trimmed.startsWith('ticket.')) {
@@ -162,26 +308,6 @@ function extractTicket(req, url) {
           if (ticket) return ticket;
         }
       }
-    }
-
-    const authHeader = req.headers['authorization'];
-    if (typeof authHeader === 'string') {
-      const trimmedAuth = authHeader.trim();
-      if (trimmedAuth.toLowerCase().startsWith('bearer ')) {
-        const token = trimmedAuth.slice(7).trim();
-        if (token) return token;
-      }
-    }
-  }
-
-  const parsedUrl = typeof url === 'string'
-    ? new URL(url, 'http://localhost')
-    : url;
-
-  if (parsedUrl && parsedUrl.searchParams) {
-    const queryTicket = parsedUrl.searchParams.get('ticket');
-    if (queryTicket && queryTicket.trim()) {
-      return queryTicket.trim();
     }
   }
 
@@ -393,7 +519,13 @@ server.on('upgrade', async (req, socket, head) => {
     return;
   }
 
-  const ticket = extractTicket(req, url);
+  if (!isOriginAllowed(req.headers['origin'], ALLOWED_ORIGIN_SET)) {
+    socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  const ticket = extractTicket(req);
   if (!ticket || ticket.trim() === '') {
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
     socket.destroy();
@@ -420,6 +552,12 @@ server.on('upgrade', async (req, socket, head) => {
       payload = decryptTicketPayload(rawPayload, ticket);
     } catch (decryptErr) {
       console.error(`[console-proxy] Ticket decryption failed: ${decryptErr.message}`);
+      socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    if (!hasValidSessionExpiry(payload)) {
       socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
       socket.destroy();
       return;
@@ -476,6 +614,7 @@ function handleFakeSession(clientWs, payload) {
 
   let cleanedUp = false;
   let idleTimer = null;
+  let clearExpiryTimer = null;
   let lastActivityTouchMs = Date.now();
 
   touchRedisSession(payload, true).catch(() => {});
@@ -487,8 +626,22 @@ function handleFakeSession(clientWs, payload) {
       clearTimeout(idleTimer);
       idleTimer = null;
     }
+    if (clearExpiryTimer) {
+      clearExpiryTimer();
+      clearExpiryTimer = null;
+    }
     cleanupRedisSession(payload);
   }
+
+  clearExpiryTimer = scheduleSessionExpiryTimer(payload.session_expires_at, () => {
+    if (cleanedUp) return;
+    if (clientWs.readyState === WebSocket.OPEN) {
+      try {
+        clientWs.close(1008, 'Session expired');
+      } catch {}
+    }
+    teardownFakeSession();
+  });
 
   function recordActivity() {
     if (cleanedUp) return;
@@ -710,6 +863,7 @@ function handleIncusSession(clientWs, payload) {
 
   let cleanedUp = false;
   let idleTimer = null;
+  let clearExpiryTimer = null;
   let lastActivityTouchMs = Date.now();
   const pendingClientMessages = [];
 
@@ -722,6 +876,10 @@ function handleIncusSession(clientWs, payload) {
     if (idleTimer) {
       clearTimeout(idleTimer);
       idleTimer = null;
+    }
+    if (clearExpiryTimer) {
+      clearExpiryTimer();
+      clearExpiryTimer = null;
     }
     pendingClientMessages.length = 0;
 
@@ -804,6 +962,16 @@ function handleIncusSession(clientWs, payload) {
 
   const incusWs = new WebSocket(targetUrl, options);
   let incusReady = false;
+
+  clearExpiryTimer = scheduleSessionExpiryTimer(payload.session_expires_at, () => {
+    if (cleanedUp) return;
+    if (clientWs.readyState === WebSocket.OPEN) {
+      try {
+        clientWs.close(1008, 'Session expired');
+      } catch {}
+    }
+    teardownSession(true);
+  });
 
   incusWs.on('open', () => {
     incusReady = true;
@@ -910,6 +1078,10 @@ module.exports = {
   redeemTicket,
   extractTicket,
   TICKET_REGEX,
+  normalizeOrigin,
+  parseAllowedOrigins,
+  isOriginAllowed,
+  hasValidSessionExpiry,
   PinnedHttpsAgent,
   handleIncusSession,
   handleFakeSession,

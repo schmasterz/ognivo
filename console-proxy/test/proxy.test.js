@@ -4,10 +4,11 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('http');
 const { WebSocket } = require('ws');
-const { server, redis, redeemTicket, extractTicket, TICKET_REGEX, PinnedHttpsAgent, handleIncusSession, handleFakeSession, touchRedisSession, isFakeDriverAllowed, encryptTicketPayload, decryptTicketPayload } = require('../server.js');
+const { server, redis, redeemTicket, extractTicket, TICKET_REGEX, normalizeOrigin, parseAllowedOrigins, isOriginAllowed, hasValidSessionExpiry, PinnedHttpsAgent, handleIncusSession, handleFakeSession, touchRedisSession, isFakeDriverAllowed, encryptTicketPayload, decryptTicketPayload } = require('../server.js');
 const https = require('https');
 const crypto = require('crypto');
-const { execSync } = require('child_process');
+const { execSync, spawnSync } = require('child_process');
+const path = require('path');
 const { WebSocketServer } = require('ws');
 
 test('TICKET_REGEX strictly enforces safe alphanumeric/dash format and prevents glob patterns', () => {
@@ -34,7 +35,14 @@ test('WebSocket handshake rejected with 400 when ticket format contains wildcard
   const port = address.port;
 
   await new Promise((resolve) => {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/console?ticket=*`);
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/console`, ['ognivo-terminal', 'ticket.*'], {
+      headers: { Origin: 'http://localhost' },
+    });
+    ws.on('unexpected-response', (_req, res) => {
+      assert.strictEqual(res.statusCode, 400);
+      res.resume();
+      resolve();
+    });
     ws.on('error', (err) => {
       assert.ok(err.message.includes('400') || err.message.includes('Unexpected server response'));
       resolve();
@@ -63,12 +71,19 @@ test('GET /health returns 200 ok', async () => {
   assert.strictEqual(json.service, 'console-proxy');
 });
 
-test('WebSocket handshake rejected with 401 when ticket query param is missing', async () => {
+test('WebSocket handshake rejected with 401 when ticket subprotocol is missing', async () => {
   const address = server.address();
   const port = address.port;
 
   await new Promise((resolve) => {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/console`);
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/console`, ['ognivo-terminal'], {
+      headers: { Origin: 'http://localhost' },
+    });
+    ws.on('unexpected-response', (_req, res) => {
+      assert.strictEqual(res.statusCode, 401);
+      res.resume();
+      resolve();
+    });
     ws.on('error', (err) => {
       assert.ok(err.message.includes('401') || err.message.includes('Unexpected server response'));
       resolve();
@@ -80,19 +95,37 @@ test('WebSocket handshake rejected with 401 when ticket query param is missing',
 });
 
 test('WebSocket handshake rejected with 403 when ticket does not exist in Redis', async () => {
-  const address = server.address();
-  const port = address.port;
-
-  await new Promise((resolve) => {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/console?ticket=non-existent-ticket-9999`);
-    ws.on('error', (err) => {
-      assert.ok(err.message.includes('403') || err.message.includes('Unexpected server response'));
-      resolve();
-    });
-    ws.on('open', () => {
-      assert.fail('Should not connect with invalid ticket');
-    });
+  const restoreRedis = stubRedis({
+    status: 'ready',
+    call: async () => null,
   });
+
+  try {
+    const address = server.address();
+    const port = address.port;
+
+    await new Promise((resolve) => {
+      const ws = new WebSocket(
+        `ws://127.0.0.1:${port}/console`,
+        ['ognivo-terminal', 'ticket.non-existent-ticket-9999'],
+        { headers: { Origin: 'http://localhost' } }
+      );
+      ws.on('unexpected-response', (_req, res) => {
+        assert.strictEqual(res.statusCode, 403);
+        res.resume();
+        resolve();
+      });
+      ws.on('error', (err) => {
+        assert.ok(err.message.includes('403') || err.message.includes('Unexpected server response'));
+        resolve();
+      });
+      ws.on('open', () => {
+        assert.fail('Should not connect with invalid ticket');
+      });
+    });
+  } finally {
+    restoreRedis();
+  }
 });
 
 function createTestTlsServer(serverOptions = {}) {
@@ -580,57 +613,65 @@ test('handleIncusSession forwards client input to incusWs as binary frames', asy
   }
 });
 
-test('extractTicket extracts token from Sec-WebSocket-Protocol without query string', () => {
+test('extractTicket accepts ONLY ticket.<ticket> from Sec-WebSocket-Protocol', () => {
   const reqProto = {
     headers: {
       'sec-websocket-protocol': 'ognivo-terminal, ticket.subprotocol-test-token-123456',
     },
   };
-  const extracted = extractTicket(reqProto, new URL('http://127.0.0.1/console'));
-  assert.strictEqual(extracted, 'subprotocol-test-token-123456');
+  assert.strictEqual(extractTicket(reqProto), 'subprotocol-test-token-123456');
 
-  // Also test Bearer authorization header
+  // Bearer authorization header must NOT be accepted
   const reqAuth = {
     headers: {
       authorization: 'Bearer auth-bearer-token-1234567890',
     },
   };
-  assert.strictEqual(
-    extractTicket(reqAuth, new URL('http://127.0.0.1/console')),
-    'auth-bearer-token-1234567890'
-  );
+  assert.strictEqual(extractTicket(reqAuth), null);
 
-  // Fallback to query parameter
-  const reqQuery = { headers: {} };
-  assert.strictEqual(
-    extractTicket(reqQuery, new URL('http://127.0.0.1/console?ticket=query-ticket-1234567890')),
-    'query-ticket-1234567890'
-  );
+  // Query parameter must NOT be accepted
+  const reqQuery = { headers: {}, url: '/console?ticket=query-ticket-1234567890' };
+  assert.strictEqual(extractTicket(reqQuery), null);
 
   // Missing ticket returns null
-  assert.strictEqual(extractTicket({ headers: {} }, new URL('http://127.0.0.1/console')), null);
+  assert.strictEqual(extractTicket({ headers: {} }), null);
 });
 
 test('WebSocket handshake extracts ticket from Sec-WebSocket-Protocol header', async () => {
-  const address = server.address();
-  const port = address.port;
-
-  await new Promise((resolve) => {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/console`, [
-      'ognivo-terminal',
-      'ticket.subprotocol-valid-format-token-99999',
-    ]);
-    ws.on('error', (err) => {
-      assert.ok(
-        err.message.includes('403') || err.message.includes('Unexpected server response'),
-        `Expected 403 error, got: ${err.message}`
-      );
-      resolve();
-    });
-    ws.on('open', () => {
-      assert.fail('Should not connect with nonexistent ticket in subprotocol');
-    });
+  const restoreRedis = stubRedis({
+    status: 'ready',
+    call: async () => null,
   });
+
+  try {
+    const address = server.address();
+    const port = address.port;
+
+    await new Promise((resolve) => {
+      const ws = new WebSocket(
+        `ws://127.0.0.1:${port}/console`,
+        ['ognivo-terminal', 'ticket.subprotocol-valid-format-token-99999'],
+        { headers: { Origin: 'http://localhost' } }
+      );
+      ws.on('unexpected-response', (_req, res) => {
+        assert.strictEqual(res.statusCode, 403);
+        res.resume();
+        resolve();
+      });
+      ws.on('error', (err) => {
+        assert.ok(
+          err.message.includes('403') || err.message.includes('Unexpected server response'),
+          `Expected 403 error, got: ${err.message}`
+        );
+        resolve();
+      });
+      ws.on('open', () => {
+        assert.fail('Should not connect with nonexistent ticket in subprotocol');
+      });
+    });
+  } finally {
+    restoreRedis();
+  }
 });
 
 test('Client disconnect on an exec session sends SIGHUP and SIGTERM, closes upstream sockets, and sends DELETE operation', async () => {
@@ -1334,6 +1375,7 @@ test('WebSocket connection to /console with host_driver=fake closes with 1008 wh
     host_driver: 'fake',
     driver: 'exec',
     instance_type: 'container',
+    session_expires_at: Math.floor(Date.now() / 1000) + 300,
   };
 
   process.env.APP_KEY = 'base64:' + Buffer.alloc(32, 7).toString('base64');
@@ -1363,7 +1405,11 @@ test('WebSocket connection to /console with host_driver=fake closes with 1008 wh
     const receivedMessages = [];
 
     const closeEvent = await new Promise((resolve, reject) => {
-      const ws = new WebSocket(`ws://127.0.0.1:${port}/console?ticket=${ticket}`);
+      const ws = new WebSocket(
+        `ws://127.0.0.1:${port}/console`,
+        ['ognivo-terminal', `ticket.${ticket}`],
+        { headers: { Origin: 'http://localhost' } }
+      );
       ws.on('message', (data) => {
         receivedMessages.push(data.toString('utf8'));
       });
@@ -1505,7 +1551,11 @@ test('WebSocket upgrade to /console returns 403 Forbidden when ticket payload is
 
       for (const ticket of [plaintextTicket, tamperedTicket]) {
         await new Promise((resolve) => {
-          const ws = new WebSocket(`ws://127.0.0.1:${port}/console?ticket=${ticket}`);
+          const ws = new WebSocket(
+            `ws://127.0.0.1:${port}/console`,
+            ['ognivo-terminal', `ticket.${ticket}`],
+            { headers: { Origin: 'http://localhost' } }
+          );
           ws.on('unexpected-response', (_req, res) => {
             assert.strictEqual(res.statusCode, 403);
             res.resume();
@@ -1537,6 +1587,524 @@ test('WebSocket upgrade to /console returns 403 Forbidden when ticket payload is
     } else {
       process.env.APP_PREVIOUS_KEYS = savedPreviousKeys;
     }
+  }
+});
+
+function expectUpgradeRejected(wsUrl, protocols, options, expectedStatus) {
+  return new Promise((resolve, reject) => {
+    const ws = protocols !== undefined
+      ? new WebSocket(wsUrl, protocols, options)
+      : new WebSocket(wsUrl, options);
+    let settled = false;
+
+    ws.on('unexpected-response', (_req, res) => {
+      if (settled) return;
+      settled = true;
+      res.resume();
+      try {
+        assert.strictEqual(res.statusCode, expectedStatus);
+        resolve();
+      } catch (err) {
+        reject(err);
+      }
+    });
+    ws.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      if (err.message.includes(String(expectedStatus))) {
+        resolve();
+      } else {
+        reject(err);
+      }
+    });
+    ws.on('open', () => {
+      if (settled) return;
+      settled = true;
+      ws.close();
+      reject(new Error(`Expected HTTP ${expectedStatus} rejection, but WebSocket opened`));
+    });
+  });
+}
+
+test('normalizeOrigin, parseAllowedOrigins, and isOriginAllowed enforce exact origin allowlist and fail closed in production', () => {
+  assert.strictEqual(normalizeOrigin('HTTPS://Panel.Example.COM:8443/console/'), 'https://panel.example.com:8443');
+  assert.strictEqual(normalizeOrigin('https://panel.example.com:443/'), 'https://panel.example.com');
+  assert.strictEqual(normalizeOrigin('http://localhost:80/foo'), 'http://localhost');
+  assert.strictEqual(normalizeOrigin('*'), null);
+  assert.strictEqual(normalizeOrigin('https://*.example.com'), null);
+  assert.strictEqual(normalizeOrigin('ftp://example.com'), null);
+  assert.strictEqual(normalizeOrigin('not-a-url'), null);
+
+  // Non-production empty defaults to ['http://localhost']
+  assert.deepStrictEqual(parseAllowedOrigins('', 'development'), ['http://localhost']);
+  assert.deepStrictEqual(parseAllowedOrigins(undefined, 'test'), ['http://localhost']);
+  assert.deepStrictEqual(
+    parseAllowedOrigins('https://Panel.Example.COM/path, http://localhost:3000/', 'production'),
+    ['https://panel.example.com', 'http://localhost:3000']
+  );
+
+  // Production fails validation on empty or '*'
+  assert.throws(() => parseAllowedOrigins('', 'production'), /CONSOLE_ALLOWED_ORIGINS/);
+  assert.throws(() => parseAllowedOrigins('   ', 'production'), /CONSOLE_ALLOWED_ORIGINS/);
+  assert.throws(() => parseAllowedOrigins('*', 'production'), /\*/);
+  assert.throws(() => parseAllowedOrigins('https://panel.example.com, *', 'production'), /\*/);
+  assert.throws(() => parseAllowedOrigins('invalid-origin', 'production'), /Invalid origin/);
+
+  // isOriginAllowed exact checks
+  const allowSet = new Set(['https://panel.example.com', 'http://localhost']);
+  assert.strictEqual(isOriginAllowed('https://panel.example.com', allowSet), true);
+  assert.strictEqual(isOriginAllowed('http://localhost', allowSet), true);
+  assert.strictEqual(isOriginAllowed('https://panel.example.com/', allowSet), false);
+  assert.strictEqual(isOriginAllowed('https://panel.example.com/evil', allowSet), false);
+  assert.strictEqual(isOriginAllowed('https://evil.example.com', allowSet), false);
+  assert.strictEqual(isOriginAllowed('http://localhost:3000', allowSet), false);
+  assert.strictEqual(isOriginAllowed('null', allowSet), false);
+  assert.strictEqual(isOriginAllowed('', allowSet), false);
+  assert.strictEqual(isOriginAllowed(undefined, allowSet), false);
+
+  // Actual process startup fails in production when CONSOLE_ALLOWED_ORIGINS is '*' or empty
+  const serverPath = path.resolve(__dirname, '../server.js');
+  for (const badOrigins of ['', '*']) {
+    const res = spawnSync(
+      process.execPath,
+      ['-e', `require(${JSON.stringify(serverPath)})`],
+      {
+        env: {
+          ...process.env,
+          NODE_ENV: 'production',
+          CONSOLE_ALLOWED_ORIGINS: badOrigins,
+          PORT: '0',
+        },
+        encoding: 'utf8',
+      }
+    );
+    assert.notStrictEqual(res.status, 0, `Expected non-zero exit for CONSOLE_ALLOWED_ORIGINS=${JSON.stringify(badOrigins)}`);
+    assert.ok(res.stderr.includes('CONSOLE_ALLOWED_ORIGINS'), `Expected clear error message in stderr, got: ${res.stderr}`);
+  }
+});
+
+test('Foreign or missing Origin returns 403 and does NOT consume ticket in Redis', async () => {
+  const savedAppKey = process.env.APP_KEY;
+  process.env.APP_KEY = 'base64:' + Buffer.alloc(32, 41).toString('base64');
+
+  const ticket = 'origin-guard-ticket-1234567890';
+  const payload = {
+    session_id: 'sess-origin-1',
+    virtual_machine_id: 55,
+    host_driver: 'fake',
+    driver: 'exec',
+    instance_type: 'container',
+    session_expires_at: Math.floor(Date.now() / 1000) + 300,
+  };
+  const encryptedPayload = encryptTicketPayload(payload, ticket);
+
+  const ticketStore = new Map([[`console:ticket:${ticket}`, encryptedPayload]]);
+  let redisCallCount = 0;
+
+  const restoreRedis = stubRedis({
+    status: 'ready',
+    call: async (cmd, key) => {
+      redisCallCount += 1;
+      if (cmd === 'GETDEL' && ticketStore.has(key)) {
+        const val = ticketStore.get(key);
+        ticketStore.delete(key);
+        return val;
+      }
+      return null;
+    },
+    hdel: async () => 1,
+  });
+
+  try {
+    const port = server.address().port;
+
+    // 1. Foreign Origin -> 403, Redis untouched
+    await expectUpgradeRejected(
+      `ws://127.0.0.1:${port}/console`,
+      ['ognivo-terminal', `ticket.${ticket}`],
+      { headers: { Origin: 'https://evil.example.com' } },
+      403
+    );
+    assert.strictEqual(redisCallCount, 0, 'Foreign Origin must be rejected before Redis ticket redemption');
+    assert.strictEqual(ticketStore.has(`console:ticket:${ticket}`), true, 'Ticket must remain unconsumed in Redis');
+
+    // 2. Missing Origin -> 403, Redis untouched
+    await expectUpgradeRejected(
+      `ws://127.0.0.1:${port}/console`,
+      ['ognivo-terminal', `ticket.${ticket}`],
+      {},
+      403
+    );
+    assert.strictEqual(redisCallCount, 0, 'Missing Origin must be rejected before Redis ticket redemption');
+    assert.strictEqual(ticketStore.has(`console:ticket:${ticket}`), true, 'Ticket must remain unconsumed in Redis');
+
+    // 3. Legitimate Origin afterwards still succeeds using the unburned ticket
+    await new Promise((resolve, reject) => {
+      const ws = new WebSocket(
+        `ws://127.0.0.1:${port}/console`,
+        ['ognivo-terminal', `ticket.${ticket}`],
+        { headers: { Origin: 'http://localhost' } }
+      );
+      ws.on('open', () => {
+        ws.close();
+        resolve();
+      });
+      ws.on('error', reject);
+    });
+    assert.ok(redisCallCount > 0);
+    assert.strictEqual(ticketStore.has(`console:ticket:${ticket}`), false);
+  } finally {
+    restoreRedis();
+    if (savedAppKey === undefined) {
+      delete process.env.APP_KEY;
+    } else {
+      process.env.APP_KEY = savedAppKey;
+    }
+  }
+});
+
+test('Query string ?ticket= and Authorization: Bearer transports are rejected with 401', async () => {
+  const ticket = 'disallowed-transport-ticket-12345';
+  const port = server.address().port;
+
+  await expectUpgradeRejected(
+    `ws://127.0.0.1:${port}/console?ticket=${ticket}`,
+    ['ognivo-terminal'],
+    { headers: { Origin: 'http://localhost' } },
+    401
+  );
+
+  await expectUpgradeRejected(
+    `ws://127.0.0.1:${port}/console`,
+    ['ognivo-terminal'],
+    {
+      headers: {
+        Origin: 'http://localhost',
+        Authorization: `Bearer ${ticket}`,
+      },
+    },
+    401
+  );
+});
+
+test('Ticket reuse and expired/missing Redis ticket are rejected with 403', async () => {
+  const savedAppKey = process.env.APP_KEY;
+  process.env.APP_KEY = 'base64:' + Buffer.alloc(32, 42).toString('base64');
+
+  const ticket = 'single-use-ticket-1234567890';
+  const payload = {
+    session_id: 'sess-reuse-1',
+    virtual_machine_id: 77,
+    host_driver: 'fake',
+    driver: 'exec',
+    instance_type: 'container',
+    session_expires_at: Math.floor(Date.now() / 1000) + 300,
+  };
+  const encryptedPayload = encryptTicketPayload(payload, ticket);
+  const ticketStore = new Map([[`console:ticket:${ticket}`, encryptedPayload]]);
+
+  const restoreRedis = stubRedis({
+    status: 'ready',
+    call: async (cmd, key) => {
+      if (cmd === 'GETDEL' && ticketStore.has(key)) {
+        const val = ticketStore.get(key);
+        ticketStore.delete(key);
+        return val;
+      }
+      return null;
+    },
+    hdel: async () => 1,
+  });
+
+  try {
+    const port = server.address().port;
+
+    // First handshake succeeds and consumes ticket
+    await new Promise((resolve, reject) => {
+      const ws = new WebSocket(
+        `ws://127.0.0.1:${port}/console`,
+        ['ognivo-terminal', `ticket.${ticket}`],
+        { headers: { Origin: 'http://localhost' } }
+      );
+      ws.on('open', () => {
+        ws.close();
+        resolve();
+      });
+      ws.on('error', reject);
+    });
+
+    // Second handshake with same ticket is rejected with 403
+    await expectUpgradeRejected(
+      `ws://127.0.0.1:${port}/console`,
+      ['ognivo-terminal', `ticket.${ticket}`],
+      { headers: { Origin: 'http://localhost' } },
+      403
+    );
+
+    // Non-existent / expired Redis entry is rejected with 403
+    await expectUpgradeRejected(
+      `ws://127.0.0.1:${port}/console`,
+      ['ognivo-terminal', 'ticket.expired-missing-redis-ticket-123'],
+      { headers: { Origin: 'http://localhost' } },
+      403
+    );
+  } finally {
+    restoreRedis();
+    if (savedAppKey === undefined) {
+      delete process.env.APP_KEY;
+    } else {
+      process.env.APP_KEY = savedAppKey;
+    }
+  }
+});
+
+test('Proxy connects strictly to target from decrypted ticket payload, ignoring client-supplied IDs', async () => {
+  const savedAppKey = process.env.APP_KEY;
+  process.env.APP_KEY = 'base64:' + Buffer.alloc(32, 43).toString('base64');
+
+  const fixture = createTestTlsServer();
+  let restoreRedis = () => {};
+
+  try {
+    await new Promise((resolve) => fixture.tlsServer.listen(0, '127.0.0.1', resolve));
+    const tlsPort = fixture.tlsServer.address().port;
+
+    const upstreamUrls = [];
+    fixture.testWss.on('connection', (_ws, req) => {
+      upstreamUrls.push(req.url);
+    });
+
+    const ticket = 'payload-bound-ticket-1234567890';
+    const expectedPath = '/1.0/operations/real-op-42/websocket';
+    const payload = {
+      session_id: 'sess-bound-42',
+      virtual_machine_id: 42,
+      host_endpoint: `https://127.0.0.1:${tlsPort}`,
+      websocket_path: expectedPath,
+      server_public_key_pin: fixture.validPin,
+      session_expires_at: Math.floor(Date.now() / 1000) + 300,
+    };
+    const encryptedPayload = encryptTicketPayload(payload, ticket);
+
+    restoreRedis = stubRedis({
+      status: 'ready',
+      call: async (cmd, key) => {
+        if (cmd === 'GETDEL' && key.endsWith(`console:ticket:${ticket}`)) {
+          return encryptedPayload;
+        }
+        return null;
+      },
+      hdel: async () => 1,
+    });
+
+    const port = server.address().port;
+
+    const received = await new Promise((resolve, reject) => {
+      const ws = new WebSocket(
+        `ws://127.0.0.1:${port}/console?virtual_machine_id=9999&host_endpoint=https://127.0.0.1:1&websocket_path=/evil`,
+        ['ognivo-terminal', `ticket.${ticket}`],
+        { headers: { Origin: 'http://localhost' } }
+      );
+      ws.on('message', (data) => {
+        ws.close();
+        resolve(data.toString('utf8'));
+      });
+      ws.on('error', reject);
+    });
+
+    assert.strictEqual(received, 'connected-to-tls-upstream');
+    assert.deepStrictEqual(upstreamUrls, [expectedPath]);
+  } finally {
+    restoreRedis();
+    fixture.cleanup();
+    if (savedAppKey === undefined) {
+      delete process.env.APP_KEY;
+    } else {
+      process.env.APP_KEY = savedAppKey;
+    }
+  }
+});
+
+test('Ticket with missing, non-finite, or expired session_expires_at is rejected with 403', async () => {
+  const nowSec = 1700000000;
+  assert.strictEqual(hasValidSessionExpiry(null, nowSec), false);
+  assert.strictEqual(hasValidSessionExpiry({}, nowSec), false);
+  assert.strictEqual(hasValidSessionExpiry({ session_expires_at: '1700000100' }, nowSec), false);
+  assert.strictEqual(hasValidSessionExpiry({ session_expires_at: Number.NaN }, nowSec), false);
+  assert.strictEqual(hasValidSessionExpiry({ session_expires_at: Number.POSITIVE_INFINITY }, nowSec), false);
+  assert.strictEqual(hasValidSessionExpiry({ session_expires_at: nowSec }, nowSec), false);
+  assert.strictEqual(hasValidSessionExpiry({ session_expires_at: nowSec - 10 }, nowSec), false);
+  assert.strictEqual(hasValidSessionExpiry({ session_expires_at: nowSec + 1 }, nowSec), true);
+
+  const savedAppKey = process.env.APP_KEY;
+  process.env.APP_KEY = 'base64:' + Buffer.alloc(32, 44).toString('base64');
+
+  const now = Math.floor(Date.now() / 1000);
+  const cases = [
+    { ticket: 'missing-expiry-ticket-12345678', payload: { session_id: 's1', virtual_machine_id: 1, host_driver: 'fake' } },
+    { ticket: 'nan-expiry-ticket-123456789012', payload: { session_id: 's2', virtual_machine_id: 2, host_driver: 'fake', session_expires_at: 'invalid' } },
+    { ticket: 'past-expiry-ticket-12345678901', payload: { session_id: 's3', virtual_machine_id: 3, host_driver: 'fake', session_expires_at: now - 30 } },
+    { ticket: 'exact-now-expiry-ticket-123456', payload: { session_id: 's4', virtual_machine_id: 4, host_driver: 'fake', session_expires_at: now } },
+  ];
+
+  const store = new Map(
+    cases.map((c) => [`console:ticket:${c.ticket}`, encryptTicketPayload(c.payload, c.ticket)])
+  );
+
+  const restoreRedis = stubRedis({
+    status: 'ready',
+    call: async (cmd, key) => {
+      if (cmd === 'GETDEL' && store.has(key)) {
+        const val = store.get(key);
+        store.delete(key);
+        return val;
+      }
+      return null;
+    },
+  });
+
+  try {
+    const port = server.address().port;
+    for (const c of cases) {
+      await expectUpgradeRejected(
+        `ws://127.0.0.1:${port}/console`,
+        ['ognivo-terminal', `ticket.${c.ticket}`],
+        { headers: { Origin: 'http://localhost' } },
+        403
+      );
+    }
+  } finally {
+    restoreRedis();
+    if (savedAppKey === undefined) {
+      delete process.env.APP_KEY;
+    } else {
+      process.env.APP_KEY = savedAppKey;
+    }
+  }
+});
+
+test('Open fake session connection is closed with code 1008 when session_expires_at is reached', async () => {
+  const savedAppKey = process.env.APP_KEY;
+  process.env.APP_KEY = 'base64:' + Buffer.alloc(32, 45).toString('base64');
+
+  const ticket = 'session-expiry-close-123456789';
+  const payload = {
+    session_id: 'sess-expiring-fake-1',
+    virtual_machine_id: 61,
+    host_driver: 'fake',
+    driver: 'exec',
+    instance_type: 'container',
+    session_expires_at: Math.floor(Date.now() / 1000) + 1,
+  };
+  const encryptedPayload = encryptTicketPayload(payload, ticket);
+  const hdelCalls = [];
+
+  const restoreRedis = stubRedis({
+    status: 'ready',
+    call: async (cmd, key) => {
+      if (cmd === 'GETDEL' && key.endsWith(`console:ticket:${ticket}`)) {
+        return encryptedPayload;
+      }
+      return null;
+    },
+    hdel: async (key, field) => {
+      hdelCalls.push({ key, field });
+      return 1;
+    },
+  });
+
+  try {
+    const port = server.address().port;
+    const closeResult = await new Promise((resolve, reject) => {
+      const ws = new WebSocket(
+        `ws://127.0.0.1:${port}/console`,
+        ['ognivo-terminal', `ticket.${ticket}`],
+        { headers: { Origin: 'http://localhost' } }
+      );
+      const timer = setTimeout(() => {
+        ws.terminate();
+        reject(new Error('Timed out waiting for session expiry close (1008)'));
+      }, 4000);
+
+      ws.on('close', (code, reason) => {
+        clearTimeout(timer);
+        resolve({ code, reason: reason.toString('utf8') });
+      });
+      ws.on('error', (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
+
+    assert.strictEqual(closeResult.code, 1008);
+    assert.strictEqual(closeResult.reason, 'Session expired');
+    assert.ok(hdelCalls.some((c) => c.field === payload.session_id), 'Should run cleanupRedisSession on expiry');
+  } finally {
+    restoreRedis();
+    if (savedAppKey === undefined) {
+      delete process.env.APP_KEY;
+    } else {
+      process.env.APP_KEY = savedAppKey;
+    }
+  }
+});
+
+test('handleIncusSession closes clientWs with 1008, closes upstream sockets, and cleans Redis when session_expires_at is reached', async () => {
+  const EventEmitter = require('events');
+  const fixture = createTestTlsServer();
+  const hdelCalls = [];
+  const restoreRedis = stubRedis({
+    status: 'ready',
+    hdel: async (key, field) => {
+      hdelCalls.push({ key, field });
+      return 1;
+    },
+  });
+
+  try {
+    await new Promise((resolve) => fixture.tlsServer.listen(0, '127.0.0.1', resolve));
+    const tlsPort = fixture.tlsServer.address().port;
+
+    let serverDataWs = null;
+    const upstreamReady = new Promise((resolve) => {
+      fixture.testWss.once('connection', (ws) => {
+        serverDataWs = ws;
+        resolve();
+      });
+    });
+
+    const mockClientWs = new EventEmitter();
+    mockClientWs.readyState = WebSocket.OPEN;
+    mockClientWs.send = () => {};
+    const clientClosedPromise = new Promise((resolve) => {
+      mockClientWs.close = (code, reason) => {
+        mockClientWs.readyState = WebSocket.CLOSED;
+        mockClientWs.emit('close');
+        resolve({ code, reason });
+      };
+    });
+
+    handleIncusSession(mockClientWs, {
+      host_endpoint: `https://127.0.0.1:${tlsPort}`,
+      websocket_path: '/1.0/operations/op-expiry/websocket',
+      virtual_machine_id: 62,
+      session_id: 'sess-expiring-incus-1',
+      server_public_key_pin: fixture.validPin,
+      session_expires_at: Math.floor(Date.now() / 1000) + 1,
+    });
+
+    await upstreamReady;
+    const upstreamClosedPromise = new Promise((resolve) => serverDataWs.on('close', resolve));
+
+    const closeResult = await clientClosedPromise;
+    await upstreamClosedPromise;
+
+    assert.strictEqual(closeResult.code, 1008);
+    assert.strictEqual(closeResult.reason, 'Session expired');
+    assert.ok(hdelCalls.some((c) => c.field === 'sess-expiring-incus-1'));
+  } finally {
+    restoreRedis();
+    fixture.cleanup();
   }
 });
 
