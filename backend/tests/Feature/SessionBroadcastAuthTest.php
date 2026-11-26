@@ -187,7 +187,20 @@ test('broadcasting auth authorizes channel owner with session and X-XSRF-TOKEN a
     $otherUser->assignRole('customer');
 
     $previousEnv = app()->environment();
+    $previousBroadcastDefault = config('broadcasting.default');
+    $previousReverbKey = config('broadcasting.connections.reverb.key');
+    $previousReverbSecret = config('broadcasting.connections.reverb.secret');
+    $previousReverbAppId = config('broadcasting.connections.reverb.app_id');
+
     app()->offsetSet('env', 'local');
+    config([
+        'broadcasting.default' => 'reverb',
+        'broadcasting.connections.reverb.key' => 'reverb-test-key',
+        'broadcasting.connections.reverb.secret' => 'reverb-test-secret',
+        'broadcasting.connections.reverb.app_id' => '1001',
+    ]);
+    Broadcast::purge();
+    require base_path('routes/channels.php');
 
     try {
         $auth = loginForBroadcastSession($this, $owner);
@@ -278,6 +291,13 @@ test('broadcasting auth authorizes channel owner with session and X-XSRF-TOKEN a
         expect($unauthenticatedResponse->status())->toBeIn([401, 403]);
     } finally {
         app()->offsetSet('env', is_string($previousEnv) ? $previousEnv : 'testing');
+        config([
+            'broadcasting.default' => $previousBroadcastDefault,
+            'broadcasting.connections.reverb.key' => $previousReverbKey,
+            'broadcasting.connections.reverb.secret' => $previousReverbSecret,
+            'broadcasting.connections.reverb.app_id' => $previousReverbAppId,
+        ]);
+        Broadcast::purge();
     }
 });
 
