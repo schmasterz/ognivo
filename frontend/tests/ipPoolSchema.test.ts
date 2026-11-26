@@ -300,7 +300,7 @@ describe("buildIpPoolPayload", () => {
     );
 
     assert.deepEqual(payload, {
-      name: "  Untrimmed Create Name  ",
+      name: "Untrimmed Create Name",
       first_usable: "203.0.113.1",
       last_usable: undefined,
       network_mode: "manual",
@@ -364,5 +364,15 @@ describe("buildIpPoolPayload", () => {
     assert.equal("gateway" in payload, false);
     assert.equal("network_mode" in payload, false);
     assert.equal(payload.parent_interface, "br0");
+  });
+});
+
+describe("buildIpPoolPayload cooldown handling", () => {
+  it("preserves a cooldown of 0 and falls back to 300 only for invalid values", () => {
+    for (const mode of ["create", "edit"] as const) {
+      assert.equal(buildIpPoolPayload(makeBaseValues({ mode, cooldownSeconds: 0 })).cooldown_seconds, 0);
+      assert.equal(buildIpPoolPayload(makeBaseValues({ mode, cooldownSeconds: -5 })).cooldown_seconds, 300);
+      assert.equal(buildIpPoolPayload(makeBaseValues({ mode, cooldownSeconds: Number.NaN })).cooldown_seconds, 300);
+    }
   });
 });

@@ -89,8 +89,18 @@ const editModalPath = fileURLToPath(
 );
 
 const cidrUtilsSource = fs.readFileSync(cidrUtilsPath, "utf8");
-const createModalSource = fs.readFileSync(createModalPath, "utf8");
-const editModalSource = fs.readFileSync(editModalPath, "utf8");
+// Modal behavior now lives partly in shared modules, so each "modal source" is the
+// modal file concatenated with the shared form fields, schema and discovery hook.
+const sharedNetworkingSources = ["IpPoolFormFields.tsx", "ipPoolSchema.ts", "useHostNetworkDiscovery.ts"]
+  .map((file) =>
+    fs.readFileSync(
+      fileURLToPath(new URL(`../../../src/components/networking/${file}`, import.meta.url)),
+      "utf8",
+    ),
+  )
+  .join("\n");
+const createModalSource = fs.readFileSync(createModalPath, "utf8") + "\n" + sharedNetworkingSources;
+const editModalSource = fs.readFileSync(editModalPath, "utf8") + "\n" + sharedNetworkingSources;
 
 function findNodeText(sourceText: string, fileName: string, predicate: (node: ts.Node) => boolean): string {
   const sourceFile = ts.createSourceFile(fileName, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
@@ -484,7 +494,7 @@ describe("IP Pool Modals (Create & Edit) IPAM Tests", () => {
       assert.match(editModalSource, /disabled=\{isGatewayLocked\}/);
       assert.match(editModalSource, /readOnly=\{isGatewayLocked\}/);
       assert.match(editModalSource, /t\("gatewayImmutableAllocatedDesc"\)/);
-      assert.match(editModalSource, /\.\.\.\(isGatewayLocked\s*\?\s*\{\}\s*:\s*\{\s*gateway:\s*gateway\.trim\(\)\s*\|\|\s*null\s*\}\)/);
+      assert.match(editModalSource, /\.\.\.\(isGatewayLocked\s*\?\s*\{\}\s*:\s*\{\s*gateway:\s*(?:gateway\.trim\(\)|trimmedGateway)\s*\|\|\s*null\s*\}\)/);
     });
   });
 
@@ -575,11 +585,11 @@ describe("IP Pool Modals (Create & Edit) IPAM Tests", () => {
       // Submit payloads parse excluded_ips solely from excludedIps without injecting gateway
       assert.match(
         createModalSource,
-        /const\s+parsedExcluded\s*=\s*excludedIps[\s\S]*?excluded_ips:\s*parsedExcluded\.length\s*>\s*0\s*\?\s*parsedExcluded\s*:\s*undefined/,
+        /const\s+parsedExcluded\s*=\s*parseExcludedIps\(values\.excludedIps\)[\s\S]*?excluded_ips:\s*parsedExcluded\.length\s*>\s*0\s*\?\s*parsedExcluded\s*:\s*undefined/,
       );
       assert.match(
         editModalSource,
-        /const\s+parsedExcluded\s*=\s*excludedIps[\s\S]*?excluded_ips:\s*parsedExcluded/,
+        /const\s+parsedExcluded\s*=\s*parseExcludedIps\(values\.excludedIps\)[\s\S]*?excluded_ips:\s*parsedExcluded/,
       );
 
       // Both modals render the dedicated reserved gateway badge above the editable excludedIps input
@@ -631,7 +641,7 @@ describe("IP Pool Modals (Create & Edit) IPAM Tests", () => {
       assert.match(editModalSource, /onChange=\{\(e\)\s*=>\s*handleModeChange\(e\.target\.value\)\}/);
       assert.match(
         editModalSource,
-        /parent_interface:\s*networkMode\s*===\s*"manual"\s*\?\s*""\s*:\s*trimmedParentInterface/,
+        /parent_interface:\s*values\.networkMode\s*===\s*"manual"\s*\?\s*""\s*:\s*trimmedParentInterface/,
       );
       assert.match(
         editModalSource,

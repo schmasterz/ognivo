@@ -108,7 +108,7 @@ export function validateIpPoolForm(
   const formMode: IpPoolFormMode = values.mode ?? "create";
 
   if (!values.name.trim()) {
-    errors.name = ["Pool name is required."];
+    errors.name = [t("poolNameRequired")];
   }
 
   // Difference: host_id is required only in Create; Edit treats host node as immutable.
@@ -156,7 +156,7 @@ export function validateIpPoolForm(
 
   const cooldown = Number(values.cooldownSeconds);
   if (!Number.isFinite(cooldown) || cooldown < 0) {
-    errors.cooldown_seconds = ["Cooldown seconds must be 0 or greater."];
+    errors.cooldown_seconds = [t("cooldownSecondsInvalid")];
   }
 
   return errors;
@@ -167,13 +167,13 @@ export function validateIpPoolForm(
  * Modal-exclusive fields (`host_id` and `cidr` on Create; `active` on Edit) are omitted.
  *
  * Documented Create vs Edit payload differences preserved via `values.mode`:
- * 1. `name`: Create sends raw `name`; Edit sends `name.trim()`.
+ * 1. `name`: both Create and Edit send `name.trim()`.
  * 2. `parent_interface`: Create omits the field when `networkMode === "manual"`; Edit sends `""`.
  * 3. `network_mode`: Create always sends `networkMode`; Edit omits it when `hasAllocations` is true.
  * 4. `gateway`: Create sends `undefined` when empty; Edit omits when `isGatewayLocked` and sends `null` when empty.
  * 5. `dns_servers` / `excluded_ips`: Create sends `undefined` for empty lists; Edit always sends arrays (including `[]`).
  * 6. `description`: Create sends `undefined` when empty; Edit sends `null` when empty.
- * 7. `cooldown_seconds`: Both modals currently evaluate `Number(cooldownSeconds) || 300` (which turns `0` into `300`).
+ * 7. `cooldown_seconds`: `0` is preserved; invalid or negative values fall back to 300.
  */
 export function buildIpPoolPayload(
   values: IpPoolFormValues & { mode?: "create" }
@@ -191,8 +191,9 @@ export function buildIpPoolPayload(values: IpPoolFormValues): IpPoolCommonPayloa
   const lastUsable = values.lastUsable?.trim() || undefined;
   const trimmedGateway = values.gateway.trim();
   const trimmedDescription = values.description?.trim() ?? "";
-  // Both modals currently coerce falsy/zero cooldown values to 300 via `|| 300`.
-  const cooldownSeconds = Number(values.cooldownSeconds) || 300;
+  // 0 is a valid cooldown; only invalid or negative values fall back to the default.
+  const rawCooldown = Number(values.cooldownSeconds);
+  const cooldownSeconds = Number.isFinite(rawCooldown) && rawCooldown >= 0 ? rawCooldown : 300;
   const isPublic = values.isPublic ?? true;
 
   if (formMode === "edit") {
@@ -216,7 +217,7 @@ export function buildIpPoolPayload(values: IpPoolFormValues): IpPoolCommonPayloa
   }
 
   return {
-    name: values.name,
+    name: values.name.trim(),
     first_usable: firstUsable,
     last_usable: lastUsable,
     ...(values.networkMode !== "manual" ? { parent_interface: trimmedParentInterface } : {}),

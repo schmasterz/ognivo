@@ -2,15 +2,17 @@
 
 import React, { useState, useEffect } from "react";
 import { X, Network, Server, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
-import { api, ApiError, IpPool, HostDiscoveredNetwork } from "@/lib/api";
+import { api, ApiError, IpPool } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
 import { useModalEscape } from "@/lib/hooks/useModalEscape";
 import {
   parseCidrPrefix,
   parseCidrRange,
   getFieldError,
-  validateGatewayField,
 } from "./cidrUtils";
+import { IpPoolFormFields } from "./IpPoolFormFields";
+import { useHostNetworkDiscovery } from "./useHostNetworkDiscovery";
+import { validateIpPoolForm, buildIpPoolPayload } from "./ipPoolSchema";
 
 interface EditIpPoolModalProps {
   pool: IpPool;
@@ -26,8 +28,6 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
   const [networkMode, setNetworkMode] = useState<string>(pool.network_mode || "routed");
   const [parentInterface, setParentInterface] = useState<string>(pool.parent_interface ?? "");
   const [isCustomInterface, setIsCustomInterface] = useState(false);
-  const [discoveredNetworks, setDiscoveredNetworks] = useState<HostDiscoveredNetwork[]>([]);
-  const [discoveringHost, setDiscoveringHost] = useState(false);
   const [dnsServers, setDnsServers] = useState(
     pool.dns_servers && pool.dns_servers.length > 0 ? pool.dns_servers.join(", ") : "1.1.1.1, 8.8.8.8"
   );
@@ -46,6 +46,11 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
     (pool.utilization?.cooling ?? pool.cooling_ips ?? 0) > 0;
   const isL2Mode = networkMode === "bridged" || networkMode === "macvlan";
   const isGatewayLocked = hasAllocations && isL2Mode;
+
+  const { discoveredNetworks, discoveringHost } = useHostNetworkDiscovery(
+    pool.host_id ?? pool.host?.id,
+    { clearOnEmptyHost: false }
+  );
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,32 +95,6 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
     });
   }, [pool]);
 
-  useEffect(() => {
-    const hostId = pool.host_id ?? pool.host?.id;
-    if (!hostId) return;
-    let cancelled = false;
-    queueMicrotask(() => {
-      if (!cancelled) {
-        setDiscoveringHost(true);
-      }
-    });
-    api.adminGetHostResources(hostId)
-      .then((res) => {
-        if (!cancelled) {
-          setDiscoveredNetworks(res.networks || []);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setDiscoveredNetworks([]);
-      })
-      .finally(() => {
-        if (!cancelled) setDiscoveringHost(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [pool.host_id, pool.host?.id]);
-
   const handleModeChange = (mode: string) => {
     setNetworkMode(mode);
     clearFieldError("network_mode");
@@ -153,62 +132,38 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
     setError(null);
     setFieldErrors({});
 
-    const trimmedParentInterface = parentInterface.trim();
-    if (networkMode !== "manual" && !trimmedParentInterface) {
-      const msg = t("parentInterfaceRequired");
-      setFieldErrors({ parent_interface: [msg] });
-      setError(msg);
-      return;
-    }
-
     const poolCidr = pool.cidr || pool.subnet || "";
-    const cidrPrefix = parseCidrPrefix(poolCidr);
-    if (isL2Mode && (cidrPrefix === 31 || cidrPrefix === 32)) {
-      const msg = t("l2ModePrefixUnsupported");
-      setFieldErrors({ cidr: [msg] });
-      setError(msg);
+    const values = {
+      mode: "edit" as const,
+      name,
+      cidr: poolCidr,
+      firstUsable,
+      lastUsable,
+      parentInterface,
+      networkMode,
+      gateway,
+      dnsServers,
+      excludedIps,
+      cooldownSeconds,
+      description,
+      isPublic,
+      hasAllocations,
+      isGatewayLocked,
+    };
+    const validationErrors = validateIpPoolForm(values, t);
+    const firstError = Object.values(validationErrors)[0]?.[0];
+    if (firstError) {
+      setFieldErrors(validationErrors);
+      setError(firstError);
       return;
-    }
-
-    if (!isGatewayLocked) {
-      const gatewayErr = validateGatewayField(gateway, poolCidr, networkMode, t);
-      if (gatewayErr) {
-        setFieldErrors({ gateway: [gatewayErr] });
-        setError(gatewayErr);
-        return;
-      }
     }
 
     try {
       setLoading(true);
 
-      const parsedDns = dnsServers
-        .split(",")
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0);
-
-      const parsedExcluded = excludedIps
-        .split(",")
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0);
-
       const res = await api.adminUpdateIpPool(pool.id, {
-        name: name.trim(),
-        description: description.trim() || null,
-        dns_servers: parsedDns,
-        excluded_ips: parsedExcluded,
-        cooldown_seconds: Number(cooldownSeconds) || 300,
+        ...buildIpPoolPayload(values),
         active,
-        is_public: isPublic,
-        ...(isGatewayLocked ? {} : { gateway: gateway.trim() || null }),
-        first_usable: firstUsable.trim() || undefined,
-        last_usable: lastUsable.trim() || undefined,
-        parent_interface: networkMode === "manual" ? "" : trimmedParentInterface,
-        ...(hasAllocations
-          ? {}
-          : {
-              network_mode: networkMode,
-            }),
       });
 
       onSuccess(res.pool);
@@ -239,13 +194,6 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
   const networkModeError = getFieldError(fieldErrors, "network_mode");
   const parentInterfaceError = getFieldError(fieldErrors, "parent_interface");
   const cidrError = getFieldError(fieldErrors, "cidr");
-  const gatewayError = getFieldError(fieldErrors, "gateway");
-  const firstUsableError = getFieldError(fieldErrors, "first_usable");
-  const lastUsableError = getFieldError(fieldErrors, "last_usable");
-  const dnsServersError = getFieldError(fieldErrors, "dns_servers");
-  const cooldownError = getFieldError(fieldErrors, "cooldown_seconds");
-  const excludedIpsError = getFieldError(fieldErrors, "excluded_ips");
-  const descriptionError = getFieldError(fieldErrors, "description");
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
@@ -430,7 +378,56 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
             )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <IpPoolFormFields
+            networkMode={networkMode}
+            gateway={gateway}
+            onGatewayChange={(v) => {
+              setGateway(v);
+              clearFieldError("gateway");
+            }}
+            firstUsable={firstUsable}
+            onFirstUsableChange={(v) => {
+              setFirstUsable(v);
+              clearFieldError("first_usable");
+            }}
+            lastUsable={lastUsable}
+            onLastUsableChange={(v) => {
+              setLastUsable(v);
+              clearFieldError("last_usable");
+            }}
+            dnsServers={dnsServers}
+            onDnsServersChange={(v) => {
+              setDnsServers(v);
+              clearFieldError("dns_servers");
+            }}
+            cooldownSeconds={cooldownSeconds}
+            onCooldownSecondsChange={(v) => {
+              setCooldownSeconds(v);
+              clearFieldError("cooldown_seconds");
+            }}
+            excludedIps={excludedIps}
+            onExcludedIpsChange={(v) => {
+              setExcludedIps(v);
+              clearFieldError("excluded_ips");
+            }}
+            description={description}
+            onDescriptionChange={(v) => {
+              setDescription(v);
+              clearFieldError("description");
+            }}
+            isPublic={isPublic}
+            onIsPublicChange={setIsPublic}
+            active={active}
+            onActiveChange={setActive}
+            showActiveToggle
+            fieldErrors={fieldErrors}
+            isGatewayRequired={isGatewayRequired}
+            isGatewayLabelRequired={
+              isL2Mode || (networkMode !== "routed" && cidrPrefix !== null && cidrPrefix <= 30)
+            }
+            isGatewayLocked={isGatewayLocked}
+            includeGatewayDisabledStyles
+            beforeGatewaySlot={
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                 {t("cidrSubnetImmutable")}
@@ -440,215 +437,8 @@ export function EditIpPoolModal({ pool, onClose, onSuccess }: EditIpPoolModalPro
               </div>
               {cidrError && <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{cidrError}</p>}
             </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                {isL2Mode ? (
-                  <>
-                    {t("gatewayIpLabel")} <span className="text-red-500">*</span>
-                  </>
-                ) : networkMode === "routed" ? (
-                  t("gatewayIpOptionalReserved")
-                ) : cidrPrefix !== null && cidrPrefix <= 30 ? (
-                  <>
-                    {t("gatewayIpLabel")} <span className="text-red-500">*</span>
-                  </>
-                ) : (
-                  t("gatewayIpOptionalSmallSubnets")
-                )}
-              </label>
-              <input
-                type="text"
-                required={isGatewayRequired}
-                disabled={isGatewayLocked}
-                readOnly={isGatewayLocked}
-                value={gateway}
-                onChange={(e) => {
-                  setGateway(e.target.value);
-                  clearFieldError("gateway");
-                }}
-                placeholder="203.0.113.1"
-                className={`w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
-                  gatewayError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
-                } text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono disabled:opacity-60 disabled:cursor-not-allowed`}
-              />
-              {gatewayError && (
-                <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{gatewayError}</p>
-              )}
-              {isGatewayLocked ? (
-                <span className="text-[11px] text-amber-500 mt-1 block">{t("gatewayImmutableAllocatedDesc")}</span>
-              ) : (
-                <span className="text-[11px] text-gray-400 mt-1 block">
-                  {networkMode === "routed" ? t("gatewayRoutedHint") : t("gatewayReservedDesc")}
-                </span>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                {t("firstUsableIp")}
-              </label>
-              <input
-                type="text"
-                value={firstUsable}
-                onChange={(e) => {
-                  setFirstUsable(e.target.value);
-                  clearFieldError("first_usable");
-                }}
-                className={`w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
-                  firstUsableError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
-                } text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono`}
-              />
-              {firstUsableError && (
-                <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{firstUsableError}</p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                {t("lastUsableIp")}
-              </label>
-              <input
-                type="text"
-                value={lastUsable}
-                onChange={(e) => {
-                  setLastUsable(e.target.value);
-                  clearFieldError("last_usable");
-                }}
-                className={`w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
-                  lastUsableError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
-                } text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 font-mono`}
-              />
-              {lastUsableError && (
-                <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{lastUsableError}</p>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                {t("dnsServersLabel")}
-              </label>
-              <input
-                type="text"
-                value={dnsServers}
-                onChange={(e) => {
-                  setDnsServers(e.target.value);
-                  clearFieldError("dns_servers");
-                }}
-                placeholder="1.1.1.1, 8.8.8.8"
-                className={`w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
-                  dnsServersError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
-                } text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50`}
-              />
-              {dnsServersError && (
-                <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{dnsServersError}</p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                {t("cooldownQuarantineSeconds")}
-              </label>
-              <input
-                type="number"
-                min={0}
-                max={86400}
-                value={cooldownSeconds}
-                onChange={(e) => {
-                  setCooldownSeconds(Number(e.target.value));
-                  clearFieldError("cooldown_seconds");
-                }}
-                className={`w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
-                  cooldownError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
-                } text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50`}
-              />
-              {cooldownError && (
-                <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{cooldownError}</p>
-              )}
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-              {t("excludedReservedIps")}
-            </label>
-            {gateway.trim() && (
-              <div className="mb-2 flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
-                  <span className="font-semibold">{t("gatewayReservedBadgeLabel")}:</span>
-                  <span className="font-mono">{gateway.trim()}</span>
-                </span>
-                <span className="text-[11px] text-gray-400">{t("gatewayReservedDesc")}</span>
-              </div>
-            )}
-            <input
-              type="text"
-              value={excludedIps}
-              onChange={(e) => {
-                setExcludedIps(e.target.value);
-                clearFieldError("excluded_ips");
-              }}
-              placeholder={t("excludedIpsPlaceholder")}
-              className={`w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
-                excludedIpsError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
-              } text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50`}
-            />
-            {excludedIpsError ? (
-              <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{excludedIpsError}</p>
-            ) : (
-              <span className="text-[11px] text-gray-400 mt-1 block">{t("excludedIpsHint")}</span>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-              {t("description")}
-            </label>
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => {
-                setDescription(e.target.value);
-                clearFieldError("description");
-              }}
-              className={`w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border ${
-                descriptionError ? "border-red-500 dark:border-red-500/70" : "border-gray-200 dark:border-gray-700"
-              } text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500/50`}
-            />
-            {descriptionError && (
-              <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">{descriptionError}</p>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/60">
-              <label className="flex items-center space-x-2.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isPublic}
-                  onChange={(e) => setIsPublic(e.target.checked)}
-                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
-                />
-                <span className="text-xs font-medium text-gray-800 dark:text-gray-200">{t("isPublic")}</span>
-              </label>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/60">
-              <label className="flex items-center space-x-2.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={active}
-                  onChange={(e) => setActive(e.target.checked)}
-                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
-                />
-                <span className="text-xs font-medium text-gray-800 dark:text-gray-200">{t("poolEnabledActive")}</span>
-              </label>
-            </div>
-          </div>
+            }
+          />
 
           <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-100 dark:border-gray-800">
             <button
