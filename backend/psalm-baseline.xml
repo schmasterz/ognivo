@@ -97,12 +97,12 @@
       <code><![CDATA[MissingPinException]]></code>
     </ClassMustBeFinal>
   </file>
-  <file src="app/Http/Controllers/Admin/AdminDriftController.php">
+  <file src="app/Http/Controllers/Api/V1/Admin/AdminDriftController.php">
     <PropertyTypeCoercion>
       <code><![CDATA[now()]]></code>
     </PropertyTypeCoercion>
   </file>
-  <file src="app/Http/Controllers/Admin/SystemOverviewController.php">
+  <file src="app/Http/Controllers/Api/V1/Admin/SystemOverviewController.php">
     <RiskyTruthyFalsyComparison>
       <code><![CDATA[empty($recipientInput)]]></code>
     </RiskyTruthyFalsyComparison>

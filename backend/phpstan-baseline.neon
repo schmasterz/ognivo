@@ -34,13 +34,13 @@ parameters:
 			message: '#^Cannot cast mixed to string\.$#'
 			identifier: cast.string
 			count: 1
-			path: app/Http/Controllers/Admin/HostNodeController.php
+			path: app/Http/Controllers/Api/V1/Admin/HostNodeController.php
 
 		-
 			message: '#^Using nullsafe property access "\?\-\>id" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
 			identifier: nullsafe.neverNull
 			count: 1
-			path: app/Http/Controllers/VirtualMachineController.php
+			path: app/Http/Controllers/Api/V1/VirtualMachineController.php
 
 		-
 			message: '#^Cannot cast mixed to int\.$#'
