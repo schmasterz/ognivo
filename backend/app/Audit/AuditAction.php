@@ -78,6 +78,25 @@ enum AuditAction: string
     case ImpersonationEnded = 'impersonation.ended';
     case AuditExported = 'audit.exported';
 
+    // VPS Plan & Version
+    case VpsPlanCreated = 'vps.plan.created';
+    case VpsPlanUpdated = 'vps.plan.updated';
+    case VpsPlanPublished = 'vps.plan.published';
+    case VpsPlanUnpublished = 'vps.plan.unpublished';
+    case VpsPlanArchived = 'vps.plan.archived';
+    case VpsPlanUnarchived = 'vps.plan.unarchived';
+    case VpsPlanVersionCreated = 'vps.plan.version.created';
+    case VpsPlanVersionPublished = 'vps.plan.version.published';
+    case VpsPlanVersionDiscarded = 'vps.plan.version.discarded';
+
+    // VPS Plan Change
+    case VpsPlanChangeRequested = 'vps.plan_change.requested';
+    case VpsPlanChangeDenied = 'vps.plan_change.denied';
+    case VpsPlanChangeCompleted = 'vps.plan_change.completed';
+    case VpsPlanChangeFailed = 'vps.plan_change.failed';
+    case VpsPlanChangeCancelled = 'vps.plan_change.cancelled';
+    case VpsPlanChangeResolved = 'vps.plan_change.resolved';
+
     /**
      * Get the translation key for the action.
      */

@@ -65,6 +65,23 @@ $actions = [
     'impersonation.started' => 'Стартирано администраторско представяне (impersonation)',
     'impersonation.ended' => 'Прекратено администраторско представяне (impersonation)',
     'audit.exported' => 'Експортиран архив с одит лог',
+
+    'vps.plan.created' => 'Създаден VPS план',
+    'vps.plan.updated' => 'Обновен VPS план',
+    'vps.plan.published' => 'Публикуван VPS план',
+    'vps.plan.unpublished' => 'Скрит от каталога VPS план',
+    'vps.plan.archived' => 'Архивиран VPS план',
+    'vps.plan.unarchived' => 'Възстановен от архив VPS план',
+    'vps.plan.version.created' => 'Създадена чернова на версия за VPS план',
+    'vps.plan.version.published' => 'Публикувана версия на VPS план',
+    'vps.plan.version.discarded' => 'Отхвърлена чернова на версия за VPS план',
+
+    'vps.plan_change.requested' => 'Заявена промяна на VPS план',
+    'vps.plan_change.denied' => 'Отказана промяна на VPS план',
+    'vps.plan_change.completed' => 'Завършена промяна на VPS план',
+    'vps.plan_change.failed' => 'Неуспешна промяна на VPS план',
+    'vps.plan_change.cancelled' => 'Отменена промяна на VPS план',
+    'vps.plan_change.resolved' => 'Ръчно разрешена промяна на VPS план',
 ];
 
 $nested = [];

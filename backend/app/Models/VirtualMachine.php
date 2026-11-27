@@ -28,6 +28,7 @@ use Spatie\ModelStates\HasStates;
  * @property int $id
  * @property int $user_id
  * @property int|null $host_id
+ * @property int|null $vps_plan_version_id
  * @property string $name
  * @property string $incus_project
  * @property string $instance_type
@@ -35,6 +36,8 @@ use Spatie\ModelStates\HasStates;
  * @property int $cpu_cores
  * @property int $ram_mb
  * @property int $disk_gb
+ * @property int|null $net_download_mbps
+ * @property int|null $net_upload_mbps
  * @property string $os_image
  * @property string|null $ipv4_address
  * @property string|null $ipv6_address
@@ -88,9 +91,12 @@ final class VirtualMachine extends Model
         return [
             'user_id' => 'integer',
             'host_id' => 'integer',
+            'vps_plan_version_id' => 'integer',
             'cpu_cores' => 'integer',
             'ram_mb' => 'integer',
             'disk_gb' => 'integer',
+            'net_download_mbps' => 'integer',
+            'net_upload_mbps' => 'integer',
             'cloud_init' => 'array',
             'metadata' => 'array',
             'status' => VmState::class,
@@ -117,6 +123,16 @@ final class VirtualMachine extends Model
     public function host(): BelongsTo
     {
         return $this->belongsTo(Host::class);
+    }
+
+    /**
+     * The VPS plan version associated with this virtual machine.
+     *
+     * @return BelongsTo<VpsPlanVersion, $this>
+     */
+    public function vpsPlanVersion(): BelongsTo
+    {
+        return $this->belongsTo(VpsPlanVersion::class, 'vps_plan_version_id');
     }
 
     /**
