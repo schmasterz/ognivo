@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\DTO\Host;
 
-use App\DTO\Cast;
-use App\DTO\ImageSelectionDTO;
+use App\Support\Cast;
+use App\ValueObjects\Image\ImageSelection;
 
 /**
  * Immutable Data Transfer Object for creating an Incus / LXD host node.
@@ -30,7 +30,7 @@ final readonly class CreateHostDTO
         public ?string $serverFingerprint = null,
         public ?string $serverPublicKeyPin = null,
         public bool $autoAttachImages = true,
-        public ?ImageSelectionDTO $images = null,
+        public ?ImageSelection $images = null,
         public float $cpuOvercommit = 1.0,
         public float $ramOvercommit = 1.0,
         public float $diskOvercommit = 1.0,
@@ -39,10 +39,8 @@ final readonly class CreateHostDTO
     /**
      * @param  array<string, mixed>  $data
      */
-    public static function fromArray(array $data): self
+    public static function fromArray(array $data, string $defaultDriver = 'incus'): self
     {
-        $allowFake = app()->environment(['local', 'testing']) || (bool) config('app.allow_fake_driver');
-        $defaultDriver = $allowFake ? 'fake' : 'incus';
         $images = Cast::arrayOrNull($data['images'] ?? null);
 
         return new self(
@@ -60,7 +58,7 @@ final readonly class CreateHostDTO
             serverFingerprint: Cast::stringOrNull($data['server_fingerprint'] ?? $data['expected_fingerprint'] ?? null),
             serverPublicKeyPin: Cast::stringOrNull($data['server_public_key_pin'] ?? null),
             autoAttachImages: Cast::bool($data['auto_attach_images'] ?? true, true),
-            images: $images !== null ? ImageSelectionDTO::fromArray($images) : null,
+            images: $images !== null ? ImageSelection::fromArray($images) : null,
             cpuOvercommit: Cast::float($data['cpu_overcommit'] ?? 1.0, 1.0),
             ramOvercommit: Cast::float($data['ram_overcommit'] ?? 1.0, 1.0),
             diskOvercommit: Cast::float($data['disk_overcommit'] ?? 1.0, 1.0),

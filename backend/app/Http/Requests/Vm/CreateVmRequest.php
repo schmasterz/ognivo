@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Http\Requests\Vm;
 
 use App\DTO\Vm\CreateVmDTO;
-use App\DTO\Vps\ResourceBounds;
 use App\Models\User;
+use App\Support\Vps\ResourceBounds;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;

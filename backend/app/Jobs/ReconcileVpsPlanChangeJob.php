@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
-use App\DTO\Cast;
+use App\Enums\QueueName;
 use App\Exceptions\DriverUnavailableException;
 use App\Exceptions\NoHypervisorAvailableException;
-use App\Jobs\Enums\QueueName;
 use App\Models\VpsPlanChange;
 use App\Services\Hypervisor\HypervisorManager;
 use App\Services\Vps\VpsPlanChangeService;
 use App\States\VpsPlanChange\Applying;
+use App\Support\Cast;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Middleware\WithoutOverlapping;

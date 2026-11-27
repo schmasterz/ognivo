@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Admin;
 
-use App\DTO\ImageSelectionDTO;
 use App\Models\Image;
+use App\ValueObjects\Image\ImageSelection;
 use Closure;
 use Illuminate\Support\Fluent;
 use Illuminate\Validation\Rule;
@@ -35,11 +35,11 @@ final class ImageSelectionRules
             $rules[$prefix] = [$required ? 'required' : 'nullable', 'array:mode,ids,filter,exclude_ids,filter_ops,attach_ids,detach_ids'];
         }
 
-        $rules["{$p}mode"] = [$required ? 'required' : ($hasPrefix ? "required_with:{$prefix}" : 'nullable'), 'string', Rule::in(ImageSelectionDTO::MODES)];
+        $rules["{$p}mode"] = [$required ? 'required' : ($hasPrefix ? "required_with:{$prefix}" : 'nullable'), 'string', Rule::in(ImageSelection::MODES)];
 
         $rules["{$p}ids"] = [
             Rule::when(
-                fn (Fluent $input): bool => data_get($input, "{$p}mode") === ImageSelectionDTO::MODE_SELECTED,
+                fn (Fluent $input): bool => data_get($input, "{$p}mode") === ImageSelection::MODE_SELECTED,
                 ['required', 'array', 'min:1', 'max:500'],
                 ['nullable', 'array', 'max:500'],
             ),

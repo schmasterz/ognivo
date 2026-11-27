@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Contracts;
 
-use App\DTO\Contracts\VpsPlanChangeAuthorizationRequest;
-use App\DTO\Contracts\VpsPlanChangeAuthorizationResult;
+use App\Contracts\Data\VpsPlanChangeAuthorizationRequest;
+use App\Contracts\Data\VpsPlanChangeAuthorizationResult;
 
 /**
  * Contract for pluggable VPS plan-change authorization providers (Developer Preview).

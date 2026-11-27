@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Network;
 
+use App\Support\Network\NetworkConstants;
 use InvalidArgumentException;
 
 /**

@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Vps;
 
-use App\DTO\Cast;
 use App\States\VpsPlanChange\VpsPlanChangeState;
+use App\Support\Cast;
 use Illuminate\Support\Facades\DB;
 
 /**

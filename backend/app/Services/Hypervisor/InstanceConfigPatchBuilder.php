@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services\Hypervisor;
 
-use App\DTO\Cast;
-use App\DTO\Hypervisor\InstanceResourceSpec;
-use App\DTO\Hypervisor\NetworkLimitsSpec;
+use App\Support\Cast;
+use App\ValueObjects\Hypervisor\InstanceResourceSpec;
+use App\ValueObjects\Hypervisor\NetworkLimitsSpec;
 use DomainException;
 use InvalidArgumentException;
 

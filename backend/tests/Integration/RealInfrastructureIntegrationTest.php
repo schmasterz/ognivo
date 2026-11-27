@@ -4,12 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Integration;
 
-use App\DTO\Hypervisor\InstanceResourceSpec;
-use App\DTO\Hypervisor\NetworkLimitsSpec;
-use App\DTO\Hypervisor\OperationState;
-use App\DTO\Hypervisor\ResourceKind;
-use App\DTO\Hypervisor\ResourceUpdateStatus;
-use App\DTO\Hypervisor\ResourceUpdateVerdict;
+use App\Enums\Hypervisor\OperationState;
+use App\Enums\Hypervisor\ResourceKind;
+use App\Enums\Hypervisor\ResourceUpdateStatus;
+use App\Enums\Hypervisor\ResourceUpdateVerdict;
 use App\Enums\IpAllocationStatus;
 use App\Enums\NetworkStatus;
 use App\Exceptions\IpPoolExhaustedException;
@@ -34,6 +32,8 @@ use App\Services\VmSnapshotService;
 use App\States\Vm\Deleted;
 use App\States\Vm\Running;
 use App\States\Vm\Stopped;
+use App\ValueObjects\Hypervisor\InstanceResourceSpec;
+use App\ValueObjects\Hypervisor\NetworkLimitsSpec;
 use Illuminate\Support\Facades\Cache;
 use ReflectionClass;
 use Throwable;

@@ -3,13 +3,10 @@
 declare(strict_types=1);
 
 use App\Audit\AuditAction;
-use App\DTO\Hypervisor\InstanceResourceSpec;
-use App\DTO\Hypervisor\NetworkLimitsSpec;
-use App\DTO\Hypervisor\OperationState;
-use App\DTO\Hypervisor\ResourceKind;
-use App\DTO\Hypervisor\ResourceUpdateResult;
-use App\DTO\Hypervisor\ResourceUpdateStatus;
-use App\DTO\Hypervisor\ResourceUpdateVerdict;
+use App\Enums\Hypervisor\OperationState;
+use App\Enums\Hypervisor\ResourceKind;
+use App\Enums\Hypervisor\ResourceUpdateStatus;
+use App\Enums\Hypervisor\ResourceUpdateVerdict;
 use App\Enums\IpAllocationStatus;
 use App\Events\Instance\InstanceResized;
 use App\Events\Vps\VpsPlanChangeCancelled;
@@ -42,6 +39,9 @@ use App\States\VpsPlanChange\Completed;
 use App\States\VpsPlanChange\Failed;
 use App\States\VpsPlanChange\Pending;
 use App\States\VpsPlanChange\ReconciliationRequired;
+use App\ValueObjects\Hypervisor\InstanceResourceSpec;
+use App\ValueObjects\Hypervisor\NetworkLimitsSpec;
+use App\ValueObjects\Hypervisor\ResourceUpdateResult;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\DB;

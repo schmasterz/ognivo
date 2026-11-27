@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-use App\DTO\Hypervisor\InstanceResourceSpec;
-use App\DTO\Hypervisor\NetworkLimitsSpec;
 use App\Services\Hypervisor\InstanceConfigPatchBuilder;
+use App\ValueObjects\Hypervisor\InstanceResourceSpec;
+use App\ValueObjects\Hypervisor\NetworkLimitsSpec;
 
 it('parses binary and decimal sizes accurately via parseSizeToBytes', function (string $input, int $expectedBytes): void {
     $builder = new InstanceConfigPatchBuilder;

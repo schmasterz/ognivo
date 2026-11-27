@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Audit;
 
-use App\DTO\Cast;
+use App\Support\Cast;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;

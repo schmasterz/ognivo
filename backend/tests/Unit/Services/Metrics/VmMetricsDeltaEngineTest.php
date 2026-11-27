@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use App\DTO\Incus\RawInstanceMetricsDTO;
+use App\DTO\Hypervisor\RawInstanceMetricsDTO;
 use App\Services\Metrics\VmMetricsCollectorService;
 
 function makeRawMetricsDto(

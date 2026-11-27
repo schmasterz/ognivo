@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\DTO\Network;
 
-use App\DTO\Cast;
+use App\Support\Cast;
 
 /**
  * Immutable Data Transfer Object for creating an IP subnet pool under the ranged IPAM model.

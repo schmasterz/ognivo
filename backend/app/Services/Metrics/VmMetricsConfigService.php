@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Metrics;
 
-use App\DTO\Cast;
 use App\Models\SystemSetting;
+use App\Support\Cast;
 use InvalidArgumentException;
 use Throwable;
 

@@ -3,8 +3,6 @@
 declare(strict_types=1);
 
 use App\Audit\AuditAction;
-use App\DTO\Hypervisor\InstanceResourceSpec;
-use App\DTO\Hypervisor\NetworkLimitsSpec;
 use App\Enums\IpAllocationStatus;
 use App\Events\Vps\VpsPlanChangeCancelled;
 use App\Events\Vps\VpsPlanChangeCompleted;
@@ -34,6 +32,8 @@ use App\States\VpsPlanChange\Completed;
 use App\States\VpsPlanChange\Failed;
 use App\States\VpsPlanChange\Pending;
 use App\States\VpsPlanChange\ReconciliationRequired;
+use App\ValueObjects\Hypervisor\InstanceResourceSpec;
+use App\ValueObjects\Hypervisor\NetworkLimitsSpec;
 use Illuminate\Console\Scheduling\Event as ScheduledEvent;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\DB;

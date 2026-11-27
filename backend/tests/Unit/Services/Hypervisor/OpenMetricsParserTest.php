@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Services\Hypervisor;
 
-use App\DTO\Incus\RawInstanceMetricsDTO;
+use App\DTO\Hypervisor\RawInstanceMetricsDTO;
 use App\Services\Hypervisor\OpenMetricsParser;
 use Tests\TestCase;
 

@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Audit\AuditConfigValidator;
-use App\DTO\Cast;
 use App\Mail\AuditVerificationFailedMail;
 use App\Models\User;
 use App\Services\AuditSealService;
+use App\Support\Cast;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;

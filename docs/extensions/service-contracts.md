@@ -154,18 +154,18 @@ interface VpsProvisioningAuthorizerInterface
 }
 ```
 
-### Authorization DTOs & Execution Model (`@experimental`)
+### Authorization Payloads & Execution Model (`@experimental`)
 
-Located in `backend/app/DTO/Contracts/`:
+Payloads are located in `backend/app/Contracts/Data/` (`App\Contracts\Data\*`), and the authorization status enum is located in `backend/app/Enums/Vps/VpsAuthorizationStatus.php` (`App\Enums\Vps\VpsAuthorizationStatus`):
 
-| Class / Enum | Properties / Cases |
-| :--- | :--- |
-| `VpsAuthorizationStatus` | `Allowed = 'allowed'`, `Denied = 'denied'`, `Pending = 'pending'` |
-| `VpsAuthorizationInitiator` | `int $id`, `bool $isAdmin` |
-| `VpsPlanChangeAuthorizationRequest` | `string $requestId` (ULID `public_id`), `int $userId`, `int $virtualMachineId`, `?int $fromVersionId`, `int $toVersionId`, `array $oldResources`, `array $newResources`, `VpsAuthorizationInitiator $initiator` |
-| `VpsPlanChangeAuthorizationResult` | `VpsAuthorizationStatus $status`, `?string $reference = null`, `?string $reasonCode = null`, `?string $safeMessage = null` |
-| `VpsProvisioningAuthorizationRequest` | `string $requestId`, `int $userId`, `int $toVersionId`, `VpsAuthorizationInitiator $initiator`, `?int $virtualMachineId = null`, `?int $fromVersionId = null`, `array $oldResources = []`, `array $newResources = []` |
-| `VpsProvisioningAuthorizationResult` | `VpsAuthorizationStatus $status`, `?string $reference = null`, `?string $reasonCode = null`, `?string $safeMessage = null` |
+| Class / Enum | Namespace | Properties / Cases |
+| :--- | :--- | :--- |
+| `VpsAuthorizationStatus` | `App\Enums\Vps\VpsAuthorizationStatus` | `Allowed = 'allowed'`, `Denied = 'denied'`, `Pending = 'pending'` |
+| `VpsAuthorizationInitiator` | `App\Contracts\Data\VpsAuthorizationInitiator` | `int $id`, `bool $isAdmin` |
+| `VpsPlanChangeAuthorizationRequest` | `App\Contracts\Data\VpsPlanChangeAuthorizationRequest` | `string $requestId` (ULID `public_id`), `int $userId`, `int $virtualMachineId`, `?int $fromVersionId`, `int $toVersionId`, `array $oldResources`, `array $newResources`, `VpsAuthorizationInitiator $initiator` |
+| `VpsPlanChangeAuthorizationResult` | `App\Contracts\Data\VpsPlanChangeAuthorizationResult` | `VpsAuthorizationStatus $status`, `?string $reference = null`, `?string $reasonCode = null`, `?string $safeMessage = null` |
+| `VpsProvisioningAuthorizationRequest` | `App\Contracts\Data\VpsProvisioningAuthorizationRequest` | `string $requestId`, `int $userId`, `int $toVersionId`, `VpsAuthorizationInitiator $initiator`, `?int $virtualMachineId = null`, `?int $fromVersionId = null`, `array $oldResources = []`, `array $newResources = []` |
+| `VpsProvisioningAuthorizationResult` | `App\Contracts\Data\VpsProvisioningAuthorizationResult` | `VpsAuthorizationStatus $status`, `?string $reference = null`, `?string $reasonCode = null`, `?string $safeMessage = null` |
 
 - **Outside-transaction invocation & timeout:** Both `VmProvisioningService::authorizeProvisioning()` and `VpsPlanChangeService::authorizePlanChange()` invoke the authorizer **outside** any `DB::transaction()` or Redis/database row lock so slow external HTTP calls never stall MySQL locks. Execution is bounded by `config('vps.authorizer_timeout_seconds')` (`VPS_AUTHORIZER_TIMEOUT_SECONDS`, default `3` seconds) using `pcntl_alarm` and an `hrtime` wall-clock check; timeouts or thrown exceptions fail closed with HTTP `503` (`EXTENSION_AUTHORIZATION_UNAVAILABLE`).
 - **Asynchronous approval (`VpsPlanChangeService::resumeAuthorization()`):** When `VpsPlanChangeAuthorizerInterface::authorize()` returns `VpsAuthorizationStatus::Pending`, `VpsPlanChangeService::request()` persists the plan change in `awaiting_authorization` (`stage = 'authorization'`). Once external approval or payment settles, the extension calls:

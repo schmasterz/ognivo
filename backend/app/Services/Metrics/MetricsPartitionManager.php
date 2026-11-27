@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Metrics;
 
-use App\DTO\Cast;
+use App\Support\Cast;
 use Illuminate\Support\Facades\DB;
 
 /**

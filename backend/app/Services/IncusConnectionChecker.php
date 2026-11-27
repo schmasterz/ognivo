@@ -4,19 +4,24 @@ declare(strict_types=1);
 
 namespace App\Services;
 
-use App\DTO\Cast;
-use App\DTO\Incus\IncusConnectionResult;
+use App\Enums\Hypervisor\ConnectionCheckState;
+use App\Enums\Hypervisor\GatewayMode;
 use App\Exceptions\FingerprintMismatchException;
 use App\Exceptions\MissingPinException;
 use App\Models\Host;
 use App\Models\PanelCertificate;
-use App\Services\Hypervisor\GatewayMode;
 use App\Services\Hypervisor\HypervisorGateway;
 use App\Services\Hypervisor\TlsPeerCertificateFetcher;
 use App\Services\Hypervisor\TlsPeerCertificateFetcherInterface;
 use App\States\Host\Error;
+use App\States\Host\FingerprintMismatch;
+use App\States\Host\HostState;
+use App\States\Host\NotTrusted;
 use App\States\Host\Ok;
+use App\States\Host\Unreachable;
 use App\States\PanelCertificate\Active as ActiveCertificate;
+use App\Support\Cast;
+use App\ValueObjects\Hypervisor\IncusConnectionResult;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Carbon;
@@ -44,7 +49,7 @@ final class IncusConnectionChecker
         if ($host->driver === 'fake') {
             $latencyMs = random_int(8, 20);
             $result = new IncusConnectionResult(
-                state: IncusConnectionResult::STATE_OK,
+                state: ConnectionCheckState::Ok,
                 success: true,
                 message: 'Connected and trusted (emulated host).',
                 server: $host->driver,
@@ -73,7 +78,7 @@ final class IncusConnectionChecker
         $clientCert = $this->certService->getActiveCertificate() ?? $this->certService->getRetiringCertificate();
         if ($clientCert === null || ! $clientCert->isUsable()) {
             $result = new IncusConnectionResult(
-                state: IncusConnectionResult::STATE_ERROR,
+                state: ConnectionCheckState::Error,
                 success: false,
                 message: 'No active panel certificate available. Please generate one before connecting.'
             );
@@ -103,7 +108,7 @@ final class IncusConnectionChecker
 
         if ($driver === 'fake') {
             return new IncusConnectionResult(
-                state: IncusConnectionResult::STATE_OK,
+                state: ConnectionCheckState::Ok,
                 success: true,
                 message: 'Connected and trusted (emulated host).',
                 server: $driver,
@@ -118,7 +123,7 @@ final class IncusConnectionChecker
         $clientCert = $this->certService->getActiveCertificate() ?? $this->certService->getRetiringCertificate();
         if ($clientCert === null || ! $clientCert->isUsable()) {
             return new IncusConnectionResult(
-                state: IncusConnectionResult::STATE_ERROR,
+                state: ConnectionCheckState::Error,
                 success: false,
                 message: 'No active panel certificate available. Please generate one before connecting.'
             );
@@ -163,7 +168,7 @@ final class IncusConnectionChecker
 
             if (! $response->successful()) {
                 $result = new IncusConnectionResult(
-                    state: IncusConnectionResult::STATE_ERROR,
+                    state: ConnectionCheckState::Error,
                     success: false,
                     message: sprintf('Server responded with HTTP error %d', $response->status()),
                     latencyMs: $latencyMs
@@ -181,7 +186,7 @@ final class IncusConnectionChecker
 
                 if ($auth === 'trusted') {
                     $result = new IncusConnectionResult(
-                        state: IncusConnectionResult::STATE_OK,
+                        state: ConnectionCheckState::Ok,
                         success: true,
                         message: sprintf('Connected and trusted on %s (v%s).', ucfirst($server), $version),
                         server: $server,
@@ -197,7 +202,7 @@ final class IncusConnectionChecker
                     );
                 } else {
                     $result = new IncusConnectionResult(
-                        state: IncusConnectionResult::STATE_NOT_TRUSTED,
+                        state: ConnectionCheckState::NotTrusted,
                         success: true,
                         message: 'The server answered, but the panel certificate is not in its trust list. Add it again with a token or certificate.',
                         server: $server,
@@ -220,7 +225,7 @@ final class IncusConnectionChecker
                 : 'Warning: Server certificate does not match the pinned certificate / public key.';
 
             $result = new IncusConnectionResult(
-                state: IncusConnectionResult::STATE_FINGERPRINT_MISMATCH,
+                state: ConnectionCheckState::FingerprintMismatch,
                 success: false,
                 message: $msg,
                 latencyMs: $latencyMs,
@@ -231,7 +236,7 @@ final class IncusConnectionChecker
         } catch (MissingPinException $e) {
             $latencyMs = (int) round((microtime(true) - $startTime) * 1000.0);
             $result = new IncusConnectionResult(
-                state: IncusConnectionResult::STATE_NOT_TRUSTED,
+                state: ConnectionCheckState::NotTrusted,
                 success: false,
                 message: 'Host is missing required public key pin.',
                 latencyMs: $latencyMs,
@@ -244,7 +249,7 @@ final class IncusConnectionChecker
 
             if ($isPinMismatch) {
                 $result = new IncusConnectionResult(
-                    state: IncusConnectionResult::STATE_FINGERPRINT_MISMATCH,
+                    state: ConnectionCheckState::FingerprintMismatch,
                     success: false,
                     message: 'Warning: Server certificate does not match the pinned certificate / public key.',
                     latencyMs: $latencyMs,
@@ -254,7 +259,7 @@ final class IncusConnectionChecker
                 );
             } else {
                 $result = new IncusConnectionResult(
-                    state: IncusConnectionResult::STATE_UNREACHABLE,
+                    state: ConnectionCheckState::Unreachable,
                     success: false,
                     message: 'Host unreachable: Connection refused ('.$this->sanitizeErrorMessage($e->getMessage()).')',
                     latencyMs: $latencyMs
@@ -266,7 +271,7 @@ final class IncusConnectionChecker
                 || str_contains(strtolower($e->getMessage()), 'failed to connect')
                 || str_contains(strtolower($e->getMessage()), 'timed out');
 
-            $state = $isUnreachable ? IncusConnectionResult::STATE_UNREACHABLE : IncusConnectionResult::STATE_ERROR;
+            $state = $isUnreachable ? ConnectionCheckState::Unreachable : ConnectionCheckState::Error;
             $msg = $isUnreachable
                 ? 'Host unreachable: '.$this->sanitizeErrorMessage($e->getMessage())
                 : 'Connection check failed: '.$this->sanitizeErrorMessage($e->getMessage());
@@ -288,16 +293,30 @@ final class IncusConnectionChecker
                 && $clientCert->status->equals(ActiveCertificate::class)
                 && ! $clientCert->isExpired();
 
-            if ($result->state === IncusConnectionResult::STATE_OK && $result->auth === 'trusted' && $isUsingActive) {
+            if ($result->state === ConnectionCheckState::Ok && $result->auth === 'trusted' && $isUsingActive) {
                 $host->needs_retrust = false;
             }
 
-            if (! $host->status->transitionIfAllowed($result->hostStateClass())) {
+            if (! $host->status->transitionIfAllowed($this->resolveHostStateClass($result->state))) {
                 $host->save();
             }
         }
 
         return $result;
+    }
+
+    /**
+     * @return class-string<HostState>
+     */
+    private function resolveHostStateClass(ConnectionCheckState $state): string
+    {
+        return match ($state) {
+            ConnectionCheckState::Ok => Ok::class,
+            ConnectionCheckState::Unreachable => Unreachable::class,
+            ConnectionCheckState::FingerprintMismatch => FingerprintMismatch::class,
+            ConnectionCheckState::NotTrusted => NotTrusted::class,
+            ConnectionCheckState::Error => Error::class,
+        };
     }
 
     /**

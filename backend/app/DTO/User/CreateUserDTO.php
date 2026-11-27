@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\DTO\User;
 
-use App\DTO\Cast;
+use App\Support\Cast;
 
 /**
  * Immutable Data Transfer Object for creating a new user account.

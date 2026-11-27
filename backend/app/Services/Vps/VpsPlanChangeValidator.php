@@ -4,11 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Vps;
 
-use App\DTO\Cast;
-use App\DTO\Hypervisor\InstanceResourceSpec;
-use App\DTO\Hypervisor\NetworkLimitsSpec;
-use App\DTO\Hypervisor\ResourceKind;
-use App\DTO\Hypervisor\ResourceUpdateVerdict;
+use App\Enums\Hypervisor\ResourceKind;
+use App\Enums\Hypervisor\ResourceUpdateVerdict;
 use App\Exceptions\DriverUnavailableException;
 use App\Exceptions\NoHypervisorAvailableException;
 use App\Models\Host;
@@ -30,6 +27,9 @@ use App\States\VpsPlan\Published as PlanPublished;
 use App\States\VpsPlanChange\VpsPlanChangeState;
 use App\States\VpsPlanVersion\Draft as VersionDraft;
 use App\States\VpsPlanVersion\Published as VersionPublished;
+use App\Support\Cast;
+use App\ValueObjects\Hypervisor\InstanceResourceSpec;
+use App\ValueObjects\Hypervisor\NetworkLimitsSpec;
 
 /**
  * Shared preflight validator evaluating whether a virtual machine can transition

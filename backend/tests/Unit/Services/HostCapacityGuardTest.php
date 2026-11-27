@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Services;
 
-use App\DTO\Hypervisor\InstanceResourceSpec;
 use App\Models\Host;
 use App\Models\User;
 use App\Models\VirtualMachine;
 use App\Models\VpsPlanChange;
 use App\Models\VpsPlanVersion;
 use App\Services\HostCapacityGuard;
+use App\ValueObjects\Hypervisor\InstanceResourceSpec;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;

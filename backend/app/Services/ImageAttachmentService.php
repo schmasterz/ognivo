@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Services;
 
-use App\DTO\Cast;
-use App\DTO\ImageSelectionDTO;
 use App\Models\Host;
 use App\Models\Image;
 use App\Models\VirtualMachine;
+use App\Support\Cast;
+use App\ValueObjects\Image\ImageSelection;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Query\Builder;
@@ -25,7 +25,7 @@ final class ImageAttachmentService
      *
      * @return array{attached: int, detached: int, attached_ids: list<int>, detached_ids: list<int>}
      */
-    public function apply(Host $host, ImageSelectionDTO $selection): array
+    public function apply(Host $host, ImageSelection $selection): array
     {
         return DB::transaction(fn (): array => $this->executeSelection($host, $selection));
     }
@@ -35,7 +35,7 @@ final class ImageAttachmentService
      *
      * @return array{attached: int, detached: int, total_instances: int, images: list<array{id: int, name: string, instance_count: int}>}
      */
-    public function preview(Host $host, ImageSelectionDTO $selection): array
+    public function preview(Host $host, ImageSelection $selection): array
     {
         DB::beginTransaction();
 
@@ -124,7 +124,7 @@ final class ImageAttachmentService
      *
      * @return array{attached: int, detached: int, attached_ids: list<int>, detached_ids: list<int>}
      */
-    private function executeSelection(Host $host, ImageSelectionDTO $selection): array
+    private function executeSelection(Host $host, ImageSelection $selection): array
     {
         /** @var list<int> $beforeIds */
         $beforeIds = DB::table('host_image')
@@ -137,10 +137,10 @@ final class ImageAttachmentService
             $now = now()->toDateTimeString();
 
             match ($selection->mode) {
-                ImageSelectionDTO::MODE_ALL => $this->applyAll($host, $now),
-                ImageSelectionDTO::MODE_SELECTED => $this->applySelected($host, $selection->ids, $now),
-                ImageSelectionDTO::MODE_FILTER => $this->applyFilterMode($host, $selection->filter, $selection->excludeIds, $now),
-                ImageSelectionDTO::MODE_DELTA => $this->applyDelta($host, $selection->filterOps, $selection->attachIds, $selection->detachIds, $now),
+                ImageSelection::MODE_ALL => $this->applyAll($host, $now),
+                ImageSelection::MODE_SELECTED => $this->applySelected($host, $selection->ids, $now),
+                ImageSelection::MODE_FILTER => $this->applyFilterMode($host, $selection->filter, $selection->excludeIds, $now),
+                ImageSelection::MODE_DELTA => $this->applyDelta($host, $selection->filterOps, $selection->attachIds, $selection->detachIds, $now),
             };
         }
 
@@ -290,7 +290,7 @@ final class ImageAttachmentService
     private function applyFilter(Builder $query, array $filter): Builder
     {
         foreach (array_keys($filter) as $key) {
-            if (! in_array($key, ImageSelectionDTO::FILTER_KEYS, true)) {
+            if (! in_array($key, ImageSelection::FILTER_KEYS, true)) {
                 throw new InvalidArgumentException("Unknown filter key: {$key}");
             }
         }

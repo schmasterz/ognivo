@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use App\DTO\Incus\IncusConnectionResult;
+use App\Enums\Hypervisor\ConnectionCheckState;
 use App\Http\Resources\HostNodeResource;
 use App\Jobs\WarnExpiringPanelCertificateJob;
 use App\Models\Host;
@@ -142,7 +142,7 @@ describe('Panel Certificate Generation & Lifecycle', function () {
         $checker = app(IncusConnectionChecker::class);
         $result = $checker->check($host);
 
-        expect($result->state)->toBe(IncusConnectionResult::STATE_ERROR)
+        expect($result->state)->toBe(ConnectionCheckState::Error)
             ->and($result->message)->toContain('No active panel certificate available');
     });
 
@@ -433,13 +433,13 @@ describe('Connection Checker - 5 Distinct States', function () {
         $checker = app(IncusConnectionChecker::class);
         $result = $checker->check($host);
 
-        expect($result->state)->toBe(IncusConnectionResult::STATE_OK)
+        expect($result->state)->toBe(ConnectionCheckState::Ok)
             ->and($result->server)->toBe('incus')
             ->and($result->serverVersion)->toBe('6.0.0')
             ->and($result->latencyMs)->toBeGreaterThanOrEqual(0);
 
         $host->refresh();
-        expect($host->status->getValue())->toBe(IncusConnectionResult::STATE_OK)
+        expect($host->status->getValue())->toBe(ConnectionCheckState::Ok->value)
             ->and($host->last_checked_at)->not->toBeNull();
     });
 
@@ -465,11 +465,11 @@ describe('Connection Checker - 5 Distinct States', function () {
         $checker = app(IncusConnectionChecker::class);
         $result = $checker->check($host);
 
-        expect($result->state)->toBe(IncusConnectionResult::STATE_NOT_TRUSTED)
+        expect($result->state)->toBe(ConnectionCheckState::NotTrusted)
             ->and($result->isTrusted)->toBeFalse();
 
         $host->refresh();
-        expect($host->status->getValue())->toBe(IncusConnectionResult::STATE_NOT_TRUSTED);
+        expect($host->status->getValue())->toBe(ConnectionCheckState::NotTrusted->value);
     });
 
     test('returns state unreachable when connection fails or times out', function () {
@@ -488,10 +488,10 @@ describe('Connection Checker - 5 Distinct States', function () {
         $checker = app(IncusConnectionChecker::class);
         $result = $checker->check($host);
 
-        expect($result->state)->toBe(IncusConnectionResult::STATE_UNREACHABLE);
+        expect($result->state)->toBe(ConnectionCheckState::Unreachable);
 
         $host->refresh();
-        expect($host->status->getValue())->toBe(IncusConnectionResult::STATE_UNREACHABLE);
+        expect($host->status->getValue())->toBe(ConnectionCheckState::Unreachable->value);
     });
 
     test('returns state fingerprint_mismatch when peer cert differs from pinned cert', function () {
@@ -514,11 +514,11 @@ describe('Connection Checker - 5 Distinct States', function () {
         $checker = app(IncusConnectionChecker::class);
         $result = $checker->check($host);
 
-        expect($result->state)->toBe(IncusConnectionResult::STATE_FINGERPRINT_MISMATCH)
+        expect($result->state)->toBe(ConnectionCheckState::FingerprintMismatch)
             ->and($result->message)->toContain('does not match the pinned certificate');
 
         $host->refresh();
-        expect($host->status->getValue())->toBe(IncusConnectionResult::STATE_FINGERPRINT_MISMATCH);
+        expect($host->status->getValue())->toBe(ConnectionCheckState::FingerprintMismatch->value);
     });
 
     test('returns state error on unexpected HTTP errors with safe message', function () {
@@ -535,10 +535,10 @@ describe('Connection Checker - 5 Distinct States', function () {
         $checker = app(IncusConnectionChecker::class);
         $result = $checker->check($host);
 
-        expect($result->state)->toBe(IncusConnectionResult::STATE_ERROR);
+        expect($result->state)->toBe(ConnectionCheckState::Error);
 
         $host->refresh();
-        expect($host->status->getValue())->toBe(IncusConnectionResult::STATE_ERROR);
+        expect($host->status->getValue())->toBe(ConnectionCheckState::Error->value);
     });
 });
 
@@ -786,7 +786,7 @@ describe('Certificate Rotation, Retrust Flow & Workability', function () {
         $checker = app(IncusConnectionChecker::class);
         $result = $checker->check($host);
 
-        expect($result->state)->toBe(IncusConnectionResult::STATE_OK)
+        expect($result->state)->toBe(ConnectionCheckState::Ok)
             ->and($result->auth)->toBe('trusted');
 
         $host->refresh();
@@ -866,7 +866,7 @@ describe('Certificate Rotation, Retrust Flow & Workability', function () {
 
         $host = Host::where('name', 'lxd-production-node')->firstOrFail();
         expect($host->driver)->toBe('lxd')
-            ->and($host->status->getValue())->toBe(IncusConnectionResult::STATE_OK)
+            ->and($host->status->getValue())->toBe(ConnectionCheckState::Ok->value)
             ->and($host->needs_retrust)->toBeFalse();
     });
 });

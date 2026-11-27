@@ -9,9 +9,9 @@ use App\Audit\AuditContext;
 use App\Audit\AuditEntry;
 use App\Audit\AuditLogger;
 use App\Audit\AuditOutcome;
-use App\DTO\Cast;
 use App\Models\VirtualMachine;
 use App\Services\VmReconciliationService;
+use App\Support\Cast;
 use Spatie\ModelStates\Events\StateChanged;
 
 final class VmStateChangedListener

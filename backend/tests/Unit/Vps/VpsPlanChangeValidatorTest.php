@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-use App\DTO\Hypervisor\ResourceKind;
-use App\DTO\Hypervisor\ResourceUpdateVerdict;
+use App\Enums\Hypervisor\ResourceKind;
+use App\Enums\Hypervisor\ResourceUpdateVerdict;
 use App\Enums\IpAllocationStatus;
 use App\Models\Host;
 use App\Models\IpAllocation;

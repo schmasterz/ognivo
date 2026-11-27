@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services;
 
-use App\DTO\Cast;
 use App\Models\AuditLog;
 use App\Models\AuditSeal;
+use App\Support\Cast;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
 

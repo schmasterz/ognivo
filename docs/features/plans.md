@@ -54,7 +54,7 @@ stateDiagram-v2
 - **Published & superseded immutability:** Once published, a version's resource profile (`cpu_cores`, `ram_mb`, `disk_gb`, `instance_type`, `net_download_mbps`, `net_upload_mbps`) is never mutated in place. Existing instances pinned to a `superseded` version retain their exact resource snapshot and `vps_plan_version_id` until they undergo a plan change.
 - **Publish eligibility (`assertPublishableProfile`):** Publishing a plan or draft version requires at least one active, healthy (`status = ok`) compute host with known physical capacity (`capacity_source != 'unknown'`) whose single-instance physical limit covers `cpu_cores`, `ram_mb`, and `disk_gb`. If `net_download_mbps` or `net_upload_mbps` is non-null, that covering host must also have at least one active non-manual IP pool (`network_mode != 'manual'`).
 
-### 2.3 Resource Bounds (`ResourceBounds`)
+### 2.3 Resource Bounds (`App\Support\Vps\ResourceBounds`)
 
 | Field | Unit | Minimum | Maximum | Notes |
 | :--- | :--- | :--- | :--- | :--- |

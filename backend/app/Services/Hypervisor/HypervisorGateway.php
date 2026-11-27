@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Hypervisor;
 
+use App\Enums\Hypervisor\GatewayMode;
 use App\Exceptions\FingerprintMismatchException;
 use App\Exceptions\MissingPinException;
 use App\Models\Host;

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
-use App\Jobs\Enums\QueueName;
+use App\Enums\QueueName;
 use App\Models\WebhookDelivery;
 use App\States\Webhook\Failed;
 use App\States\Webhook\Retrying;

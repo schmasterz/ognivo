@@ -6,7 +6,7 @@ namespace App\Models;
 
 use App\Audit\Auditable;
 use App\Services\Network\CidrHelper;
-use App\Services\Network\NetworkConstants;
+use App\Support\Network\NetworkConstants;
 use Database\Factories\IpPoolFactory;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;

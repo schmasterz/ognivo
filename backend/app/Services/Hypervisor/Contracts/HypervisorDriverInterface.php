@@ -5,14 +5,14 @@ declare(strict_types=1);
 namespace App\Services\Hypervisor\Contracts;
 
 use App\DTO\Host\HostResourcesDTO;
-use App\DTO\Hypervisor\InstanceResourceSpec;
-use App\DTO\Hypervisor\OperationStatus;
-use App\DTO\Hypervisor\ResourceUpdateAssessment;
-use App\DTO\Hypervisor\ResourceUpdateResult;
-use App\DTO\Incus\RawInstanceMetricsDTO;
+use App\DTO\Hypervisor\RawInstanceMetricsDTO;
 use App\Exceptions\DriverUnavailableException;
 use App\Models\Host;
 use App\Models\VirtualMachine;
+use App\ValueObjects\Hypervisor\InstanceResourceSpec;
+use App\ValueObjects\Hypervisor\OperationStatus;
+use App\ValueObjects\Hypervisor\ResourceUpdateAssessment;
+use App\ValueObjects\Hypervisor\ResourceUpdateResult;
 
 /**
  * Interface contract for hypervisor providers (Incus, Fake/Mock, Proxmox, etc.).

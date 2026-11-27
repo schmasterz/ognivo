@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\DTO\Quota;
 
-use App\DTO\Cast;
+use App\Support\Cast;
 
 /**
  * Immutable Data Transfer Object for updating an existing Quota Group.

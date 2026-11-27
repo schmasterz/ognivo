@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 use App\Contracts\BackupTargetInterface;
 use App\Contracts\BillingProviderInterface;
+use App\Contracts\Data\VpsAuthorizationInitiator;
+use App\Contracts\Data\VpsPlanChangeAuthorizationRequest;
+use App\Contracts\Data\VpsPlanChangeAuthorizationResult;
+use App\Contracts\Data\VpsProvisioningAuthorizationRequest;
+use App\Contracts\Data\VpsProvisioningAuthorizationResult;
 use App\Contracts\DnsProviderInterface;
 use App\Contracts\NotificationChannelInterface;
 use App\Contracts\VpsPlanChangeAuthorizerInterface;
@@ -82,3 +87,38 @@ it('exists as an experimental PHP interface with @experimental docblock and decl
             ->and($reflection->getMethod($methodName)->isPublic())->toBeTrue();
     }
 })->with('experimentalExtensionContracts');
+
+/**
+ * @return array<class-string, array{dataClass: class-string}>
+ */
+dataset('experimentalExtensionContractData', [
+    VpsAuthorizationInitiator::class => [
+        'dataClass' => VpsAuthorizationInitiator::class,
+    ],
+    VpsPlanChangeAuthorizationRequest::class => [
+        'dataClass' => VpsPlanChangeAuthorizationRequest::class,
+    ],
+    VpsPlanChangeAuthorizationResult::class => [
+        'dataClass' => VpsPlanChangeAuthorizationResult::class,
+    ],
+    VpsProvisioningAuthorizationRequest::class => [
+        'dataClass' => VpsProvisioningAuthorizationRequest::class,
+    ],
+    VpsProvisioningAuthorizationResult::class => [
+        'dataClass' => VpsProvisioningAuthorizationResult::class,
+    ],
+]);
+
+/**
+ * @param  class-string  $dataClass
+ */
+it('exists as a final readonly PHP class with @experimental docblock', function (string $dataClass): void {
+    expect(class_exists($dataClass))->toBeTrue();
+
+    $reflection = new ReflectionClass($dataClass);
+    $docComment = $reflection->getDocComment();
+
+    expect($reflection->isFinal())->toBeTrue()
+        ->and($reflection->isReadOnly())->toBeTrue()
+        ->and($docComment)->toBeString()->toContain('@experimental');
+})->with('experimentalExtensionContractData');

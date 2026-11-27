@@ -10,7 +10,7 @@ use App\Models\IpAllocation;
 use App\Models\VirtualMachine;
 use App\Services\Hypervisor\GuestOs\Adapters\BsdOsAdapter;
 use App\Services\Hypervisor\GuestOs\GuestOsResolver;
-use App\Services\Network\NetworkConstants;
+use App\Support\Network\NetworkConstants;
 use DomainException;
 use RuntimeException;
 

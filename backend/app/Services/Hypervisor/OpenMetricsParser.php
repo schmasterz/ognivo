@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Hypervisor;
 
-use App\DTO\Incus\RawInstanceMetricsDTO;
+use App\DTO\Hypervisor\RawInstanceMetricsDTO;
 
 /**
  * Parses OpenMetrics / Prometheus text exposition from Incus/LXD /1.0/metrics into per-instance DTOs.

@@ -2,12 +2,10 @@
 
 declare(strict_types=1);
 
-use App\DTO\Hypervisor\InstanceResourceSpec;
-use App\DTO\Hypervisor\NetworkLimitsSpec;
-use App\DTO\Hypervisor\OperationState;
-use App\DTO\Hypervisor\ResourceKind;
-use App\DTO\Hypervisor\ResourceUpdateStatus;
-use App\DTO\Hypervisor\ResourceUpdateVerdict;
+use App\Enums\Hypervisor\OperationState;
+use App\Enums\Hypervisor\ResourceKind;
+use App\Enums\Hypervisor\ResourceUpdateStatus;
+use App\Enums\Hypervisor\ResourceUpdateVerdict;
 use App\Exceptions\DriverUnavailableException;
 use App\Models\Host;
 use App\Models\User;
@@ -17,6 +15,8 @@ use App\Services\Hypervisor\Drivers\FakeHypervisorDriver;
 use App\Services\Hypervisor\Drivers\IncusDriver;
 use App\Services\Hypervisor\HypervisorManager;
 use App\Services\PanelCertificateService;
+use App\ValueObjects\Hypervisor\InstanceResourceSpec;
+use App\ValueObjects\Hypervisor\NetworkLimitsSpec;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;

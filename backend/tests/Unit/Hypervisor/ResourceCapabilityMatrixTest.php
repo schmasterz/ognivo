@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-use App\DTO\Hypervisor\InstanceResourceSpec;
-use App\DTO\Hypervisor\NetworkLimitsSpec;
-use App\DTO\Hypervisor\ResourceKind;
-use App\DTO\Hypervisor\ResourceUpdateVerdict;
+use App\Enums\Hypervisor\ResourceKind;
+use App\Enums\Hypervisor\ResourceUpdateVerdict;
 use App\Services\Hypervisor\ResourceCapabilityMatrix;
+use App\ValueObjects\Hypervisor\InstanceResourceSpec;
+use App\ValueObjects\Hypervisor\NetworkLimitsSpec;
 
 it('evaluates all container resource upgrades as Online on quota-supporting storage drivers and confirmed nictypes', function (
     string $vmState,

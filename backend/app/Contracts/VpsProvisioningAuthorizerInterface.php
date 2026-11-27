@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Contracts;
 
-use App\DTO\Contracts\VpsProvisioningAuthorizationRequest;
-use App\DTO\Contracts\VpsProvisioningAuthorizationResult;
+use App\Contracts\Data\VpsProvisioningAuthorizationRequest;
+use App\Contracts\Data\VpsProvisioningAuthorizationResult;
 
 /**
  * Contract for pluggable VPS provisioning authorization providers (Developer Preview).

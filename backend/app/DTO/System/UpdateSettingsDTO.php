@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\DTO\System;
 
-use App\DTO\Cast;
+use App\Support\Cast;
 
 /**
  * Immutable Data Transfer Object for updating system platform configuration.

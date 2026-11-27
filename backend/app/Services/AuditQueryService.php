@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\DTO\Audit\AuditFilterDTO;
-use App\DTO\Cast;
 use App\Models\AuditLog;
+use App\Support\Cast;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;

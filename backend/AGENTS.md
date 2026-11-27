@@ -40,8 +40,9 @@ HTTP Request (/api/*)
 app/
 ├── Audit/                            # Tamper-evident audit subsystem (AuditLogger, AuditContext, AuditAction, AuditOutcome, AuditEntry, AuditRedactor, Auditable, AuditConfigValidator, RestoreAuditContext trait)
 ├── Console/Commands/                 # Artisan CLI commands (admin:create, app:check-production-config, app:reencrypt-secrets, incus:generate-cert, incus:listen, snapshots:sync, vm:reconcile, vm:sweep-stale-provisioning, hosts:sync-resources, hosts:backfill-pins, hypervisor:cleanup-cert-keys, audit:grants|seal|verify|prune|pseudonymise)
-├── Contracts/                        # Core interfaces (BackupTargetInterface)
-├── DTO/                              # Immutable readonly Data Transfer Objects grouped by domain (Vm, Host, Incus, Ip, Network, Quota, User, Auth, Audit, System, ImageSelectionDTO)
+├── Contracts/                        # Core service interfaces (BackupTargetInterface, BillingProviderInterface, DnsProviderInterface, NotificationChannelInterface, VpsPlanChangeAuthorizerInterface, VpsProvisioningAuthorizerInterface) + Contracts/Data/ (@experimental authorization request/result payloads)
+├── DTO/                              # Strictly final readonly *DTO classes grouped by domain (Audit, Auth, Host, Hypervisor, Network, Quota, System, User, Vm)
+├── Enums/                            # Backed domain & infrastructure enums grouped by domain (IpAllocationStatus, NetworkStatus, QueueName, Hypervisor\*, Vps\*)
 ├── Events/                           # Reverb broadcast events (VirtualMachineStatusUpdated, AdminVirtualMachineStatusUpdated, Snapshot* events)
 ├── Exceptions/                       # Domain & HTTP exceptions with translated rendering
 ├── Http/
@@ -72,7 +73,9 @@ app/
 │   ├── PanelCertificateService.php   # secp384r1 X.509 mTLS certificate generation & zero-downtime rotation
 │   ├── IncusTrustService.php         # One-time trust token onboarding & peer TLS fingerprint verification
 │   └── AuditSealService.php          # Periodic SHA-256 hash-chain + HMAC sealing & verification
-└── States/Vm/                        # Spatie state machine (Provisioning, Running, Stopped, Suspended, Deleting, Deleted, Failed)
+├── States/Vm/                        # Spatie state machine (Provisioning, Running, Stopped, Suspended, Deleting, Deleted, Failed)
+├── Support/                          # Type-safe casting (Cast) and shared domain constants (Network\NetworkConstants, Vps\ResourceBounds)
+└── ValueObjects/                     # Immutable domain specs, value objects, and operation/validation outcomes (Hypervisor\*, Image\*, Vps\*)
 ```
 
 ---

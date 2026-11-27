@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Http\Requests\Auth;
 
 use App\DTO\Auth\UpdateProfileDTO;
-use App\DTO\Cast;
 use App\Models\User;
+use App\Support\Cast;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 

@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
-use App\DTO\Cast;
 use App\Http\Controllers\Controller;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\States\User\Active;
 use App\States\User\Pending;
+use App\Support\Cast;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
