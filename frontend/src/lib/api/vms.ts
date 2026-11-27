@@ -1,10 +1,36 @@
-import { API_BASE, ApiError, apiFetch, request } from "./client";
-import {
+import { API_BASE, ApiError, apiFetch, request } from "./client.ts";
+import type {
+  MetaPaginatedResponse,
   PaginatedResponse,
+  PlanChangePayload,
   VirtualMachine,
   VmMetricsRangeKey,
   VmMetricsResponse,
-} from "./types";
+  VpsPlanChange,
+  VpsPlanChangePreview,
+  VpsPlanChangeTarget,
+} from "./types.ts";
+
+export interface CreateVmPlanPayload {
+  name: string;
+  os_image: string;
+  vps_plan_id: number;
+  host_id?: number | null;
+  cloud_init?: { "user-data"?: string };
+}
+
+export interface CreateVmCustomPayload {
+  name: string;
+  os_image: string;
+  instance_type?: "virtual-machine" | "container";
+  cpu_cores: number;
+  ram_mb: number;
+  disk_gb: number;
+  host_id?: number | null;
+  cloud_init?: { "user-data"?: string };
+}
+
+export type CreateVmPayload = CreateVmPlanPayload | CreateVmCustomPayload;
 
 export interface ConsoleSessionResponse {
   virtual_machine_id: number;
@@ -47,17 +73,18 @@ export const vmsApi = {
     return request<PaginatedResponse<VirtualMachine>>(`/vms${query}`, { signal: options?.signal });
   },
 
-  async createVm(params: {
-    name: string;
-    instance_type?: "virtual-machine" | "container";
-    cpu_cores: number;
-    ram_mb: number;
-    disk_gb: number;
-    os_image: string;
-    host_id?: number | null;
-  }): Promise<{ message: string; virtual_machine: VirtualMachine }> {
+  async createVm(
+    params: CreateVmPayload,
+    options?: { idempotencyKey?: string }
+  ): Promise<{ message: string; virtual_machine: VirtualMachine }> {
+    const headers: Record<string, string> = {};
+    if (options?.idempotencyKey) {
+      headers["Idempotency-Key"] = options.idempotencyKey;
+    }
+
     return request<{ message: string; virtual_machine: VirtualMachine }>("/vms", {
       method: "POST",
+      headers,
       body: JSON.stringify(params),
     });
   },
@@ -234,5 +261,88 @@ export const vmsApi = {
       data,
       etag: response.headers.get("ETag"),
     };
+  },
+
+  async getPlanChangeTargets(
+    vmId: number,
+    options?: { signal?: AbortSignal }
+  ): Promise<VpsPlanChangeTarget[]> {
+    const res = await request<{ data: VpsPlanChangeTarget[] }>(
+      `/vms/${vmId}/plan-change/targets`,
+      { signal: options?.signal }
+    );
+    return res.data;
+  },
+
+  async previewPlanChange(
+    vmId: number,
+    payload: PlanChangePayload,
+    options?: { signal?: AbortSignal }
+  ): Promise<VpsPlanChangePreview> {
+    const res = await request<{ data: VpsPlanChangePreview }>(
+      `/vms/${vmId}/plan-change/preview`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+        signal: options?.signal,
+      }
+    );
+    return res.data;
+  },
+
+  async requestPlanChange(
+    vmId: number,
+    payload: PlanChangePayload,
+    options?: { idempotencyKey?: string; signal?: AbortSignal }
+  ): Promise<VpsPlanChange> {
+    const headers: Record<string, string> = {};
+    if (options?.idempotencyKey) {
+      headers["Idempotency-Key"] = options.idempotencyKey;
+    }
+
+    const res = await request<{ data: VpsPlanChange }>(`/vms/${vmId}/plan-change`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+      signal: options?.signal,
+    });
+    return res.data;
+  },
+
+  async getPlanChanges(
+    vmId: number,
+    filters?: { page?: number | null; per_page?: number | null },
+    options?: { signal?: AbortSignal }
+  ): Promise<MetaPaginatedResponse<VpsPlanChange>> {
+    const params = new URLSearchParams();
+    if (filters?.page) params.set("page", String(filters.page));
+    if (filters?.per_page) params.set("per_page", String(filters.per_page));
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return request<MetaPaginatedResponse<VpsPlanChange>>(
+      `/vms/${vmId}/plan-changes${qs}`,
+      { signal: options?.signal }
+    );
+  },
+
+  async getPlanChange(
+    vmId: number,
+    publicId: string,
+    options?: { signal?: AbortSignal }
+  ): Promise<VpsPlanChange> {
+    const res = await request<{ data: VpsPlanChange }>(
+      `/vms/${vmId}/plan-changes/${encodeURIComponent(publicId)}`,
+      { signal: options?.signal }
+    );
+    return res.data;
+  },
+
+  async cancelPlanChange(vmId: number, publicId: string): Promise<VpsPlanChange> {
+    const res = await request<{ data: VpsPlanChange }>(
+      `/vms/${vmId}/plan-changes/${encodeURIComponent(publicId)}/cancel`,
+      {
+        method: "POST",
+      }
+    );
+    return res.data;
   },
 };

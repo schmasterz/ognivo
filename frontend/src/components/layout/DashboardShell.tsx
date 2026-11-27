@@ -171,6 +171,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             activeTabTitle={
               activeTab === "vms"
                 ? t("menuInstances")
+                : activeTab === "plans"
+                ? t("menuVpsPlans")
                 : activeTab === "snapshots"
                 ? t("menuSnapshots")
                 : activeTab === "networking"
@@ -181,6 +183,10 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 ? t("menuAuditLog")
                 : activeTab === "nodes"
                 ? t("menuNodes")
+                : activeTab === "adminPlans"
+                ? t("menuManageVpsPlans")
+                : activeTab === "adminPlanChanges"
+                ? t("menuAdminPlanChanges")
                 : t("menuActivity")
             }
             onToggleSidebar={() => setSidebarOpen(true)}

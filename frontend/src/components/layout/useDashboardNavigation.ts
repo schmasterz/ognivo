@@ -18,18 +18,23 @@ import {
 
 export type TabType =
   | "vms"
+  | "plans"
   | "snapshots"
   | "networking"
   | "users"
   | "activity"
   | "audit"
-  | "nodes";
+  | "nodes"
+  | "adminPlans"
+  | "adminPlanChanges";
 
 export function resolveTabFromPathname(
   pathname: string,
   isAdmin: boolean
 ): TabType {
   switch (pathname) {
+    case "/plans":
+      return "plans";
     case "/snapshots":
       return "snapshots";
     case "/networking":
@@ -42,6 +47,10 @@ export function resolveTabFromPathname(
       return isAdmin ? "audit" : "vms";
     case "/nodes":
       return isAdmin ? "nodes" : "vms";
+    case "/admin/plans":
+      return isAdmin ? "adminPlans" : "plans";
+    case "/admin/plan-changes":
+      return isAdmin ? "adminPlanChanges" : "vms";
     case "/instances":
     case "/workloads":
     case "/workload":
@@ -235,12 +244,15 @@ export function useDashboardNavigation({
     (tab: TabType) => {
       const pathMap: Record<TabType, string> = {
         vms: "/instances",
+        plans: "/plans",
         snapshots: "/snapshots",
         networking: "/networking",
         users: "/users",
         activity: "/activity",
         audit: "/audit",
         nodes: "/nodes",
+        adminPlans: "/admin/plans",
+        adminPlanChanges: "/admin/plan-changes",
       };
       if (pathMap[tab]) {
         router.push(pathMap[tab]);

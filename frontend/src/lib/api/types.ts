@@ -244,6 +244,19 @@ export interface VirtualMachine {
   cpu_cores: number;
   ram_mb: number;
   disk_gb: number;
+  vps_plan?: {
+    id: number;
+    name: string;
+    slug: string;
+    version_id: number;
+    version: number;
+    is_current_version: boolean;
+  } | null;
+  network_limits?: {
+    download_mbps: number | null;
+    upload_mbps: number | null;
+    applicable: boolean;
+  } | null;
   os_image: string;
   os_image_alias?: string;
   ipv4_address: string | null;
@@ -705,4 +718,294 @@ export interface VmMetricsResponse {
     disk_io?: VmMetricDiskIoSeriesDTO;
     network?: VmMetricNetworkSeriesDTO;
   };
+}
+
+export type VpsPlanStatus = "draft" | "published" | "archived";
+
+export type VpsPlanVersionStatus = "draft" | "published" | "superseded" | "archived";
+
+export type VpsPlanInstanceType = "virtual-machine" | "container";
+
+export interface VpsPlanCatalogVersion {
+  id: number;
+  version: number;
+  cpu_cores: number;
+  ram_mb: number;
+  disk_gb: number;
+  instance_type: VpsPlanInstanceType;
+  net_download_mbps: number | null;
+  net_upload_mbps: number | null;
+}
+
+export interface VpsPlanCatalogItem {
+  id: number;
+  name: string;
+  slug: string;
+  description: string | null;
+  sort_order: number;
+  current_version: VpsPlanCatalogVersion | null;
+}
+
+export interface VpsPlanVersion {
+  id: number;
+  vps_plan_id: number;
+  version: number | null;
+  status: VpsPlanVersionStatus | string;
+  cpu_cores: number;
+  ram_mb: number;
+  disk_gb: number;
+  instance_type: VpsPlanInstanceType;
+  net_download_mbps: number | null;
+  net_upload_mbps: number | null;
+  change_summary: string | null;
+  active_vms_count?: number;
+  created_by: number | null;
+  published_by: number | null;
+  created_at: string | null;
+  published_at: string | null;
+}
+
+export interface AdminVpsPlan {
+  id: number;
+  name: string;
+  slug: string;
+  description: string | null;
+  status: VpsPlanStatus | string;
+  sort_order: number;
+  current_version_id: number | null;
+  current_version?: VpsPlanVersion | null;
+  draft_version?: VpsPlanVersion | null;
+  created_by: number | null;
+  updated_by: number | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface VpsPlanUsageItem {
+  vps_plan_version_id: number;
+  version: number | null;
+  status: VpsPlanVersionStatus | string;
+  active_vms_count: number;
+}
+
+export interface VpsPlanUsageResponse {
+  vps_plan_id: number;
+  total_active_vms: number;
+  versions: VpsPlanUsageItem[];
+}
+
+export interface VpsPlanProfilePayload {
+  cpu_cores: number;
+  ram_mb: number;
+  disk_gb: number;
+  instance_type: VpsPlanInstanceType;
+  net_download_mbps?: number | null;
+  net_upload_mbps?: number | null;
+  change_summary?: string | null;
+}
+
+export interface CreateVpsPlanPayload extends VpsPlanProfilePayload {
+  name: string;
+  slug?: string | null;
+  description?: string | null;
+  sort_order?: number;
+}
+
+export interface UpdateVpsPlanPayload {
+  name?: string;
+  slug?: string;
+  description?: string | null;
+  sort_order?: number;
+}
+
+export interface AdminVpsPlanFilters {
+  status?: "all" | VpsPlanStatus | string | null;
+  search?: string | null;
+  page?: number | null;
+  per_page?: number | null;
+}
+
+export type VpsPlanChangeDirection =
+  | "unchanged"
+  | "increase"
+  | "decrease"
+  | "set"
+  | "remove";
+
+export type VpsPlanChangeStatus =
+  | "pending"
+  | "awaiting_authorization"
+  | "applying"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "reconciliation_required";
+
+export type VpsPlanChangeStage =
+  | "authorization"
+  | "validating"
+  | "applying"
+  | "verifying"
+  | "committing";
+
+export interface VpsPlanChangeBlockingReason {
+  code: string;
+  message: string;
+  kind?: string;
+}
+
+export interface VpsPlanChangeChanges {
+  cpu: VpsPlanChangeDirection | string;
+  ram: VpsPlanChangeDirection | string;
+  disk: VpsPlanChangeDirection | string;
+  net_download: VpsPlanChangeDirection | string;
+  net_upload: VpsPlanChangeDirection | string;
+}
+
+export interface VpsPlanChangeTarget {
+  id: number;
+  name: string;
+  slug: string;
+  description: string | null;
+  sort_order: number;
+  current_version: VpsPlanCatalogVersion | null;
+  selectable: boolean;
+  requires_shutdown: boolean;
+  changes: VpsPlanChangeChanges | Record<string, string>;
+  warnings: string[];
+  blocking_reasons: VpsPlanChangeBlockingReason[];
+}
+
+export interface VpsPlanChangePreviewEndpoint {
+  vps_plan_id: number | null;
+  vps_plan_version_id: number | null;
+  plan_name: string | null;
+  plan_slug: string | null;
+  version: number | null;
+  cpu_cores: number;
+  ram_mb: number;
+  disk_gb: number;
+  instance_type: VpsPlanInstanceType | string;
+  net_download_mbps: number | null;
+  net_upload_mbps: number | null;
+}
+
+export interface VpsPlanChangePreview {
+  can_submit: boolean;
+  requires_shutdown: boolean;
+  from: VpsPlanChangePreviewEndpoint;
+  to: VpsPlanChangePreviewEndpoint | null;
+  changes: VpsPlanChangeChanges | Record<string, string>;
+  warnings: string[];
+  blocking_reasons: VpsPlanChangeBlockingReason[];
+}
+
+export interface PlanChangePayload {
+  vps_plan_id?: number | null;
+  vps_plan_version_id?: number | null;
+}
+
+export interface VpsPlanChangeVersionSummary {
+  vps_plan_id: number;
+  vps_plan_version_id: number;
+  plan_name: string | null;
+  plan_slug: string | null;
+  version: number | null;
+}
+
+export interface VpsPlanChangeResourcesSnapshot {
+  cpu_cores: number;
+  ram_mb: number;
+  disk_gb: number;
+  instance_type?: VpsPlanInstanceType | string;
+  net_download_mbps: number | null;
+  net_upload_mbps: number | null;
+}
+
+export interface VpsPlanChange {
+  public_id: string;
+  virtual_machine_id: number;
+  status: VpsPlanChangeStatus | string;
+  stage: VpsPlanChangeStage | string | null;
+  from_version_id: number | null;
+  from: VpsPlanChangeVersionSummary | null;
+  to_version_id: number;
+  to: VpsPlanChangeVersionSummary | null;
+  old_resources: VpsPlanChangeResourcesSnapshot;
+  new_resources: VpsPlanChangeResourcesSnapshot;
+  error_code: string | null;
+  error_message: string | null;
+  requested_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  failed_at: string | null;
+  created_at: string | null;
+}
+
+export interface AdminVpsPlanChangeVersionSummary {
+  id: number;
+  vps_plan_id: number;
+  version: number | null;
+  plan_name: string | null;
+  plan_slug: string | null;
+}
+
+export interface AdminVpsPlanChange {
+  id: number;
+  public_id: string;
+  virtual_machine_id: number;
+  user_id: number;
+  initiated_by: number | null;
+  from_version_id: number | null;
+  to_version_id: number;
+  old_resources: VpsPlanChangeResourcesSnapshot;
+  new_resources: VpsPlanChangeResourcesSnapshot;
+  status: VpsPlanChangeStatus | string;
+  stage: VpsPlanChangeStage | string | null;
+  authorization_ref: string | null;
+  driver_name: string | null;
+  driver_operation_id: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  requested_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  failed_at: string | null;
+  apply_deadline: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  virtual_machine: {
+    id: number;
+    name: string;
+    incus_project: string;
+    status: string;
+    user_id: number;
+  } | null;
+  user: {
+    id: number;
+    name: string;
+    email: string;
+  } | null;
+  initiator: {
+    id: number;
+    name: string;
+    email: string;
+  } | null;
+  from_version: AdminVpsPlanChangeVersionSummary | null;
+  to_version: AdminVpsPlanChangeVersionSummary | null;
+}
+
+export interface AdminVpsPlanChangeFilters {
+  status?: "all" | VpsPlanChangeStatus | string | null;
+  user_id?: number | null;
+  vm_id?: number | null;
+  page?: number | null;
+  per_page?: number | null;
+}
+
+export type ResolveAdminPlanChangeAction = "complete" | "fail" | "retry";
+
+export interface ResolveAdminPlanChangePayload {
+  action: ResolveAdminPlanChangeAction;
+  note?: string | null;
 }

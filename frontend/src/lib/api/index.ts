@@ -14,6 +14,7 @@ import { hostsApi } from "./hosts";
 import { adminApi } from "./admin";
 import { imagesApi } from "./images";
 import { auditApi } from "./audit";
+import { vpsPlansApi } from "./vpsPlans";
 
 export * from "./types";
 export * from "./client";
@@ -26,6 +27,7 @@ export * from "./hosts";
 export * from "./admin";
 export * from "./images";
 export * from "./audit";
+export * from "./vpsPlans";
 
 /**
  * Global API Client object maintaining complete backward compatibility.
@@ -40,4 +42,5 @@ export const api = {
   ...adminApi,
   ...imagesApi,
   ...auditApi,
+  ...vpsPlansApi,
 };

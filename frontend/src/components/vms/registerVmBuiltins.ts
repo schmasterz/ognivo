@@ -1,12 +1,13 @@
 "use client";
 
-import { Activity, Box, Camera, RotateCcw } from "lucide-react";
+import { Activity, Box, Camera, Package, RotateCcw } from "lucide-react";
 import { registerVmTab, registerVmAction, VmActionContext } from "@/lib/registry/vmRegistry";
 import { vmsApi } from "@/lib/api/vms";
 import { VirtualMachine } from "@/lib/api/types";
 import { VmOverviewTab } from "./VmOverviewTab";
 import { VmMetricsTab } from "./metrics/VmMetricsTab";
 import { VmSnapshotsTab } from "./snapshots/VmSnapshotsTab";
+import { VmPlanTab } from "./VmPlanTab";
 
 declare module "@/lib/registry/vmRegistry" {
   interface VmActionContext {
@@ -58,6 +59,15 @@ export function registerVmBuiltins(): void {
     order: 20,
     icon: Camera,
     component: VmSnapshotsTab,
+  });
+
+  // 2.5. Plan Tab (order 25)
+  registerVmTab({
+    id: "plan",
+    label: "Plan",
+    order: 25,
+    icon: Package,
+    component: VmPlanTab,
   });
 
   // 3. Reinstall Action (order 50)

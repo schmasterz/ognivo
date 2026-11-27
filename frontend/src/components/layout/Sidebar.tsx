@@ -15,6 +15,8 @@ import {
   Settings,
   Activity,
   Camera,
+  Package,
+  ArrowLeftRight,
 } from "lucide-react";
 import { User } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
@@ -159,6 +161,22 @@ export function Sidebar({
                 >
                   {counts.vms}
                 </span>
+              </Link>
+
+              {/* VPS Plans Catalog */}
+              <Link
+                href="/plans"
+                onClick={() => handleNavClick("plans")}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition ${
+                  activeTab === "plans"
+                    ? "bg-blue-600 text-white shadow-md shadow-blue-600/25"
+                    : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-900"
+                }`}
+              >
+                <div className="flex items-center space-x-3">
+                  <Package className="w-4 h-4" />
+                  <span>{t("menuVpsPlans")}</span>
+                </div>
               </Link>
 
               {/* Snapshots */}
@@ -308,6 +326,46 @@ export function Sidebar({
                       {counts.nodes}
                     </span>
                   )}
+                </Link>
+
+                {/* Manage VPS Plans Tab */}
+                <Link
+                  href="/admin/plans"
+                  onClick={() => handleNavClick("adminPlans")}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition ${
+                    activeTab === "adminPlans"
+                      ? "bg-purple-600 text-white shadow-md shadow-purple-600/25"
+                      : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-900"
+                  }`}
+                >
+                  <div className="flex items-center space-x-3">
+                    <Package
+                      className={`w-4 h-4 ${
+                        activeTab === "adminPlans" ? "text-white" : "text-purple-400"
+                      }`}
+                    />
+                    <span>{t("menuManageVpsPlans")}</span>
+                  </div>
+                </Link>
+
+                {/* Admin Plan Changes Operations Tab */}
+                <Link
+                  href="/admin/plan-changes"
+                  onClick={() => handleNavClick("adminPlanChanges")}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition ${
+                    activeTab === "adminPlanChanges"
+                      ? "bg-purple-600 text-white shadow-md shadow-purple-600/25"
+                      : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-900"
+                  }`}
+                >
+                  <div className="flex items-center space-x-3">
+                    <ArrowLeftRight
+                      className={`w-4 h-4 ${
+                        activeTab === "adminPlanChanges" ? "text-white" : "text-purple-400"
+                      }`}
+                    />
+                    <span>{t("menuAdminPlanChanges")}</span>
+                  </div>
                 </Link>
 
                 {/* OS Images Catalog Action */}

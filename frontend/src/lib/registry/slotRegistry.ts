@@ -6,6 +6,10 @@ export type SlotId =
   | "settings.sections"
   | "dashboard.widgets"
   | "login.providers"
+  /** @experimental */
+  | "vps.plan.card"
+  /** @experimental */
+  | "vps.plan.change.preview"
   | (string & {}); // allow custom extension slot IDs while preserving autocomplete
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
