@@ -58,6 +58,8 @@ export function FilterToolbar({
           <option value="pending">{t("statusPending")}</option>
           <option value="suspended">{t("statusSuspended")}</option>
           <option value="inactive">{t("statusInactive")}</option>
+          <option value="deleting">{t("statusDeleting")}</option>
+          <option value="deletion_failed">{t("statusDeletionFailed")}</option>
         </>
       );
     }
@@ -73,11 +75,12 @@ export function FilterToolbar({
 
     return (
       <>
-        <option value="running">Running</option>
-        <option value="stopped">Stopped</option>
-        <option value="provisioning">Provisioning</option>
-        <option value="suspended">Suspended</option>
-        <option value="failed">Failed</option>
+        <option value="running">{t("vmStatusRunning")}</option>
+        <option value="stopped">{t("vmStatusStopped")}</option>
+        <option value="provisioning">{t("vmStatusProvisioning")}</option>
+        <option value="suspended">{t("statusSuspended")}</option>
+        <option value="deleting">{t("vmStatusDeleting")}</option>
+        <option value="failed">{t("vmStatusFailed")}</option>
       </>
     );
   };

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Enums\NetworkStatus;
 use App\Models\Host;
 use App\Models\IpAllocation;
 use App\Models\IpPool;
@@ -60,7 +61,7 @@ beforeEach(function (): void {
         'os_image' => 'ubuntu/24.04',
         'ipv4_address' => '192.168.10.3',
         'mac_address' => '02:54:00:00:00:03',
-        'network_status' => 'assigned',
+        'network_status' => NetworkStatus::Assigned,
     ]);
 
     $this->allocated = IpAllocation::create([

@@ -6,6 +6,9 @@ namespace App\Jobs;
 
 use App\Jobs\Enums\QueueName;
 use App\Models\WebhookDelivery;
+use App\States\Webhook\Failed;
+use App\States\Webhook\Retrying;
+use App\States\Webhook\Success;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -16,6 +19,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
+use Throwable;
 
 /**
  * Queued job responsible for delivering a signed webhook payload via HTTP POST.
@@ -49,6 +53,10 @@ final class DeliverWebhookJob implements ShouldQueue
      */
     public function handle(): void
     {
+        if ($this->delivery->status->equals(Success::class)) {
+            return;
+        }
+
         $endpoint = $this->delivery->endpoint()->first();
         if ($endpoint === null) {
             return;
@@ -72,13 +80,12 @@ final class DeliverWebhookJob implements ShouldQueue
                 ->withBody($body, 'application/json')
                 ->post($endpoint->url);
         } catch (ConnectionException $e) {
-            $this->delivery->update([
-                'status' => WebhookDelivery::STATUS_FAILED,
-                'response_status' => null,
-                'response_body' => $this->truncateResponseBody($e->getMessage()),
-                'attempt' => $attempt,
-                'duration_ms' => $this->elapsedMs($startNs),
-            ]);
+            $this->recordFailure(
+                responseStatus: null,
+                responseBody: $this->truncateResponseBody($e->getMessage()),
+                attempt: $attempt,
+                durationMs: $this->elapsedMs($startNs),
+            );
 
             $endpoint->increment('failure_count');
 
@@ -89,26 +96,25 @@ final class DeliverWebhookJob implements ShouldQueue
         $responseBody = $this->truncateResponseBody($response->body());
 
         if ($response->successful()) {
-            $this->delivery->update([
-                'status' => WebhookDelivery::STATUS_SUCCESS,
+            $this->delivery->fill([
                 'response_status' => $response->status(),
                 'response_body' => $responseBody,
                 'attempt' => $attempt,
                 'duration_ms' => $durationMs,
             ]);
+            $this->delivery->status->transitionTo(Success::class);
 
             $endpoint->update(['failure_count' => 0]);
 
             return;
         }
 
-        $this->delivery->update([
-            'status' => WebhookDelivery::STATUS_FAILED,
-            'response_status' => $response->status(),
-            'response_body' => $responseBody,
-            'attempt' => $attempt,
-            'duration_ms' => $durationMs,
-        ]);
+        $this->recordFailure(
+            responseStatus: $response->status(),
+            responseBody: $responseBody,
+            attempt: $attempt,
+            durationMs: $durationMs,
+        );
 
         $endpoint->increment('failure_count');
 
@@ -119,6 +125,50 @@ final class DeliverWebhookJob implements ShouldQueue
             $this->delivery->id,
             $response->status(),
         ));
+    }
+
+    /**
+     * Transition delivery to Failed once all queue retries are exhausted.
+     */
+    public function failed(?Throwable $exception): void
+    {
+        $freshDelivery = $this->delivery->fresh();
+        if ($freshDelivery === null) {
+            return;
+        }
+
+        if ($freshDelivery->status->canTransitionTo(Failed::class)) {
+            $freshDelivery->status->transitionTo(Failed::class);
+        }
+    }
+
+    /**
+     * Persist failure diagnostics and transition to Retrying (if retries remain) or Failed.
+     */
+    private function recordFailure(?int $responseStatus, string $responseBody, int $attempt, int $durationMs): void
+    {
+        $this->delivery->fill([
+            'response_status' => $responseStatus,
+            'response_body' => $responseBody,
+            'attempt' => $attempt,
+            'duration_ms' => $durationMs,
+        ]);
+
+        if ($attempt >= $this->tries) {
+            if (! $this->delivery->status->equals(Failed::class)) {
+                $this->delivery->status->transitionTo(Failed::class);
+            } else {
+                $this->delivery->save();
+            }
+
+            return;
+        }
+
+        if (! $this->delivery->status->equals(Retrying::class)) {
+            $this->delivery->status->transitionTo(Retrying::class);
+        } else {
+            $this->delivery->save();
+        }
     }
 
     /**

@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Audit\AuditAction;
+use App\Enums\IpAllocationStatus;
+use App\Enums\NetworkStatus;
 use App\Jobs\DeleteUserWorkloadsJob;
 use App\Jobs\SuspendUserWorkloadsJob;
+use App\Models\AuditLog;
 use App\Models\Host;
 use App\Models\IpAllocation;
 use App\Models\IpPool;
@@ -13,8 +17,13 @@ use App\Models\User;
 use App\Models\VirtualMachine;
 use App\Services\Hypervisor\Drivers\FakeHypervisorDriver;
 use App\Services\Hypervisor\HypervisorManager;
+use App\Services\IpManagementService;
 use App\Services\UserService;
 use App\Services\VmLifecycleService;
+use App\States\User\Deleting as UserDeleting;
+use App\States\User\DeletionFailed as UserDeletionFailed;
+use App\States\User\Suspended as UserSuspended;
+use App\States\Vm\Deleted;
 use App\States\Vm\Running;
 use App\States\Vm\Stopped;
 use App\States\Vm\Suspended;
@@ -136,7 +145,7 @@ final class SafeUserDeletionAndSuspensionTest extends TestCase
 
         // 4. Assert user row STILL exists and is in "deletion_failed" status
         $this->customer->refresh();
-        $this->assertSame('deletion_failed', $this->customer->status);
+        $this->assertTrue($this->customer->status->equals(UserDeletionFailed::class));
         $this->assertDatabaseHas('users', [
             'id' => $this->customer->id,
             'status' => 'deletion_failed',
@@ -150,7 +159,7 @@ final class SafeUserDeletionAndSuspensionTest extends TestCase
         // 6. Assert IP address was not freed prematurely
         $ip->refresh();
         $this->assertSame($this->customer->id, $ip->user_id);
-        $this->assertSame('allocated', $ip->status);
+        $this->assertSame(IpAllocationStatus::Allocated, $ip->status);
 
         // 7. Admin user list and show endpoints reflect the visible "deletion_failed" state
         $listRes = $this->actingAs($this->admin)->getJson('/api/v1/admin/users?status=deletion_failed');
@@ -190,7 +199,7 @@ final class SafeUserDeletionAndSuspensionTest extends TestCase
         $response->assertStatus(202);
 
         $this->customer->refresh();
-        $this->assertSame('deletion_failed', $this->customer->status);
+        $this->assertTrue($this->customer->status->equals(UserDeletionFailed::class));
         $this->assertDatabaseHas('users', ['id' => $this->customer->id, 'status' => 'deletion_failed']);
         $this->assertDatabaseHas('virtual_machines', ['id' => $vm->id]);
     }
@@ -261,7 +270,7 @@ final class SafeUserDeletionAndSuspensionTest extends TestCase
 
         // User is marked deleting (inactive) and tokens are revoked
         $this->customer->refresh();
-        $this->assertSame('deleting', $this->customer->status);
+        $this->assertTrue($this->customer->status->equals(UserDeleting::class));
         $this->assertCount(0, $this->customer->tokens);
 
         Queue::assertPushed(DeleteUserWorkloadsJob::class, function ($job) {
@@ -341,10 +350,158 @@ final class SafeUserDeletionAndSuspensionTest extends TestCase
         $userService->suspendUserWorkloads($this->customer);
 
         $this->customer->refresh();
-        $this->assertSame('suspended', $this->customer->status);
+        $this->assertTrue($this->customer->status->equals(UserSuspended::class));
 
         Queue::assertPushed(SuspendUserWorkloadsJob::class, function ($job) {
             return $job->user->id === $this->customer->id;
         });
+    }
+
+    public function test_admin_cannot_transition_deleting_user_back_to_active_or_other_assignable_states(): void
+    {
+        $this->customer->status->transitionTo(UserDeleting::class);
+
+        foreach (['active', 'suspended', 'inactive', 'pending'] as $targetStatus) {
+            $statusRes = $this->actingAs($this->admin)
+                ->postJson(sprintf('/api/v1/admin/users/%d/status', $this->customer->id), [
+                    'status' => $targetStatus,
+                ]);
+            $statusRes->assertStatus(422);
+
+            $updateRes = $this->actingAs($this->admin)
+                ->putJson(sprintf('/api/v1/admin/users/%d', $this->customer->id), [
+                    'name' => $this->customer->name,
+                    'email' => $this->customer->email,
+                    'role' => 'customer',
+                    'status' => $targetStatus,
+                ]);
+            $updateRes->assertStatus(422);
+        }
+
+        $this->customer->refresh();
+        $this->assertTrue($this->customer->status->equals(UserDeleting::class));
+    }
+
+    public function test_deletion_failed_user_can_retry_deletion_or_move_to_inactive_suspended_but_not_active(): void
+    {
+        Queue::fake([DeleteUserWorkloadsJob::class]);
+
+        $this->customer->status->transitionTo(UserDeleting::class);
+        $this->customer->status->transitionTo(UserDeletionFailed::class);
+
+        $activeRes = $this->actingAs($this->admin)
+            ->postJson(sprintf('/api/v1/admin/users/%d/status', $this->customer->id), [
+                'status' => 'active',
+            ]);
+        $activeRes->assertStatus(422);
+
+        $pendingRes = $this->actingAs($this->admin)
+            ->postJson(sprintf('/api/v1/admin/users/%d/status', $this->customer->id), [
+                'status' => 'pending',
+            ]);
+        $pendingRes->assertStatus(422);
+
+        // Retrying deletion transitions DeletionFailed -> Deleting and queues DeleteUserWorkloadsJob
+        $retryRes = $this->actingAs($this->admin)
+            ->deleteJson(sprintf('/api/v1/admin/users/%d', $this->customer->id));
+        $retryRes->assertStatus(202);
+
+        $this->customer->refresh();
+        $this->assertTrue($this->customer->status->equals(UserDeleting::class));
+        Queue::assertPushed(DeleteUserWorkloadsJob::class, 1);
+
+        // Calling delete() again while Deleting is idempotent and does not dispatch a duplicate job
+        $idempotentRes = $this->actingAs($this->admin)
+            ->deleteJson(sprintf('/api/v1/admin/users/%d', $this->customer->id));
+        $idempotentRes->assertStatus(202);
+        Queue::assertPushed(DeleteUserWorkloadsJob::class, 1);
+    }
+
+    public function test_updating_user_to_suspended_via_admin_update_dispatches_suspend_workloads_job(): void
+    {
+        Queue::fake([SuspendUserWorkloadsJob::class]);
+
+        $res = $this->actingAs($this->admin)
+            ->putJson(sprintf('/api/v1/admin/users/%d', $this->customer->id), [
+                'name' => $this->customer->name,
+                'email' => $this->customer->email,
+                'role' => 'customer',
+                'status' => 'suspended',
+            ]);
+
+        $res->assertOk();
+        $this->customer->refresh();
+        $this->assertTrue($this->customer->status->equals(UserSuspended::class));
+
+        Queue::assertPushed(SuspendUserWorkloadsJob::class, function ($job): bool {
+            return $job->user->id === $this->customer->id;
+        });
+    }
+
+    public function test_delete_user_workloads_job_is_idempotent_when_already_deletion_failed(): void
+    {
+        $this->customer->status->transitionTo(UserDeleting::class);
+        $this->customer->status->transitionTo(UserDeletionFailed::class);
+
+        $job = new DeleteUserWorkloadsJob($this->customer);
+        $job->failed(new \RuntimeException('Simulated retry exhaustion'));
+
+        $this->customer->refresh();
+        $this->assertTrue($this->customer->status->equals(UserDeletionFailed::class));
+    }
+
+    public function test_delete_user_workloads_job_delegates_ip_release_to_ip_management_service(): void
+    {
+        $pool = IpPool::create([
+            'name' => 'Delegate Release Pool',
+            'subnet' => '10.201.0.0/24',
+            'gateway' => '10.201.0.1',
+            'host_id' => $this->host->id,
+        ]);
+
+        // Pre-deleted VM that still has an allocated IP and Assigned network_status
+        $vm = VirtualMachine::create([
+            'user_id' => $this->customer->id,
+            'host_id' => $this->host->id,
+            'name' => 'pre-deleted-vm-with-ip',
+            'incus_project' => 'proj-customer-safety',
+            'instance_type' => 'virtual-machine',
+            'status' => Deleted::class,
+            'network_status' => NetworkStatus::Assigned,
+            'cpu_cores' => 1,
+            'ram_mb' => 1024,
+            'disk_gb' => 10,
+            'os_image' => 'ubuntu:24.04',
+            'ipv4_address' => '10.201.0.50',
+        ]);
+
+        $ip = IpAllocation::create([
+            'pool_id' => $pool->id,
+            'user_id' => $this->customer->id,
+            'virtual_machine_id' => $vm->id,
+            'address' => inet_pton('10.201.0.50'),
+            'ip_string' => '10.201.0.50',
+            'status' => IpAllocationStatus::Allocated,
+        ]);
+
+        $observedVmNetworkStatus = null;
+        $observedIpv4 = 'not-cleared';
+        VirtualMachine::saved(function (VirtualMachine $savedVm) use ($vm, &$observedVmNetworkStatus, &$observedIpv4): void {
+            if ($savedVm->id === $vm->id) {
+                $observedVmNetworkStatus = $savedVm->network_status;
+                $observedIpv4 = $savedVm->ipv4_address;
+            }
+        });
+
+        $job = new DeleteUserWorkloadsJob($this->customer);
+        $job->handle(app(VmLifecycleService::class), app(HypervisorManager::class), app(IpManagementService::class));
+
+        $this->assertSame(NetworkStatus::Unassigned, $observedVmNetworkStatus);
+        $this->assertNull($observedIpv4);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => AuditAction::IpReleased->value,
+            'subject_id' => (string) $ip->id,
+        ]);
+        $this->assertSame(1, AuditLog::where('action', AuditAction::IpReleased->value)->where('subject_id', (string) $ip->id)->count());
     }
 }

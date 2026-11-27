@@ -12,6 +12,7 @@ use App\States\Vm\Failed;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 use Throwable;
@@ -79,10 +80,7 @@ final class ExecuteVmActionJob implements ShouldQueue
             ]);
 
             if ($this->action === 'delete') {
-                if (! $this->vm->status->equals(Failed::class) && ! $this->vm->status->equals(Deleted::class)) {
-                    $this->vm->status->transitionTo(Failed::class);
-                    $this->vm->save();
-                }
+                $this->markDeleteFailed();
             }
 
             throw $e;
@@ -99,10 +97,22 @@ final class ExecuteVmActionJob implements ShouldQueue
         ]);
 
         if ($this->action === 'delete') {
+            $this->markDeleteFailed();
+        }
+    }
+
+    /**
+     * Transition the VM to Failed under lock when deletion fails and it is not already Failed or Deleted.
+     */
+    private function markDeleteFailed(): void
+    {
+        Cache::lock("vm:{$this->vm->id}", 15)->block(5, function (): void {
+            $this->vm->refresh();
+
             if (! $this->vm->status->equals(Failed::class) && ! $this->vm->status->equals(Deleted::class)) {
                 $this->vm->status->transitionTo(Failed::class);
                 $this->vm->save();
             }
-        }
+        });
     }
 }

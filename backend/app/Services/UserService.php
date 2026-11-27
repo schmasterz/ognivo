@@ -18,11 +18,16 @@ use App\Models\SystemSetting;
 use App\Models\User;
 use App\Models\UserQuota;
 use App\Services\Hypervisor\HypervisorManager;
+use App\States\User\Active;
+use App\States\User\Deleting;
+use App\States\User\Suspended;
+use App\States\User\UserState;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role;
 
 /**
@@ -72,7 +77,7 @@ final class UserService
 
         if (isset($filters['status']) && $filters['status'] !== '') {
             $status = $filters['status'];
-            if (in_array($status, ['active', 'suspended', 'inactive', 'pending', 'deleting', 'deletion_failed'], true)) {
+            if (in_array($status, UserState::values(), true)) {
                 $query->where('status', $status);
             } else {
                 $query->whereHas('virtualMachines', fn (Builder $vq): Builder => $vq->where('status', $status));
@@ -203,10 +208,18 @@ final class UserService
             abort(422, is_string($msg) ? $msg : 'You cannot change your own role.');
         }
 
-        // Guard 2: An admin cannot remove the admin role from the last remaining active admin
-        if ($user->hasRole('admin') && $dto->role !== 'admin') {
-            $activeAdminsCount = User::role('admin')->where('status', 'active')->count();
-            if ($user->status === 'active' && $activeAdminsCount <= 1) {
+        // Guard 2: An admin cannot suspend or deactivate their own account
+        if ($actingAdmin !== null && $actingAdmin->id === $user->id && $dto->status !== null && $dto->status !== Active::$name) {
+            $msg = __('messages.admin.cannot_suspend_self');
+            abort(422, is_string($msg) ? $msg : 'Cannot suspend your own account.');
+        }
+
+        // Guard 3: An admin cannot demote or deactivate the last remaining active admin
+        $removingAdminRole = $user->hasRole('admin') && $dto->role !== 'admin';
+        $deactivatingAdmin = $user->hasRole('admin') && $dto->status !== null && $dto->status !== Active::$name;
+        if (($removingAdminRole || $deactivatingAdmin) && $user->status->equals(Active::class)) {
+            $activeAdminsCount = User::role('admin')->where('status', Active::$name)->count();
+            if ($activeAdminsCount <= 1) {
                 $msg = __('messages.admin.cannot_demote_last_admin');
                 abort(422, is_string($msg) ? $msg : 'Cannot remove the administrator role from the last remaining active administrator.');
             }
@@ -215,13 +228,14 @@ final class UserService
         $firstRole = $user->roles->first();
         /** @var string|null $oldRole */
         $oldRole = $firstRole !== null && isset($firstRole->name) && is_string($firstRole->name) ? $firstRole->name : null;
-        $oldStatus = $user->status;
+        $oldStatus = $user->status->getValue();
+        $statusChanged = $dto->status !== null && $dto->status !== $oldStatus;
+        $targetStateClass = $statusChanged ? $this->resolveAllowedTransitionTarget($user, $dto->status) : null;
 
-        return DB::transaction(function () use ($user, $dto, $oldRole, $oldStatus): User {
+        $updatedUser = DB::transaction(function () use ($user, $dto, $oldRole, $oldStatus, $targetStateClass): User {
             $roleChanged = ! $user->hasRole($dto->role);
             $passwordChanged = $dto->password !== null && $dto->password !== '';
-            $statusChanged = $dto->status !== null && $dto->status !== $oldStatus;
-            $statusChangedToNonActive = $dto->status !== null && $dto->status !== 'active';
+            $statusChangedToNonActive = $targetStateClass !== null && $targetStateClass !== Active::class;
 
             if ($roleChanged) {
                 $user->originalRole = $oldRole;
@@ -231,18 +245,19 @@ final class UserService
             $user->name = $dto->name;
             $user->email = $dto->email;
 
-            if ($dto->status !== null) {
-                $user->status = $dto->status;
-            }
-
             if ($dto->hasQuotaGroupId) {
                 $user->quota_group_id = $dto->quotaGroupId;
             }
 
-            if ($dto->password !== null && $dto->password !== '') {
+            if ($passwordChanged) {
                 $this->auth()->applyPassword($user, $dto->password);
             }
-            $user->save();
+
+            if ($targetStateClass !== null) {
+                $user->status->transitionTo($targetStateClass);
+            } else {
+                $user->save();
+            }
 
             if (! $roleChanged) {
                 $user->syncRoles([$dto->role]);
@@ -262,32 +277,14 @@ final class UserService
                 ));
             }
 
-            if ($statusChanged) {
-                $this->logger()->record(new AuditEntry(
-                    action: AuditAction::UserStatusChanged,
-                    outcome: AuditOutcome::Success,
-                    subject: $user,
-                    tenantUserId: $user->id,
-                    visibility: 'tenant',
-                    context: [
-                        'old_status' => $oldStatus,
-                        'new_status' => $dto->status,
-                    ],
-                ));
+            if ($targetStateClass !== null) {
+                $this->recordStatusChanged($user, $oldStatus, $targetStateClass::getMorphClass());
             }
 
             // Revoke all tokens when status changes to anything other than active, password changed, or roles change
             if ($statusChangedToNonActive || $passwordChanged || $roleChanged) {
-                $user->tokens()->delete();
                 $reason = $statusChangedToNonActive ? 'status' : ($passwordChanged ? 'password' : 'role');
-                $this->logger()->record(new AuditEntry(
-                    action: AuditAction::AuthTokensRevoked,
-                    outcome: AuditOutcome::Success,
-                    subject: $user,
-                    tenantUserId: $user->id,
-                    visibility: 'tenant',
-                    context: ['reason' => $reason],
-                ));
+                $this->revokeUserTokens($user, $reason);
             }
 
             /** @var QuotaGroup|null $targetGroup */
@@ -327,11 +324,11 @@ final class UserService
             return $user->fresh(['roles', 'quota', 'quotaGroup']) ?? $user;
         });
 
-        if ($user->status === 'suspended') {
-            $this->suspendUserWorkloads($user);
+        if ($statusChanged && $updatedUser->status->equals(Suspended::class)) {
+            $this->dispatchSuspendWorkloads($updatedUser);
         }
 
-        return $user;
+        return $updatedUser;
     }
 
     /**
@@ -339,56 +336,33 @@ final class UserService
      */
     public function updateStatus(User $admin, User $user, string $status): User
     {
-        if ($admin->id === $user->id && $status !== 'active') {
+        if ($admin->id === $user->id && $status !== Active::$name) {
             $msg = __('messages.admin.cannot_suspend_self');
             abort(422, is_string($msg) ? $msg : 'Cannot suspend your own account.');
         }
 
-        if ($user->hasRole('admin') && $user->status === 'active' && $status !== 'active') {
-            $activeAdminsCount = User::role('admin')->where('status', 'active')->count();
+        if ($user->hasRole('admin') && $user->status->equals(Active::class) && $status !== Active::$name) {
+            $activeAdminsCount = User::role('admin')->where('status', Active::$name)->count();
             if ($activeAdminsCount <= 1) {
                 $msg = __('messages.admin.cannot_demote_last_admin');
                 abort(422, is_string($msg) ? $msg : 'Cannot deactivate the last remaining active administrator.');
             }
         }
 
-        $oldStatus = $user->status;
+        if ($user->status->getValue() === $status) {
+            return $user->fresh(['roles', 'quota', 'quotaGroup']) ?? $user;
+        }
 
-        $updatedUser = DB::transaction(function () use ($user, $status, $oldStatus): User {
-            $user->status = $status;
-            $user->save();
+        $targetStateClass = $this->resolveAllowedTransitionTarget($user, $status);
 
-            if ($status !== $oldStatus) {
-                $this->logger()->record(new AuditEntry(
-                    action: AuditAction::UserStatusChanged,
-                    outcome: AuditOutcome::Success,
-                    subject: $user,
-                    tenantUserId: $user->id,
-                    visibility: 'tenant',
-                    context: [
-                        'old_status' => $oldStatus,
-                        'new_status' => $status,
-                    ],
-                ));
-            }
-
-            if ($status !== 'active') {
-                $user->tokens()->delete();
-                $this->logger()->record(new AuditEntry(
-                    action: AuditAction::AuthTokensRevoked,
-                    outcome: AuditOutcome::Success,
-                    subject: $user,
-                    tenantUserId: $user->id,
-                    visibility: 'tenant',
-                    context: ['reason' => 'status'],
-                ));
-            }
+        $updatedUser = DB::transaction(function () use ($user, $targetStateClass): User {
+            $this->applyStatusTransition($user, $targetStateClass);
 
             return $user->fresh(['roles', 'quota', 'quotaGroup']) ?? $user;
         });
 
-        if ($status === 'suspended') {
-            $this->suspendUserWorkloads($updatedUser);
+        if ($updatedUser->status->equals(Suspended::class)) {
+            $this->dispatchSuspendWorkloads($updatedUser);
         }
 
         return $updatedUser;
@@ -399,41 +373,15 @@ final class UserService
      */
     public function suspendUserWorkloads(User $user): void
     {
-        if ($user->status !== 'suspended') {
-            DB::transaction(function () use ($user): void {
-                $oldStatus = $user->status;
-                $user->status = 'suspended';
-                $user->save();
+        if (! $user->status->equals(Suspended::class)) {
+            $targetStateClass = $this->resolveAllowedTransitionTarget($user, Suspended::$name);
 
-                $this->logger()->record(new AuditEntry(
-                    action: AuditAction::UserStatusChanged,
-                    outcome: AuditOutcome::Success,
-                    subject: $user,
-                    tenantUserId: $user->id,
-                    visibility: 'tenant',
-                    context: [
-                        'old_status' => $oldStatus,
-                        'new_status' => 'suspended',
-                    ],
-                ));
-
-                $user->tokens()->delete();
-                $this->logger()->record(new AuditEntry(
-                    action: AuditAction::AuthTokensRevoked,
-                    outcome: AuditOutcome::Success,
-                    subject: $user,
-                    tenantUserId: $user->id,
-                    visibility: 'tenant',
-                    context: ['reason' => 'status'],
-                ));
+            DB::transaction(function () use ($user, $targetStateClass): void {
+                $this->applyStatusTransition($user, $targetStateClass);
             });
         }
 
-        try {
-            SuspendUserWorkloadsJob::dispatch($user);
-        } catch (\Throwable $e) {
-            Log::error(sprintf('Error dispatching SuspendUserWorkloadsJob for user #%d: %s', $user->id, $e->getMessage()));
-        }
+        $this->dispatchSuspendWorkloads($user);
     }
 
     /**
@@ -465,27 +413,22 @@ final class UserService
             abort(422, is_string($msg) ? $msg : 'Cannot delete self.');
         }
 
-        if ($user->hasRole('admin') && $user->status === 'active') {
-            $activeAdminsCount = User::role('admin')->where('status', 'active')->count();
+        if ($user->hasRole('admin') && $user->status->equals(Active::class)) {
+            $activeAdminsCount = User::role('admin')->where('status', Active::$name)->count();
             if ($activeAdminsCount <= 1) {
                 $msg = __('messages.admin.cannot_demote_last_admin');
                 abort(422, is_string($msg) ? $msg : 'Cannot delete the last remaining active administrator.');
             }
         }
 
-        DB::transaction(function () use ($user): void {
-            $user->status = 'deleting';
-            $user->save();
-            $user->tokens()->delete();
+        if ($user->status->equals(Deleting::class)) {
+            return;
+        }
 
-            $this->logger()->record(new AuditEntry(
-                action: AuditAction::AuthTokensRevoked,
-                outcome: AuditOutcome::Success,
-                subject: $user,
-                tenantUserId: $user->id,
-                visibility: 'tenant',
-                context: ['reason' => 'status'],
-            ));
+        $targetStateClass = $this->resolveAllowedTransitionTarget($user, Deleting::$name);
+
+        DB::transaction(function () use ($user, $targetStateClass): void {
+            $this->applyStatusTransition($user, $targetStateClass);
 
             $this->logger()->record(new AuditEntry(
                 action: AuditAction::UserDeleted,
@@ -504,6 +447,100 @@ final class UserService
             DeleteUserWorkloadsJob::dispatch($user);
         } catch (\Throwable $e) {
             Log::error(sprintf('Error dispatching DeleteUserWorkloadsJob for user #%d: %s', $user->id, $e->getMessage()));
+        }
+    }
+
+    /**
+     * Resolve a UserState class from its morph name and ensure the transition is permitted.
+     *
+     * @return class-string<UserState>
+     *
+     * @throws ValidationException
+     */
+    private function resolveAllowedTransitionTarget(User $user, string $targetStatus): string
+    {
+        $targetStateClass = UserState::resolveStateClass($targetStatus);
+
+        if ($targetStateClass === null || ! is_subclass_of($targetStateClass, UserState::class)) {
+            throw ValidationException::withMessages([
+                'status' => [sprintf('Invalid user status "%s".', $targetStatus)],
+            ]);
+        }
+
+        if (! $user->status->canTransitionTo($targetStateClass)) {
+            throw ValidationException::withMessages([
+                'status' => [sprintf(
+                    'Cannot transition user status from "%s" to "%s".',
+                    $user->status->getValue(),
+                    $targetStateClass::getMorphClass()
+                )],
+            ]);
+        }
+
+        return $targetStateClass;
+    }
+
+    /**
+     * Transition user status, record UserStatusChanged audit, and revoke tokens for non-active states.
+     *
+     * @param  class-string<UserState>  $targetStateClass
+     */
+    private function applyStatusTransition(User $user, string $targetStateClass): void
+    {
+        $oldStatus = $user->status->getValue();
+        $user->status->transitionTo($targetStateClass);
+        $newStatus = $user->status->getValue();
+
+        $this->recordStatusChanged($user, $oldStatus, $newStatus);
+
+        if (! $user->status->equals(Active::class)) {
+            $this->revokeUserTokens($user, 'status');
+        }
+    }
+
+    /**
+     * Record a UserStatusChanged audit entry.
+     */
+    private function recordStatusChanged(User $user, string $oldStatus, string $newStatus): void
+    {
+        $this->logger()->record(new AuditEntry(
+            action: AuditAction::UserStatusChanged,
+            outcome: AuditOutcome::Success,
+            subject: $user,
+            tenantUserId: $user->id,
+            visibility: 'tenant',
+            context: [
+                'old_status' => $oldStatus,
+                'new_status' => $newStatus,
+            ],
+        ));
+    }
+
+    /**
+     * Revoke all Sanctum access tokens for a user and record an AuthTokensRevoked audit entry.
+     */
+    private function revokeUserTokens(User $user, string $reason): void
+    {
+        $user->tokens()->delete();
+        $this->logger()->record(new AuditEntry(
+            action: AuditAction::AuthTokensRevoked,
+            outcome: AuditOutcome::Success,
+            subject: $user,
+            tenantUserId: $user->id,
+            visibility: 'tenant',
+            context: ['reason' => $reason],
+        ));
+    }
+
+    /**
+     * Dispatch the asynchronous workload suspension job for a suspended user.
+     */
+    private function dispatchSuspendWorkloads(User $user): void
+    {
+        try {
+            SuspendUserWorkloadsJob::dispatch($user);
+        } catch (\Throwable $e) {
+            Log::error(sprintf('Error dispatching SuspendUserWorkloadsJob for user #%d: %s', $user->id, $e->getMessage()));
         }
     }
 

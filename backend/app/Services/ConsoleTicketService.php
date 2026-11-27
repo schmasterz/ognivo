@@ -17,6 +17,7 @@ use App\Models\VirtualMachine;
 use App\Services\Hypervisor\HypervisorManager;
 use App\Services\Terminal\Drivers\ConsoleDriver;
 use App\Services\Terminal\Drivers\ExecDriver;
+use App\States\Host\Unreachable;
 use App\States\Vm\Running;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Redis;
@@ -127,7 +128,7 @@ final class ConsoleTicketService
             throw new InvalidArgumentException('Containers do not support graphical VGA console.');
         }
 
-        if ($vm->host !== null && $vm->host->status === 'unreachable') {
+        if ($vm->host !== null && $vm->host->status->equals(Unreachable::class)) {
             $exception = ValidationException::withMessages([
                 'host' => ['The compute node hosting this virtual machine is currently unreachable.'],
             ]);

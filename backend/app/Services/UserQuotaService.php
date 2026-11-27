@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Enums\IpAllocationStatus;
 use App\Models\IpAllocation;
 use App\Models\QuotaGroup;
 use App\Models\SystemSetting;
@@ -235,7 +236,7 @@ final class UserQuotaService
         $ramUsed = (int) $usage->ram;
         $diskUsed = (int) $usage->disk;
         $ipsUsed = (int) IpAllocation::where('user_id', $targetUser->id)
-            ->where('status', 'allocated')
+            ->where('status', IpAllocationStatus::Allocated->value)
             ->count();
 
         $hasVmFilters = isset($filters['host_id'])

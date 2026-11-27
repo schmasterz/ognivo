@@ -7,6 +7,8 @@ namespace App\Console\Commands;
 use App\Jobs\CollectHostMetricsJob;
 use App\Models\Host;
 use App\Services\Metrics\VmMetricsConfigService;
+use App\States\Host\FingerprintMismatch;
+use App\States\Host\NotTrusted;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
@@ -54,7 +56,7 @@ final class MetricsCollectCommand extends Command
         $runSync = (bool) $this->option('sync') || app()->runningUnitTests() || config('queue.default') === 'sync';
 
         foreach ($hosts as $host) {
-            if (in_array($host->status, ['fingerprint_mismatch', 'not_trusted'], true)) {
+            if ($host->status->equals(FingerprintMismatch::class, NotTrusted::class)) {
                 continue;
             }
 

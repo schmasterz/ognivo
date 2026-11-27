@@ -5,10 +5,14 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Contracts\BackupTargetInterface;
-use App\Events\SnapshotStatusUpdated;
 use App\Jobs\Enums\QueueName;
 use App\Models\VirtualMachine;
 use App\Models\VmSnapshot;
+use App\States\Snapshot\Creating;
+use App\States\Snapshot\Deleting;
+use App\States\Snapshot\Failed;
+use App\States\Snapshot\Ready;
+use App\States\Snapshot\Restoring;
 use App\States\Vm\Deleted;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -43,7 +47,7 @@ final class RestoreSnapshotJob implements ShouldQueue
         public readonly VmSnapshot $snapshot,
     ) {
         $this->onQueue(QueueName::Heavy);
-        $this->initiatedAsRestoring = ($snapshot->status === VmSnapshot::STATUS_RESTORING);
+        $this->initiatedAsRestoring = $snapshot->status->equals(Restoring::class);
     }
 
     /**
@@ -87,11 +91,11 @@ final class RestoreSnapshotJob implements ShouldQueue
             $this->snapshot->refresh();
 
             // Idempotency: if job was dispatched for a restoring snapshot that has already returned to ready, skip
-            if ($this->initiatedAsRestoring && $this->snapshot->status === VmSnapshot::STATUS_READY) {
+            if ($this->initiatedAsRestoring && $this->snapshot->status->equals(Ready::class)) {
                 return;
             }
 
-            if (in_array($this->snapshot->status, [VmSnapshot::STATUS_CREATING, VmSnapshot::STATUS_DELETING], true)) {
+            if ($this->snapshot->status->equals(Creating::class, Deleting::class, Failed::class)) {
                 return;
             }
 
@@ -116,11 +120,8 @@ final class RestoreSnapshotJob implements ShouldQueue
             }
 
             $this->completed = true;
-            $this->snapshot->status = VmSnapshot::STATUS_READY;
             $this->snapshot->error = null;
-            $this->snapshot->save();
-
-            event(new SnapshotStatusUpdated($this->snapshot, VmSnapshot::STATUS_READY));
+            $this->snapshot->status->transitionTo(Ready::class);
 
             Log::info(sprintf('Snapshot "%s" restored successfully on VM #%d (%s)', $this->snapshot->name, $vm->id, $vm->name));
         } catch (Throwable $e) {
@@ -160,14 +161,7 @@ final class RestoreSnapshotJob implements ShouldQueue
         }
 
         $this->snapshot->refresh();
-        $this->snapshot->status = VmSnapshot::STATUS_FAILED;
         $this->snapshot->error = $reason;
-        $this->snapshot->save();
-
-        try {
-            event(new SnapshotStatusUpdated($this->snapshot, VmSnapshot::STATUS_FAILED));
-        } catch (Throwable) {
-            // Ignore broadcast error during failure handling
-        }
+        $this->snapshot->status->transitionTo(Failed::class);
     }
 }

@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\States\Webhook\WebhookDeliveryState;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 use Override;
+use Spatie\ModelStates\HasStates;
 
 /**
  * Model representing a single webhook delivery attempt to an endpoint.
@@ -20,14 +22,18 @@ use Override;
  * @property string|null $response_body
  * @property int $attempt
  * @property int|null $duration_ms
- * @property string $status
+ * @property WebhookDeliveryState $status
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read WebhookEndpoint $endpoint
  */
 final class WebhookDelivery extends Model
 {
+    use HasStates;
+
     public const STATUS_PENDING = 'pending';
+
+    public const STATUS_RETRYING = 'retrying';
 
     public const STATUS_SUCCESS = 'success';
 
@@ -40,7 +46,6 @@ final class WebhookDelivery extends Model
      */
     protected $attributes = [
         'attempt' => 1,
-        'status' => self::STATUS_PENDING,
     ];
 
     /**
@@ -73,6 +78,7 @@ final class WebhookDelivery extends Model
             'response_status' => 'integer',
             'attempt' => 'integer',
             'duration_ms' => 'integer',
+            'status' => WebhookDeliveryState::class,
         ];
     }
 

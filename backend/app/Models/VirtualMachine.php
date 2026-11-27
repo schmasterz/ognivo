@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\IpAllocationStatus;
+use App\Enums\NetworkStatus;
 use App\Events\AdminVirtualMachineStatusUpdated;
 use App\Events\VirtualMachineStatusUpdated;
 use App\Jobs\PurgeVmMetricsJob;
@@ -37,7 +39,7 @@ use Spatie\ModelStates\HasStates;
  * @property string|null $ipv4_address
  * @property string|null $ipv6_address
  * @property-read string|null $mac_address
- * @property string|null $network_status
+ * @property NetworkStatus|null $network_status
  * @property Carbon|null $network_wait_started_at
  * @property array<string, mixed>|null $cloud_init
  * @property array<string, mixed>|null $metadata
@@ -92,6 +94,7 @@ final class VirtualMachine extends Model
             'cloud_init' => 'array',
             'metadata' => 'array',
             'status' => VmState::class,
+            'network_status' => NetworkStatus::class,
             'network_wait_started_at' => 'datetime',
         ];
     }
@@ -143,7 +146,7 @@ final class VirtualMachine extends Model
      */
     public function primaryAllocation(): HasOne
     {
-        return $this->hasOne(IpAllocation::class, 'virtual_machine_id')->where('status', 'allocated');
+        return $this->hasOne(IpAllocation::class, 'virtual_machine_id')->where('status', IpAllocationStatus::Allocated->value);
     }
 
     /**

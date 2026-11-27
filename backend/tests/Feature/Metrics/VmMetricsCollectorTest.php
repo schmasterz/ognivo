@@ -238,7 +238,7 @@ test('Section 10: certificate pin mismatch marks host and skips subsequent polls
 
     $freshHost = $host->fresh();
     expect($freshHost)->not->toBeNull()
-        ->and($freshHost->status)->toBe('fingerprint_mismatch')
+        ->and($freshHost->status->getValue())->toBe('fingerprint_mismatch')
         ->and($freshHost->metrics_last_error)->not->toBeNull();
 
     $calls = 0;

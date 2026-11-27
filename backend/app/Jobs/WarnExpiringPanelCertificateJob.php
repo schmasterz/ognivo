@@ -6,6 +6,7 @@ namespace App\Jobs;
 
 use App\Jobs\Enums\QueueName;
 use App\Models\PanelCertificate;
+use App\States\PanelCertificate\Active;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -31,7 +32,7 @@ final class WarnExpiringPanelCertificateJob implements ShouldQueue
     public function handle(): void
     {
         /** @var PanelCertificate|null $activeCert */
-        $activeCert = PanelCertificate::where('status', PanelCertificate::STATUS_ACTIVE)->first();
+        $activeCert = PanelCertificate::where('status', Active::$name)->first();
         if ($activeCert === null) {
             Log::warning('[Incus Certificate Alert] No active panel mTLS certificate configured.');
 

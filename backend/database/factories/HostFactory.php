@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Database\Factories;
 
 use App\Models\Host;
+use App\States\Host\Ok;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -24,7 +25,7 @@ class HostFactory extends Factory
             'region' => fake()->city(),
             'endpoint_url' => 'https://'.fake()->ipv4().':8443',
             'driver' => 'fake',
-            'status' => 'ok',
+            'status' => Ok::class,
             'needs_retrust' => false,
             'is_active' => true,
             'total_cpu_cores' => 32,

@@ -6,6 +6,11 @@ use App\Events\Instance\InstanceCreated;
 use App\Jobs\DeliverWebhookJob;
 use App\Models\WebhookDelivery;
 use App\Models\WebhookEndpoint;
+use App\States\Webhook\Failed;
+use App\States\Webhook\Pending;
+use App\States\Webhook\Retrying;
+use App\States\Webhook\Success;
+use Illuminate\Contracts\Queue\Job as QueueJobContract;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Http\Client\RequestException;
@@ -70,7 +75,7 @@ it('dispatches DeliverWebhookJob for matching active endpoints when a domain eve
             ->first();
 
         expect($delivery)->not->toBeNull()
-            ->and($delivery?->status)->toBe(WebhookDelivery::STATUS_PENDING)
+            ->and($delivery?->status)->toBeInstanceOf(Pending::class)
             ->and($delivery?->event_name)->toBe('instance.created')
             ->and($delivery?->payload)->toBe($event->getPayload())
             ->and($delivery?->attempt)->toBe(1);
@@ -150,7 +155,7 @@ it('delivers signed JSON payload with expected headers and updates delivery on H
     $delivery->refresh();
     $endpoint->refresh();
 
-    expect($delivery->status)->toBe(WebhookDelivery::STATUS_SUCCESS)
+    expect($delivery->status)->toBeInstanceOf(Success::class)
         ->and($delivery->response_status)->toBe(200)
         ->and($delivery->response_body)->toBe('{"accepted":true}')
         ->and($delivery->duration_ms)->toBeInt()->toBeGreaterThanOrEqual(0)
@@ -179,12 +184,12 @@ it('truncates response body to 1000 characters on long responses', function (): 
 
     $delivery->refresh();
 
-    expect($delivery->status)->toBe(WebhookDelivery::STATUS_SUCCESS)
+    expect($delivery->status)->toBeInstanceOf(Success::class)
         ->and($delivery->response_status)->toBe(202)
         ->and(mb_strlen((string) $delivery->response_body))->toBe(1000);
 });
 
-it('marks delivery failed, increments endpoint failure count, and throws on HTTP 4xx/5xx', function (int $statusCode): void {
+it('marks delivery retrying, increments endpoint failure count, and throws on HTTP 4xx/5xx when retries remain', function (int $statusCode): void {
     $endpoint = WebhookEndpoint::query()->create([
         'url' => 'https://hooks.example.test/error',
         'secret' => 'whsec_error_1234567890',
@@ -196,7 +201,7 @@ it('marks delivery failed, increments endpoint failure count, and throws on HTTP
         'webhook_endpoint_id' => $endpoint->id,
         'event_name' => 'instance.stopped',
         'payload' => ['instance_id' => 15],
-        'status' => WebhookDelivery::STATUS_PENDING,
+        'status' => Pending::class,
     ]);
 
     Http::fake([
@@ -209,14 +214,14 @@ it('marks delivery failed, increments endpoint failure count, and throws on HTTP
     $delivery->refresh();
     $endpoint->refresh();
 
-    expect($delivery->status)->toBe(WebhookDelivery::STATUS_FAILED)
+    expect($delivery->status)->toBeInstanceOf(Retrying::class)
         ->and($delivery->response_status)->toBe($statusCode)
         ->and($delivery->response_body)->toBe('Delivery rejected')
         ->and($delivery->duration_ms)->toBeInt()->toBeGreaterThanOrEqual(0)
         ->and($endpoint->failure_count)->toBe(2);
 })->with([400, 422, 500, 503]);
 
-it('marks delivery failed, increments endpoint failure count, and rethrows ConnectionException', function (): void {
+it('marks delivery retrying, increments endpoint failure count, and rethrows ConnectionException when retries remain', function (): void {
     $endpoint = WebhookEndpoint::query()->create([
         'url' => 'https://hooks.example.test/timeout',
         'secret' => 'whsec_timeout_1234567890',
@@ -228,7 +233,7 @@ it('marks delivery failed, increments endpoint failure count, and rethrows Conne
         'webhook_endpoint_id' => $endpoint->id,
         'event_name' => 'instance.terminated',
         'payload' => ['instance_id' => 25],
-        'status' => WebhookDelivery::STATUS_PENDING,
+        'status' => Pending::class,
     ]);
 
     Http::fake([
@@ -243,14 +248,14 @@ it('marks delivery failed, increments endpoint failure count, and rethrows Conne
     $delivery->refresh();
     $endpoint->refresh();
 
-    expect($delivery->status)->toBe(WebhookDelivery::STATUS_FAILED)
+    expect($delivery->status)->toBeInstanceOf(Retrying::class)
         ->and($delivery->response_status)->toBeNull()
         ->and($delivery->response_body)->toContain('Connection timed out')
         ->and($delivery->duration_ms)->toBeInt()->toBeGreaterThanOrEqual(0)
         ->and($endpoint->failure_count)->toBe(1);
 });
 
-it('updates delivery status and throws RequestException on 504 Gateway Timeout', function (): void {
+it('transitions retrying delivery to failed on final attempt and skips already-succeeded deliveries', function (): void {
     $endpoint = WebhookEndpoint::query()->create([
         'url' => 'https://hooks.example.test/exhausted',
         'secret' => 'whsec_exhausted_1234567890',
@@ -264,17 +269,83 @@ it('updates delivery status and throws RequestException on 504 Gateway Timeout',
     ]);
 
     Http::fake([
-        'https://hooks.example.test/exhausted' => Http::response('Gateway Timeout', 504),
+        'https://hooks.example.test/exhausted' => Http::sequence()
+            ->push('Gateway Timeout', 504)
+            ->push('Bad Gateway', 502)
+            ->push('Service Unavailable', 503),
     ]);
 
-    $job = (new DeliverWebhookJob($delivery))->withFakeQueueInteractions();
+    // Attempt 1 -> Retrying
+    $job1 = (new DeliverWebhookJob($delivery))->withFakeQueueInteractions();
+    expect(fn () => $job1->handle())->toThrow(RequestException::class);
+    expect($delivery->fresh()?->status)->toBeInstanceOf(Retrying::class);
 
-    expect(fn () => $job->handle())->toThrow(RequestException::class);
+    // Attempt 2 -> stays Retrying (idempotent, no self-transition error)
+    $queueJob2 = Mockery::mock(QueueJobContract::class);
+    $queueJob2->shouldReceive('attempts')->andReturn(2);
+    $job2 = new DeliverWebhookJob($delivery->fresh());
+    $job2->setJob($queueJob2);
+    expect(fn () => $job2->handle())->toThrow(RequestException::class);
+    expect($delivery->fresh()?->status)->toBeInstanceOf(Retrying::class)
+        ->and($delivery->fresh()?->attempt)->toBe(2)
+        ->and($delivery->fresh()?->response_status)->toBe(502);
 
-    $delivery->refresh();
-    $endpoint->refresh();
+    // Final attempt (attempt 4 >= tries 4) -> Failed
+    $queueJob4 = Mockery::mock(QueueJobContract::class);
+    $queueJob4->shouldReceive('attempts')->andReturn(4);
+    $job4 = new DeliverWebhookJob($delivery->fresh());
+    $job4->setJob($queueJob4);
+    expect(fn () => $job4->handle())->toThrow(RequestException::class);
+    expect($delivery->fresh()?->status)->toBeInstanceOf(Failed::class)
+        ->and($delivery->fresh()?->attempt)->toBe(4)
+        ->and($delivery->fresh()?->response_status)->toBe(503);
 
-    expect($delivery->status)->toBe(WebhookDelivery::STATUS_FAILED)
-        ->and($delivery->response_status)->toBe(504)
-        ->and($endpoint->failure_count)->toBe(1);
+    // Already succeeded delivery returns early without sending HTTP requests
+    $succeeded = WebhookDelivery::query()->create([
+        'webhook_endpoint_id' => $endpoint->id,
+        'event_name' => 'instance.created',
+        'payload' => ['instance_id' => 99],
+        'status' => Success::class,
+    ]);
+
+    Http::fake();
+    (new DeliverWebhookJob($succeeded))->handle();
+    Http::assertNothingSent();
+});
+
+it('transitions retrying delivery to success on retry and marks failed in failed() hook', function (): void {
+    $endpoint = WebhookEndpoint::query()->create([
+        'url' => 'https://hooks.example.test/recover',
+        'secret' => 'whsec_recover_1234567890',
+        'subscribed_events' => ['*'],
+    ]);
+
+    $delivery = WebhookDelivery::query()->create([
+        'webhook_endpoint_id' => $endpoint->id,
+        'event_name' => 'instance.started',
+        'payload' => ['instance_id' => 44],
+        'status' => Retrying::class,
+    ]);
+
+    Http::fake([
+        'https://hooks.example.test/recover' => Http::response('OK', 200),
+    ]);
+
+    (new DeliverWebhookJob($delivery))->handle();
+    expect($delivery->fresh()?->status)->toBeInstanceOf(Success::class);
+
+    // Calling failed() on terminal Success is a safe no-op
+    (new DeliverWebhookJob($delivery->fresh()))->failed(new RuntimeException('late failure'));
+    expect($delivery->fresh()?->status)->toBeInstanceOf(Success::class);
+
+    // Calling failed() on Retrying transitions to Failed
+    $retryingDelivery = WebhookDelivery::query()->create([
+        'webhook_endpoint_id' => $endpoint->id,
+        'event_name' => 'instance.stopped',
+        'payload' => ['instance_id' => 45],
+        'status' => Retrying::class,
+    ]);
+
+    (new DeliverWebhookJob($retryingDelivery))->failed(new RuntimeException('exhausted'));
+    expect($retryingDelivery->fresh()?->status)->toBeInstanceOf(Failed::class);
 });

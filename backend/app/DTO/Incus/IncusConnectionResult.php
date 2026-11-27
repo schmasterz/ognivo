@@ -4,6 +4,13 @@ declare(strict_types=1);
 
 namespace App\DTO\Incus;
 
+use App\States\Host\Error;
+use App\States\Host\FingerprintMismatch;
+use App\States\Host\HostState;
+use App\States\Host\NotTrusted;
+use App\States\Host\Ok;
+use App\States\Host\Unreachable;
+
 /**
  * Structured result of an Incus connection and trust verification check.
  */
@@ -33,6 +40,22 @@ final readonly class IncusConnectionResult
         public ?string $auth = null,
         public ?array $details = null,
     ) {}
+
+    /**
+     * Resolve the HostState class corresponding to this connection check result.
+     *
+     * @return class-string<HostState>
+     */
+    public function hostStateClass(): string
+    {
+        return match ($this->state) {
+            self::STATE_OK => Ok::class,
+            self::STATE_UNREACHABLE => Unreachable::class,
+            self::STATE_FINGERPRINT_MISMATCH => FingerprintMismatch::class,
+            self::STATE_NOT_TRUSTED => NotTrusted::class,
+            default => Error::class,
+        };
+    }
 
     /**
      * @return array<string, mixed>

@@ -11,6 +11,10 @@ use App\Exceptions\MissingPinException;
 use App\Models\Host;
 use App\Models\VirtualMachine;
 use App\Services\Hypervisor\HypervisorManager;
+use App\States\Host\FingerprintMismatch;
+use App\States\Host\NotTrusted;
+use App\States\Host\Ok;
+use App\States\Host\Unreachable;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -353,10 +357,9 @@ final class VmMetricsCollectorService
             $host->metrics_consecutive_failures = 0;
             $host->metrics_backoff_until = null;
             $host->metrics_last_error = null;
-            if ($host->status === 'unreachable') {
-                $host->status = 'ok';
+            if (! ($host->status->equals(Unreachable::class) && $host->status->transitionIfAllowed(Ok::class))) {
+                $host->save();
             }
-            $host->save();
         });
 
         return count($sampleRows);
@@ -384,15 +387,17 @@ final class VmMetricsCollectorService
             $host->metrics_consecutive_failures = $failures;
 
             if ($isPinError) {
-                $host->status = $e instanceof FingerprintMismatchException ? 'fingerprint_mismatch' : 'not_trusted';
+                $targetState = $e instanceof FingerprintMismatchException ? FingerprintMismatch::class : NotTrusted::class;
                 $host->metrics_backoff_until = null;
+                if (! $host->status->transitionIfAllowed($targetState)) {
+                    $host->save();
+                }
             } else {
                 $shift = min(10, max(0, $failures - 2));
                 $backoffSec = $failures >= 2 ? min(900, $interval * (1 << $shift)) : 0;
                 $host->metrics_backoff_until = $backoffSec > 0 ? $nowCarbon->copy()->addSeconds($backoffSec) : null;
+                $host->save();
             }
-
-            $host->save();
         });
 
         Log::warning(sprintf(

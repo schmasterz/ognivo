@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\IpAllocationStatus;
 use Database\Factories\IpAllocationFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -22,7 +23,7 @@ use Override;
  * @property int|null $virtual_machine_id
  * @property int $user_id
  * @property string|null $mac_address
- * @property string $status Status ('allocated' or 'cooling')
+ * @property IpAllocationStatus $status Status ('allocated' or 'cooling')
  * @property Carbon $allocated_at
  * @property Carbon|null $released_at
  * @property Carbon|null $created_at
@@ -81,6 +82,7 @@ final class IpAllocation extends Model
             'pool_id' => 'integer',
             'virtual_machine_id' => 'integer',
             'user_id' => 'integer',
+            'status' => IpAllocationStatus::class,
             'allocated_at' => 'datetime',
             'released_at' => 'datetime',
         ];
@@ -124,7 +126,18 @@ final class IpAllocation extends Model
      */
     public function scopeActive(Builder $query): Builder
     {
-        return $query->where('status', 'allocated');
+        return $query->where('status', IpAllocationStatus::Allocated->value);
+    }
+
+    /**
+     * Scope query to only currently allocated allocations.
+     *
+     * @param  Builder<IpAllocation>  $query
+     * @return Builder<IpAllocation>
+     */
+    public function scopeAllocated(Builder $query): Builder
+    {
+        return $query->where('status', IpAllocationStatus::Allocated->value);
     }
 
     /**
@@ -135,7 +148,7 @@ final class IpAllocation extends Model
      */
     public function scopeCooling(Builder $query): Builder
     {
-        return $query->where('status', 'cooling');
+        return $query->where('status', IpAllocationStatus::Cooling->value);
     }
 
     /**
@@ -143,7 +156,7 @@ final class IpAllocation extends Model
      */
     public function isUnderCooldown(?int $cooldownSeconds = null): bool
     {
-        if ($this->status !== 'cooling' || $this->released_at === null) {
+        if ($this->status !== IpAllocationStatus::Cooling || $this->released_at === null) {
             return false;
         }
 
@@ -157,7 +170,7 @@ final class IpAllocation extends Model
      */
     public function getCooldownRemainingSeconds(): int
     {
-        if ($this->status !== 'cooling' || $this->released_at === null) {
+        if ($this->status !== IpAllocationStatus::Cooling || $this->released_at === null) {
             return 0;
         }
 

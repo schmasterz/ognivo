@@ -8,6 +8,8 @@ use App\DTO\Cast;
 use App\Http\Controllers\Controller;
 use App\Models\SystemSetting;
 use App\Models\User;
+use App\States\User\Active;
+use App\States\User\Pending;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -66,10 +68,15 @@ final class EmailVerificationController extends Controller
             ], 422);
         }
 
+        if (! $user->status->equals(Pending::class, Active::class)) {
+            return response()->json([
+                'message' => __($user->status->inactiveMessageKey()),
+            ], 403);
+        }
+
         if ($user->hasVerifiedEmail()) {
-            if ($user->status === 'pending') {
-                $user->status = 'active';
-                $user->save();
+            if ($user->status->equals(Pending::class)) {
+                $user->status->transitionTo(Active::class);
             }
 
             return response()->json([
@@ -78,11 +85,7 @@ final class EmailVerificationController extends Controller
             ]);
         }
 
-        $user->markEmailAsVerified();
-        $user->status = 'active';
-        $user->save();
-
-        event(new Verified($user));
+        $this->completeVerification($user);
 
         return response()->json([
             'message' => __('messages.auth.email_verified_success'),
@@ -142,15 +145,22 @@ final class EmailVerificationController extends Controller
             ]));
         }
 
-        if (! $user->hasVerifiedEmail()) {
-            $user->markEmailAsVerified();
-            $user->status = 'active';
-            $user->save();
+        if (! $user->status->equals(Pending::class, Active::class)) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'message' => __($user->status->inactiveMessageKey()),
+                ], 403);
+            }
 
-            event(new Verified($user));
-        } elseif ($user->status === 'pending') {
-            $user->status = 'active';
-            $user->save();
+            return redirect()->to($frontendUrl.'/verify-email?'.http_build_query([
+                'error' => 'account_inactive',
+            ]));
+        }
+
+        if (! $user->hasVerifiedEmail()) {
+            $this->completeVerification($user);
+        } elseif ($user->status->equals(Pending::class)) {
+            $user->status->transitionTo(Active::class);
         }
 
         if ($request->wantsJson()) {
@@ -180,12 +190,26 @@ final class EmailVerificationController extends Controller
         /** @var User|null $user */
         $user = User::where('email', $validated['email'])->first();
 
-        if ($user !== null && $user->status === 'pending' && ! $user->hasVerifiedEmail()) {
+        if ($user !== null && $user->status->equals(Pending::class) && ! $user->hasVerifiedEmail()) {
             $user->sendEmailVerificationNotification();
         }
 
         return response()->json([
             'message' => __('messages.auth.resend_verification_sent'),
         ]);
+    }
+
+    /**
+     * Mark email as verified and activate a pending user account.
+     */
+    private function completeVerification(User $user): void
+    {
+        $user->markEmailAsVerified();
+
+        if ($user->status->equals(Pending::class)) {
+            $user->status->transitionTo(Active::class);
+        }
+
+        event(new Verified($user));
     }
 }

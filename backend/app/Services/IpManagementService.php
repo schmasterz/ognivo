@@ -9,6 +9,8 @@ use App\Audit\AuditEntry;
 use App\Audit\AuditLogger;
 use App\Audit\AuditOutcome;
 use App\DTO\Network\CreateIpPoolDTO;
+use App\Enums\IpAllocationStatus;
+use App\Enums\NetworkStatus;
 use App\Exceptions\IpPoolExhaustedException;
 use App\Exceptions\PoolAllocationConflictException;
 use App\Exceptions\PoolHasActiveAllocationsException;
@@ -78,9 +80,9 @@ final class IpManagementService
             $cursor = DB::table('ip_allocations')
                 ->where('pool_id', $lockedPool->id)
                 ->where(function (QueryBuilder $query) use ($cooldownLimit): void {
-                    $query->where('status', 'allocated')
+                    $query->where('status', IpAllocationStatus::Allocated->value)
                         ->orWhere(function (QueryBuilder $sub) use ($cooldownLimit): void {
-                            $sub->where('status', 'cooling')
+                            $sub->where('status', IpAllocationStatus::Cooling->value)
                                 ->where('released_at', '>', $cooldownLimit);
                         });
                 })
@@ -153,7 +155,7 @@ final class IpManagementService
                     'virtual_machine_id' => $vm->id,
                     'user_id' => $user->id,
                     'mac_address' => $mac,
-                    'status' => 'allocated',
+                    'status' => IpAllocationStatus::Allocated,
                     'allocated_at' => now(),
                     'released_at' => null,
                 ]
@@ -161,7 +163,7 @@ final class IpManagementService
 
             // 7. Synchronize assigned address and status onto VM
             $vm->ipv4_address = $candidateIp;
-            $vm->network_status = 'assigned';
+            $vm->network_status = NetworkStatus::Assigned;
             $vm->save();
 
             $this->logger()->record(new AuditEntry(
@@ -188,7 +190,7 @@ final class IpManagementService
     {
         DB::transaction(function () use ($vm): void {
             $allocations = IpAllocation::where('virtual_machine_id', $vm->id)
-                ->where('status', 'allocated')
+                ->where('status', IpAllocationStatus::Allocated->value)
                 ->get();
 
             foreach ($allocations as $alloc) {
@@ -206,15 +208,15 @@ final class IpManagementService
             }
 
             IpAllocation::where('virtual_machine_id', $vm->id)
-                ->where('status', 'allocated')
+                ->where('status', IpAllocationStatus::Allocated->value)
                 ->update([
                     'virtual_machine_id' => null,
-                    'status' => 'cooling',
+                    'status' => IpAllocationStatus::Cooling->value,
                     'released_at' => now(),
                 ]);
 
             $vm->ipv4_address = null;
-            $vm->network_status = 'unassigned';
+            $vm->network_status = NetworkStatus::Unassigned;
             $vm->save();
         });
     }
@@ -295,14 +297,14 @@ final class IpManagementService
             // Query 1: allocated count and overlap with effective exclusions
             $allocatedQuery = DB::table('ip_allocations')
                 ->where('pool_id', $pool->id)
-                ->where('status', 'allocated');
+                ->where('status', IpAllocationStatus::Allocated->value);
             [$allocatedCount, $allocatedOverlap] = $this->aggregatePoolAllocationCounts($allocatedQuery, $excludedIps);
 
             // Query 2: active cooling count and overlap with effective exclusions
             $cooldownLimit = now()->subSeconds($pool->cooldown_seconds);
             $coolingQuery = DB::table('ip_allocations')
                 ->where('pool_id', $pool->id)
-                ->where('status', 'cooling')
+                ->where('status', IpAllocationStatus::Cooling->value)
                 ->whereNotNull('released_at')
                 ->where('released_at', '>', $cooldownLimit);
             [$coolingCount, $coolingOverlap] = $this->aggregatePoolAllocationCounts($coolingQuery, $excludedIps);
@@ -448,7 +450,7 @@ final class IpManagementService
 
             $deleted = DB::table('ip_allocations')
                 ->where('pool_id', is_numeric($pool->id) ? (int) $pool->id : 0)
-                ->where('status', 'cooling')
+                ->where('status', IpAllocationStatus::Cooling->value)
                 ->whereNotNull('released_at')
                 ->where('released_at', '<=', $cutoff)
                 ->delete();
@@ -520,7 +522,7 @@ final class IpManagementService
 
         $allocatedQuery = DB::table('ip_allocations')
             ->whereIn('pool_id', $poolIds)
-            ->where('status', 'allocated');
+            ->where('status', IpAllocationStatus::Allocated->value);
 
         if ($allExcludedIps !== []) {
             $placeholders = implode(',', array_fill(0, count($allExcludedIps), '?'));
@@ -547,7 +549,7 @@ final class IpManagementService
         $coolingOverlaps = [];
         $coolingRows = DB::table('ip_allocations')
             ->whereIn('pool_id', $poolIds)
-            ->where('status', 'cooling')
+            ->where('status', IpAllocationStatus::Cooling->value)
             ->whereNotNull('released_at')
             ->get(['pool_id', 'ip_string', 'released_at']);
 
@@ -776,7 +778,7 @@ final class IpManagementService
 
             $isGateway = $gatewayLong !== null && $ipLong === $gatewayLong;
 
-            if ($allocation->status === 'allocated') {
+            if ($allocation->status === IpAllocationStatus::Allocated) {
                 $nonFreeMap[$ipLong] = $this->makePoolAddressEntry(
                     $ipString,
                     'allocated',
@@ -784,7 +786,7 @@ final class IpManagementService
                     0,
                     $this->formatPoolAllocation($allocation),
                 );
-            } elseif ($allocation->status === 'cooling' && $allocation->released_at !== null) {
+            } elseif ($allocation->released_at !== null) {
                 $coolingUntil = $allocation->released_at->copy()->addSeconds($pool->cooldown_seconds);
                 if ($coolingUntil->greaterThan($now)) {
                     $diff = max(1, (int) ceil($now->diffInSeconds($coolingUntil, false)));
@@ -1040,7 +1042,7 @@ final class IpManagementService
         return [
             'id' => $allocation->id,
             'mac_address' => $allocation->mac_address,
-            'status' => $allocation->status,
+            'status' => $allocation->status->value,
             'allocated_at' => $allocation->allocated_at->toISOString(),
             'released_at' => $allocation->released_at?->toISOString(),
             'virtual_machine' => $allocation->virtualMachine !== null ? [
@@ -1152,12 +1154,12 @@ final class IpManagementService
                 ],
             ));
 
-            if ($forceDelete || $allocation->status === 'cooling') {
+            if ($forceDelete || $allocation->status === IpAllocationStatus::Cooling) {
                 $allocation->delete();
             } else {
                 $allocation->update([
                     'virtual_machine_id' => null,
-                    'status' => 'cooling',
+                    'status' => IpAllocationStatus::Cooling,
                     'released_at' => now(),
                 ]);
             }
@@ -1297,9 +1299,9 @@ final class IpManagementService
             $cooldownLimit = now()->subSeconds($lockedPool->cooldown_seconds);
             $activeOrCoolingQuery = $lockedPool->allocations()
                 ->where(function (Builder $query) use ($cooldownLimit): void {
-                    $query->where('status', 'allocated')
+                    $query->where('status', IpAllocationStatus::Allocated->value)
                         ->orWhere(function (Builder $sub) use ($cooldownLimit): void {
-                            $sub->where('status', 'cooling')
+                            $sub->where('status', IpAllocationStatus::Cooling->value)
                                 ->where('released_at', '>', $cooldownLimit);
                         });
                 });
@@ -1393,7 +1395,7 @@ final class IpManagementService
 
             if (array_key_exists('gateway', $data) || array_key_exists('excluded_ips', $data)) {
                 $activeAllocations = $lockedPool->allocations()
-                    ->where('status', 'allocated')
+                    ->where('status', IpAllocationStatus::Allocated->value)
                     ->get(['id', 'ip_string']);
 
                 foreach ($activeAllocations as $alloc) {
@@ -1778,7 +1780,7 @@ final class IpManagementService
             /** @var IpPool $lockedPool */
             $lockedPool = IpPool::where('id', $ipPool->id)->lockForUpdate()->firstOrFail();
 
-            $activeCount = $lockedPool->allocations()->where('status', 'allocated')->count();
+            $activeCount = $lockedPool->allocations()->where('status', IpAllocationStatus::Allocated->value)->count();
 
             if ($activeCount > 0) {
                 throw new PoolHasActiveAllocationsException;

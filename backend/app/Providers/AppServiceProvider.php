@@ -10,6 +10,8 @@ use App\Audit\AuditLogger;
 use App\Contracts\BackupTargetInterface;
 use App\DTO\Cast;
 use App\Listeners\AuditLockoutListener;
+use App\Listeners\HostStateChangedListener;
+use App\Listeners\SnapshotStateChangedListener;
 use App\Listeners\VmStateChangedListener;
 use App\Models\SystemSetting;
 use App\Models\User;
@@ -118,6 +120,8 @@ final class AppServiceProvider extends ServiceProvider
 
         Event::listen(Lockout::class, AuditLockoutListener::class);
         Event::listen(StateChanged::class, VmStateChangedListener::class);
+        Event::listen(StateChanged::class, SnapshotStateChangedListener::class);
+        Event::listen(StateChanged::class, HostStateChangedListener::class);
 
         // Configure named rate limiter for authentication endpoints
         RateLimiter::for('auth-login', static function (Request $request): Limit {

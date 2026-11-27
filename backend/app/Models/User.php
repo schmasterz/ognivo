@@ -7,6 +7,7 @@ namespace App\Models;
 use App\Audit\Auditable;
 use App\Notifications\QueuedResetPasswordNotification;
 use App\Notifications\QueuedVerifyEmailNotification;
+use App\States\User\UserState;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -21,6 +22,7 @@ use Illuminate\Support\Str;
 use Laravel\Sanctum\HasApiTokens;
 use Laravel\Sanctum\PersonalAccessToken;
 use Override;
+use Spatie\ModelStates\HasStates;
 use Spatie\Permission\Traits\HasRoles;
 
 /**
@@ -29,7 +31,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property int $id
  * @property string $name
  * @property string $email
- * @property string $status (active, pending, suspended, inactive)
+ * @property UserState $status (active, pending, suspended, inactive, deleting, deletion_failed)
  * @property string|null $project_name
  * @property int|null $quota_group_id
  * @property Carbon|null $email_verified_at
@@ -51,6 +53,7 @@ final class User extends Authenticatable implements MustVerifyEmail
     use HasFactory;
 
     use HasRoles;
+    use HasStates;
     use Notifiable;
 
     /**
@@ -70,15 +73,6 @@ final class User extends Authenticatable implements MustVerifyEmail
      * Temporary holder for original role prior to syncRoles.
      */
     public ?string $originalRole = null;
-
-    /**
-     * The model's default values for attributes.
-     *
-     * @var array<string, mixed>
-     */
-    protected $attributes = [
-        'status' => 'active',
-    ];
 
     /**
      * The attributes that are mass assignable.
@@ -116,6 +110,7 @@ final class User extends Authenticatable implements MustVerifyEmail
     {
         return [
             'email_verified_at' => 'datetime',
+            'status' => UserState::class,
         ];
     }
 

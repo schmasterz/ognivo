@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit;
 
+use App\Enums\NetworkStatus;
 use App\Models\Host;
 use App\Models\IpAllocation;
 use App\Models\IpPool;
@@ -86,7 +87,7 @@ final class IpModelTest extends TestCase
             'incus_project' => 'default',
             'instance_type' => 'virtual-machine',
             'status' => 'running',
-            'network_status' => 'observed',
+            'network_status' => NetworkStatus::Observed,
             'cpu_cores' => 2,
             'ram_mb' => 2048,
             'disk_gb' => 20,
@@ -151,6 +152,7 @@ final class IpModelTest extends TestCase
         ]);
 
         $this->assertEquals(1, $pool->allocations()->active()->count());
+        $this->assertEquals(1, $pool->allocations()->allocated()->count());
         $this->assertTrue($pool->allocations()->active()->first()->is($activeAlloc));
 
         $this->assertEquals(1, $pool->allocations()->cooling()->count());

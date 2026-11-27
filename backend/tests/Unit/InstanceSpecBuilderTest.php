@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit;
 
+use App\Enums\NetworkStatus;
 use App\Models\Host;
 use App\Models\Image;
 use App\Models\IpAllocation;
@@ -79,7 +80,7 @@ final class InstanceSpecBuilderTest extends TestCase
             'incus_project' => 'tenant-uuid-1234',
             'instance_type' => 'virtual-machine',
             'status' => 'provisioning',
-            'network_status' => 'assigned',
+            'network_status' => NetworkStatus::Assigned,
             'cpu_cores' => 4,
             'ram_mb' => 8192,
             'disk_gb' => 50,
@@ -170,7 +171,7 @@ final class InstanceSpecBuilderTest extends TestCase
             'incus_project' => 'default',
             'instance_type' => 'container',
             'status' => 'provisioning',
-            'network_status' => 'assigned',
+            'network_status' => NetworkStatus::Assigned,
             'cpu_cores' => 1,
             'ram_mb' => 1024,
             'disk_gb' => 10,
@@ -233,7 +234,7 @@ final class InstanceSpecBuilderTest extends TestCase
             'incus_project' => 'tenant-uuid-1234',
             'instance_type' => 'virtual-machine',
             'status' => 'provisioning',
-            'network_status' => 'assigned',
+            'network_status' => NetworkStatus::Assigned,
             'cpu_cores' => 2,
             'ram_mb' => 4096,
             'disk_gb' => 30,
@@ -584,7 +585,7 @@ final class InstanceSpecBuilderTest extends TestCase
             'incus_project' => 'default',
             'instance_type' => 'virtual-machine',
             'status' => 'provisioning',
-            'network_status' => 'assigned',
+            'network_status' => NetworkStatus::Assigned,
             'cpu_cores' => 2,
             'ram_mb' => 2048,
             'disk_gb' => 20,
@@ -619,7 +620,7 @@ final class InstanceSpecBuilderTest extends TestCase
             'incus_project' => 'default',
             'instance_type' => 'virtual-machine',
             'status' => 'provisioning',
-            'network_status' => 'assigned',
+            'network_status' => NetworkStatus::Assigned,
             'cpu_cores' => 2,
             'ram_mb' => 2048,
             'disk_gb' => 20,
@@ -679,7 +680,7 @@ final class InstanceSpecBuilderTest extends TestCase
             'incus_project' => 'default',
             'instance_type' => 'virtual-machine',
             'status' => 'provisioning',
-            'network_status' => 'assigned',
+            'network_status' => NetworkStatus::Assigned,
             'cpu_cores' => 2,
             'ram_mb' => 2048,
             'disk_gb' => 20,
@@ -737,7 +738,7 @@ final class InstanceSpecBuilderTest extends TestCase
             'incus_project' => 'default',
             'instance_type' => 'container',
             'status' => 'provisioning',
-            'network_status' => 'assigned',
+            'network_status' => NetworkStatus::Assigned,
             'cpu_cores' => 2,
             'ram_mb' => 2048,
             'disk_gb' => 20,
@@ -774,7 +775,7 @@ final class InstanceSpecBuilderTest extends TestCase
             'incus_project' => 'default',
             'instance_type' => 'virtual-machine',
             'status' => 'provisioning',
-            'network_status' => 'assigned',
+            'network_status' => NetworkStatus::Assigned,
             'cpu_cores' => 2,
             'ram_mb' => 2048,
             'disk_gb' => 20,
@@ -869,7 +870,7 @@ final class InstanceSpecBuilderTest extends TestCase
             'incus_project' => 'default',
             'instance_type' => 'virtual-machine',
             'status' => 'provisioning',
-            'network_status' => 'assigned',
+            'network_status' => NetworkStatus::Assigned,
             'cpu_cores' => 2,
             'ram_mb' => 2048,
             'disk_gb' => 20,

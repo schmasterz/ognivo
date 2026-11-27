@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use App\Models\WebhookDelivery;
 use App\Models\WebhookEndpoint;
+use App\States\Webhook\Failed;
+use App\States\Webhook\Success;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -30,7 +32,7 @@ it('creates a webhook endpoint and delivery with expected casts and relationship
         'response_status' => 200,
         'response_body' => '{"ok":true}',
         'duration_ms' => 125,
-        'status' => WebhookDelivery::STATUS_SUCCESS,
+        'status' => Success::class,
     ]);
 
     expect($delivery)->toBeInstanceOf(WebhookDelivery::class)
@@ -40,7 +42,7 @@ it('creates a webhook endpoint and delivery with expected casts and relationship
         ->and($delivery->response_status)->toBe(200)
         ->and($delivery->attempt)->toBe(1)
         ->and($delivery->duration_ms)->toBe(125)
-        ->and($delivery->status)->toBe('success')
+        ->and($delivery->status)->toBeInstanceOf(Success::class)
         ->and($delivery->endpoint->is($endpoint))->toBeTrue()
         ->and($endpoint->deliveries)->toHaveCount(1)
         ->and($endpoint->deliveries->first()?->is($delivery))->toBeTrue();
@@ -109,7 +111,7 @@ it('cascade deletes deliveries when the parent webhook endpoint is deleted', fun
         'event_name' => 'instance.started',
         'payload' => ['id' => 1],
         'attempt' => 2,
-        'status' => WebhookDelivery::STATUS_FAILED,
+        'status' => Failed::class,
     ]);
 
     expect(WebhookDelivery::query()->count())->toBe(2);

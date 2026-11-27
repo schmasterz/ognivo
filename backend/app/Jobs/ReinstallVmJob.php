@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Enums\NetworkStatus;
 use App\Jobs\Concerns\InteractsWithHypervisorNetwork;
 use App\Jobs\Enums\QueueName;
 use App\Models\VirtualMachine;
@@ -107,7 +108,7 @@ final class ReinstallVmJob implements ShouldQueue
             }
 
             // If reinstallation was already initiated and VM has finished reinstallation
-            if ($reinstallInProgress && $this->vm->status->equals(Running::class) && in_array($this->vm->network_status, ['observed', 'unverified'], true)) {
+            if ($reinstallInProgress && $this->vm->status->equals(Running::class) && in_array($this->vm->network_status, [NetworkStatus::Observed, NetworkStatus::Unverified], true)) {
                 return;
             }
 
@@ -151,7 +152,7 @@ final class ReinstallVmJob implements ShouldQueue
                 $this->vm->metadata = $meta;
 
                 $this->vm->network_wait_started_at = null;
-                $this->vm->network_status = 'assigned';
+                $this->vm->network_status = NetworkStatus::Assigned;
 
                 if (! $this->vm->status->equals(Provisioning::class)) {
                     $this->vm->status->transitionTo(Provisioning::class);
@@ -216,15 +217,15 @@ final class ReinstallVmJob implements ShouldQueue
             $state = $driver->getInstanceState($this->vm);
             $observation = $this->evaluateNetworkObservation($this->vm, $this->allocationId, $state);
 
-            if ($observation['status'] === 'observed') {
-                $this->completeReinstall('observed');
+            if ($observation['status'] === NetworkStatus::Observed) {
+                $this->completeReinstall(NetworkStatus::Observed);
                 Log::info(sprintf('VM #%d (%s) network observed: %s. Reinstallation complete.', $this->vm->id, $this->vm->name, $observation['observed_ip'] ?? ''));
 
                 return;
             }
 
-            if ($observation['status'] === 'unverified') {
-                $this->completeReinstall('unverified');
+            if ($observation['status'] === NetworkStatus::Unverified) {
+                $this->completeReinstall(NetworkStatus::Unverified);
 
                 if ($this->vm->network_wait_started_at !== null && $observation['elapsed'] >= $observation['wait_limit']) {
                     Log::info(sprintf('VM #%d (%s) completed reinstall with unverified network status after %ds timeout.', $this->vm->id, $this->vm->name, $observation['wait_limit']));
@@ -235,8 +236,8 @@ final class ReinstallVmJob implements ShouldQueue
                 return;
             }
 
-            if ($observation['status'] === 'mismatch') {
-                $this->completeReinstall('mismatch');
+            if ($observation['status'] === NetworkStatus::Mismatch) {
+                $this->completeReinstall(NetworkStatus::Mismatch);
                 Log::warning(sprintf('VM #%d (%s) IP mismatch during reinstall: expected %s, observed %s.', $this->vm->id, $this->vm->name, $this->vm->ipv4_address ?? '', $observation['observed_ip'] ?? ''));
 
                 return;
@@ -250,7 +251,7 @@ final class ReinstallVmJob implements ShouldQueue
     /**
      * Clear the reinstall flag, update network status, and transition the VM to Running.
      */
-    private function completeReinstall(string $networkStatus): void
+    private function completeReinstall(NetworkStatus $networkStatus): void
     {
         $meta = is_array($this->vm->metadata) ? $this->vm->metadata : [];
         unset($meta['reinstall_in_progress']);

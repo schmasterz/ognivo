@@ -81,8 +81,8 @@ export const authApi = {
     hash: string;
     expires: number;
     signature: string;
-  }): Promise<{ message: string; already_verified?: boolean }> {
-    return request<{ message: string; already_verified?: boolean }>("/email/verify", {
+  }): Promise<{ message: string }> {
+    return request<{ message: string }>("/email/verify", {
       method: "POST",
       body: JSON.stringify(params),
     });

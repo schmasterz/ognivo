@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Services\AuthService;
 use App\Services\Metrics\VmMetricsConfigService;
 use App\Services\UserService;
+use App\States\User\Active;
 use Dedoc\Scramble\Attributes\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -51,7 +52,7 @@ final class AuthController extends Controller
 
         $result = $this->authService->register($request->toDTO());
 
-        if ($result['user']->status === 'active') {
+        if ($result['user']->status->equals(Active::class)) {
             $this->establishBrowserSession($request, $result['user']);
         }
 

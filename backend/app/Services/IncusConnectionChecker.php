@@ -14,8 +14,12 @@ use App\Services\Hypervisor\GatewayMode;
 use App\Services\Hypervisor\HypervisorGateway;
 use App\Services\Hypervisor\TlsPeerCertificateFetcher;
 use App\Services\Hypervisor\TlsPeerCertificateFetcherInterface;
+use App\States\Host\Error;
+use App\States\Host\Ok;
+use App\States\PanelCertificate\Active as ActiveCertificate;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Carbon;
 use Throwable;
 
 /**
@@ -51,17 +55,16 @@ final class IncusConnectionChecker
                 details: ['driver' => 'fake', 'endpoint' => $host->endpoint_url]
             );
 
-            $updateData = [
-                'status' => IncusConnectionResult::STATE_OK,
-                'last_checked_at' => now(),
-            ];
+            $host->last_checked_at = Carbon::now();
 
             $activeCert = $this->certService->getActiveCertificate();
             if ($activeCert !== null && ! $activeCert->isExpired()) {
-                $updateData['needs_retrust'] = false;
+                $host->needs_retrust = false;
             }
 
-            $host->update($updateData);
+            if (! $host->status->transitionIfAllowed(Ok::class)) {
+                $host->save();
+            }
 
             return $result;
         }
@@ -75,10 +78,10 @@ final class IncusConnectionChecker
                 message: 'No active panel certificate available. Please generate one before connecting.'
             );
 
-            $host->update([
-                'status' => IncusConnectionResult::STATE_ERROR,
-                'last_checked_at' => now(),
-            ]);
+            $host->last_checked_at = Carbon::now();
+            if (! $host->status->transitionIfAllowed(Error::class)) {
+                $host->save();
+            }
 
             return $result;
         }
@@ -277,22 +280,21 @@ final class IncusConnectionChecker
         }
 
         if ($host->exists) {
-            $updateData = [
-                'status' => $result->state,
-                'last_checked_at' => now(),
-            ];
+            $host->last_checked_at = Carbon::now();
 
             $activeCert = $this->certService->getActiveCertificate();
             $isUsingActive = $activeCert !== null
                 && $activeCert->id === $clientCert->id
-                && $clientCert->status === PanelCertificate::STATUS_ACTIVE
+                && $clientCert->status->equals(ActiveCertificate::class)
                 && ! $clientCert->isExpired();
 
             if ($result->state === IncusConnectionResult::STATE_OK && $result->auth === 'trusted' && $isUsingActive) {
-                $updateData['needs_retrust'] = false;
+                $host->needs_retrust = false;
             }
 
-            $host->update($updateData);
+            if (! $host->status->transitionIfAllowed($result->hostStateClass())) {
+                $host->save();
+            }
         }
 
         return $result;

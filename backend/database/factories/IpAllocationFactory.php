@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Factories;
 
+use App\Enums\IpAllocationStatus;
 use App\Models\IpAllocation;
 use App\Models\IpPool;
 use App\Models\User;
@@ -31,7 +32,7 @@ class IpAllocationFactory extends Factory
             'ip_string' => $ip,
             'user_id' => User::factory(),
             'mac_address' => sprintf('02:54:%02x:%02x:%02x:%02x', rand(0, 255), rand(0, 255), rand(0, 255), rand(0, 255)),
-            'status' => 'allocated',
+            'status' => IpAllocationStatus::Allocated,
             'allocated_at' => now(),
             'released_at' => null,
         ];

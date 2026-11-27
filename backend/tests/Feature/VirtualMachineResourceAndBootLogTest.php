@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Enums\NetworkStatus;
 use App\Models\Host;
 use App\Models\IpAllocation;
 use App\Models\IpPool;
@@ -82,7 +83,7 @@ final class VirtualMachineResourceAndBootLogTest extends TestCase
             'disk_gb' => 20,
             'os_image' => 'images:ubuntu/24.04',
             'ipv4_address' => '198.51.100.15',
-            'network_status' => 'observed',
+            'network_status' => NetworkStatus::Observed,
         ]);
 
         $this->allocation = IpAllocation::create([

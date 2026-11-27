@@ -12,6 +12,9 @@ use App\Services\Hypervisor\TlsPeerCertificateFetcherInterface;
 use App\Services\IncusConnectionChecker;
 use App\Services\IncusTrustService;
 use App\Services\PanelCertificateService;
+use App\States\PanelCertificate\Active;
+use App\States\PanelCertificate\Retiring;
+use App\States\PanelCertificate\Revoked;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
@@ -52,7 +55,7 @@ describe('Panel Certificate Generation & Lifecycle', function () {
         $cert = $service->generate(365);
 
         expect($cert)->toBeInstanceOf(PanelCertificate::class)
-            ->and($cert->status)->toBe(PanelCertificate::STATUS_ACTIVE)
+            ->and($cert->status)->toBeInstanceOf(Active::class)
             ->and($cert->certificate)->toContain('-----BEGIN CERTIFICATE-----')
             ->and($cert->fingerprint)->toHaveLength(64);
 
@@ -81,15 +84,15 @@ describe('Panel Certificate Generation & Lifecycle', function () {
     test('only one active certificate exists after rotation, and old one becomes retiring', function () {
         $service = app(PanelCertificateService::class);
         $first = $service->generate(365);
-        expect($first->status)->toBe(PanelCertificate::STATUS_ACTIVE);
+        expect($first->status)->toBeInstanceOf(Active::class);
 
         $second = $service->generate(365);
 
         $first->refresh();
         $second->refresh();
 
-        expect($first->status)->toBe(PanelCertificate::STATUS_RETIRING)
-            ->and($second->status)->toBe(PanelCertificate::STATUS_ACTIVE)
+        expect($first->status)->toBeInstanceOf(Retiring::class)
+            ->and($second->status)->toBeInstanceOf(Active::class)
             ->and(PanelCertificate::where('status', 'active')->count())->toBe(1);
     });
 
@@ -436,7 +439,7 @@ describe('Connection Checker - 5 Distinct States', function () {
             ->and($result->latencyMs)->toBeGreaterThanOrEqual(0);
 
         $host->refresh();
-        expect($host->status)->toBe(IncusConnectionResult::STATE_OK)
+        expect($host->status->getValue())->toBe(IncusConnectionResult::STATE_OK)
             ->and($host->last_checked_at)->not->toBeNull();
     });
 
@@ -466,7 +469,7 @@ describe('Connection Checker - 5 Distinct States', function () {
             ->and($result->isTrusted)->toBeFalse();
 
         $host->refresh();
-        expect($host->status)->toBe(IncusConnectionResult::STATE_NOT_TRUSTED);
+        expect($host->status->getValue())->toBe(IncusConnectionResult::STATE_NOT_TRUSTED);
     });
 
     test('returns state unreachable when connection fails or times out', function () {
@@ -488,7 +491,7 @@ describe('Connection Checker - 5 Distinct States', function () {
         expect($result->state)->toBe(IncusConnectionResult::STATE_UNREACHABLE);
 
         $host->refresh();
-        expect($host->status)->toBe(IncusConnectionResult::STATE_UNREACHABLE);
+        expect($host->status->getValue())->toBe(IncusConnectionResult::STATE_UNREACHABLE);
     });
 
     test('returns state fingerprint_mismatch when peer cert differs from pinned cert', function () {
@@ -515,7 +518,7 @@ describe('Connection Checker - 5 Distinct States', function () {
             ->and($result->message)->toContain('does not match the pinned certificate');
 
         $host->refresh();
-        expect($host->status)->toBe(IncusConnectionResult::STATE_FINGERPRINT_MISMATCH);
+        expect($host->status->getValue())->toBe(IncusConnectionResult::STATE_FINGERPRINT_MISMATCH);
     });
 
     test('returns state error on unexpected HTTP errors with safe message', function () {
@@ -535,7 +538,7 @@ describe('Connection Checker - 5 Distinct States', function () {
         expect($result->state)->toBe(IncusConnectionResult::STATE_ERROR);
 
         $host->refresh();
-        expect($host->status)->toBe(IncusConnectionResult::STATE_ERROR);
+        expect($host->status->getValue())->toBe(IncusConnectionResult::STATE_ERROR);
     });
 });
 
@@ -629,7 +632,7 @@ describe('Certificate Rotation, Retrust Flow & Workability', function () {
     test('rotate -> hosts flagged -> retrust each host -> revoke-old succeeds', function () {
         $certService = app(PanelCertificateService::class);
         $initialCert = $certService->generate(365);
-        expect($initialCert->status)->toBe(PanelCertificate::STATUS_ACTIVE)
+        expect($initialCert->status)->toBeInstanceOf(Active::class)
             ->and($initialCert->active_marker)->toBe(1);
 
         $testCert1 = generateTestCertificate('192.168.1.11');
@@ -753,7 +756,7 @@ describe('Certificate Rotation, Retrust Flow & Workability', function () {
         expect($revokeRes->json('cleanup_instruction'))->toContain('incus config trust remove');
 
         $initialCert->refresh();
-        expect($initialCert->status)->toBe(PanelCertificate::STATUS_REVOKED)
+        expect($initialCert->status)->toBeInstanceOf(Revoked::class)
             ->and($initialCert->active_marker)->toBeNull();
     });
 
@@ -863,7 +866,7 @@ describe('Certificate Rotation, Retrust Flow & Workability', function () {
 
         $host = Host::where('name', 'lxd-production-node')->firstOrFail();
         expect($host->driver)->toBe('lxd')
-            ->and($host->status)->toBe(IncusConnectionResult::STATE_OK)
+            ->and($host->status->getValue())->toBe(IncusConnectionResult::STATE_OK)
             ->and($host->needs_retrust)->toBeFalse();
     });
 });

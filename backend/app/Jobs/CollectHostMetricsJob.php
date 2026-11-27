@@ -8,6 +8,8 @@ use App\Jobs\Enums\QueueName;
 use App\Models\Host;
 use App\Services\Metrics\VmMetricsCollectorService;
 use App\Services\Metrics\VmMetricsConfigService;
+use App\States\Host\FingerprintMismatch;
+use App\States\Host\NotTrusted;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -63,7 +65,7 @@ final class CollectHostMetricsJob implements ShouldQueue
             if (
                 $host === null
                 || ! $host->is_active
-                || in_array($host->status, ['fingerprint_mismatch', 'not_trusted'], true)
+                || $host->status->equals(FingerprintMismatch::class, NotTrusted::class)
             ) {
                 return;
             }

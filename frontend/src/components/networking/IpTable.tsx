@@ -74,7 +74,7 @@ function CoolingBadge({ ip }: CoolingBadgeProps) {
     return () => clearInterval(timer);
   }, []);
 
-  if (remaining <= 0 || ip.status === "released") {
+  if (remaining <= 0) {
     return (
       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
         <Check className="w-3 h-3 mr-1 text-blue-500" />
@@ -103,7 +103,7 @@ function getIpStatusBadge(ip: IpAllocation, t: TranslateFn) {
     );
   }
 
-  if (ip.status === "cooling" || ip.status === "released") {
+  if (ip.status === "cooling") {
     return <CoolingBadge ip={ip} />;
   }
 

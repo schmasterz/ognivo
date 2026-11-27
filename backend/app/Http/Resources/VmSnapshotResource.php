@@ -37,7 +37,7 @@ final class VmSnapshotResource extends JsonResource
                 'host' => $snapshot->virtualMachine->host !== null ? [
                     'id' => $snapshot->virtualMachine->host->id,
                     'name' => $snapshot->virtualMachine->host->name,
-                    'status' => $snapshot->virtualMachine->host->status,
+                    'status' => $snapshot->virtualMachine->host->status->getValue(),
                 ] : null,
             ]),
             'user' => $this->whenLoaded('user', fn () => [

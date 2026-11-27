@@ -7,6 +7,7 @@ use App\Jobs\DeliverWebhookJob;
 use App\Models\User;
 use App\Models\WebhookDelivery;
 use App\Models\WebhookEndpoint;
+use App\States\Webhook\Pending;
 use Illuminate\Support\Facades\Queue;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Role;
@@ -318,7 +319,7 @@ test('admin can trigger a test webhook ping and queues DeliverWebhookJob', funct
     expect($delivery)->not->toBeNull()
         ->and($delivery?->webhook_endpoint_id)->toBe($endpoint->id)
         ->and($delivery?->event_name)->toBe('ping')
-        ->and($delivery?->status)->toBe(WebhookDelivery::STATUS_PENDING)
+        ->and($delivery?->status)->toBeInstanceOf(Pending::class)
         ->and($delivery?->payload['ping'] ?? null)->toBeTrue()
         ->and($delivery?->payload['timestamp'] ?? null)->toBeString();
 

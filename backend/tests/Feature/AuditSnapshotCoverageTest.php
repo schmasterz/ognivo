@@ -77,7 +77,7 @@ final class AuditSnapshotCoverageTest extends TestCase
             'endpoint_url' => 'https://127.0.0.1:8443',
             'driver' => 'fake',
             'is_active' => true,
-            'status' => 'online',
+            'status' => 'ok',
         ]);
 
         $this->vm = VirtualMachine::create([

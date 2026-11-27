@@ -12,6 +12,7 @@ use App\Audit\AuditOutcome;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\States\User\Active;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -52,7 +53,7 @@ final class ImpersonationController extends Controller
         }
 
         $impersonator = User::find($impersonatorId);
-        if ($impersonator === null || $impersonator->status !== 'active' || ! $impersonator->hasRole('admin')) {
+        if ($impersonator === null || ! $impersonator->status->equals(Active::class) || ! $impersonator->hasRole('admin')) {
             abort(403, 'Impersonator is no longer an active administrator.');
         }
 

@@ -226,7 +226,7 @@ final class AuthenticationHardeningTest extends TestCase
         $admin = User::where('email', $email)->first();
         $this->assertNotNull($admin);
         $this->assertSame('Super Administrator', $admin->name);
-        $this->assertSame('active', $admin->status);
+        $this->assertSame('active', $admin->status->getValue());
         $this->assertNotNull($admin->email_verified_at);
         $this->assertTrue($admin->hasRole('admin'));
         $this->assertSame(-1, $admin->quota?->max_vms);

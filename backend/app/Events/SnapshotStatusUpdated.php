@@ -35,7 +35,7 @@ class SnapshotStatusUpdated implements ShouldBroadcast
     public function __construct(VmSnapshot $snapshot, ?string $status = null, bool $isAdmin = false)
     {
         $this->snapshot = $snapshot;
-        $this->status = $status ?? $snapshot->status;
+        $this->status = $status ?? $snapshot->status->getValue();
         $this->userId = (int) $snapshot->user_id;
         $this->virtualMachineId = (int) $snapshot->virtual_machine_id;
         $this->isAdmin = $isAdmin;

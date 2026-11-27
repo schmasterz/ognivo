@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Enums\IpAllocationStatus;
+use App\Enums\NetworkStatus;
 use App\Events\AdminVirtualMachineStatusUpdated;
 use App\Events\VirtualMachineStatusUpdated;
 use App\Jobs\ProvisionVmJob;
@@ -132,7 +134,7 @@ final class ProvisionVmJobTest extends TestCase
 
         $vm->refresh();
         $this->assertTrue($vm->status->equals(Running::class));
-        $this->assertSame('observed', $vm->network_status);
+        $this->assertSame(NetworkStatus::Observed, $vm->network_status);
     }
 
     public function test_observed_not_equals_assigned_marks_mismatch_and_vm_running(): void
@@ -162,7 +164,7 @@ final class ProvisionVmJobTest extends TestCase
 
         $vm->refresh();
         $this->assertTrue($vm->status->equals(Running::class));
-        $this->assertSame('mismatch', $vm->network_status);
+        $this->assertSame(NetworkStatus::Mismatch, $vm->network_status);
     }
 
     public function test_permanent_create_failure_marks_failed_cools_allocation_and_deletes_instance(): void
@@ -181,13 +183,13 @@ final class ProvisionVmJobTest extends TestCase
 
         $vm->refresh();
         $this->assertTrue($vm->status->equals(Failed::class));
-        $this->assertSame('unassigned', $vm->network_status);
+        $this->assertSame(NetworkStatus::Unassigned, $vm->network_status);
         $this->assertIsArray($vm->metadata);
         $this->assertArrayHasKey('failure_reason', $vm->metadata);
         $this->assertStringContainsString('Hypervisor rejected instance creation', (string) $vm->metadata['failure_reason']);
 
         $allocation->refresh();
-        $this->assertSame('cooling', $allocation->status);
+        $this->assertSame(IpAllocationStatus::Cooling, $allocation->status);
         $this->assertNull($allocation->virtual_machine_id);
 
         $this->assertTrue($this->driver->wasInstanceDeleted($vm));
@@ -247,7 +249,7 @@ final class ProvisionVmJobTest extends TestCase
 
         $vm->refresh();
         $this->assertTrue($vm->status->equals(Running::class));
-        $this->assertSame('observed', $vm->network_status);
+        $this->assertSame(NetworkStatus::Observed, $vm->network_status);
     }
 
     public function test_job_payload_restored_from_queue_produces_same_behaviour(): void
@@ -269,7 +271,7 @@ final class ProvisionVmJobTest extends TestCase
 
         $vm->refresh();
         $this->assertNotNull($vm->network_wait_started_at);
-        $this->assertSame('assigned', $vm->network_status);
+        $this->assertSame(NetworkStatus::Assigned, $vm->network_status);
 
         // Simulate queue re-queue: restored job has original constructor args
         $serialized = serialize(new ProvisionVmJob($vm->fresh(), $allocation->id));
@@ -279,7 +281,7 @@ final class ProvisionVmJobTest extends TestCase
         // Run before deadline has elapsed -> still waiting, does not mark unverified prematurely
         $jobRestored->handle($this->manager);
         $vm->refresh();
-        $this->assertSame('assigned', $vm->network_status);
+        $this->assertSame(NetworkStatus::Assigned, $vm->network_status);
 
         // Fast forward network_wait_started_at past the 5s threshold
         $vm->update(['network_wait_started_at' => now()->subSeconds(6)]);
@@ -293,7 +295,7 @@ final class ProvisionVmJobTest extends TestCase
 
         $vm->refresh();
         $this->assertTrue($vm->status->equals(Running::class));
-        $this->assertSame('unverified', $vm->network_status);
+        $this->assertSame(NetworkStatus::Unverified, $vm->network_status);
     }
 
     public function test_broadcast_of_network_status_and_ip_changes_via_model_saved_hook(): void
@@ -311,7 +313,7 @@ final class ProvisionVmJobTest extends TestCase
             AdminVirtualMachineStatusUpdated::class,
         ]);
 
-        $vm->network_status = 'observed';
+        $vm->network_status = NetworkStatus::Observed;
         $vm->save();
 
         Event::assertDispatched(VirtualMachineStatusUpdated::class, function (VirtualMachineStatusUpdated $event) use ($vm) {
@@ -374,11 +376,11 @@ final class ProvisionVmJobTest extends TestCase
 
         $vm->refresh();
         $this->assertTrue($vm->status->equals(Failed::class));
-        $this->assertSame('unassigned', $vm->network_status);
+        $this->assertSame(NetworkStatus::Unassigned, $vm->network_status);
         $this->assertIsArray($vm->metadata);
         $this->assertStringContainsString('parent_interface', (string) ($vm->metadata['raw_failure_reason'] ?? ''));
 
         $allocation->refresh();
-        $this->assertSame('cooling', $allocation->status);
+        $this->assertSame(IpAllocationStatus::Cooling, $allocation->status);
     }
 }

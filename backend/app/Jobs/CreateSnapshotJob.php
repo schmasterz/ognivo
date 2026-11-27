@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Contracts\BackupTargetInterface;
-use App\Events\SnapshotStatusUpdated;
 use App\Jobs\Enums\QueueName;
 use App\Models\VirtualMachine;
 use App\Models\VmSnapshot;
+use App\States\Snapshot\Deleting;
+use App\States\Snapshot\Failed;
+use App\States\Snapshot\Ready;
 use App\States\Vm\Deleted;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -77,8 +79,8 @@ final class CreateSnapshotJob implements ShouldQueue
 
             $this->snapshot->refresh();
 
-            // Idempotency: if already ready or deleting, do not re-create on the target
-            if (in_array($this->snapshot->status, [VmSnapshot::STATUS_READY, VmSnapshot::STATUS_DELETING], true)) {
+            // Idempotency: if already ready, deleting, or failed, do not re-create on the target
+            if ($this->snapshot->status->equals(Ready::class, Deleting::class, Failed::class)) {
                 return;
             }
 
@@ -102,11 +104,8 @@ final class CreateSnapshotJob implements ShouldQueue
                 ));
             }
 
-            $this->snapshot->status = VmSnapshot::STATUS_READY;
             $this->snapshot->error = null;
-            $this->snapshot->save();
-
-            event(new SnapshotStatusUpdated($this->snapshot, VmSnapshot::STATUS_READY));
+            $this->snapshot->status->transitionTo(Ready::class);
 
             Log::info(sprintf('Snapshot "%s" created successfully on VM #%d (%s)', $this->snapshot->name, $vm->id, $vm->name));
         } catch (Throwable $e) {
@@ -146,14 +145,7 @@ final class CreateSnapshotJob implements ShouldQueue
         }
 
         $this->snapshot->refresh();
-        $this->snapshot->status = VmSnapshot::STATUS_FAILED;
         $this->snapshot->error = $reason;
-        $this->snapshot->save();
-
-        try {
-            event(new SnapshotStatusUpdated($this->snapshot, VmSnapshot::STATUS_FAILED));
-        } catch (Throwable) {
-            // Ignore broadcast error during failure handling
-        }
+        $this->snapshot->status->transitionTo(Failed::class);
     }
 }

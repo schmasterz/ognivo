@@ -9,6 +9,7 @@ use App\Events\SnapshotStatusUpdated;
 use App\Jobs\Enums\QueueName;
 use App\Models\VirtualMachine;
 use App\Models\VmSnapshot;
+use App\States\Snapshot\Failed;
 use App\States\Vm\Deleted;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -37,6 +38,7 @@ final class DeleteSnapshotJob implements ShouldQueue
 
     public function __construct(
         public readonly VmSnapshot $snapshot,
+        public readonly bool $wasFailed = false,
     ) {
         $this->onQueue(QueueName::Heavy);
     }
@@ -85,7 +87,7 @@ final class DeleteSnapshotJob implements ShouldQueue
             if ($vm !== null && ! $vm->status->equals(Deleted::class)) {
                 Log::info(sprintf('Deleting snapshot "%s" on VM #%d (%s)', $this->snapshot->name, $vm->id, $vm->name));
 
-                $isFailed = $this->snapshot->status === VmSnapshot::STATUS_FAILED;
+                $isFailed = $this->wasFailed || $this->snapshot->status->equals(Failed::class);
                 try {
                     $deleted = $target->delete($vm, $this->snapshot->name);
                     if (! $deleted && ! $isFailed) {
@@ -147,14 +149,7 @@ final class DeleteSnapshotJob implements ShouldQueue
         }
 
         $this->snapshot->refresh();
-        $this->snapshot->status = VmSnapshot::STATUS_FAILED;
         $this->snapshot->error = $reason;
-        $this->snapshot->save();
-
-        try {
-            event(new SnapshotStatusUpdated($this->snapshot, VmSnapshot::STATUS_FAILED));
-        } catch (Throwable) {
-            // Ignore broadcast error during failure handling
-        }
+        $this->snapshot->status->transitionTo(Failed::class);
     }
 }

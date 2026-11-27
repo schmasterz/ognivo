@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Enums\NetworkStatus;
 use App\Models\Host;
 use App\Models\Image;
 use App\Models\IpPool;
@@ -145,7 +146,7 @@ final class SweepStaleProvisioningTest extends TestCase
         // 1. Verify stale VM is transitioned to Failed and compensated
         $staleVm->refresh();
         $this->assertTrue($staleVm->status->equals(Failed::class));
-        $this->assertSame('unassigned', $staleVm->network_status);
+        $this->assertSame(NetworkStatus::Unassigned, $staleVm->network_status);
         $this->assertNull($staleVm->ipv4_address);
         $this->assertIsArray($staleVm->metadata);
         $this->assertSame(
@@ -167,7 +168,7 @@ final class SweepStaleProvisioningTest extends TestCase
         // 2. Verify fresh VM is untouched
         $freshVm->refresh();
         $this->assertTrue($freshVm->status->equals(Provisioning::class));
-        $this->assertSame('assigned', $freshVm->network_status);
+        $this->assertSame(NetworkStatus::Assigned, $freshVm->network_status);
         $this->assertSame($freshIp, $freshVm->ipv4_address);
         $this->assertDatabaseHas('ip_allocations', [
             'virtual_machine_id' => $freshVm->id,
@@ -209,7 +210,7 @@ final class SweepStaleProvisioningTest extends TestCase
 
             $staleVm->refresh();
             $this->assertTrue($staleVm->status->equals(Provisioning::class));
-            $this->assertSame('assigned', $staleVm->network_status);
+            $this->assertSame(NetworkStatus::Assigned, $staleVm->network_status);
             $this->assertNotNull($staleVm->ipv4_address);
         } finally {
             $lock->release();

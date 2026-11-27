@@ -155,9 +155,6 @@
     </TypeDoesNotContainType>
   </file>
   <file src="app/Jobs/DeleteUserWorkloadsJob.php">
-    <MixedPropertyAssignment>
-      <code><![CDATA[$freshUser]]></code>
-    </MixedPropertyAssignment>
     <PossiblyNullArgument>
       <code><![CDATA[$exception?->getMessage()]]></code>
     </PossiblyNullArgument>
@@ -236,9 +233,6 @@
     <ClassMustBeFinal>
       <code><![CDATA[HostSelector]]></code>
     </ClassMustBeFinal>
-    <DocblockTypeContradiction>
-      <code><![CDATA[in_array($host->status, ['fingerprint_mismatch', 'not_trusted', 'unreachable'], true)]]></code>
-    </DocblockTypeContradiction>
     <RiskyTruthyFalsyComparison>
       <code><![CDATA[app()->environment('local', 'testing')]]></code>
       <code><![CDATA[app()->environment('local', 'testing')]]></code>

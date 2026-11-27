@@ -38,7 +38,7 @@ final class PanelCertificateController extends Controller
                 'fingerprint' => $active->fingerprint,
                 'not_before' => $active->not_before->toISOString(),
                 'not_after' => $active->not_after->toISOString(),
-                'status' => $active->status,
+                'status' => $active->status->getValue(),
                 'is_expired' => $active->isExpired(),
                 'is_expiring_soon' => $active->isExpiringSoon(30),
                 'days_until_expiration' => now()->diffInDays($active->not_after, false),
@@ -46,7 +46,7 @@ final class PanelCertificateController extends Controller
             'retiring_certificate' => $retiring !== null ? [
                 'id' => $retiring->id,
                 'fingerprint' => $retiring->fingerprint,
-                'status' => $retiring->status,
+                'status' => $retiring->status->getValue(),
                 'not_after' => $retiring->not_after->toISOString(),
             ] : null,
             'pending_retrust_hosts_count' => $pendingHostsCount,
@@ -90,7 +90,7 @@ final class PanelCertificateController extends Controller
                 'fingerprint' => $newCert->fingerprint,
                 'not_before' => $newCert->not_before->toISOString(),
                 'not_after' => $newCert->not_after->toISOString(),
-                'status' => $newCert->status,
+                'status' => $newCert->status->getValue(),
             ],
             'pending_retrust_hosts_count' => Host::where('needs_retrust', true)->count(),
         ]);

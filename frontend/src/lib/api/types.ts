@@ -2,8 +2,10 @@
  * Shared Domain Types and DTO Interfaces for LXD / Incus Control Plane.
  */
 
+export type HostState = "ok" | "unreachable" | "not_trusted" | "fingerprint_mismatch" | "error";
+
 export interface TestConnectionResponse {
-  state?: "ok" | "unreachable" | "fingerprint_mismatch" | "not_trusted" | "error";
+  state?: HostState;
   success: boolean;
   message: string;
   latency_ms?: number;
@@ -49,7 +51,7 @@ export interface TenantHost {
   region?: string | null;
   driver: "incus" | "lxd" | "fake" | string;
   is_active: boolean;
-  status?: "ok" | "unreachable" | string;
+  status?: HostState;
   max_instance?: HostMaxInstanceLimits;
 }
 
@@ -101,7 +103,7 @@ export interface HostMetricsHealth {
 export interface HostNode extends TenantHost {
   endpoint_url?: string;
   server_fingerprint?: string | null;
-  status?: "ok" | "unreachable" | "fingerprint_mismatch" | "not_trusted" | "error" | string;
+  status?: HostState;
   needs_retrust?: boolean;
   last_checked_at?: string | null;
   metrics_health?: HostMetricsHealth | null;
@@ -192,10 +194,27 @@ export interface QuotaResponse {
   };
 }
 
+export type VmStatus =
+  | "provisioning"
+  | "running"
+  | "stopped"
+  | "suspended"
+  | "deleting"
+  | "deleted"
+  | "failed";
+
+export type VmNetworkStatus =
+  | "assigned"
+  | "waiting"
+  | "observed"
+  | "unverified"
+  | "mismatch"
+  | "unassigned";
+
 export interface VmNetworkPrimary {
   address: string | null;
   family: number;
-  status: "assigned" | "observed" | "unverified" | "mismatch" | "unassigned" | null;
+  status: VmNetworkStatus | null;
   mac_address?: string | null;
 }
 
@@ -220,7 +239,7 @@ export interface VirtualMachine {
   name: string;
   incus_project: string;
   instance_type: "virtual-machine" | "container";
-  status: string;
+  status: VmStatus;
   failure_reason?: string | null;
   cpu_cores: number;
   ram_mb: number;
@@ -230,7 +249,7 @@ export interface VirtualMachine {
   ipv4_address: string | null;
   ipv6_address: string | null;
   mac_address?: string | null;
-  network_status?: "assigned" | "observed" | "unverified" | "mismatch" | null;
+  network_status?: VmNetworkStatus | null;
   network?: VmNetwork;
   created_at: string;
   updated_at: string;
@@ -404,7 +423,7 @@ export interface IpAllocation {
   address: string;
   ip_string?: string;
   mac_address: string;
-  status: "allocated" | "cooling" | "released";
+  status: "allocated" | "cooling";
   cooldown_remaining_seconds?: number;
   allocated_at?: string | null;
   released_at?: string | null;

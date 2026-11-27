@@ -12,6 +12,7 @@ use App\Services\Hypervisor\Drivers\FakeHypervisorDriver;
 use App\Services\Hypervisor\HypervisorManager;
 use App\Services\Metrics\VmMetricsCollectorService;
 use App\Services\Metrics\VmMetricsQueryService;
+use App\States\Host\Ok as HostOk;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -222,7 +223,7 @@ final class MetricsBenchmarkCommand extends Command
                     'region' => 'benchmark',
                     'endpoint_url' => sprintf('https://127.0.0.%d:8443', ($i % 200) + 10),
                     'driver' => 'fake',
-                    'status' => 'ok',
+                    'status' => HostOk::$name,
                     'needs_retrust' => false,
                     'is_active' => true,
                     'total_cpu_cores' => 64,

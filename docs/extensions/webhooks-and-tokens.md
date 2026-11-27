@@ -39,6 +39,15 @@ All webhook management endpoints live under `/api/v1/webhooks` (`App\Http\Contro
 
 `DeliverWebhookJob` dispatches an HTTP `POST` request with a **10-second timeout**, **up to 4 attempts**, and exponential backoff intervals of **`60s`, `300s`, `900s`, and `3600s`**.
 
+Each `WebhookDelivery` record tracks its lifecycle in `status`:
+
+| Status | Meaning |
+| --- | --- |
+| `pending` | Initial state when the delivery record is created and queued for its first attempt. |
+| `retrying` | Intermediate state set between failed attempts while retries remain during the 4-attempt backoff schedule. |
+| `success` | Terminal state set when the target endpoint responds with a `2xx` HTTP status. |
+| `failed` | Terminal state set once all 4 delivery attempts are exhausted without success. |
+
 Each delivery includes:
 
 | Header | Value |

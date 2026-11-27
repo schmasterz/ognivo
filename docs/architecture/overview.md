@@ -62,14 +62,14 @@ flowchart TB
 
 ### 2.1 Core Eloquent Models (`backend/app/Models/`)
 
-1. **`User`** — Tenant and administrator accounts (`HasApiTokens`, `HasRoles`). Generates isolated per-tenant Incus projects (`proj-{uuid}`) via `ensureProjectName()`.
+1. **`User`** — Tenant and administrator accounts (`HasApiTokens`, `HasRoles`) with lifecycle states (`pending`, `active`, `suspended`, `inactive`, `deleting`, `deletion_failed`). Generates isolated per-tenant Incus projects (`proj-{uuid}`) via `ensureProjectName()`.
 2. **`UserQuota` & `QuotaGroup`** — Tiered resource plans and per-user limits for VMs, vCPU cores, RAM, disk, public IPs, and snapshots (`-1` denotes unlimited `∞`). Editing a `QuotaGroup` automatically synchronizes all assigned users.
-3. **`Host`** — Hypervisor cluster nodes (`incus`, `lxd`, or `fake` driver), capacity boundaries, pinned TLS certificate fingerprint, and `needs_retrust` status.
+3. **`Host`** — Hypervisor cluster nodes (`incus`, `lxd`, or `fake` driver) with `status` (`ok`, `unreachable`, `not_trusted`, `fingerprint_mismatch`, `error`), capacity boundaries, pinned TLS certificate fingerprint, and `needs_retrust` flag.
 4. **`VirtualMachine`** — Customer workloads (KVM VMs and LXC containers) managed via `VmState` (`Provisioning`, `Running`, `Stopped`, `Suspended`, `Deleting`, `Deleted`, `Failed`). Dispatches `VirtualMachineStatusUpdated` on state/IP mutations.
 5. **`VmSnapshot`** — Crash-consistent point-in-time disk captures (`creating`, `ready`, `restoring`, `deleting`, `failed`) with `source` discriminator (`manual`, `scheduled`).
 6. **`IpPool` & `IpAllocation`** — Ranged IPv4 subnet pools (`routed`, `bridged`, `macvlan`, or `manual` mode) and individual IP allocations (`allocated`, `cooling`).
 7. **`Image`** — Curated OS image catalog synchronized with hypervisor image servers.
-8. **`PanelCertificate`** — Self-signed `secp384r1` mTLS client certificate and encrypted private key (`active`, `retiring`).
+8. **`PanelCertificate`** — Self-signed `secp384r1` mTLS client certificate and encrypted private key (`active`, `retiring`, `revoked`).
 9. **`AuditLog` & `AuditSeal`** — Tamper-evident audit events and periodic SHA-256 + HMAC cryptographic seals.
 10. **`DriftReport`** — Records of state discrepancies detected between the control-plane database and live Incus/LXD hypervisors.
 11. **`SystemSetting`** — Global key-value configuration (public registration toggle, allowed instance types, SMTP settings).
