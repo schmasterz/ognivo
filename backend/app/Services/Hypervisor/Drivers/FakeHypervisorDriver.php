@@ -5,11 +5,21 @@ declare(strict_types=1);
 namespace App\Services\Hypervisor\Drivers;
 
 use App\DTO\Host\HostResourcesDTO;
+use App\DTO\Hypervisor\InstanceResourceSpec;
+use App\DTO\Hypervisor\OperationState;
+use App\DTO\Hypervisor\OperationStatus;
+use App\DTO\Hypervisor\ResourceKind;
+use App\DTO\Hypervisor\ResourceUpdateAssessment;
+use App\DTO\Hypervisor\ResourceUpdateResult;
+use App\DTO\Hypervisor\ResourceUpdateStatus;
+use App\DTO\Hypervisor\ResourceUpdateVerdict;
 use App\DTO\Incus\RawInstanceMetricsDTO;
+use App\Exceptions\DriverUnavailableException;
 use App\Models\Host;
 use App\Models\VirtualMachine;
 use App\Services\Hypervisor\Contracts\HypervisorDriverInterface;
 use App\Services\Hypervisor\OpenMetricsParser;
+use App\Services\Hypervisor\ResourceCapabilityMatrix;
 use Illuminate\Support\Facades\Cache;
 use Override;
 
@@ -898,5 +908,460 @@ final class FakeHypervisorDriver implements HypervisorDriverInterface
         }
 
         return $result;
+    }
+
+    /**
+     * @var array<string, InstanceResourceSpec>
+     */
+    public array $instanceResourceSpecs = [];
+
+    /**
+     * @var array<string, string>
+     */
+    public array $instanceStorageDrivers = [];
+
+    /**
+     * @var array<string, string|null>
+     */
+    public array $instanceNicTypes = [];
+
+    /**
+     * @var array<string, bool>
+     */
+    public array $unreachableHosts = [];
+
+    /**
+     * @var array<string, array<string, ResourceUpdateVerdict>>
+     */
+    public array $assessmentVerdictOverrides = [];
+
+    /**
+     * @var array<string, array<string, string>>
+     */
+    public array $assessmentReasonOverrides = [];
+
+    /**
+     * @var array<string, int|bool>
+     */
+    public array $etagConflicts = [];
+
+    /**
+     * @var array<string, ResourceUpdateResult>
+     */
+    public array $forcedApplyResults = [];
+
+    /**
+     * @var array<string, array{spec: InstanceResourceSpec, result: ResourceUpdateResult|null}>
+     */
+    public array $partialApplyConfigs = [];
+
+    /**
+     * @var array<string, array{polls_before_complete: int, terminal_state: OperationState, error_code: ?string, safe_message: ?string}>
+     */
+    public array $asyncApplyConfigs = [];
+
+    /**
+     * @var array<string, array{vm_key: string, polls_remaining: int, terminal_state: OperationState, error_code: ?string, safe_message: ?string, target: ?InstanceResourceSpec}>
+     */
+    private array $asyncOperations = [];
+
+    /**
+     * @var array<string, OperationStatus>
+     */
+    public array $forcedOperationStatuses = [];
+
+    /**
+     * @var list<array{vm: string, target: InstanceResourceSpec}>
+     */
+    public array $appliedResourceUpdates = [];
+
+    private int $operationSequence = 0;
+
+    public function setInstanceResourceSpec(VirtualMachine|string $vm, InstanceResourceSpec $spec): self
+    {
+        $key = $vm instanceof VirtualMachine ? $this->instanceKey($vm) : $vm;
+        $this->instanceResourceSpecs[$key] = $spec;
+
+        return $this;
+    }
+
+    public function setInstanceStorageDriver(VirtualMachine|string $vm, string $driver): self
+    {
+        $key = $vm instanceof VirtualMachine ? $this->instanceKey($vm) : $vm;
+        $this->instanceStorageDrivers[$key] = $driver;
+
+        return $this;
+    }
+
+    public function setInstanceNicType(VirtualMachine|string $vm, ?string $nicType): self
+    {
+        $key = $vm instanceof VirtualMachine ? $this->instanceKey($vm) : $vm;
+        $this->instanceNicTypes[$key] = $nicType;
+
+        return $this;
+    }
+
+    public function setHostUnreachable(Host|VirtualMachine|string|int $target, bool $unreachable = true): self
+    {
+        $key = match (true) {
+            $target instanceof Host => sprintf('host:%d', $target->id),
+            $target instanceof VirtualMachine => $this->instanceKey($target),
+            is_int($target) => sprintf('host:%d', $target),
+            default => $target,
+        };
+
+        $this->unreachableHosts[$key] = $unreachable;
+
+        return $this;
+    }
+
+    public function setAssessmentVerdict(
+        VirtualMachine|string $vm,
+        ResourceKind|string $resource,
+        ResourceUpdateVerdict $verdict,
+        ?string $reason = null,
+    ): self {
+        $key = $vm instanceof VirtualMachine ? $this->instanceKey($vm) : $vm;
+        $resourceKey = $resource instanceof ResourceKind ? $resource->value : $resource;
+
+        $this->assessmentVerdictOverrides[$key][$resourceKey] = $verdict;
+        if ($reason !== null) {
+            $this->assessmentReasonOverrides[$key][$resourceKey] = $reason;
+        }
+
+        return $this;
+    }
+
+    /**
+     * @param  array<string, ResourceUpdateVerdict>  $verdicts
+     * @param  array<string, string>  $reasons
+     */
+    public function setAssessmentOverrides(VirtualMachine|string $vm, array $verdicts, array $reasons = []): self
+    {
+        $key = $vm instanceof VirtualMachine ? $this->instanceKey($vm) : $vm;
+        $this->assessmentVerdictOverrides[$key] = $verdicts;
+        $this->assessmentReasonOverrides[$key] = $reasons;
+
+        return $this;
+    }
+
+    public function setEtagConflict(VirtualMachine|string $vm, int|bool $conflict = true): self
+    {
+        $key = $vm instanceof VirtualMachine ? $this->instanceKey($vm) : $vm;
+        $this->etagConflicts[$key] = $conflict;
+
+        return $this;
+    }
+
+    public function setApplyResult(VirtualMachine|string $vm, ResourceUpdateResult $result): self
+    {
+        $key = $vm instanceof VirtualMachine ? $this->instanceKey($vm) : $vm;
+        $this->forcedApplyResults[$key] = $result;
+
+        return $this;
+    }
+
+    public function setApplyOutcome(
+        VirtualMachine|string $vm,
+        ResourceUpdateStatus $status,
+        ?string $errorCode = null,
+        ?string $safeMessage = null,
+        ?string $operationId = null,
+    ): self {
+        return $this->setApplyResult($vm, new ResourceUpdateResult(
+            status: $status,
+            operationId: $operationId,
+            errorCode: $errorCode,
+            safeMessage: $safeMessage,
+        ));
+    }
+
+    public function setPartialApplySpec(
+        VirtualMachine|string $vm,
+        InstanceResourceSpec $partialSpec,
+        ?ResourceUpdateResult $result = null,
+    ): self {
+        $key = $vm instanceof VirtualMachine ? $this->instanceKey($vm) : $vm;
+        $this->partialApplyConfigs[$key] = [
+            'spec' => $partialSpec,
+            'result' => $result,
+        ];
+
+        return $this;
+    }
+
+    public function setAsyncApplyLatency(
+        VirtualMachine|string $vm,
+        int $pollsBeforeComplete,
+        OperationState $terminalState = OperationState::Succeeded,
+        ?string $errorCode = null,
+        ?string $safeMessage = null,
+    ): self {
+        $key = $vm instanceof VirtualMachine ? $this->instanceKey($vm) : $vm;
+        $this->asyncApplyConfigs[$key] = [
+            'polls_before_complete' => max(0, $pollsBeforeComplete),
+            'terminal_state' => $terminalState,
+            'error_code' => $errorCode,
+            'safe_message' => $safeMessage,
+        ];
+
+        return $this;
+    }
+
+    public function setOperationStatus(string $operationId, OperationStatus $status): self
+    {
+        $this->forcedOperationStatuses[$operationId] = $status;
+
+        return $this;
+    }
+
+    #[Override]
+    public function getInstanceResourceSpec(VirtualMachine $vm): InstanceResourceSpec
+    {
+        if (isset($this->actionCallbacks['getInstanceResourceSpec'])) {
+            /** @var InstanceResourceSpec $spec */
+            $spec = ($this->actionCallbacks['getInstanceResourceSpec'])($vm);
+
+            return $spec;
+        }
+
+        if ($this->isHostUnreachableFor($vm) || $this->shouldFail('getInstanceResourceSpec')) {
+            throw new DriverUnavailableException(sprintf('Fake hypervisor host is unreachable for instance %s.', $vm->name));
+        }
+
+        return $this->resolveObservedSpec($vm);
+    }
+
+    #[Override]
+    public function assessResourceUpdate(VirtualMachine $vm, InstanceResourceSpec $target): ResourceUpdateAssessment
+    {
+        if (isset($this->actionCallbacks['assessResourceUpdate'])) {
+            /** @var ResourceUpdateAssessment $assessment */
+            $assessment = ($this->actionCallbacks['assessResourceUpdate'])($vm, $target);
+
+            return $assessment;
+        }
+
+        if ($this->isHostUnreachableFor($vm) || $this->shouldFail('assessResourceUpdate')) {
+            throw new DriverUnavailableException(sprintf('Fake hypervisor host is unreachable for instance %s.', $vm->name));
+        }
+
+        $observed = $this->resolveObservedSpec($vm);
+        $key = $this->instanceKey($vm);
+
+        $storageDriver = $this->instanceStorageDrivers[$key]
+            ?? $this->instanceStorageDrivers[$vm->name]
+            ?? 'zfs';
+
+        $nicType = array_key_exists($key, $this->instanceNicTypes)
+            ? $this->instanceNicTypes[$key]
+            : (array_key_exists($vm->name, $this->instanceNicTypes) ? $this->instanceNicTypes[$vm->name] : 'routed');
+
+        $base = (new ResourceCapabilityMatrix)->assess(
+            observed: $observed,
+            target: $target,
+            vmState: $this->getInstanceStatus($vm),
+            storageDriver: $storageDriver,
+            nicType: $nicType,
+        );
+
+        $verdictOverrides = $this->assessmentVerdictOverrides[$key]
+            ?? $this->assessmentVerdictOverrides[$vm->name]
+            ?? $this->assessmentVerdictOverrides['*']
+            ?? [];
+
+        $reasonOverrides = $this->assessmentReasonOverrides[$key]
+            ?? $this->assessmentReasonOverrides[$vm->name]
+            ?? $this->assessmentReasonOverrides['*']
+            ?? [];
+
+        if ($verdictOverrides === [] && $reasonOverrides === []) {
+            return $base;
+        }
+
+        return new ResourceUpdateAssessment(
+            verdicts: array_merge($base->verdicts, $verdictOverrides),
+            reasons: array_merge($base->reasons, $reasonOverrides),
+        );
+    }
+
+    #[Override]
+    public function applyResourceUpdate(VirtualMachine $vm, InstanceResourceSpec $target): ResourceUpdateResult
+    {
+        if (isset($this->actionCallbacks['applyResourceUpdate'])) {
+            /** @var ResourceUpdateResult $result */
+            $result = ($this->actionCallbacks['applyResourceUpdate'])($vm, $target);
+
+            return $result;
+        }
+
+        if ($this->isHostUnreachableFor($vm)) {
+            return new ResourceUpdateResult(
+                status: ResourceUpdateStatus::Failed,
+                errorCode: 'DRIVER_UNAVAILABLE',
+                safeMessage: sprintf('Fake hypervisor host is unreachable for instance %s.', $vm->name),
+            );
+        }
+
+        $key = $this->instanceKey($vm);
+
+        if ($this->consumeEtagConflict($key, $vm->name)) {
+            return new ResourceUpdateResult(
+                status: ResourceUpdateStatus::Rejected,
+                errorCode: 'CONCURRENT_MODIFICATION',
+                safeMessage: 'Simulated concurrent modification (ETag mismatch).',
+            );
+        }
+
+        $forced = $this->forcedApplyResults[$key]
+            ?? $this->forcedApplyResults[$vm->name]
+            ?? $this->forcedApplyResults['*']
+            ?? null;
+        if ($forced !== null) {
+            return $forced;
+        }
+
+        if ($this->shouldFail('applyResourceUpdate')) {
+            return new ResourceUpdateResult(
+                status: ResourceUpdateStatus::Failed,
+                errorCode: 'HYPERVISOR_OPERATION_FAILED',
+                safeMessage: sprintf('Fake driver forced failure applying resource update for %s.', $vm->name),
+            );
+        }
+
+        $partial = $this->partialApplyConfigs[$key]
+            ?? $this->partialApplyConfigs[$vm->name]
+            ?? null;
+        if ($partial !== null) {
+            $this->instanceResourceSpecs[$key] = $partial['spec'];
+
+            return $partial['result'] ?? new ResourceUpdateResult(
+                status: ResourceUpdateStatus::Failed,
+                errorCode: 'PARTIAL_APPLY',
+                safeMessage: 'Simulated partial resource update application.',
+            );
+        }
+
+        $async = $this->asyncApplyConfigs[$key]
+            ?? $this->asyncApplyConfigs[$vm->name]
+            ?? $this->asyncApplyConfigs['*']
+            ?? null;
+        if ($async !== null) {
+            $operationId = sprintf('fake-op-resize-%s-%d', $vm->name, ++$this->operationSequence);
+            $this->asyncOperations[$operationId] = [
+                'vm_key' => $key,
+                'polls_remaining' => $async['polls_before_complete'],
+                'terminal_state' => $async['terminal_state'],
+                'error_code' => $async['error_code'],
+                'safe_message' => $async['safe_message'],
+                'target' => $target,
+            ];
+
+            return new ResourceUpdateResult(
+                status: ResourceUpdateStatus::Accepted,
+                operationId: $operationId,
+            );
+        }
+
+        $this->instanceResourceSpecs[$key] = $target;
+        $this->appliedResourceUpdates[] = ['vm' => $key, 'target' => $target];
+
+        return new ResourceUpdateResult(
+            status: ResourceUpdateStatus::Applied,
+        );
+    }
+
+    #[Override]
+    public function getOperationStatus(VirtualMachine $vm, string $operationId): OperationStatus
+    {
+        if (isset($this->actionCallbacks['getOperationStatus'])) {
+            /** @var OperationStatus $status */
+            $status = ($this->actionCallbacks['getOperationStatus'])($vm, $operationId);
+
+            return $status;
+        }
+
+        if (isset($this->forcedOperationStatuses[$operationId])) {
+            return $this->forcedOperationStatuses[$operationId];
+        }
+
+        if (! isset($this->asyncOperations[$operationId])) {
+            return new OperationStatus(
+                state: OperationState::Unknown,
+                errorCode: 'OPERATION_NOT_FOUND',
+                safeMessage: sprintf('Operation "%s" was not found.', $operationId),
+            );
+        }
+
+        $operation = $this->asyncOperations[$operationId];
+        if ($operation['polls_remaining'] > 0) {
+            $this->asyncOperations[$operationId]['polls_remaining'] = $operation['polls_remaining'] - 1;
+
+            return new OperationStatus(state: OperationState::Running);
+        }
+
+        if ($operation['terminal_state'] === OperationState::Succeeded && $operation['target'] !== null) {
+            $this->instanceResourceSpecs[$operation['vm_key']] = $operation['target'];
+            $this->appliedResourceUpdates[] = ['vm' => $operation['vm_key'], 'target' => $operation['target']];
+        }
+
+        return new OperationStatus(
+            state: $operation['terminal_state'],
+            errorCode: $operation['error_code'],
+            safeMessage: $operation['safe_message'],
+        );
+    }
+
+    private function resolveObservedSpec(VirtualMachine $vm): InstanceResourceSpec
+    {
+        $key = $this->instanceKey($vm);
+
+        if (isset($this->instanceResourceSpecs[$key])) {
+            return $this->instanceResourceSpecs[$key];
+        }
+
+        if (isset($this->instanceResourceSpecs[$vm->name])) {
+            return $this->instanceResourceSpecs[$vm->name];
+        }
+
+        return new InstanceResourceSpec(
+            cpuCores: max(1, (int) $vm->cpu_cores),
+            ramMb: max(512, (int) $vm->ram_mb),
+            diskGb: max(1, (int) $vm->disk_gb),
+            instanceType: $vm->instance_type === 'container' ? 'container' : 'virtual-machine',
+            network: null,
+        );
+    }
+
+    private function isHostUnreachableFor(VirtualMachine $vm): bool
+    {
+        $key = $this->instanceKey($vm);
+        $hostKey = $vm->host_id !== null ? sprintf('host:%d', $vm->host_id) : '';
+
+        return ($this->unreachableHosts['all'] ?? false)
+            || ($this->unreachableHosts[$key] ?? false)
+            || ($this->unreachableHosts[$vm->name] ?? false)
+            || ($hostKey !== '' && ($this->unreachableHosts[$hostKey] ?? false));
+    }
+
+    private function consumeEtagConflict(string $key, string $vmName): bool
+    {
+        foreach ([$key, $vmName, '*'] as $candidate) {
+            if (! array_key_exists($candidate, $this->etagConflicts)) {
+                continue;
+            }
+
+            $setting = $this->etagConflicts[$candidate];
+            if ($setting === true) {
+                return true;
+            }
+            if (is_int($setting) && $setting > 0) {
+                $this->etagConflicts[$candidate] = $setting - 1;
+
+                return true;
+            }
+        }
+
+        return false;
     }
 }

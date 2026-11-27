@@ -5,7 +5,12 @@ declare(strict_types=1);
 namespace App\Services\Hypervisor\Contracts;
 
 use App\DTO\Host\HostResourcesDTO;
+use App\DTO\Hypervisor\InstanceResourceSpec;
+use App\DTO\Hypervisor\OperationStatus;
+use App\DTO\Hypervisor\ResourceUpdateAssessment;
+use App\DTO\Hypervisor\ResourceUpdateResult;
 use App\DTO\Incus\RawInstanceMetricsDTO;
+use App\Exceptions\DriverUnavailableException;
 use App\Models\Host;
 use App\Models\VirtualMachine;
 
@@ -149,4 +154,26 @@ interface HypervisorDriverInterface
      * @return array<string, RawInstanceMetricsDTO> Keyed by "{project}/{name}"
      */
     public function getHostInstanceMetrics(Host $host, int $timeoutSeconds = 10): array;
+
+    /**
+     * Retrieve the current observed resource specification of an instance from the hypervisor.
+     *
+     * @throws DriverUnavailableException When the hypervisor host is unreachable or fails to respond.
+     */
+    public function getInstanceResourceSpec(VirtualMachine $vm): InstanceResourceSpec;
+
+    /**
+     * Assess whether a target resource specification can be applied online, requires stop, or is unsupported.
+     */
+    public function assessResourceUpdate(VirtualMachine $vm, InstanceResourceSpec $target): ResourceUpdateAssessment;
+
+    /**
+     * Apply a target resource specification update to the instance on the hypervisor.
+     */
+    public function applyResourceUpdate(VirtualMachine $vm, InstanceResourceSpec $target): ResourceUpdateResult;
+
+    /**
+     * Query the status of an asynchronous hypervisor operation.
+     */
+    public function getOperationStatus(VirtualMachine $vm, string $operationId): OperationStatus;
 }
