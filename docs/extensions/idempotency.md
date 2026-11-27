@@ -1,6 +1,20 @@
 # API Idempotency
 
-Mutating API integrations (such as provisioning workflows, billing hooks, or automated retries after network timeouts) can supply the `Idempotency-Key` HTTP header handled by `App\Http\Middleware\IdempotencyMiddleware` (`backend/app/Http/Middleware/IdempotencyMiddleware.php`).
+Mutating API integrations (such as provisioning workflows, plan changes, billing hooks, or automated retries after network timeouts) can supply the `Idempotency-Key` HTTP header handled by `App\Http\Middleware\IdempotencyMiddleware` (`backend/app/Http/Middleware/IdempotencyMiddleware.php`), registered under the `'idempotency'` middleware alias in `backend/bootstrap/app.php`.
+
+Currently attached endpoints:
+- `POST /api/v1/vms` (`vms.store`)
+- Upcoming: `POST /api/v1/vms/{vm}/plan-change`
+
+---
+
+## Per-User Scoping
+
+Idempotency keys are scoped by authenticated user (`user_id` resolved from `$request->user()?->id`) and the `Idempotency-Key` value:
+
+- Authenticated requests look up and store records matching `(user_id, key)`. Two different users sending the same `Idempotency-Key` (even with the same or different payloads) do not collide, trigger `422`, or replay each other's responses.
+- Unauthenticated requests (on routes without authentication) fall back to `user_id IS NULL` (`whereNull('user_id')`).
+- Uniqueness is enforced at the database level via the composite unique index `idempotency_keys_user_id_key_unique` on `(user_id, key)`.
 
 ---
 
@@ -51,12 +65,13 @@ This binds the idempotency key to both the target endpoint and the exact request
 
 ## Database Schema (`idempotency_keys`)
 
-Defined in `backend/database/migrations/2026_11_25_000003_create_idempotency_keys_table.php` and modeled by `App\Models\IdempotencyKey`:
+Defined in `backend/database/migrations/2026_11_25_000003_create_idempotency_keys_table.php` and updated in `backend/database/migrations/2026_11_27_000001_add_user_id_to_idempotency_keys_table.php`, modeled by `App\Models\IdempotencyKey`:
 
 | Column | Type | Nullable | Notes |
 | --- | --- | --- | --- |
 | `id` | `BIGINT UNSIGNED` | No | Primary key (`bigIncrements`). |
-| `key` | `VARCHAR(128)` | No | Unique index; stores the `Idempotency-Key` header value. |
+| `user_id` | `BIGINT UNSIGNED` | Yes | Foreign key to `users.id` (`nullOnDelete`); part of composite unique index `idempotency_keys_user_id_key_unique` on `(user_id, key)`. |
+| `key` | `VARCHAR(128)` | No | Stores the `Idempotency-Key` header value; unique per `user_id`. |
 | `request_hash` | `VARCHAR(64)` | No | Hex SHA-256 checksum of `METHOD\|path\|body`. |
 | `response_status` | `SMALLINT UNSIGNED` | Yes | Cached HTTP status code (`null` while in-flight). |
 | `response_headers` | `JSON` | Yes | Cached response headers map. |

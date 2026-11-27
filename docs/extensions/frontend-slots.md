@@ -10,15 +10,26 @@ Module: `frontend/src/lib/registry/slotRegistry.ts`
 
 ### Available Slot IDs
 
-`SlotId` defines five standard extension points (while accepting custom string IDs for extension-to-extension composition):
+`SlotId` defines five standard extension points plus two `@experimental` VPS plan slots (while accepting custom string IDs for extension-to-extension composition):
 
-| Slot ID | Intended Surface | Notes |
-| --- | --- | --- |
-| `instance.detail.tabs` | Tabs inside `VmDetailsModal` | Bridged into `vmRegistry.ts` (`getVmTabs`). Supports `metadata.label`, `metadata.icon`, `metadata.badge`, and `metadata.visible`. |
-| `instance.detail.actions` | Action buttons inside `VmDetailsModal` | Bridged into `vmRegistry.ts` (`getVmActions`). Supports `metadata.label`, `metadata.icon`, `metadata.variant`, `metadata.disabled`, `metadata.visible`, and `metadata.onClick`. |
-| `settings.sections` | Additional sections in platform settings | Standard `SlotId` reserved for settings UI panels. |
-| `dashboard.widgets` | Panels above the main dashboard workspace | Rendered directly in `DashboardShell.tsx` above page `{children}`. |
-| `login.providers` | Alternative authentication options on login | Standard `SlotId` reserved for external sign-in providers. |
+| Slot ID | Status | Intended Surface | Notes |
+| --- | --- | --- | --- |
+| `instance.detail.tabs` | Stable | Tabs inside `VmDetailsModal` | Bridged into `vmRegistry.ts` (`getVmTabs`). Supports `metadata.label`, `metadata.icon`, `metadata.badge`, and `metadata.visible`. |
+| `instance.detail.actions` | Stable | Action buttons inside `VmDetailsModal` | Bridged into `vmRegistry.ts` (`getVmActions`). Supports `metadata.label`, `metadata.icon`, `metadata.variant`, `metadata.disabled`, `metadata.visible`, and `metadata.onClick`. |
+| `settings.sections` | Stable | Additional sections in platform settings | Standard `SlotId` reserved for settings UI panels. |
+| `dashboard.widgets` | Stable | Panels above the main dashboard workspace | Rendered directly in `DashboardShell.tsx` above page `{children}`. |
+| `login.providers` | Stable | Alternative authentication options on login | Standard `SlotId` reserved for external sign-in providers. |
+| `vps.plan.card` | `@experimental` | Footer/extra content inside each VPS plan card (`VpsPlanCard.tsx`) | Receives `{ plan: VpsPlanCatalogItem }`. |
+| `vps.plan.change.preview` | `@experimental` | Preview step inside `ChangePlanModal.tsx` | Receives `{ vm: VirtualMachine; preview: VpsPlanChangePreview }`. |
+
+### Experimental VPS Plan Slots (`@experimental`)
+
+> [!NOTE]
+> **Status: Developer Preview (`@experimental`)**  
+> `vps.plan.card` and `vps.plan.change.preview` are in Developer Preview and may evolve in minor `1.x` releases per the [Stability Policy](./stability-policy.md).
+
+- **`vps.plan.card`** (`{ plan: VpsPlanCatalogItem }`): Rendered inside `VpsPlanCard` (`frontend/src/components/plans/VpsPlanCard.tsx`) to display pricing, billing cycle badges, or custom plan metadata.
+- **`vps.plan.change.preview`** (`{ vm: VirtualMachine; preview: VpsPlanChangePreview }`): Rendered in the preview step of `ChangePlanModal` (`frontend/src/components/vms/ChangePlanModal.tsx`) below the resource comparison and warnings list to display proration, invoice summaries, or upgrade terms.
 
 ### Registering & Unregistering Slot Components
 

@@ -113,6 +113,7 @@ docker exec -it ognivo-backend php artisan scramble:cache && docker exec -it ogn
 | `incus:generate-cert [--days=365] [--force]` | Generate or rotate the panel's self-signed mTLS client certificate. `--force` rotates even when an active certificate exists |
 | `incus:listen [host] [--once]` | Listen to Incus lifecycle events over WebSocket and sync VM states. Runs continuously in the `incus-events` container. `host` is a host ID or name. `--once` runs a single pass over active hosts and exits |
 | `vm:reconcile [host]` | Compare VMs in the database with the Incus nodes and record drift. `host` (ID or name) limits it to one node |
+| `vps:reconcile-plan-changes` | Sweep stale `pending` / `applying` VPS plan changes and expire `awaiting_authorization` requests past timeout. See [VPS Plan Reconciliation](vps-plan-reconciliation.md) |
 | `snapshots:sync [host]` | Synchronize virtual machine snapshots from hypervisor backup targets to detect out-of-band snapshot changes. host (ID or name) limits it to one node |
 | `vm:sweep-stale-provisioning [--max-age-seconds=]` | Fail and compensate VMs stuck in `provisioning` past the job deadline. `--max-age-seconds` overrides the cutoff |
 | `hosts:sync-resources [host]` | Sync CPU, RAM and storage capacity from the hypervisors for hosts with `discovered` or `unknown` capacity (never overwrites capacity you set manually) |
@@ -127,6 +128,7 @@ docker exec -it ognivo-backend php artisan scramble:cache && docker exec -it ogn
 ```bash
 docker exec -it ognivo-backend php artisan incus:generate-cert --force
 docker exec -it ognivo-backend php artisan vm:reconcile eu-west-1
+docker exec -it ognivo-backend php artisan vps:reconcile-plan-changes
 docker exec -it ognivo-backend php artisan snapshots:sync eu-west-1
 docker exec -it ognivo-backend php artisan hosts:sync-resources eu-west-1
 docker exec -it ognivo-backend php artisan hosts:backfill-pins
@@ -167,6 +169,7 @@ The `scheduler` container runs `php artisan schedule:work` and triggers these ta
 | Task | Frequency | Notes |
 | :--- | :--- | :--- |
 | `vm:reconcile` | Every 5 minutes | Drift detection (runs in background, without overlapping) |
+| `vps:reconcile-plan-changes` | Every 5 minutes | Re-dispatches stale `pending`, reconciles stale `applying`, and cancels expired `awaiting_authorization` plan changes (`withoutOverlapping(10)`) |
 | `vm:sweep-stale-provisioning` | Every 5 minutes | No overlapping runs |
 | IP cooldown cleanup (`ipam:prune-cooling`) | Every minute | Returns expired `cooling` IPs to the pool; the only mechanism that deletes expired cooling IPs (read endpoints do not) |
 | `metrics:collect` | Every minute | Dispatches per-node collection jobs when `metrics.enabled` is on |

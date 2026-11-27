@@ -30,12 +30,30 @@ Extensions targeting `ognivo_version_constraint: "^1.0"` can rely on backward co
 
 ## Developer Preview Contracts (`@experimental`)
 
-The following extension interfaces are currently in **Developer Preview (`@experimental`)**:
-- `DnsProviderInterface`
-- `NotificationChannelInterface`
-- `BillingProviderInterface`
+The following extension contracts, DTOs, events, and frontend slots are currently in **Developer Preview (`@experimental`)**:
 
-Unlike the frozen surfaces above, experimental contracts are provided as architectural scaffolding and may be refined in minor `1.y.0` releases based on real-world requirements from the first production reference implementations (e.g. Pro billing, external DNS providers). Once a production reference module integrated with core proves each contract's lifecycle, the interface will transition into the frozen SemVer commitment.
+- **Service Interfaces (`App\Contracts\*`):**
+  - `DnsProviderInterface`
+  - `NotificationChannelInterface`
+  - `BillingProviderInterface`
+  - `VpsPlanChangeAuthorizerInterface`
+  - `VpsProvisioningAuthorizerInterface`
+- **Authorization & Hypervisor Resource DTOs (`App\DTO\Contracts\*`, `App\DTO\Hypervisor\*`):**
+  - `VpsPlanChangeAuthorizationRequest`, `VpsPlanChangeAuthorizationResult`
+  - `VpsProvisioningAuthorizationRequest`, `VpsProvisioningAuthorizationResult`
+  - `VpsAuthorizationInitiator`, `VpsAuthorizationStatus`
+  - `InstanceResourceSpec`, `NetworkLimitsSpec`
+- **VPS Domain Events (`App\Events\Vps\*`):**
+  - `vps.plan.*`: `vps.plan.created`, `vps.plan.updated`, `vps.plan.published`, `vps.plan.unpublished`, `vps.plan.archived`, `vps.plan.unarchived`
+  - `vps.plan.version.*`: `vps.plan.version.created`, `vps.plan.version.published`
+  - `vps.plan_change.*`: `vps.plan_change.requested`, `vps.plan_change.started`, `vps.plan_change.completed`, `vps.plan_change.failed`, `vps.plan_change.cancelled`, `vps.plan_change.reconciliation_required`
+- **Frontend Slot IDs (`slotRegistry.ts`):**
+  - `vps.plan.card`
+  - `vps.plan.change.preview`
+
+Unlike the frozen surfaces above, experimental contracts are provided as architectural scaffolding and may be refined in minor `1.y.0` releases based on real-world requirements from reference integrations. **Stabilization criteria:** an `@experimental` contract transitions into the frozen SemVer commitment only after it is proven by a real production implementation integrated with core and remains unchanged across at least one minor release (`1.y.0`).
+
+> **Note on `instance.resized`:** The core `instance.resized` event gained optional payload keys (`operation_id`, `from_plan_version_id`, `to_plan_version_id`, and `net_download_mbps` / `net_upload_mbps` inside `old_specs` / `new_specs`). Adding optional keys to an existing event payload is a non-breaking change under this policy.
 
 ---
 
