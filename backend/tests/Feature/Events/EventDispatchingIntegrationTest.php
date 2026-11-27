@@ -299,7 +299,7 @@ it('does not dispatch host events when transactions roll back', function (): voi
                 isActive: false,
             ));
 
-            $hostService->updateStatus($host, 'offline');
+            $hostService->updateStatus($host, 'unreachable');
 
             throw new RuntimeException('Simulated host transaction failure');
         });
@@ -310,7 +310,7 @@ it('does not dispatch host events when transactions roll back', function (): voi
     Event::assertNotDispatched(HostMaintenanceExited::class);
     Event::assertNotDispatched(HostStatusUpdated::class);
     expect(Host::where('name', 'rolled-back-host')->exists())->toBeFalse();
-    expect($host->fresh()?->status)->toBe('ok');
+    expect($host->fresh()?->status->getValue())->toBe('ok');
     expect($host->fresh()?->is_active)->toBeTrue();
 });
 

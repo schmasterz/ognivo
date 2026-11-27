@@ -10,6 +10,8 @@ use App\Models\Host;
 use App\Models\PanelCertificate;
 use App\Models\VirtualMachine;
 use App\Services\PanelCertificateService;
+use App\States\Host\FingerprintMismatch;
+use App\States\Host\NotTrusted;
 use GuzzleHttp\Handler\CurlMultiHandler;
 use GuzzleHttp\Promise\PromiseInterface;
 use Illuminate\Http\Client\PendingRequest;
@@ -120,10 +122,7 @@ class HypervisorGateway
         // Fail-closed enforcement: In operational mode, every non-fake host MUST have a stored pin.
         if ($mode === GatewayMode::Operational && $host->driver !== 'fake') {
             if ($host->server_public_key_pin === null || trim($host->server_public_key_pin) === '') {
-                $host->status = 'not_trusted';
-                if ($host->exists) {
-                    $host->save();
-                }
+                $host->status->transitionIfAllowed(NotTrusted::class);
 
                 throw new MissingPinException(sprintf('Host [%s] requires a public key pin in operational mode.', $host->name));
             }
@@ -201,10 +200,7 @@ class HypervisorGateway
 
                         if ($isPinMismatch) {
                             $this->resetHostHandler($host);
-                            $host->status = 'fingerprint_mismatch';
-                            if ($host->exists) {
-                                $host->save();
-                            }
+                            $host->status->transitionIfAllowed(FingerprintMismatch::class);
 
                             Log::warning(sprintf('Hypervisor host [%s] public key pin mismatch detected on connection to %s.', $host->name, $host->endpoint_url));
 

@@ -70,7 +70,7 @@ final class HostNodeResource extends JsonResource
             'driver' => $host->driver,
             'server_fingerprint' => $host->server_fingerprint,
             'server_public_key_pin' => $host->server_public_key_pin,
-            'status' => $host->status,
+            'status' => $host->status->getValue(),
             'needs_retrust' => (bool) $host->needs_retrust,
             'last_checked_at' => $host->last_checked_at?->toISOString(),
             'has_token' => $host->token !== null && $host->token !== '',

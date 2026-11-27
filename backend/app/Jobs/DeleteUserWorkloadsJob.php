@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Enums\IpAllocationStatus;
 use App\Exceptions\NoHypervisorAvailableException;
 use App\Jobs\Enums\QueueName;
 use App\Models\Host;
@@ -11,7 +12,9 @@ use App\Models\IpAllocation;
 use App\Models\User;
 use App\Models\VirtualMachine;
 use App\Services\Hypervisor\HypervisorManager;
+use App\Services\IpManagementService;
 use App\Services\VmLifecycleService;
+use App\States\User\DeletionFailed;
 use App\States\Vm\Deleted;
 use App\States\Vm\Stopped;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -66,7 +69,9 @@ final class DeleteUserWorkloadsJob implements ShouldQueue
     public function handle(
         VmLifecycleService $lifecycleService,
         HypervisorManager $hypervisorManager,
+        ?IpManagementService $ipManagementService = null,
     ): void {
+        $ipManagementService ??= app(IpManagementService::class);
         Log::info(sprintf('Starting deletion of user workloads for user #%d (%s)', $this->user->id, $this->user->email));
 
         try {
@@ -88,15 +93,23 @@ final class DeleteUserWorkloadsJob implements ShouldQueue
             // 2. Delete Incus project(s) on hypervisor
             $this->deleteUserProjects($hypervisorManager, $vms);
 
-            // 3. Free IPs
-            $vmIds = $vms->pluck('id');
-            IpAllocation::where('user_id', $this->user->id)
-                ->orWhereIn('virtual_machine_id', $vmIds)
-                ->update([
-                    'virtual_machine_id' => null,
-                    'status' => 'cooling',
-                    'released_at' => now(),
-                ]);
+            // 3. Free IPs via IpManagementService to preserve AuditAction::IpReleased and VM network_status sync
+            foreach ($vms as $vm) {
+                $ipManagementService->releaseIp($vm);
+            }
+
+            $remainingAllocations = IpAllocation::with('virtualMachine')
+                ->where('user_id', $this->user->id)
+                ->where('status', IpAllocationStatus::Allocated->value)
+                ->get();
+
+            foreach ($remainingAllocations as $allocation) {
+                if ($allocation->virtualMachine !== null) {
+                    $ipManagementService->releaseIp($allocation->virtualMachine);
+                } else {
+                    $ipManagementService->emergencyReleaseAllocation($allocation);
+                }
+            }
 
             // 4. Only then remove DB rows
             $deletedUserId = (int) $this->user->id;
@@ -120,8 +133,9 @@ final class DeleteUserWorkloadsJob implements ShouldQueue
             ]);
 
             // Hypervisor failure leaves user in visible "deletion_failed" state without losing VM rows
-            $this->user->status = 'deletion_failed';
-            $this->user->save();
+            if (! $this->user->status->equals(DeletionFailed::class)) {
+                $this->user->status->transitionTo(DeletionFailed::class);
+            }
 
             throw $e;
         }
@@ -240,9 +254,8 @@ final class DeleteUserWorkloadsJob implements ShouldQueue
         ]);
 
         $freshUser = User::find($this->user->id);
-        if ($freshUser !== null && $freshUser->status !== 'deletion_failed') {
-            $freshUser->status = 'deletion_failed';
-            $freshUser->save();
+        if ($freshUser !== null && ! $freshUser->status->equals(DeletionFailed::class)) {
+            $freshUser->status->transitionTo(DeletionFailed::class);
         }
     }
 }

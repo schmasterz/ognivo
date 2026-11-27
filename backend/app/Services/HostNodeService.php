@@ -16,11 +16,11 @@ use App\DTO\Host\UpdateHostDTO;
 use App\Events\Host\HostMaintenanceEntered;
 use App\Events\Host\HostMaintenanceExited;
 use App\Events\Host\HostRegistered;
-use App\Events\Host\HostStatusUpdated;
 use App\Models\Host;
 use App\Services\Hypervisor\Drivers\FakeHypervisorDriver;
 use App\Services\Hypervisor\HypervisorGateway;
 use App\Services\Hypervisor\HypervisorManager;
+use App\States\Host\HostState;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -369,13 +369,16 @@ final class HostNodeService
      */
     public function updateStatus(Host $host, string $newStatus): Host
     {
-        $oldStatus = $host->status;
-        if ($oldStatus !== $newStatus) {
-            DB::transaction(function () use ($host, $oldStatus, $newStatus): void {
-                $host->status = $newStatus;
-                $host->save();
+        $targetStateClass = HostState::resolveStateClass($newStatus);
+        if ($targetStateClass === null || ! is_subclass_of($targetStateClass, HostState::class)) {
+            throw ValidationException::withMessages([
+                'status' => [sprintf('Invalid host status "%s".', $newStatus)],
+            ]);
+        }
 
-                event(new HostStatusUpdated($host->id, $oldStatus, $newStatus));
+        if (! $host->status->equals($targetStateClass)) {
+            DB::transaction(function () use ($host, $targetStateClass): void {
+                $host->status->transitionTo($targetStateClass);
             });
         }
 

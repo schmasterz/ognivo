@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Enums\NetworkStatus;
 use App\Jobs\ProvisionVmJob;
 use App\Models\DriftReport;
 use App\Models\Host;
@@ -119,7 +120,7 @@ final class ProvisioningLifecycleTest extends TestCase
         ]);
 
         $this->assertEquals('203.0.113.2', $vm->ipv4_address);
-        $this->assertEquals('assigned', $vm->network_status);
+        $this->assertSame(NetworkStatus::Assigned, $vm->network_status);
         $this->assertEquals('provisioning', (string) $vm->status);
 
         $this->assertDatabaseHas('ip_allocations', [
@@ -153,7 +154,7 @@ final class ProvisioningLifecycleTest extends TestCase
 
         $vm->refresh();
         $this->assertEquals('running', (string) $vm->status);
-        $this->assertEquals('observed', $vm->network_status);
+        $this->assertSame(NetworkStatus::Observed, $vm->network_status);
     }
 
     public function test_provision_job_marks_unverified_when_network_timeout_exceeded(): void
@@ -190,7 +191,7 @@ final class ProvisioningLifecycleTest extends TestCase
 
         $vm->refresh();
         $this->assertEquals('running', (string) $vm->status);
-        $this->assertEquals('unverified', $vm->network_status);
+        $this->assertSame(NetworkStatus::Unverified, $vm->network_status);
     }
 
     public function test_event_sync_does_not_cancel_provisioning_state_on_instance_created(): void

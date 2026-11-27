@@ -140,7 +140,7 @@ final class HypervisorGatewayAndSecurityHardeningTest extends TestCase
         }
 
         $host->refresh();
-        $this->assertEquals(IncusConnectionResult::STATE_NOT_TRUSTED, $host->status);
+        $this->assertEquals(IncusConnectionResult::STATE_NOT_TRUSTED, $host->status->getValue());
     }
 
     public function test_operational_mode_allows_fake_driver_without_pin(): void
@@ -173,7 +173,7 @@ final class HypervisorGatewayAndSecurityHardeningTest extends TestCase
 
         $this->assertInstanceOf(PendingRequest::class, $client);
         $host->refresh();
-        $this->assertEquals(IncusConnectionResult::STATE_OK, $host->status);
+        $this->assertEquals(IncusConnectionResult::STATE_OK, $host->status->getValue());
     }
 
     /**
@@ -238,7 +238,7 @@ final class HypervisorGatewayAndSecurityHardeningTest extends TestCase
 
             // Assert status updated to fingerprint_mismatch
             $hostMismatch->refresh();
-            $this->assertEquals(IncusConnectionResult::STATE_FINGERPRINT_MISMATCH, $hostMismatch->status);
+            $this->assertEquals(IncusConnectionResult::STATE_FINGERPRINT_MISMATCH, $hostMismatch->status->getValue());
         } finally {
             $this->stopLocalTlsServer($serverA);
         }
@@ -265,7 +265,7 @@ final class HypervisorGatewayAndSecurityHardeningTest extends TestCase
             }
 
             $hostWrongServer->refresh();
-            $this->assertEquals(IncusConnectionResult::STATE_FINGERPRINT_MISMATCH, $hostWrongServer->status);
+            $this->assertEquals(IncusConnectionResult::STATE_FINGERPRINT_MISMATCH, $hostWrongServer->status->getValue());
         } finally {
             $this->stopLocalTlsServer($serverB);
         }
@@ -308,7 +308,7 @@ final class HypervisorGatewayAndSecurityHardeningTest extends TestCase
             }
 
             $host->refresh();
-            $this->assertEquals(IncusConnectionResult::STATE_FINGERPRINT_MISMATCH, $host->status);
+            $this->assertEquals(IncusConnectionResult::STATE_FINGERPRINT_MISMATCH, $host->status->getValue());
         } finally {
             $this->stopLocalTlsServer($server);
         }

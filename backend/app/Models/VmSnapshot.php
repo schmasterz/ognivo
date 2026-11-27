@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\States\Snapshot\SnapshotState;
 use Database\Factories\VmSnapshotFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 use Override;
+use Spatie\ModelStates\HasStates;
 
 /**
  * Model representing a virtual machine or container snapshot.
@@ -19,7 +21,7 @@ use Override;
  * @property int $user_id
  * @property string $name
  * @property string $source
- * @property string $status
+ * @property SnapshotState $status
  * @property int|null $size_bytes
  * @property string|null $error
  * @property Carbon|null $created_at
@@ -31,6 +33,8 @@ final class VmSnapshot extends Model
 {
     /** @use HasFactory<VmSnapshotFactory> */
     use HasFactory;
+
+    use HasStates;
 
     public const SOURCE_MANUAL = 'manual';
 
@@ -60,7 +64,6 @@ final class VmSnapshot extends Model
      */
     protected $attributes = [
         'source' => self::SOURCE_MANUAL,
-        'status' => self::STATUS_CREATING,
     ];
 
     /**
@@ -90,6 +93,7 @@ final class VmSnapshot extends Model
             'virtual_machine_id' => 'integer',
             'user_id' => 'integer',
             'size_bytes' => 'integer',
+            'status' => SnapshotState::class,
         ];
     }
 

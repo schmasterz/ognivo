@@ -235,12 +235,6 @@ parameters:
 			path: app/Services/UserService.php
 
 		-
-			message: '#^Unreachable statement \- code above always terminates\.$#'
-			identifier: deadCode.unreachable
-			count: 1
-			path: app/Services/UserService.php
-
-		-
 			message: '#^Cannot call method getStatusCode\(\) on class\-string\|object\.$#'
 			identifier: method.nonObject
 			count: 1

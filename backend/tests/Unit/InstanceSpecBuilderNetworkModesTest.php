@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit;
 
+use App\Enums\NetworkStatus;
 use App\Models\Host;
 use App\Models\Image;
 use App\Models\IpAllocation;
@@ -89,7 +90,7 @@ final class InstanceSpecBuilderNetworkModesTest extends TestCase
             'incus_project' => 'default',
             'instance_type' => $instanceType,
             'status' => 'provisioning',
-            'network_status' => 'assigned',
+            'network_status' => NetworkStatus::Assigned,
             'cpu_cores' => 2,
             'ram_mb' => 2048,
             'disk_gb' => 20,

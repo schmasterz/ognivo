@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Events\SnapshotStatusUpdated;
 use App\Jobs\CreateSnapshotJob;
 use App\Jobs\DeleteSnapshotJob;
 use App\Jobs\RestoreSnapshotJob;
@@ -14,6 +15,7 @@ use App\Models\UserQuota;
 use App\Models\VirtualMachine;
 use App\Models\VmSnapshot;
 use App\Services\VmSnapshotService;
+use App\States\Snapshot\Ready as SnapshotReady;
 use App\States\Vm\Deleting;
 use App\States\Vm\Failed;
 use App\States\Vm\Provisioning;
@@ -291,7 +293,35 @@ final class VmSnapshotApiTest extends TestCase
             'status' => VmSnapshot::STATUS_DELETING,
         ]);
 
-        Queue::assertPushed(DeleteSnapshotJob::class, fn (DeleteSnapshotJob $job): bool => $job->snapshot->is($snapshot));
+        Queue::assertPushed(DeleteSnapshotJob::class, fn (DeleteSnapshotJob $job): bool => $job->snapshot->is($snapshot) && $job->wasFailed === false);
+    }
+
+    public function test_delete_failed_snapshot_returns_202_and_dispatches_job_with_was_failed_flag(): void
+    {
+        Queue::fake();
+        Event::fake([SnapshotStatusUpdated::class]);
+
+        $snapshot = VmSnapshot::factory()->failed('Previous attempt failed')->create([
+            'virtual_machine_id' => $this->vmA->id,
+            'user_id' => $this->customerA->id,
+            'name' => 'failed-snap',
+        ]);
+
+        $response = $this->actingAs($this->customerA)
+            ->deleteJson("/api/v1/vms/{$this->vmA->id}/snapshots/{$snapshot->id}");
+
+        $response->assertStatus(202)
+            ->assertJsonPath('snapshot.id', $snapshot->id)
+            ->assertJsonPath('snapshot.status', VmSnapshot::STATUS_DELETING)
+            ->assertJsonPath('snapshot.error', null);
+
+        $this->assertDatabaseHas('vm_snapshots', [
+            'id' => $snapshot->id,
+            'status' => VmSnapshot::STATUS_DELETING,
+        ]);
+
+        Queue::assertPushed(DeleteSnapshotJob::class, fn (DeleteSnapshotJob $job): bool => $job->snapshot->is($snapshot) && $job->wasFailed === true);
+        Event::assertDispatched(SnapshotStatusUpdated::class, fn (SnapshotStatusUpdated $e): bool => $e->snapshot->is($snapshot) && $e->status === VmSnapshot::STATUS_DELETING);
     }
 
     public function test_unauthorized_access_to_another_tenants_vm_or_snapshot_is_rejected_with_403_or_404(): void
@@ -372,8 +402,8 @@ final class VmSnapshotApiTest extends TestCase
             ->assertStatus(404);
 
         // Verify snapB and snapA remain completely untouched
-        $this->assertSame(VmSnapshot::STATUS_READY, $snapB->fresh()?->status);
-        $this->assertSame(VmSnapshot::STATUS_READY, $snapA->fresh()?->status);
+        $this->assertTrue($snapB->fresh()?->status->equals(SnapshotReady::class) ?? false);
+        $this->assertTrue($snapA->fresh()?->status->equals(SnapshotReady::class) ?? false);
         Queue::assertNotPushed(CreateSnapshotJob::class);
         Queue::assertNotPushed(RestoreSnapshotJob::class);
         Queue::assertNotPushed(DeleteSnapshotJob::class);

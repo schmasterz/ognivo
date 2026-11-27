@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Audit\Auditable;
+use App\States\Host\HostState;
 use Database\Factories\HostFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -12,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Override;
+use Spatie\ModelStates\HasStates;
 
 /**
  * Model representing an Incus or virtualization host node.
@@ -25,7 +27,7 @@ use Override;
  * @property string|null $server_public_key_pin
  * @property string $driver
  * @property string|null $token
- * @property string $status
+ * @property HostState $status
  * @property bool $needs_retrust
  * @property Carbon|null $last_checked_at
  * @property bool $is_active
@@ -54,6 +56,8 @@ final class Host extends Model
 
     /** @use HasFactory<HostFactory> */
     use HasFactory;
+
+    use HasStates;
 
     /**
      * Whitelist of attributes tracked for audit logging.
@@ -153,6 +157,7 @@ final class Host extends Model
     protected function casts(): array
     {
         return [
+            'status' => HostState::class,
             'is_active' => 'boolean',
             'needs_retrust' => 'boolean',
             'auto_attach_images' => 'boolean',

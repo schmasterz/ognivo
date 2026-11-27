@@ -11,6 +11,8 @@ use App\Services\Hypervisor\Contracts\IncusEventTransportInterface;
 use App\Services\Hypervisor\HypervisorGateway;
 use App\Services\Hypervisor\TlsPeerCertificateFetcherInterface;
 use App\Services\PanelCertificateService;
+use App\States\Host\FingerprintMismatch;
+use App\States\Host\NotTrusted;
 use Illuminate\Support\Facades\Log;
 use OpenSSLCertificate;
 use Override;
@@ -141,8 +143,7 @@ class WebSocketIncusEventTransport implements IncusEventTransportInterface
                 $storedFingerprint = $host->server_fingerprint !== null ? trim($host->server_fingerprint) : '';
 
                 if ($storedPin === '' && $storedFingerprint === '') {
-                    $host->status = 'not_trusted';
-                    $host->save();
+                    $host->status->transitionIfAllowed(NotTrusted::class);
                     @fclose($socket);
 
                     throw new MissingPinException(sprintf('Host [%s] requires a public key pin in operational mode.', $host->name));
@@ -167,8 +168,7 @@ class WebSocketIncusEventTransport implements IncusEventTransportInterface
 
                 if ($mismatch) {
                     @fclose($socket);
-                    $host->status = 'fingerprint_mismatch';
-                    $host->save();
+                    $host->status->transitionIfAllowed(FingerprintMismatch::class);
 
                     throw new FingerprintMismatchException(
                         actualFingerprint: '',

@@ -58,7 +58,7 @@ final class TenantHostResource extends JsonResource
             'name' => $host->name,
             'region' => $host->region,
             'driver' => $host->driver,
-            'status' => $host->status,
+            'status' => $host->status->getValue(),
             'is_active' => (bool) $host->is_active,
             'max_instance' => [
                 'cpu_cores' => $maxInstance['cpu'],

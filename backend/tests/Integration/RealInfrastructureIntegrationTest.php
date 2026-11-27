@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Integration;
 
+use App\Enums\IpAllocationStatus;
+use App\Enums\NetworkStatus;
 use App\Exceptions\IpPoolExhaustedException;
 use App\Jobs\CreateSnapshotJob;
 use App\Jobs\DeleteSnapshotJob;
@@ -173,7 +175,7 @@ test('parallel IP allocation under concurrent processes', function (): void {
             $freshVm = $vm->fresh();
             expect($freshVm)->not->toBeNull();
             expect($freshVm->ipv4_address)->not->toBeNull();
-            expect($freshVm->network_status)->toBe('assigned');
+            expect($freshVm->network_status)->toBe(NetworkStatus::Assigned);
         }
     } finally {
         IpAllocation::where('pool_id', $pool->id)->delete();
@@ -261,10 +263,10 @@ test('delete VM with allocation through a real queue worker', function (): void 
         $allocation = $ipService->allocateIp($pool, $vm, $user);
 
         // Initial assertions: 1 IP allocated, VM has assigned network status
-        expect($allocation->status)->toBe('allocated');
+        expect($allocation->status)->toBe(IpAllocationStatus::Allocated);
         expect(IpAllocation::where('user_id', $user->id)->where('status', 'allocated')->count())->toBe(1);
         expect($vm->fresh()->ipv4_address)->toBe('10.88.0.50');
-        expect($vm->fresh()->network_status)->toBe('assigned');
+        expect($vm->fresh()->network_status)->toBe(NetworkStatus::Assigned);
 
         // Dispatch delete action to the queue
         ExecuteVmActionJob::dispatch($vm, 'delete');
@@ -277,10 +279,10 @@ test('delete VM with allocation through a real queue worker', function (): void 
         $freshVm = $vm->fresh();
         expect($freshVm->status->equals(Deleted::class))->toBeTrue();
         expect($freshVm->ipv4_address)->toBeNull();
-        expect($freshVm->network_status)->toBe('unassigned');
+        expect($freshVm->network_status)->toBe(NetworkStatus::Unassigned);
 
         $freshAllocation = $allocation->fresh();
-        expect($freshAllocation->status)->toBe('cooling');
+        expect($freshAllocation->status)->toBe(IpAllocationStatus::Cooling);
         expect($freshAllocation->released_at)->not->toBeNull();
         expect($freshAllocation->user_id)->toBe($user->id);
         expect($freshAllocation->virtual_machine_id)->toBeNull();
@@ -310,7 +312,7 @@ test('delete VM with allocation through a real queue worker', function (): void 
 
         $newAllocation = $ipService->allocateIp($pool, $anotherVm, $user);
         expect($newAllocation->ip_string)->toBe('10.88.0.50');
-        expect($newAllocation->status)->toBe('allocated');
+        expect($newAllocation->status)->toBe(IpAllocationStatus::Allocated);
         expect($anotherVm->fresh()->ipv4_address)->toBe('10.88.0.50');
     } finally {
         IpAllocation::where('pool_id', $pool->id)->delete();
@@ -386,7 +388,7 @@ test('provisioning with empty network state through a real queue worker', functi
         while (time() - $startTime < 15) {
             runWorkerUntilEmpty(10);
             $fresh = $vm->fresh();
-            if ($fresh->status->equals(Running::class) && $fresh->network_status === 'unverified') {
+            if ($fresh->status->equals(Running::class) && $fresh->network_status === NetworkStatus::Unverified) {
                 break;
             }
             sleep(1);
@@ -394,7 +396,7 @@ test('provisioning with empty network state through a real queue worker', functi
 
         $freshVm = $vm->fresh();
         expect($freshVm->status->equals(Running::class))->toBeTrue();
-        expect($freshVm->network_status)->toBe('unverified');
+        expect($freshVm->network_status)->toBe(NetworkStatus::Unverified);
     } finally {
         IpAllocation::where('pool_id', $pool->id)->delete();
         $vm->delete();
@@ -435,7 +437,7 @@ test('snapshot create, restore and delete flow through a real queue worker', fun
     try {
         // 1. Create snapshot via service -> status is creating, CreateSnapshotJob is queued
         $snapshot = $snapshotService->create($vm, 'integration-snap-1');
-        expect($snapshot->status)->toBe(VmSnapshot::STATUS_CREATING);
+        expect($snapshot->status->getValue())->toBe(VmSnapshot::STATUS_CREATING);
         expect(VmSnapshot::where('id', $snapshot->id)->exists())->toBeTrue();
 
         $exitCode = runWorkerUntilEmpty(10);
@@ -443,24 +445,24 @@ test('snapshot create, restore and delete flow through a real queue worker', fun
 
         $freshSnap = $snapshot->fresh();
         expect($freshSnap)->not->toBeNull();
-        expect($freshSnap->status)->toBe(VmSnapshot::STATUS_READY);
+        expect($freshSnap->status->getValue())->toBe(VmSnapshot::STATUS_READY);
         expect($freshSnap->error)->toBeNull();
 
         // 2. Restore snapshot via service -> status is restoring, RestoreSnapshotJob is queued
         $snapshotService->restore($freshSnap);
-        expect($freshSnap->fresh()->status)->toBe(VmSnapshot::STATUS_RESTORING);
+        expect($freshSnap->fresh()?->status->getValue())->toBe(VmSnapshot::STATUS_RESTORING);
 
         $exitCode = runWorkerUntilEmpty(10);
         expect($exitCode)->toBe(0);
 
         $restoredSnap = $freshSnap->fresh();
         expect($restoredSnap)->not->toBeNull();
-        expect($restoredSnap->status)->toBe(VmSnapshot::STATUS_READY);
+        expect($restoredSnap->status->getValue())->toBe(VmSnapshot::STATUS_READY);
         expect($restoredSnap->error)->toBeNull();
 
         // 3. Delete snapshot via service -> status is deleting, DeleteSnapshotJob is queued
         $snapshotService->delete($restoredSnap);
-        expect($restoredSnap->fresh()->status)->toBe(VmSnapshot::STATUS_DELETING);
+        expect($restoredSnap->fresh()?->status->getValue())->toBe(VmSnapshot::STATUS_DELETING);
 
         $exitCode = runWorkerUntilEmpty(10);
         expect($exitCode)->toBe(0);

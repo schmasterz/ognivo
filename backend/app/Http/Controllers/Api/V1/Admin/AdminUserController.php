@@ -16,6 +16,9 @@ use App\Http\Resources\AdminUserResource;
 use App\Http\Resources\UserResource;
 use App\Models\User;
 use App\Services\UserService;
+use App\States\User\Active;
+use App\States\User\Deleting;
+use App\States\User\UserState;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -129,7 +132,7 @@ final class AdminUserController extends Controller
         $admin = $request->user();
         $dto = $request->toDTO();
 
-        if ($admin->id === $user->id && $dto->status !== null && $dto->status !== 'active') {
+        if ($admin->id === $user->id && $dto->status !== null && $dto->status !== Active::$name) {
             $msg = __('messages.admin.cannot_suspend_self');
             abort(422, is_string($msg) ? $msg : 'Cannot suspend your own account.');
         }
@@ -152,7 +155,7 @@ final class AdminUserController extends Controller
         $admin = $request->user();
 
         $request->validate([
-            'status' => ['required', 'string', Rule::in(['active', 'suspended', 'inactive', 'pending'])],
+            'status' => ['required', 'string', Rule::in(UserState::assignableValues())],
         ]);
 
         $status = $request->string('status')->value();
@@ -188,7 +191,7 @@ final class AdminUserController extends Controller
 
         return response()->json([
             'message' => __('messages.admin.user_deletion_queued'),
-            'status' => 'deleting',
+            'status' => Deleting::$name,
         ], 202);
     }
 
@@ -228,7 +231,7 @@ final class AdminUserController extends Controller
             abort(403, 'Cannot impersonate another administrator.');
         }
 
-        if ($user->status !== 'active') {
+        if (! $user->status->equals(Active::class)) {
             abort(403, 'Cannot impersonate an inactive user.');
         }
 

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Enums\IpAllocationStatus;
+use App\Enums\NetworkStatus;
 use App\Events\AdminVirtualMachineStatusUpdated;
 use App\Events\VirtualMachineAgentStarted;
 use App\Events\VirtualMachineStatusUpdated;
@@ -70,7 +72,7 @@ final class IncusEventSyncAndReconcileTest extends TestCase
             'endpoint_url' => 'https://127.0.0.1:8443',
             'driver' => 'fake',
             'is_active' => true,
-            'status' => 'online',
+            'status' => 'ok',
         ]);
     }
 
@@ -228,7 +230,7 @@ final class IncusEventSyncAndReconcileTest extends TestCase
             'disk_gb' => 10,
             'os_image' => 'ubuntu:24.04',
             'ipv4_address' => '10.60.0.15',
-            'network_status' => 'assigned',
+            'network_status' => NetworkStatus::Assigned,
         ]);
 
         $rawAddress = inet_pton('10.60.0.15');
@@ -262,7 +264,7 @@ final class IncusEventSyncAndReconcileTest extends TestCase
         $this->assertNull($vm->fresh()->ipv4_address);
 
         $allocation->refresh();
-        $this->assertSame('cooling', $allocation->status);
+        $this->assertSame(IpAllocationStatus::Cooling, $allocation->status);
         $this->assertNull($allocation->virtual_machine_id);
         $this->assertNotNull($allocation->released_at);
 
@@ -333,7 +335,7 @@ final class IncusEventSyncAndReconcileTest extends TestCase
             'endpoint_url' => 'https://127.0.0.2:8443',
             'driver' => 'fake',
             'is_active' => true,
-            'status' => 'online',
+            'status' => 'ok',
         ]);
 
         $vm1 = VirtualMachine::create([
@@ -705,7 +707,7 @@ final class IncusEventSyncAndReconcileTest extends TestCase
         ]);
 
         // Host is safely marked unreachable
-        $this->assertSame('unreachable', $this->host->fresh()->status);
+        $this->assertSame('unreachable', $this->host->fresh()->status->getValue());
 
         // Host recovers to ok when reachable driver responds
         $fakeDriver = new FakeHypervisorDriver;
@@ -720,7 +722,7 @@ final class IncusEventSyncAndReconcileTest extends TestCase
         HypervisorManager::fake($fakeDriver);
 
         $service->reconcile($this->host);
-        $this->assertSame('ok', $this->host->fresh()->status);
+        $this->assertSame('ok', $this->host->fresh()->status->getValue());
     }
 
     public function test_reconcile_skips_missing_on_host_when_list_instances_fails_for_project(): void
@@ -752,8 +754,8 @@ final class IncusEventSyncAndReconcileTest extends TestCase
         $service = app(VmReconciliationService::class);
         $stats = $service->reconcile($this->host);
 
-        // Host stays online because listProjects succeeded
-        $this->assertSame('online', $this->host->fresh()->status);
+        // Host stays ok because listProjects succeeded
+        $this->assertSame('ok', $this->host->fresh()->status->getValue());
         // Does NOT report false missing_on_host for surviving-vm
         $this->assertSame(0, $stats['drifts_detected']);
         $this->assertDatabaseMissing('drift_reports', [
@@ -994,7 +996,7 @@ final class IncusEventSyncAndReconcileTest extends TestCase
                 'driver' => 'incus',
                 'server_public_key_pin' => $certData['pin'],
                 'is_active' => true,
-                'status' => 'online',
+                'status' => 'ok',
             ]);
 
             app(PanelCertificateService::class)->generate(365);
@@ -1028,7 +1030,7 @@ final class IncusEventSyncAndReconcileTest extends TestCase
                 'server_public_key_pin' => null,
                 'server_fingerprint' => null,
                 'is_active' => true,
-                'status' => 'online',
+                'status' => 'ok',
             ]);
 
             app(PanelCertificateService::class)->generate(365);
@@ -1042,7 +1044,7 @@ final class IncusEventSyncAndReconcileTest extends TestCase
             }
 
             $host->refresh();
-            $this->assertSame('not_trusted', $host->status);
+            $this->assertSame('not_trusted', $host->status->getValue());
         } finally {
             $this->stopLocalTlsServer($server);
         }
@@ -1060,7 +1062,7 @@ final class IncusEventSyncAndReconcileTest extends TestCase
                 'driver' => 'incus',
                 'server_public_key_pin' => 'sha256//'.base64_encode('WRONG_PUBLIC_KEY_PIN'),
                 'is_active' => true,
-                'status' => 'online',
+                'status' => 'ok',
             ]);
 
             app(PanelCertificateService::class)->generate(365);
@@ -1074,7 +1076,7 @@ final class IncusEventSyncAndReconcileTest extends TestCase
             }
 
             $host->refresh();
-            $this->assertSame('fingerprint_mismatch', $host->status);
+            $this->assertSame('fingerprint_mismatch', $host->status->getValue());
         } finally {
             $this->stopLocalTlsServer($server);
         }
@@ -1092,7 +1094,7 @@ final class IncusEventSyncAndReconcileTest extends TestCase
                 'driver' => 'incus',
                 'server_public_key_pin' => $certData['pin'],
                 'is_active' => true,
-                'status' => 'online',
+                'status' => 'ok',
             ]);
 
             app(PanelCertificateService::class)->generate(365);

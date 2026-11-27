@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Enums\IpAllocationStatus;
+use App\Enums\NetworkStatus;
 use App\Jobs\ProvisionVmJob;
 use App\Models\Host;
 use App\Models\IpAllocation;
@@ -271,7 +273,7 @@ final class IpManagementTest extends TestCase
             'os_image' => 'ubuntu/24.04',
             'ipv4_address' => '203.0.113.10',
             'mac_address' => '02:54:ab:cd:ef:01',
-            'network_status' => 'observed',
+            'network_status' => NetworkStatus::Observed,
         ]);
 
         $tenantAlloc = IpAllocation::create([
@@ -321,7 +323,7 @@ final class IpManagementTest extends TestCase
             'disk_gb' => 20,
             'os_image' => 'ubuntu/24.04',
             'ipv4_address' => '203.0.113.15',
-            'network_status' => 'observed',
+            'network_status' => NetworkStatus::Observed,
         ]);
 
         $alloc = IpAllocation::create([
@@ -345,7 +347,7 @@ final class IpManagementTest extends TestCase
         $response->assertOk();
 
         $alloc->refresh();
-        $this->assertEquals('cooling', $alloc->status);
+        $this->assertSame(IpAllocationStatus::Cooling, $alloc->status);
         $this->assertNull($alloc->virtual_machine_id);
         $this->assertNotNull($alloc->released_at);
 
@@ -551,7 +553,7 @@ final class IpManagementTest extends TestCase
 
         $vm->refresh();
         $this->assertEquals(Running::class, $vm->status::class);
-        $this->assertEquals('unverified', $vm->network_status);
+        $this->assertSame(NetworkStatus::Unverified, $vm->network_status);
     }
 
     public function test_ip_pool_update_rules_enforced(): void

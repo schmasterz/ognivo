@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Resources;
 
+use App\Enums\NetworkStatus;
 use App\Models\IpAllocation;
 use App\Models\User;
 use App\Models\VirtualMachine;
@@ -75,12 +76,12 @@ final class VirtualMachineResource extends JsonResource
             'ipv4_address' => $vm->ipv4_address,
             'ipv6_address' => $vm->ipv6_address,
             'mac_address' => $macAddress,
-            'network_status' => $vm->network_status,
+            'network_status' => $vm->network_status?->value,
             'network' => [
                 'primary' => [
                     'address' => $address,
                     'family' => 4,
-                    'status' => $vm->network_status,
+                    'status' => $vm->network_status?->value,
                     'mac_address' => $macAddress,
                 ],
                 'settings' => [
@@ -89,7 +90,7 @@ final class VirtualMachineResource extends JsonResource
                     'dns' => $pool?->dns_servers,
                     'mode' => $pool?->network_mode,
                 ],
-                'observed_at' => $vm->network_status === 'observed' ? $vm->updated_at?->toISOString() : null,
+                'observed_at' => $vm->network_status === NetworkStatus::Observed ? $vm->updated_at?->toISOString() : null,
             ],
             'created_at' => $vm->created_at?->toISOString(),
             'updated_at' => $vm->updated_at?->toISOString(),

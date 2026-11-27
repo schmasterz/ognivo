@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Enums\IpAllocationStatus;
 use App\Models\Host;
 use App\Models\IpAllocation;
 use App\Models\IpPool;
@@ -355,7 +356,7 @@ final class VirtualMachineProvisioningTest extends TestCase
 
         // IP address is atomically released into cooling quarantine
         $freshIp = $ip->fresh();
-        $this->assertEquals('cooling', $freshIp->status);
+        $this->assertSame(IpAllocationStatus::Cooling, $freshIp->status);
         $this->assertNull($freshIp->virtual_machine_id);
     }
 
@@ -393,7 +394,7 @@ final class VirtualMachineProvisioningTest extends TestCase
 
         $response->assertStatus(200);
         $this->assertEquals('deleted', $vm->fresh()->status::$name);
-        $this->assertEquals('cooling', $ip->fresh()->status);
+        $this->assertSame(IpAllocationStatus::Cooling, $ip->fresh()->status);
         $this->assertNull($ip->fresh()->virtual_machine_id);
     }
 

@@ -21,6 +21,12 @@ use App\Jobs\DeleteSnapshotJob;
 use App\Jobs\RestoreSnapshotJob;
 use App\Models\VirtualMachine;
 use App\Models\VmSnapshot;
+use App\States\Host\Unreachable;
+use App\States\Snapshot\Creating;
+use App\States\Snapshot\Deleting;
+use App\States\Snapshot\Failed;
+use App\States\Snapshot\Ready;
+use App\States\Snapshot\Restoring;
 use App\States\Vm\Running;
 use App\States\Vm\Stopped;
 use App\States\Vm\Suspended;
@@ -119,7 +125,7 @@ class VmSnapshotService
                         'user_id' => $vm->user_id,
                         'name' => $snapshotName,
                         'source' => $source,
-                        'status' => VmSnapshot::STATUS_CREATING,
+                        'status' => Creating::class,
                         'size_bytes' => null,
                         'error' => null,
                     ]);
@@ -159,7 +165,7 @@ class VmSnapshotService
             throw $e;
         }
 
-        event(new SnapshotStatusUpdated($snapshot, VmSnapshot::STATUS_CREATING));
+        event(new SnapshotStatusUpdated($snapshot));
 
         CreateSnapshotJob::dispatch($snapshot);
 
@@ -180,40 +186,48 @@ class VmSnapshotService
         VmSnapshot|VirtualMachine $snapshotOrVm,
         VmSnapshot|string|int|null $snapshot = null,
     ): VmSnapshot {
+        $resolvedSnapshot = null;
+
         try {
-            [$vm, $targetSnapshot] = $this->resolveVmAndSnapshot($snapshotOrVm, $snapshot);
+            [$vm, $resolvedSnapshot] = $this->resolveVmAndSnapshot($snapshotOrVm, $snapshot);
 
-            if ($targetSnapshot->exists) {
-                $targetSnapshot->refresh();
-            }
+            /** @var VmSnapshot $targetSnapshot */
+            $targetSnapshot = DB::transaction(function () use ($vm, $resolvedSnapshot): VmSnapshot {
+                /** @var VmSnapshot $lockedSnapshot */
+                $lockedSnapshot = VmSnapshot::query()
+                    ->whereKey($resolvedSnapshot->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-            if ($targetSnapshot->status !== VmSnapshot::STATUS_READY) {
-                throw new InvalidSnapshotStateException(
-                    $targetSnapshot->status,
-                    'restore',
-                    sprintf('Cannot restore snapshot "%s" while in "%s" status. Only "ready" snapshots can be restored.', $targetSnapshot->name, $targetSnapshot->status)
-                );
-            }
+                if (! $lockedSnapshot->status->equals(Ready::class)) {
+                    throw new InvalidSnapshotStateException(
+                        $lockedSnapshot->status->getValue(),
+                        'restore',
+                        sprintf('Cannot restore snapshot "%s" while in "%s" status. Only "ready" snapshots can be restored.', $lockedSnapshot->name, $lockedSnapshot->status->getValue())
+                    );
+                }
 
-            $this->assertValidVmStateForRestore($vm, $targetSnapshot);
-            $this->assertHostReachable($vm);
+                $this->assertValidVmStateForRestore($vm, $lockedSnapshot);
+                $this->assertHostReachable($vm);
 
-            $targetSnapshot->status = VmSnapshot::STATUS_RESTORING;
-            $targetSnapshot->error = null;
-            $targetSnapshot->save();
+                $lockedSnapshot->error = null;
+                $lockedSnapshot->status->transitionTo(Restoring::class);
 
-            $this->logger()->record(new AuditEntry(
-                action: AuditAction::VmSnapshotRestored,
-                outcome: AuditOutcome::Success,
-                subject: $targetSnapshot,
-                tenantUserId: $vm->user_id,
-                visibility: 'tenant',
-                context: [
-                    'name' => $targetSnapshot->name,
-                    'virtual_machine_id' => $vm->id,
-                    'previous_state' => (string) $vm->status,
-                ],
-            ));
+                $this->logger()->record(new AuditEntry(
+                    action: AuditAction::VmSnapshotRestored,
+                    outcome: AuditOutcome::Success,
+                    subject: $lockedSnapshot,
+                    tenantUserId: $vm->user_id,
+                    visibility: 'tenant',
+                    context: [
+                        'name' => $lockedSnapshot->name,
+                        'virtual_machine_id' => $vm->id,
+                        'previous_state' => (string) $vm->status,
+                    ],
+                ));
+
+                return $lockedSnapshot;
+            });
         } catch (\Throwable $e) {
             /** @var VirtualMachine|null $subjectVm */
             $subjectVm = isset($vm) ? $vm : ($snapshotOrVm instanceof VirtualMachine ? $snapshotOrVm : $snapshotOrVm->virtualMachine);
@@ -225,7 +239,7 @@ class VmSnapshotService
                 visibility: 'tenant',
                 context: [
                     'action' => 'snapshot.restore',
-                    'name' => isset($targetSnapshot) ? $targetSnapshot->name : (is_string($snapshot) ? $snapshot : null),
+                    'name' => $resolvedSnapshot !== null ? $resolvedSnapshot->name : (is_string($snapshot) ? $snapshot : null),
                     'virtual_machine_id' => $subjectVm !== null ? $subjectVm->id : null,
                     'reason' => $e->getMessage(),
                 ],
@@ -234,7 +248,9 @@ class VmSnapshotService
             throw $e;
         }
 
-        event(new SnapshotStatusUpdated($targetSnapshot, VmSnapshot::STATUS_RESTORING));
+        if ($snapshotOrVm instanceof VmSnapshot || $snapshot instanceof VmSnapshot) {
+            $resolvedSnapshot->refresh();
+        }
 
         RestoreSnapshotJob::dispatch($targetSnapshot);
 
@@ -252,36 +268,55 @@ class VmSnapshotService
         VmSnapshot|VirtualMachine $snapshotOrVm,
         VmSnapshot|string|int|null $snapshot = null,
     ): VmSnapshot {
+        $resolvedSnapshot = null;
+        $wasFailed = false;
+
         try {
-            [, $targetSnapshot] = $this->resolveVmAndSnapshot($snapshotOrVm, $snapshot);
+            [, $resolvedSnapshot] = $this->resolveVmAndSnapshot($snapshotOrVm, $snapshot);
 
-            if ($targetSnapshot->exists) {
-                $targetSnapshot->refresh();
-            }
+            /** @var VmSnapshot $targetSnapshot */
+            $targetSnapshot = DB::transaction(function () use ($resolvedSnapshot, &$wasFailed): VmSnapshot {
+                /** @var VmSnapshot $lockedSnapshot */
+                $lockedSnapshot = VmSnapshot::query()
+                    ->whereKey($resolvedSnapshot->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-            if ($targetSnapshot->status === VmSnapshot::STATUS_RESTORING) {
-                throw new InvalidSnapshotStateException(
-                    $targetSnapshot->status,
-                    'delete',
-                    sprintf('Cannot delete snapshot "%s" while it is currently restoring.', $targetSnapshot->name)
-                );
-            }
+                if ($lockedSnapshot->status->equals(Restoring::class)) {
+                    throw new InvalidSnapshotStateException(
+                        $lockedSnapshot->status->getValue(),
+                        'delete',
+                        sprintf('Cannot delete snapshot "%s" while it is currently restoring.', $lockedSnapshot->name)
+                    );
+                }
 
-            $targetSnapshot->status = VmSnapshot::STATUS_DELETING;
-            $targetSnapshot->error = null;
-            $targetSnapshot->save();
+                if (! $lockedSnapshot->status->equals(Ready::class, Failed::class)) {
+                    throw new InvalidSnapshotStateException(
+                        $lockedSnapshot->status->getValue(),
+                        'delete',
+                        sprintf('Cannot delete snapshot "%s" while in "%s" status.', $lockedSnapshot->name, $lockedSnapshot->status->getValue())
+                    );
+                }
 
-            $this->logger()->record(new AuditEntry(
-                action: AuditAction::VmSnapshotDeleted,
-                outcome: AuditOutcome::Success,
-                subject: $targetSnapshot,
-                tenantUserId: $targetSnapshot->user_id,
-                visibility: 'tenant',
-                context: [
-                    'name' => $targetSnapshot->name,
-                    'virtual_machine_id' => $targetSnapshot->virtual_machine_id,
-                ],
-            ));
+                $wasFailed = $lockedSnapshot->status->equals(Failed::class);
+
+                $lockedSnapshot->error = null;
+                $lockedSnapshot->status->transitionTo(Deleting::class);
+
+                $this->logger()->record(new AuditEntry(
+                    action: AuditAction::VmSnapshotDeleted,
+                    outcome: AuditOutcome::Success,
+                    subject: $lockedSnapshot,
+                    tenantUserId: $lockedSnapshot->user_id,
+                    visibility: 'tenant',
+                    context: [
+                        'name' => $lockedSnapshot->name,
+                        'virtual_machine_id' => $lockedSnapshot->virtual_machine_id,
+                    ],
+                ));
+
+                return $lockedSnapshot;
+            });
         } catch (\Throwable $e) {
             /** @var VirtualMachine|null $subjectVm */
             $subjectVm = $snapshotOrVm instanceof VirtualMachine ? $snapshotOrVm : $snapshotOrVm->virtualMachine;
@@ -293,8 +328,8 @@ class VmSnapshotService
                 visibility: 'tenant',
                 context: [
                     'action' => 'snapshot.delete',
-                    'name' => isset($targetSnapshot) ? $targetSnapshot->name : null,
-                    'virtual_machine_id' => isset($targetSnapshot) ? $targetSnapshot->virtual_machine_id : ($subjectVm !== null ? $subjectVm->id : null),
+                    'name' => $resolvedSnapshot?->name,
+                    'virtual_machine_id' => $resolvedSnapshot !== null ? $resolvedSnapshot->virtual_machine_id : ($subjectVm !== null ? $subjectVm->id : null),
                     'reason' => $e->getMessage(),
                 ],
             ));
@@ -302,9 +337,11 @@ class VmSnapshotService
             throw $e;
         }
 
-        event(new SnapshotStatusUpdated($targetSnapshot, VmSnapshot::STATUS_DELETING));
+        if ($snapshotOrVm instanceof VmSnapshot || $snapshot instanceof VmSnapshot) {
+            $resolvedSnapshot->refresh();
+        }
 
-        DeleteSnapshotJob::dispatch($targetSnapshot);
+        DeleteSnapshotJob::dispatch($targetSnapshot, wasFailed: $wasFailed);
 
         return $targetSnapshot;
     }
@@ -351,14 +388,18 @@ class VmSnapshotService
                     if ($live['size'] !== null) {
                         $dbSnapshot->size_bytes = $live['size'];
                     }
-                    if ($dbSnapshot->status !== VmSnapshot::STATUS_RESTORING) {
-                        $dbSnapshot->status = VmSnapshot::STATUS_READY;
+                    if ($dbSnapshot->status->equals(Creating::class)) {
                         $dbSnapshot->error = null;
-                    }
-                    if ($dbSnapshot->isDirty()) {
+                        $dbSnapshot->status->transitionTo(Ready::class);
+                    } elseif ($dbSnapshot->status->equals(Ready::class)) {
+                        $dbSnapshot->error = null;
+                        if ($dbSnapshot->isDirty()) {
+                            $dbSnapshot->save();
+                        }
+                    } elseif ($dbSnapshot->isDirty()) {
                         $dbSnapshot->save();
                     }
-                } elseif (! in_array($dbSnapshot->status, [VmSnapshot::STATUS_CREATING, VmSnapshot::STATUS_DELETING, VmSnapshot::STATUS_FAILED], true)) {
+                } elseif (! $dbSnapshot->status->equals(Creating::class, Deleting::class, Failed::class)) {
                     // Snapshot no longer exists on hypervisor -> remove stale DB row (preserve in-flight creating/deleting jobs and failed records)
                     $dbSnapshot->delete();
                 }
@@ -375,7 +416,7 @@ class VmSnapshotService
                     'user_id' => $vm->user_id,
                     'name' => $name,
                     'source' => VmSnapshot::SOURCE_MANUAL,
-                    'status' => VmSnapshot::STATUS_READY,
+                    'status' => Ready::class,
                     'size_bytes' => $live['size'],
                     'error' => null,
                 ]);
@@ -398,7 +439,7 @@ class VmSnapshotService
             $host = $vm->host()->first();
         }
 
-        if ($host !== null && $host->status === 'unreachable') {
+        if ($host !== null && $host->status->equals(Unreachable::class)) {
             $exception = ValidationException::withMessages([
                 'host' => ['The compute node hosting this virtual machine is currently unreachable.'],
             ]);
@@ -539,7 +580,7 @@ class VmSnapshotService
         if ($snapshot instanceof VmSnapshot) {
             if ($snapshot->virtual_machine_id !== $vm->id) {
                 throw new InvalidSnapshotStateException(
-                    $snapshot->status,
+                    $snapshot->status->getValue(),
                     'operate on',
                     sprintf('Snapshot "%s" does not belong to virtual machine #%d.', $snapshot->name, $vm->id)
                 );

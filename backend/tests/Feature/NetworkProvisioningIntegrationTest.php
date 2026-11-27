@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Enums\IpAllocationStatus;
 use App\Exceptions\IpPoolExhaustedException;
 use App\Models\Host;
 use App\Models\Image;
@@ -187,7 +188,7 @@ final class NetworkProvisioningIntegrationTest extends TestCase
         $ipService->emergencyReleaseAllocation($firstAllocation);
 
         $firstAllocation->refresh();
-        $this->assertEquals('cooling', $firstAllocation->status);
+        $this->assertSame(IpAllocationStatus::Cooling, $firstAllocation->status);
         $this->assertNotNull($firstAllocation->released_at);
         $this->assertNull($firstAllocation->virtual_machine_id);
 
@@ -205,7 +206,7 @@ final class NetworkProvisioningIntegrationTest extends TestCase
         // Now .66 is eligible for reuse without duplicate key collision!
         $reusedAlloc = $ipService->allocateIp($pool, $vms[0], $this->tenant);
         $this->assertEquals('203.0.113.66', $reusedAlloc->ip_string);
-        $this->assertEquals('allocated', $reusedAlloc->status);
+        $this->assertSame(IpAllocationStatus::Allocated, $reusedAlloc->status);
         $this->assertEquals($vms[0]->id, $reusedAlloc->virtual_machine_id);
 
         // Total allocation rows in DB remains 5 (no unbounded growth)

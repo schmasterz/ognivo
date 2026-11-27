@@ -8,6 +8,10 @@ use App\Models\QuotaGroup;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\Notifications\QueuedVerifyEmailNotification;
+use App\States\User\Deleting;
+use App\States\User\DeletionFailed;
+use App\States\User\Inactive;
+use App\States\User\Suspended;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Testing\TestResponse;
@@ -277,5 +281,61 @@ final class EmailVerificationTest extends TestCase
         $res->assertOk();
         $res->assertJsonStructure(['message']);
         Notification::assertNothingSent();
+    }
+
+    public function test_non_pending_blocked_users_cannot_reactivate_via_email_verification_post_or_get(): void
+    {
+        foreach ([Suspended::class, Inactive::class, Deleting::class, DeletionFailed::class] as $idx => $stateClass) {
+            $server = ['REMOTE_ADDR' => sprintf('10.10.0.%d', $idx + 10)];
+            $user = User::factory()->create([
+                'email' => sprintf('blocked-%s@example.com', $stateClass::$name),
+                'status' => $stateClass,
+                'email_verified_at' => null,
+            ]);
+
+            $id = $user->id;
+            $hash = sha1($user->getEmailForVerification());
+            $expires = now()->addHours(24)->timestamp;
+            $signature = hash_hmac('sha256', "verify:{$id}:{$hash}:{$expires}", (string) config('app.key'));
+
+            $postRes = $this->withServerVariables($server)->postJson('/api/v1/email/verify', [
+                'id' => $id,
+                'hash' => $hash,
+                'expires' => $expires,
+                'signature' => $signature,
+            ]);
+
+            $postRes->assertForbidden();
+            $user->refresh();
+            $this->assertTrue($user->status->equals($stateClass));
+            $this->assertNull($user->email_verified_at);
+
+            $getJsonRes = $this->withServerVariables($server)->getJson(sprintf(
+                '/api/v1/email/verify/%d/%s?expires=%d&signature=%s',
+                $id,
+                $hash,
+                $expires,
+                $signature
+            ));
+
+            $getJsonRes->assertForbidden();
+            $user->refresh();
+            $this->assertTrue($user->status->equals($stateClass));
+            $this->assertNull($user->email_verified_at);
+
+            $getRedirectRes = $this->withServerVariables($server)->get(sprintf(
+                '/api/v1/email/verify/%d/%s?expires=%d&signature=%s',
+                $id,
+                $hash,
+                $expires,
+                $signature
+            ));
+
+            $getRedirectRes->assertRedirect();
+            $this->assertStringContainsString('error=account_inactive', (string) $getRedirectRes->headers->get('Location'));
+            $user->refresh();
+            $this->assertTrue($user->status->equals($stateClass));
+            $this->assertNull($user->email_verified_at);
+        }
     }
 }

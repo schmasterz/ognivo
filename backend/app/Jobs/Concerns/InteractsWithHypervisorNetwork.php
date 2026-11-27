@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs\Concerns;
 
+use App\Enums\NetworkStatus;
 use App\Models\IpAllocation;
 use App\Models\VirtualMachine;
 use Illuminate\Http\Client\ConnectionException;
@@ -20,7 +21,7 @@ trait InteractsWithHypervisorNetwork
      * Evaluate observed network state against assigned IP and pool mode.
      *
      * @param  array<string, mixed>  $state
-     * @return array{status: 'observed'|'unverified'|'mismatch'|'waiting', observed_ip: string|null, elapsed: int, wait_limit: int, poll_interval: int}
+     * @return array{status: NetworkStatus, observed_ip: string|null, elapsed: int, wait_limit: int, poll_interval: int}
      */
     protected function evaluateNetworkObservation(VirtualMachine $vm, ?int $allocationId, array $state): array
     {
@@ -37,7 +38,7 @@ trait InteractsWithHypervisorNetwork
 
         if ($observedIp !== null && $assignedIp !== null && $observedIp === $assignedIp) {
             return [
-                'status' => 'observed',
+                'status' => NetworkStatus::Observed,
                 'observed_ip' => $observedIp,
                 'elapsed' => 0,
                 'wait_limit' => $waitLimit,
@@ -51,7 +52,7 @@ trait InteractsWithHypervisorNetwork
 
         if ($allocation?->pool?->network_mode === 'manual') {
             return [
-                'status' => 'unverified',
+                'status' => NetworkStatus::Unverified,
                 'observed_ip' => $observedIp,
                 'elapsed' => 0,
                 'wait_limit' => $waitLimit,
@@ -61,7 +62,7 @@ trait InteractsWithHypervisorNetwork
 
         if ($observedIp !== null && $assignedIp !== null && $observedIp !== $assignedIp) {
             return [
-                'status' => 'mismatch',
+                'status' => NetworkStatus::Mismatch,
                 'observed_ip' => $observedIp,
                 'elapsed' => 0,
                 'wait_limit' => $waitLimit,
@@ -77,7 +78,7 @@ trait InteractsWithHypervisorNetwork
         $elapsed = now()->getTimestamp() - $vm->network_wait_started_at->getTimestamp();
 
         return [
-            'status' => $elapsed >= $waitLimit ? 'unverified' : 'waiting',
+            'status' => $elapsed >= $waitLimit ? NetworkStatus::Unverified : NetworkStatus::Waiting,
             'observed_ip' => $observedIp,
             'elapsed' => $elapsed,
             'wait_limit' => $waitLimit,

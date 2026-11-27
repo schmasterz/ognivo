@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Enums\NetworkStatus;
 use App\Models\DriftReport;
 use App\Models\VirtualMachine;
 use App\Services\Hypervisor\HypervisorManager;
@@ -113,7 +114,7 @@ final class ProvisioningCompensator
         try {
             $vm->refresh();
             if ($deleteConfirmed) {
-                $vm->network_status = 'unassigned';
+                $vm->network_status = NetworkStatus::Unassigned;
                 $vm->ipv4_address = null;
             }
             /** @var array<string, mixed> $existingMeta */

@@ -8,6 +8,7 @@ use App\Events\Contracts\OgnivoEventInterface;
 use App\Jobs\DeliverWebhookJob;
 use App\Models\WebhookDelivery;
 use App\Models\WebhookEndpoint;
+use App\States\Webhook\Pending;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Events\ShouldBeDiscovered;
 use Override;
@@ -48,7 +49,7 @@ final class WebhookEventSubscriber implements ShouldBeDiscovered
                 'event_name' => $eventName,
                 'payload' => $payload,
                 'attempt' => 1,
-                'status' => WebhookDelivery::STATUS_PENDING,
+                'status' => Pending::class,
             ]);
 
             DeliverWebhookJob::dispatch($delivery);

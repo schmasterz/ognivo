@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Enums\IpAllocationStatus;
+use App\Enums\NetworkStatus;
 use App\Jobs\ReinstallVmJob;
 use App\Models\Host;
 use App\Models\Image;
@@ -180,7 +182,7 @@ final class VmReinstallTest extends TestCase
             'disk_gb' => 10,
             'os_image' => $this->linuxImage->name,
             'ipv4_address' => '10.60.0.15',
-            'network_status' => 'observed',
+            'network_status' => NetworkStatus::Observed,
         ], $attributes);
 
         return VirtualMachine::create($data);
@@ -540,7 +542,7 @@ final class VmReinstallTest extends TestCase
         $vm->refresh();
         $allocation->refresh();
         $this->assertSame('10.60.0.22', $vm->ipv4_address);
-        $this->assertSame('allocated', $allocation->status);
+        $this->assertSame(IpAllocationStatus::Allocated, $allocation->status);
         $this->assertSame($vm->id, $allocation->virtual_machine_id);
 
         // Execute ReinstallVmJob directly
@@ -552,7 +554,7 @@ final class VmReinstallTest extends TestCase
         $vm->refresh();
         $allocation->refresh();
         $this->assertSame('10.60.0.22', $vm->ipv4_address);
-        $this->assertSame('allocated', $allocation->status);
+        $this->assertSame(IpAllocationStatus::Allocated, $allocation->status);
         $this->assertSame($vm->id, $allocation->virtual_machine_id);
     }
 
@@ -589,11 +591,11 @@ final class VmReinstallTest extends TestCase
         $this->assertTrue($vm->status->equals(Running::class));
         $this->assertSame($newImage, $vm->os_image);
         $this->assertSame($newCloudInit, $vm->cloud_init);
-        $this->assertSame('observed', $vm->network_status);
+        $this->assertSame(NetworkStatus::Observed, $vm->network_status);
         $this->assertSame('10.60.0.25', $vm->ipv4_address);
 
         $allocation->refresh();
-        $this->assertSame('allocated', $allocation->status);
+        $this->assertSame(IpAllocationStatus::Allocated, $allocation->status);
         $this->assertSame($vm->id, $allocation->virtual_machine_id);
     }
 
@@ -616,7 +618,7 @@ final class VmReinstallTest extends TestCase
         $this->assertTrue($vm->status->equals(Running::class));
         $this->assertSame($newImage, $vm->os_image);
         $this->assertSame($newCloudInit, $vm->cloud_init);
-        $this->assertSame('observed', $vm->network_status);
+        $this->assertSame(NetworkStatus::Observed, $vm->network_status);
     }
 
     public function test_audit_log_records_reinstall_requested_with_image_context(): void
@@ -706,7 +708,7 @@ final class VmReinstallTest extends TestCase
 
         $vm->refresh();
         $this->assertTrue($vm->status->equals(Provisioning::class));
-        $this->assertSame('assigned', $vm->network_status);
+        $this->assertSame(NetworkStatus::Assigned, $vm->network_status);
         $this->assertSame($newImage, $vm->os_image);
         $this->assertSame($newCloudInit, $vm->cloud_init);
         $this->assertIsArray($vm->metadata);
@@ -762,12 +764,12 @@ final class VmReinstallTest extends TestCase
 
         $vm->refresh();
         $this->assertTrue($vm->status->equals(Running::class));
-        $this->assertSame('observed', $vm->network_status);
+        $this->assertSame(NetworkStatus::Observed, $vm->network_status);
         $this->assertIsArray($vm->metadata);
         $this->assertArrayNotHasKey('reinstall_in_progress', $vm->metadata);
 
         $allocation->refresh();
-        $this->assertSame('allocated', $allocation->status);
+        $this->assertSame(IpAllocationStatus::Allocated, $allocation->status);
         $this->assertSame($vm->id, $allocation->virtual_machine_id);
 
         $this->travelBack();
@@ -815,7 +817,7 @@ final class VmReinstallTest extends TestCase
 
         $vm->refresh();
         $this->assertTrue($vm->status->equals(Running::class));
-        $this->assertSame('unverified', $vm->network_status);
+        $this->assertSame(NetworkStatus::Unverified, $vm->network_status);
         $this->assertIsArray($vm->metadata);
         $this->assertArrayNotHasKey('reinstall_in_progress', $vm->metadata);
 
@@ -841,7 +843,7 @@ final class VmReinstallTest extends TestCase
         $this->assertArrayHasKey('failed_at', $vm->metadata);
 
         $allocation->refresh();
-        $this->assertSame('allocated', $allocation->status);
+        $this->assertSame(IpAllocationStatus::Allocated, $allocation->status);
         $this->assertSame($vm->id, $allocation->virtual_machine_id);
         $this->assertSame('10.60.0.37', $vm->ipv4_address);
     }

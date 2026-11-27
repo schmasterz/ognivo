@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Hypervisor;
 
+use App\Enums\IpAllocationStatus;
 use App\Models\Image;
 use App\Models\IpAllocation;
 use App\Models\VirtualMachine;
@@ -338,7 +339,7 @@ class InstanceSpecBuilder
 
         if ($vm->relationLoaded('allocations')) {
             /** @var IpAllocation|null $found */
-            $found = $vm->allocations->first(fn (IpAllocation $a): bool => $a->status === 'allocated');
+            $found = $vm->allocations->first(fn (IpAllocation $a): bool => $a->status === IpAllocationStatus::Allocated);
             if ($found !== null) {
                 $found->loadMissing('pool');
 
@@ -348,7 +349,7 @@ class InstanceSpecBuilder
 
         if ($vm->ipv4_address !== null) {
             return IpAllocation::with('pool')->where('ip_string', $vm->ipv4_address)
-                ->where('status', 'allocated')
+                ->where('status', IpAllocationStatus::Allocated->value)
                 ->first();
         }
 

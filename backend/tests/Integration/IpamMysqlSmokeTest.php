@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Integration;
 
+use App\Enums\IpAllocationStatus;
 use App\Models\Host;
 use App\Models\IpAllocation;
 use App\Models\IpPool;
@@ -98,7 +99,7 @@ test('IPAM ordering by (pool_id, address) is numeric and allocateIp updateOrCrea
         $reused = $service->allocateIp($pool1, $vm2, $user);
         expect($reused->id)->toBe($alloc1->id);
         expect($reused->ip_string)->toBe('10.0.0.2');
-        expect($reused->status)->toBe('allocated');
+        expect($reused->status)->toBe(IpAllocationStatus::Allocated);
 
         // Insert remaining out-of-order IPs across both pools
         foreach ([

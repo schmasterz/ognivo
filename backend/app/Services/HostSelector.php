@@ -8,6 +8,10 @@ use App\DTO\Cast;
 use App\Models\Host;
 use App\Models\Image;
 use App\Models\IpPool;
+use App\States\Host\FingerprintMismatch;
+use App\States\Host\NotTrusted;
+use App\States\Host\Ok;
+use App\States\Host\Unreachable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -40,8 +44,8 @@ class HostSelector
     {
         $query = Host::query()
             ->where('is_active', true)
-            ->where('status', 'ok')
-            ->whereNotIn('status', ['fingerprint_mismatch', 'not_trusted', 'unreachable'])
+            ->where('status', Ok::$name)
+            ->whereNotIn('status', [FingerprintMismatch::$name, NotTrusted::$name, Unreachable::$name])
             ->where('capacity_source', '!=', 'unknown')
             ->where('total_cpu_cores', '>', 0)
             ->where('total_ram_mb', '>', 0)
@@ -118,7 +122,7 @@ class HostSelector
             ]);
         }
 
-        if ($host->status !== 'ok' || in_array($host->status, ['fingerprint_mismatch', 'not_trusted', 'unreachable'], true)) {
+        if (! $host->status->equals(Ok::class)) {
             throw ValidationException::withMessages([
                 'host_id' => ['The selected compute node is not healthy or available.'],
             ]);

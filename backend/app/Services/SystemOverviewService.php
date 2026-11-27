@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\DTO\Cast;
+use App\Enums\IpAllocationStatus;
 use App\Mail\SmtpTestMail;
 use App\Models\Host;
 use App\Models\IpAllocation;
@@ -85,7 +86,7 @@ final class SystemOverviewService
         $totalUsers = (int) User::count();
         $activeHosts = (int) Host::where('is_active', true)->count();
         $totalIps = (int) IpAllocation::count();
-        $allocatedIps = (int) IpAllocation::where('status', 'allocated')->count();
+        $allocatedIps = (int) IpAllocation::where('status', IpAllocationStatus::Allocated->value)->count();
         $totalPools = (int) IpPool::count();
 
         $snapshotQuery = VmSnapshot::whereNotIn('status', [VmSnapshot::STATUS_FAILED, VmSnapshot::STATUS_DELETING]);

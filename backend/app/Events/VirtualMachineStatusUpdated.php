@@ -45,7 +45,7 @@ final class VirtualMachineStatusUpdated implements ShouldBroadcast
                 'id' => (int) $virtualMachine->id,
                 'status' => (string) $virtualMachine->status,
                 'failure_reason' => $failureReason,
-                'network_status' => $virtualMachine->network_status,
+                'network_status' => $virtualMachine->network_status?->value,
                 'ipv4' => $virtualMachine->ipv4_address,
                 'ipv4_address' => $virtualMachine->ipv4_address,
                 'updated_at' => $virtualMachine->updated_at?->toISOString() ?? now()->toISOString(),

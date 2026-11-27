@@ -6,6 +6,7 @@ namespace App\Http\Requests\Admin;
 
 use App\DTO\User\UpdateUserDTO;
 use App\Models\User;
+use App\States\User\UserState;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -32,7 +33,7 @@ final class UpdateUserRequest extends FormRequest
             'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users')->ignore($userId)],
             'password' => ['nullable', 'string', 'min:8'],
             'role' => ['required', 'string', Rule::in(['admin', 'customer'])],
-            'status' => ['nullable', 'string', Rule::in(['active', 'suspended', 'inactive', 'pending'])],
+            'status' => ['nullable', 'string', Rule::in(UserState::assignableValues())],
             'quota_group_id' => ['nullable', 'integer', 'exists:quota_groups,id'],
             'quota' => ['nullable', 'array'],
             'quota.max_vms' => ['nullable', 'integer', 'min:-1'],

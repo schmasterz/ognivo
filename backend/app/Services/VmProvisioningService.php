@@ -8,6 +8,8 @@ use App\Audit\AuditAction;
 use App\Audit\AuditEntry;
 use App\Audit\AuditLogger;
 use App\Audit\AuditOutcome;
+use App\Enums\IpAllocationStatus;
+use App\Enums\NetworkStatus;
 use App\Exceptions\IpPoolExhaustedException;
 use App\Jobs\ProvisionVmJob;
 use App\Models\Host;
@@ -18,6 +20,8 @@ use App\Models\SystemSetting;
 use App\Models\User;
 use App\Models\UserQuota;
 use App\Models\VirtualMachine;
+use App\States\Host\Ok as HostOk;
+use App\States\User\Active as UserActive;
 use App\States\Vm\Provisioning;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
@@ -59,16 +63,9 @@ final class VmProvisioningService
      */
     public function provision(User $user, array $data): VirtualMachine
     {
-        if ($user->status !== 'active') {
-            $msgKey = match ($user->status) {
-                'suspended' => 'messages.auth.account_suspended',
-                'inactive' => 'messages.auth.account_inactive',
-                'pending' => 'messages.auth.account_pending_verification',
-                default => 'messages.auth.account_inactive',
-            };
-
+        if (! $user->status->equals(UserActive::class)) {
             throw ValidationException::withMessages([
-                'user' => [__($msgKey)],
+                'user' => [__($user->status->inactiveMessageKey())],
             ]);
         }
 
@@ -121,7 +118,7 @@ final class VmProvisioningService
             ]);
 
             if ($chosenHost === null) {
-                $hasAnyActiveHost = Host::where('is_active', true)->where('status', 'ok')->exists();
+                $hasAnyActiveHost = Host::where('is_active', true)->where('status', HostOk::$name)->exists();
                 $errorMsg = $hasAnyActiveHost
                     ? __('messages.host.no_capacity')
                     : __('messages.host.no_active_host');
@@ -207,7 +204,7 @@ final class VmProvisioningService
 
                     // Check public IP quota (values of -1 represent infinite / unlimited quota)
                     $currentIps = IpAllocation::where('user_id', $user->id)
-                        ->where('status', 'allocated')
+                        ->where('status', IpAllocationStatus::Allocated->value)
                         ->count();
                     if ($lockedQuota->max_ips !== -1 && $currentIps + 1 > $lockedQuota->max_ips) {
                         throw ValidationException::withMessages([
@@ -223,7 +220,7 @@ final class VmProvisioningService
                     /** @var Host $lockedHost */
                     $lockedHost = Host::where('id', $hostId)->lockForUpdate()->firstOrFail();
 
-                    if (! $lockedHost->is_active || $lockedHost->status !== 'ok') {
+                    if (! $lockedHost->is_active || ! $lockedHost->status->equals(HostOk::class)) {
                         throw ValidationException::withMessages([
                             'host_id' => [__('messages.host.not_active_or_available')],
                         ]);
@@ -280,7 +277,7 @@ final class VmProvisioningService
                         'incus_project' => $incusProject,
                         'instance_type' => $instanceType,
                         'status' => Provisioning::class,
-                        'network_status' => 'assigned',
+                        'network_status' => NetworkStatus::Assigned,
                         'cpu_cores' => $data['cpu_cores'],
                         'ram_mb' => $data['ram_mb'],
                         'disk_gb' => $data['disk_gb'],

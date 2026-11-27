@@ -16,6 +16,8 @@ use App\Models\QuotaGroup;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\Models\UserQuota;
+use App\States\User\Active;
+use App\States\User\Pending;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -178,7 +180,7 @@ final class AuthService
                 'name' => $dto->name,
                 'email' => $dto->email,
                 ...$this->generateCredentials($dto->password),
-                'status' => 'pending',
+                'status' => Pending::class,
             ]);
 
             /** @var Role|null $customerRole */
@@ -253,7 +255,7 @@ final class AuthService
             ]);
         }
 
-        if ($user->status !== 'active') {
+        if (! $user->status->equals(Active::class)) {
             $this->logger()->recordIndependent(new AuditEntry(
                 action: AuditAction::AuthLoginFailed,
                 outcome: AuditOutcome::Failed,
@@ -266,20 +268,8 @@ final class AuthService
                 actorId: null,
             ));
 
-            if ($user->status === 'pending') {
-                throw ValidationException::withMessages([
-                    'email' => [__('messages.auth.account_pending_verification')],
-                ]);
-            }
-
-            if ($user->status === 'suspended') {
-                throw ValidationException::withMessages([
-                    'email' => [__('messages.auth.account_suspended')],
-                ]);
-            }
-
             throw ValidationException::withMessages([
-                'email' => [__('messages.auth.account_inactive')],
+                'email' => [__($user->status->inactiveMessageKey())],
             ]);
         }
 
@@ -386,11 +376,11 @@ final class AuthService
                 $user->email = $dto->email;
                 $user->email_verified_at = null;
 
-                if (SystemSetting::isRegistrationVerificationEnabled()) {
-                    $user->status = 'pending';
+                if (SystemSetting::isRegistrationVerificationEnabled() && ! $user->status->equals(Pending::class)) {
+                    $user->status->transitionTo(Pending::class);
+                } else {
+                    $user->save();
                 }
-
-                $user->save();
 
                 $this->logger()->record(new AuditEntry(
                     action: AuditAction::AuthEmailChanged,

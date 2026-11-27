@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Admin;
 
+use App\Enums\IpAllocationStatus;
 use App\Models\IpPool;
 use App\Services\IpManagementService;
 use App\Services\Network\CidrHelper;
@@ -63,9 +64,9 @@ final class UpdateIpPoolRequest extends FormRequest
             $cooldownLimit = now()->subSeconds($pool->cooldown_seconds);
             $activeOrCoolingQuery = $pool->allocations()
                 ->where(function (Builder $query) use ($cooldownLimit): void {
-                    $query->where('status', 'allocated')
+                    $query->where('status', IpAllocationStatus::Allocated->value)
                         ->orWhere(function (Builder $sub) use ($cooldownLimit): void {
-                            $sub->where('status', 'cooling')
+                            $sub->where('status', IpAllocationStatus::Cooling->value)
                                 ->where('released_at', '>', $cooldownLimit);
                         });
                 });

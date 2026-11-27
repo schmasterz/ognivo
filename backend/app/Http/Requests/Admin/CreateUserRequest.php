@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Admin;
 
 use App\DTO\User\CreateUserDTO;
+use App\States\User\UserState;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -28,7 +29,7 @@ final class CreateUserRequest extends FormRequest
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8'],
             'role' => ['required', 'string', Rule::in(['admin', 'customer'])],
-            'status' => ['nullable', 'string', Rule::in(['active', 'suspended', 'inactive', 'pending'])],
+            'status' => ['nullable', 'string', Rule::in(UserState::assignableValues())],
             'quota_group_id' => ['nullable', 'integer', 'exists:quota_groups,id'],
             'quota' => ['nullable', 'array'],
             'quota.max_vms' => ['nullable', 'integer', 'min:-1'],

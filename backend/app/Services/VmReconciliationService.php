@@ -9,6 +9,8 @@ use App\Models\Host;
 use App\Models\User;
 use App\Models\VirtualMachine;
 use App\Services\Hypervisor\HypervisorManager;
+use App\States\Host\Ok;
+use App\States\Host\Unreachable;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -81,18 +83,14 @@ class VmReconciliationService
             $hostProjects = $driver->listProjects();
         } catch (\Throwable $e) {
             Log::warning(sprintf('Host node [%s] is unreachable during reconciliation: %s', $host->name, $e->getMessage()));
-            if ($host->status !== 'unreachable') {
-                $host->status = 'unreachable';
-                $host->save();
-            }
+            $host->status->transitionIfAllowed(Unreachable::class);
 
             // Do not report false missing_on_host when the host is down
             return ['drifts_detected' => 0, 'drifts_resolved' => 0];
         }
 
-        if ($host->status === 'unreachable' || $host->status === 'offline') {
-            $host->status = 'ok';
-            $host->save();
+        if ($host->status->equals(Unreachable::class)) {
+            $host->status->transitionIfAllowed(Ok::class);
         }
 
         // Distinct projects from host and from database

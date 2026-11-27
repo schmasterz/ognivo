@@ -21,14 +21,15 @@ use App\Models\Image;
 use App\Models\User;
 use App\Models\VirtualMachine;
 use App\Services\Hypervisor\HypervisorManager;
+use App\States\Host\Unreachable;
 use App\States\Vm\Deleted;
 use App\States\Vm\Deleting;
-use App\States\Vm\Failed;
 use App\States\Vm\Provisioning;
 use App\States\Vm\Running;
 use App\States\Vm\Stopped;
 use App\States\Vm\Suspended;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
@@ -93,41 +94,14 @@ class VmLifecycleService
             abort(403, $gateResponse->message() ?? 'Forbidden');
         }
 
-        $canPerform = match ($action) {
-            'start' => $vm->status->equals(Stopped::class) || $vm->status->equals(Suspended::class),
-            'stop' => $vm->status->equals(Running::class) || $vm->status->equals(Suspended::class),
-            'restart' => $vm->status->equals(Running::class) || $vm->status->equals(Stopped::class) || $vm->status->equals(Suspended::class),
-            'suspend' => $vm->status->equals(Running::class) || $vm->status->equals(Stopped::class),
-            'delete' => ! $vm->status->equals(Deleting::class) && ! $vm->status->equals(Deleted::class) && ! $vm->status->equals(Provisioning::class),
-            'reinstall' => $vm->status->equals(Running::class) || $vm->status->equals(Stopped::class) || $vm->status->equals(Suspended::class) || $vm->status->equals(Failed::class),
-            default => false,
-        };
-
-        if (! $canPerform) {
-            $this->logger()->recordIndependent(new AuditEntry(
-                action: AuditAction::VmActionDenied,
-                outcome: AuditOutcome::Denied,
-                subject: $vm,
-                tenantUserId: $vm->user_id,
-                visibility: 'tenant',
-                context: [
-                    'action' => $action,
-                    'reason' => 'invalid_state_transition',
-                    'current_state' => (string) $vm->status,
-                ],
-            ));
-
-            $msg = __('messages.vm.invalid_state_transition', [
-                'action' => $action,
-                'state' => (string) $vm->status,
-            ]);
-            abort(409, is_string($msg) ? $msg : 'Invalid state transition.');
+        if (! $this->canPerformAction($vm, $action)) {
+            $this->denyInvalidStateTransition($vm, $action);
         }
 
         $isAdmin = $user !== null && $user->hasRole('admin');
         $actualForce = ($action === 'delete') ? ($isAdmin && $force) : $force;
 
-        if ($vm->host !== null && $vm->host->status === 'unreachable') {
+        if ($vm->host !== null && $vm->host->status->equals(Unreachable::class)) {
             if (! ($action === 'delete' && $actualForce)) {
                 $exception = ValidationException::withMessages([
                     'host' => ['The compute node hosting this virtual machine is currently unreachable.'],
@@ -172,23 +146,38 @@ class VmLifecycleService
                 ]);
             }
 
-            DB::transaction(function () use ($vm, $osImage, $cloudInit): void {
-                $vm->status->transitionTo(Provisioning::class);
-                $vm->save();
+            $shouldDispatch = false;
 
-                $this->logger()->record(new AuditEntry(
-                    action: AuditAction::VmReinstallRequested,
-                    outcome: AuditOutcome::Success,
-                    subject: $vm,
-                    tenantUserId: $vm->user_id,
-                    visibility: 'tenant',
-                    context: [
-                        'os_image' => ($osImage !== null && $osImage !== '') ? $osImage : $vm->os_image,
-                    ],
-                ));
+            Cache::lock("vm:{$vm->id}", 30)->block(10, function () use ($vm, $osImage, &$shouldDispatch): void {
+                $vm->refresh();
 
-                ReinstallVmJob::dispatch($vm, $osImage, $cloudInit)->afterCommit();
+                if (! $this->canPerformAction($vm, 'reinstall')) {
+                    $this->denyInvalidStateTransition($vm, 'reinstall');
+                }
+
+                DB::transaction(function () use ($vm, $osImage, &$shouldDispatch): void {
+                    $vm->status->transitionTo(Provisioning::class);
+                    $vm->save();
+
+                    $this->logger()->record(new AuditEntry(
+                        action: AuditAction::VmReinstallRequested,
+                        outcome: AuditOutcome::Success,
+                        subject: $vm,
+                        tenantUserId: $vm->user_id,
+                        visibility: 'tenant',
+                        context: [
+                            'os_image' => ($osImage !== null && $osImage !== '') ? $osImage : $vm->os_image,
+                        ],
+                    ));
+
+                    $shouldDispatch = true;
+                });
             });
+
+            // Dispatch outside the per-VM lock so synchronous queue execution does not deadlock on Cache::lock.
+            if ($shouldDispatch) {
+                ReinstallVmJob::dispatch($vm, $osImage, $cloudInit)->afterCommit();
+            }
 
             return;
         }
@@ -258,19 +247,23 @@ class VmLifecycleService
      */
     public function suspend(VirtualMachine $vm): bool
     {
-        if ($vm->status->equals(Suspended::class)) {
-            return true;
-        }
+        Cache::lock("vm:{$vm->id}", 30)->block(10, function () use ($vm): void {
+            $vm->refresh();
 
-        $driver = $this->hypervisorManager->driverForVm($vm);
-        $success = $driver->suspendInstance($vm);
+            if ($vm->status->equals(Suspended::class)) {
+                return;
+            }
 
-        if (! $success) {
-            throw new RuntimeException(sprintf('Hypervisor failed to suspend VM #%d (%s)', $vm->id, $vm->name));
-        }
+            $driver = $this->hypervisorManager->driverForVm($vm);
+            $success = $driver->suspendInstance($vm);
 
-        $vm->status->transitionTo(Suspended::class);
-        $vm->save();
+            if (! $success) {
+                throw new RuntimeException(sprintf('Hypervisor failed to suspend VM #%d (%s)', $vm->id, $vm->name));
+            }
+
+            $vm->status->transitionTo(Suspended::class);
+            $vm->save();
+        });
 
         return true;
     }
@@ -280,64 +273,68 @@ class VmLifecycleService
      */
     public function delete(VirtualMachine $vm, bool $force = false): bool
     {
-        if ($vm->status->equals(Deleted::class)) {
-            return true;
-        }
+        Cache::lock("vm:{$vm->id}", 30)->block(10, function () use ($vm, $force): void {
+            $vm->refresh();
 
-        if (! $vm->status->equals(Deleting::class)) {
-            $vm->status->transitionTo(Deleting::class);
-            $vm->save();
-        }
-
-        $driver = $this->hypervisorManager->driverForVm($vm);
-        $driverSucceeded = false;
-        $hypervisorError = null;
-
-        try {
-            $driverSucceeded = $driver->deleteInstance($vm);
-        } catch (Throwable $driverEx) {
-            if ($this->isNotFound($driverEx)) {
-                $driverSucceeded = true;
-            } elseif ($force) {
-                Log::warning(sprintf('Force deleting VM #%d despite hypervisor error: %s', $vm->id, $driverEx->getMessage()));
-                $driverSucceeded = true;
-                $hypervisorError = $driverEx;
-            } else {
-                throw $driverEx;
+            if ($vm->status->equals(Deleted::class)) {
+                return;
             }
-        }
 
-        if (! $driverSucceeded) {
-            throw new RuntimeException(sprintf('Hypervisor failed to delete VM #%d (%s)', $vm->id, $vm->name));
-        }
-
-        DB::transaction(function () use ($vm, $hypervisorError): void {
-            if (! $vm->status->equals(Deleted::class)) {
-                $vm->status->transitionTo(Deleted::class);
+            if (! $vm->status->equals(Deleting::class)) {
+                $vm->status->transitionTo(Deleting::class);
                 $vm->save();
             }
 
-            $this->ipManagementService->releaseIp($vm);
+            $driver = $this->hypervisorManager->driverForVm($vm);
+            $driverSucceeded = false;
+            $hypervisorError = null;
 
-            if ($hypervisorError !== null && $vm->host_id !== null) {
-                DriftReport::create([
-                    'host_id' => $vm->host_id,
-                    'virtual_machine_id' => $vm->id,
-                    'instance_name' => $vm->name,
-                    'incus_project' => $vm->incus_project ?? 'default',
-                    'kind' => 'orphan_instance',
-                    'expected_state' => 'deleted',
-                    'actual_state' => null,
-                    'details' => [
-                        'error' => $hypervisorError->getMessage(),
-                        'forced' => true,
-                        'detected_by' => 'force_delete',
-                    ],
-                    'resolved_at' => null,
-                ]);
+            try {
+                $driverSucceeded = $driver->deleteInstance($vm);
+            } catch (Throwable $driverEx) {
+                if ($this->isNotFound($driverEx)) {
+                    $driverSucceeded = true;
+                } elseif ($force) {
+                    Log::warning(sprintf('Force deleting VM #%d despite hypervisor error: %s', $vm->id, $driverEx->getMessage()));
+                    $driverSucceeded = true;
+                    $hypervisorError = $driverEx;
+                } else {
+                    throw $driverEx;
+                }
             }
 
-            event(new InstanceTerminated($vm->id, $vm->name));
+            if (! $driverSucceeded) {
+                throw new RuntimeException(sprintf('Hypervisor failed to delete VM #%d (%s)', $vm->id, $vm->name));
+            }
+
+            DB::transaction(function () use ($vm, $hypervisorError): void {
+                if (! $vm->status->equals(Deleted::class)) {
+                    $vm->status->transitionTo(Deleted::class);
+                    $vm->save();
+                }
+
+                $this->ipManagementService->releaseIp($vm);
+
+                if ($hypervisorError !== null && $vm->host_id !== null) {
+                    DriftReport::create([
+                        'host_id' => $vm->host_id,
+                        'virtual_machine_id' => $vm->id,
+                        'instance_name' => $vm->name,
+                        'incus_project' => $vm->incus_project ?? 'default',
+                        'kind' => 'orphan_instance',
+                        'expected_state' => 'deleted',
+                        'actual_state' => null,
+                        'details' => [
+                            'error' => $hypervisorError->getMessage(),
+                            'forced' => true,
+                            'detected_by' => 'force_delete',
+                        ],
+                        'resolved_at' => null,
+                    ]);
+                }
+
+                event(new InstanceTerminated($vm->id, $vm->name));
+            });
         });
 
         return true;
@@ -348,18 +345,24 @@ class VmLifecycleService
      */
     public function start(VirtualMachine $vm): bool
     {
-        $driver = $this->hypervisorManager->driverForVm($vm);
-        $success = $driver->startInstance($vm);
+        Cache::lock("vm:{$vm->id}", 30)->block(10, function () use ($vm): void {
+            $vm->refresh();
 
-        if (! $success) {
-            throw new RuntimeException(sprintf('Hypervisor failed to start VM #%d (%s)', $vm->id, $vm->name));
-        }
+            $driver = $this->hypervisorManager->driverForVm($vm);
+            $success = $driver->startInstance($vm);
 
-        DB::transaction(function () use ($vm): void {
-            $vm->status->transitionTo(Running::class);
-            $vm->save();
+            if (! $success) {
+                throw new RuntimeException(sprintf('Hypervisor failed to start VM #%d (%s)', $vm->id, $vm->name));
+            }
 
-            event(new InstanceStarted($vm->id, $vm->name));
+            DB::transaction(function () use ($vm): void {
+                if (! $vm->status->equals(Running::class)) {
+                    $vm->status->transitionTo(Running::class);
+                    $vm->save();
+                }
+
+                event(new InstanceStarted($vm->id, $vm->name));
+            });
         });
 
         return true;
@@ -370,18 +373,24 @@ class VmLifecycleService
      */
     public function stop(VirtualMachine $vm, bool $force = false): bool
     {
-        $driver = $this->hypervisorManager->driverForVm($vm);
-        $success = $driver->stopInstance($vm, $force);
+        Cache::lock("vm:{$vm->id}", 30)->block(10, function () use ($vm, $force): void {
+            $vm->refresh();
 
-        if (! $success) {
-            throw new RuntimeException(sprintf('Hypervisor failed to stop VM #%d (%s)', $vm->id, $vm->name));
-        }
+            $driver = $this->hypervisorManager->driverForVm($vm);
+            $success = $driver->stopInstance($vm, $force);
 
-        DB::transaction(function () use ($vm): void {
-            $vm->status->transitionTo(Stopped::class);
-            $vm->save();
+            if (! $success) {
+                throw new RuntimeException(sprintf('Hypervisor failed to stop VM #%d (%s)', $vm->id, $vm->name));
+            }
 
-            event(new InstanceStopped($vm->id, $vm->name));
+            DB::transaction(function () use ($vm): void {
+                if (! $vm->status->equals(Stopped::class)) {
+                    $vm->status->transitionTo(Stopped::class);
+                    $vm->save();
+                }
+
+                event(new InstanceStopped($vm->id, $vm->name));
+            });
         });
 
         return true;
@@ -392,24 +401,71 @@ class VmLifecycleService
      */
     public function restart(VirtualMachine $vm): bool
     {
-        $driver = $this->hypervisorManager->driverForVm($vm);
-        $stopSuccess = $driver->stopInstance($vm, true);
-        if (! $stopSuccess) {
-            throw new RuntimeException(sprintf('Hypervisor failed to stop VM #%d (%s) during restart', $vm->id, $vm->name));
-        }
-        $startSuccess = $driver->startInstance($vm);
-        if (! $startSuccess) {
-            throw new RuntimeException(sprintf('Hypervisor failed to start VM #%d (%s) during restart', $vm->id, $vm->name));
-        }
+        Cache::lock("vm:{$vm->id}", 30)->block(10, function () use ($vm): void {
+            $vm->refresh();
 
-        DB::transaction(function () use ($vm): void {
-            $vm->status->transitionTo(Running::class);
-            $vm->save();
+            $driver = $this->hypervisorManager->driverForVm($vm);
+            $stopSuccess = $driver->stopInstance($vm, true);
+            if (! $stopSuccess) {
+                throw new RuntimeException(sprintf('Hypervisor failed to stop VM #%d (%s) during restart', $vm->id, $vm->name));
+            }
+            $startSuccess = $driver->startInstance($vm);
+            if (! $startSuccess) {
+                throw new RuntimeException(sprintf('Hypervisor failed to start VM #%d (%s) during restart', $vm->id, $vm->name));
+            }
 
-            event(new InstanceRebooted($vm->id, $vm->name));
+            DB::transaction(function () use ($vm): void {
+                if (! $vm->status->equals(Running::class)) {
+                    $vm->status->transitionTo(Running::class);
+                    $vm->save();
+                }
+
+                event(new InstanceRebooted($vm->id, $vm->name));
+            });
         });
 
         return true;
+    }
+
+    /**
+     * Determine whether the given lifecycle action is permitted from the VM's current state.
+     */
+    private function canPerformAction(VirtualMachine $vm, string $action): bool
+    {
+        return match ($action) {
+            'start' => ! $vm->status->equals(Provisioning::class) && $vm->status->canTransitionTo(Running::class),
+            'stop' => $vm->status->canTransitionTo(Stopped::class),
+            'restart' => ! $vm->status->equals(Provisioning::class) && ($vm->status->equals(Running::class) || $vm->status->canTransitionTo(Running::class)),
+            'suspend' => $vm->status->canTransitionTo(Suspended::class),
+            'delete' => ! $vm->status->equals(Provisioning::class) && $vm->status->canTransitionTo(Deleting::class),
+            'reinstall' => $vm->status->canTransitionTo(Provisioning::class),
+            default => false,
+        };
+    }
+
+    /**
+     * Audit and abort with 409 Conflict when an action is invalid for the VM's current state.
+     */
+    private function denyInvalidStateTransition(VirtualMachine $vm, string $action): never
+    {
+        $this->logger()->recordIndependent(new AuditEntry(
+            action: AuditAction::VmActionDenied,
+            outcome: AuditOutcome::Denied,
+            subject: $vm,
+            tenantUserId: $vm->user_id,
+            visibility: 'tenant',
+            context: [
+                'action' => $action,
+                'reason' => 'invalid_state_transition',
+                'current_state' => (string) $vm->status,
+            ],
+        ));
+
+        $msg = __('messages.vm.invalid_state_transition', [
+            'action' => $action,
+            'state' => (string) $vm->status,
+        ]);
+        abort(409, is_string($msg) ? $msg : 'Invalid state transition.');
     }
 
     /**

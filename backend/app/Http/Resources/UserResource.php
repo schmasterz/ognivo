@@ -30,7 +30,7 @@ final class UserResource extends JsonResource
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
-            'status' => $user->status,
+            'status' => $user->status->getValue(),
             'project_name' => $user->project_name,
             'email_verified_at' => $user->email_verified_at?->toISOString(),
             'quota_group_id' => $user->quota_group_id,

@@ -10,6 +10,9 @@ use App\Audit\AuditLogger;
 use App\Audit\AuditOutcome;
 use App\Models\Host;
 use App\Models\PanelCertificate;
+use App\States\PanelCertificate\Active;
+use App\States\PanelCertificate\Retiring;
+use App\States\PanelCertificate\Revoked;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -140,16 +143,13 @@ final class PanelCertificateService
                 /** @var PanelCertificate $newCert */
                 $newCert = DB::transaction(function () use ($certPem, $keyPem, $fingerprint, $validFrom, $validTo): PanelCertificate {
                     // If active certificate exists, mark it as retiring and clear active_marker
-                    $existingActive = PanelCertificate::where('status', PanelCertificate::STATUS_ACTIVE)
+                    $existingActive = PanelCertificate::where('status', Active::$name)
                         ->lockForUpdate()
                         ->first();
 
                     $isRotating = $existingActive !== null;
                     if ($existingActive !== null) {
-                        $existingActive->update([
-                            'status' => PanelCertificate::STATUS_RETIRING,
-                            'active_marker' => null,
-                        ]);
+                        $existingActive->status->transitionTo(Retiring::class);
                         // Flag all existing hosts as needing re-trust with the new certificate
                         Host::query()->update(['needs_retrust' => true]);
                     }
@@ -161,7 +161,7 @@ final class PanelCertificateService
                         'fingerprint' => $fingerprint,
                         'not_before' => $validFrom,
                         'not_after' => $validTo,
-                        'status' => PanelCertificate::STATUS_ACTIVE,
+                        'status' => Active::class,
                         'active_marker' => 1,
                     ]);
 
@@ -215,7 +215,7 @@ final class PanelCertificateService
 
         /** @var PanelCertificate|null $cert */
         $cert = PanelCertificate::where('active_marker', 1)->first()
-            ?? PanelCertificate::where('status', PanelCertificate::STATUS_ACTIVE)->first();
+            ?? PanelCertificate::where('status', Active::$name)->first();
 
         $this->cachedActive = $cert;
         $this->cachedActivePrivateKey = null;
@@ -234,7 +234,7 @@ final class PanelCertificateService
         }
 
         /** @var PanelCertificate|null $cert */
-        $cert = PanelCertificate::where('status', PanelCertificate::STATUS_RETIRING)->first();
+        $cert = PanelCertificate::where('status', Retiring::$name)->first();
 
         $this->cachedRetiring = $cert;
         $this->retiringCacheTimestamp = microtime(true);
@@ -303,10 +303,7 @@ final class PanelCertificateService
         }
 
         $fingerprint = $retiring->fingerprint;
-        $retiring->update([
-            'status' => PanelCertificate::STATUS_REVOKED,
-            'active_marker' => null,
-        ]);
+        $retiring->status->transitionTo(Revoked::class);
         $this->clearMemoryCache();
 
         $this->logger()->record(new AuditEntry(

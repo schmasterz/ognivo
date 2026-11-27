@@ -9,13 +9,13 @@ use App\Audit\AuditEntry;
 use App\Audit\AuditLogger;
 use App\Audit\AuditOutcome;
 use App\DTO\Cast;
-use App\DTO\Incus\IncusConnectionResult;
 use App\Models\Host;
 use App\Services\Hypervisor\GatewayMode;
 use App\Services\Hypervisor\HypervisorGateway;
 use App\Services\Hypervisor\HypervisorManager;
 use App\Services\Hypervisor\TlsPeerCertificateFetcher;
 use App\Services\Hypervisor\TlsPeerCertificateFetcherInterface;
+use App\States\Host\Ok;
 use Carbon\Carbon;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Log;
@@ -69,7 +69,7 @@ final class IncusTrustService
             'server_public_key_pin' => $connectionDetails['server_public_key_pin'],
             'driver' => $driver,
             'token' => null, // Explicitly null: single-use token is never stored!
-            'status' => IncusConnectionResult::STATE_OK,
+            'status' => Ok::class,
             'needs_retrust' => false,
             'is_active' => true,
             'total_cpu_cores' => 0,
@@ -111,10 +111,10 @@ final class IncusTrustService
         if ($host->driver === 'fake') {
             $this->parseAndValidateToken($token);
 
-            $host->update([
-                'status' => IncusConnectionResult::STATE_OK,
-                'needs_retrust' => false,
-            ]);
+            $host->needs_retrust = false;
+            if (! $host->status->transitionIfAllowed(Ok::class)) {
+                $host->save();
+            }
 
             $this->connectionChecker->check($host);
 
@@ -138,15 +138,17 @@ final class IncusTrustService
 
         $connectionDetails = $this->exchangeTrustToken($token, $host->driver);
 
-        $host->update([
+        $host->fill([
             'endpoint_url' => $connectionDetails['endpoint_url'],
             'server_certificate' => $connectionDetails['server_certificate'],
             'server_fingerprint' => $connectionDetails['server_fingerprint'],
             'server_public_key_pin' => $connectionDetails['server_public_key_pin'],
             'token' => null,
-            'status' => IncusConnectionResult::STATE_OK,
             'needs_retrust' => false,
         ]);
+        if (! $host->status->transitionIfAllowed(Ok::class)) {
+            $host->save();
+        }
 
         $this->connectionChecker->check($host);
 
@@ -336,7 +338,7 @@ final class IncusTrustService
             'server_public_key_pin' => $serverPublicKeyPin,
             'driver' => 'incus',
             'token' => null,
-            'status' => IncusConnectionResult::STATE_OK,
+            'status' => Ok::class,
             'needs_retrust' => false,
             'is_active' => true,
             'total_cpu_cores' => 0,

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Resources;
 
+use App\Enums\IpAllocationStatus;
 use App\Models\IpAllocation;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -31,8 +32,8 @@ final class IpAllocationResource extends JsonResource
         $isAdmin = $user !== null && $user->hasRole('admin');
 
         $cooldownRemaining = 0;
-        $status = $allocation->status;
-        if ($allocation->status === 'cooling' && $allocation->released_at !== null) {
+        $status = $allocation->status->value;
+        if ($allocation->status === IpAllocationStatus::Cooling && $allocation->released_at !== null) {
             $diff = $allocation->getCooldownRemainingSeconds();
             if ($diff <= 0) {
                 $cooldownRemaining = 0;

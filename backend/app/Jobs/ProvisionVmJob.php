@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Enums\NetworkStatus;
 use App\Jobs\Concerns\InteractsWithHypervisorNetwork;
 use App\Jobs\Enums\QueueName;
 use App\Models\VirtualMachine;
@@ -93,7 +94,7 @@ final class ProvisionVmJob implements ShouldQueue
                 return;
             }
 
-            if ($this->vm->status->equals(Running::class) && in_array($this->vm->network_status, ['observed', 'unverified'], true)) {
+            if ($this->vm->status->equals(Running::class) && in_array($this->vm->network_status, [NetworkStatus::Observed, NetworkStatus::Unverified], true)) {
                 return;
             }
 
@@ -155,15 +156,15 @@ final class ProvisionVmJob implements ShouldQueue
             $state = $driver->getInstanceState($this->vm);
             $observation = $this->evaluateNetworkObservation($this->vm, $this->allocationId, $state);
 
-            if ($observation['status'] === 'observed') {
-                $this->completeProvisioning('observed');
+            if ($observation['status'] === NetworkStatus::Observed) {
+                $this->completeProvisioning(NetworkStatus::Observed);
                 Log::info(sprintf('VM #%d (%s) network observed: %s. Provisioning complete.', $this->vm->id, $this->vm->name, $observation['observed_ip'] ?? ''));
 
                 return;
             }
 
-            if ($observation['status'] === 'unverified') {
-                $this->completeProvisioning('unverified');
+            if ($observation['status'] === NetworkStatus::Unverified) {
+                $this->completeProvisioning(NetworkStatus::Unverified);
 
                 if ($this->vm->network_wait_started_at !== null && $observation['elapsed'] >= $observation['wait_limit']) {
                     Log::info(sprintf('VM #%d (%s) completed with unverified network status after %ds timeout.', $this->vm->id, $this->vm->name, $observation['wait_limit']));
@@ -174,8 +175,8 @@ final class ProvisionVmJob implements ShouldQueue
                 return;
             }
 
-            if ($observation['status'] === 'mismatch') {
-                $this->completeProvisioning('mismatch');
+            if ($observation['status'] === NetworkStatus::Mismatch) {
+                $this->completeProvisioning(NetworkStatus::Mismatch);
                 Log::warning(sprintf('VM #%d (%s) IP mismatch: expected %s, observed %s.', $this->vm->id, $this->vm->name, $this->vm->ipv4_address ?? '', $observation['observed_ip'] ?? ''));
 
                 return;
@@ -189,7 +190,7 @@ final class ProvisionVmJob implements ShouldQueue
     /**
      * Update network status and transition the VM to Running.
      */
-    private function completeProvisioning(string $networkStatus): void
+    private function completeProvisioning(NetworkStatus $networkStatus): void
     {
         $this->vm->network_status = $networkStatus;
         if (! $this->vm->status->equals(Running::class)) {

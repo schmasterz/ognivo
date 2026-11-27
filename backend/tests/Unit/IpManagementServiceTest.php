@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Unit;
 
 use App\DTO\Network\CreateIpPoolDTO;
+use App\Enums\IpAllocationStatus;
+use App\Enums\NetworkStatus;
 use App\Exceptions\IpPoolExhaustedException;
 use App\Exceptions\PoolAllocationConflictException;
 use App\Exceptions\PoolHasActiveAllocationsException;
@@ -59,7 +61,7 @@ final class IpManagementServiceTest extends TestCase
             'incus_project' => 'default',
             'instance_type' => 'virtual-machine',
             'status' => 'provisioning',
-            'network_status' => 'unassigned',
+            'network_status' => NetworkStatus::Unassigned,
             'cpu_cores' => 2,
             'ram_mb' => 2048,
             'disk_gb' => 20,
@@ -85,12 +87,12 @@ final class IpManagementServiceTest extends TestCase
 
         $alloc1 = $this->service->allocateIp($pool, $vm1, $this->user);
         $this->assertEquals('192.168.10.2', $alloc1->ip_string);
-        $this->assertEquals('allocated', $alloc1->status);
+        $this->assertSame(IpAllocationStatus::Allocated, $alloc1->status);
         $this->assertStringStartsWith('02:54:', $alloc1->mac_address);
 
         $vm1->refresh();
         $this->assertEquals('192.168.10.2', $vm1->ipv4_address);
-        $this->assertEquals('assigned', $vm1->network_status);
+        $this->assertSame(NetworkStatus::Assigned, $vm1->network_status);
 
         $alloc2 = $this->service->allocateIp($pool, $vm2, $this->user);
         $this->assertEquals('192.168.10.3', $alloc2->ip_string);
@@ -134,13 +136,13 @@ final class IpManagementServiceTest extends TestCase
         $this->service->releaseIp($vm);
 
         $alloc->refresh();
-        $this->assertEquals('cooling', $alloc->status);
+        $this->assertSame(IpAllocationStatus::Cooling, $alloc->status);
         $this->assertNull($alloc->virtual_machine_id);
         $this->assertNotNull($alloc->released_at);
 
         $vm->refresh();
         $this->assertNull($vm->ipv4_address);
-        $this->assertEquals('unassigned', $vm->network_status);
+        $this->assertSame(NetworkStatus::Unassigned, $vm->network_status);
     }
 
     public function test_cooling_ip_is_quarantined_then_reused_after_cooldown_expiry(): void
@@ -199,7 +201,7 @@ final class IpManagementServiceTest extends TestCase
         $alloc2 = $this->service->allocateIp($pool, $vm2, $this->user);
 
         $this->assertEquals($alloc1->id, $alloc2->id); // Reused same row
-        $this->assertEquals('allocated', $alloc2->status);
+        $this->assertSame(IpAllocationStatus::Allocated, $alloc2->status);
         $this->assertEquals($vm2->id, $alloc2->virtual_machine_id);
         $this->assertNull($alloc2->released_at);
         $this->assertEquals('192.168.50.1', $alloc2->ip_string);
