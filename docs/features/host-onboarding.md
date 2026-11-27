@@ -110,7 +110,7 @@ Copy the 64-character SHA-256 `certificate_fingerprint` value from the `environm
 
 ## 3. Connection Verification States
 
-The **Verify connection** action (`POST /api/v1/admin/hosts/verify-connection` or `POST /api/v1/admin/hosts/{host}/verify-connection`) returns one of the following states:
+The **Verify connection** action (`POST /api/v1/admin/hosts/verify-connection` or `POST /api/v1/admin/hosts/{host}/verify-connection`) evaluates the node and returns one of the 5 persisted `Host.status` values (there is no `offline` state):
 
 | State | Meaning |
 | :--- | :--- |

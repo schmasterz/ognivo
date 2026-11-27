@@ -187,6 +187,19 @@ In `manual` mode, guest networking is managed externally by the infrastructure o
 - **UI Indicators:** Pools in `manual` mode display a `Manual` warning badge in **Networking & IPAM**, and VMs on `manual` pools show an **Operator-managed** network badge in the Instances table and overview tab when status is not `observed`.
 - **Pool Rules:** CIDR `/16` to `/32`. `gateway` is required for `/16` to `/30` subnets and optional for `/31` and `/32`. When configured, `gateway` must be a valid IPv4 address inside the pool CIDR (not the network or broadcast address for `/16`–`/30`, nor inside `169.254.0.0/16`), is dynamically excluded from IP allocation (not stored in `excluded_ips`), and may be changed at any time provided the target address is not currently `allocated`.
 
+### Instance Network Status (`VirtualMachine.network_status`)
+Across all network modes, `VirtualMachine.network_status` tracks IP assignment and hypervisor observation using the following values:
+
+| Value | Meaning |
+| :--- | :--- |
+| `assigned` | An IPv4 allocation is assigned to the instance prior to hypervisor network observation (e.g., during provisioning, reinstall, or IP assignment). |
+| `waiting` | The instance is running and Ognivo is polling the hypervisor for an observed IP within the configured wait window. |
+| `observed` | The hypervisor reported an IPv4 address matching the instance's assigned `ipv4_address`. |
+| `unverified` | No matching IP was observed before the wait window elapsed, or the instance uses a `manual` pool without an observed match. |
+| `mismatch` | The hypervisor reported an IPv4 address that differs from the instance's assigned `ipv4_address`. |
+| `unassigned` | The IP allocation was released or rolled back (e.g., IP release or failed-provisioning compensation). |
+| `null` | No network observation state is set (for example, before IP assignment or after detachment). |
+
 ---
 
 ## 5. Pool Validation & Fail-Fast Provisioning
@@ -222,7 +235,7 @@ In `manual` mode, guest networking is managed externally by the infrastructure o
 ## 6. Allocation Cooldown Period
 
 - **IP Cooling Period:** Released IP allocations enter a `cooling` state (`released_at`) for a pool-configured duration (`cooldown_seconds`) before returning to general circulation. During this quarantine window, the address cannot be immediately reassigned, preventing network disruption and traffic leakage from previous instances.
-- **Expiration & Cleanup:** `GET /api/v1/ips` does not delete rows on read and validates query parameters (`user_id`, `host_id`, `pool_id`, `status` in `allocated`/`cooling`, `search`, `per_page`, `page`). Expired `cooling` rows are removed only by the scheduled `ipam:prune-cooling` command (every minute); until pruned, an expired row is shown with status `'released'` and `cooldown_remaining_seconds` `0`, and `allocateIp` already treats it as reusable.
+- **Expiration & Cleanup:** `GET /api/v1/ips` does not delete rows on read and validates query parameters (`user_id`, `host_id`, `pool_id`, `status` in `allocated`/`cooling`, `search`, `per_page`, `page`). Expired `cooling` rows are removed only by the scheduled `ipam:prune-cooling` command (every minute); until pruned, an expired row remains with `status: 'cooling'` and `cooldown_remaining_seconds: 0`, and `allocateIp` already treats it as reusable.
 - **Allocation Ordering:** The allocations list is ordered by pool, then numerically by IPv4 address.
 - **Allocation Search:** The allocations `search` filter trims whitespace and classifies the query: IPv4 terms (e.g. `10.0.0.1`, `10.0`) match `ip_string` by prefix (`term%`), MAC prefixes containing `:` (e.g. `02:54:ab`) match `mac_address` by case-insensitive prefix (`term%`), and other text matches user `name`/`email` (as well as VM and pool names) by substring (`%term%`) with SQL `LIKE` wildcards (`%`, `_`, `\`) escaped.
 
