@@ -62,6 +62,14 @@ final class VirtualMachinePolicy
     }
 
     /**
+     * Determine whether the user can preview or request a plan change for the virtual machine.
+     */
+    public function changePlan(User $user, VirtualMachine $vm): Response
+    {
+        return $this->executeAction($user, $vm);
+    }
+
+    /**
      * Determine whether the user can access the interactive web console.
      *
      * Privacy constraint: Workload owners (including administrators for their own instances)

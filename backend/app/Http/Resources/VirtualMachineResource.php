@@ -8,6 +8,8 @@ use App\Enums\NetworkStatus;
 use App\Models\IpAllocation;
 use App\Models\User;
 use App\Models\VirtualMachine;
+use App\Models\VpsPlan;
+use App\Models\VpsPlanVersion;
 use App\Services\ProvisioningCompensator;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -40,6 +42,32 @@ final class VirtualMachineResource extends JsonResource
 
         $pool = $allocation?->pool;
 
+        $vpsPlanPayload = null;
+        if ($vm->vps_plan_version_id !== null) {
+            /** @var VpsPlanVersion|null $planVersion */
+            $planVersion = $vm->relationLoaded('vpsPlanVersion')
+                ? $vm->vpsPlanVersion
+                : $vm->vpsPlanVersion()->with('vpsPlan')->first();
+
+            if ($planVersion !== null) {
+                /** @var VpsPlan|null $plan */
+                $plan = $planVersion->relationLoaded('vpsPlan')
+                    ? $planVersion->vpsPlan
+                    : $planVersion->vpsPlan()->first();
+
+                if ($plan !== null) {
+                    $vpsPlanPayload = [
+                        'id' => $plan->id,
+                        'name' => $plan->name,
+                        'slug' => $plan->slug,
+                        'version_id' => $planVersion->id,
+                        'version' => $planVersion->version,
+                        'is_current_version' => $plan->current_version_id === $planVersion->id,
+                    ];
+                }
+            }
+        }
+
         $prefix = null;
         $cidr = $pool !== null && ! empty($pool->cidr) ? $pool->cidr : $pool?->subnet;
         if ($cidr !== null && ! empty($cidr)) {
@@ -71,6 +99,12 @@ final class VirtualMachineResource extends JsonResource
             'cpu_cores' => $vm->cpu_cores,
             'ram_mb' => $vm->ram_mb,
             'disk_gb' => $vm->disk_gb,
+            'vps_plan' => $vpsPlanPayload,
+            'network_limits' => [
+                'download_mbps' => $vm->net_download_mbps,
+                'upload_mbps' => $vm->net_upload_mbps,
+                'applicable' => $pool?->network_mode !== 'manual',
+            ],
             'os_image' => $vm->os_image,
             'os_image_alias' => $vm->image->alias ?? $vm->os_image,
             'ipv4_address' => $vm->ipv4_address,

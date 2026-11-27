@@ -11,6 +11,8 @@ use App\Models\IpPool;
 use App\Models\User;
 use App\Models\UserQuota;
 use App\Models\VirtualMachine;
+use App\Models\VpsPlan;
+use App\Models\VpsPlanVersion;
 use App\Services\HostSelector;
 use App\States\Vm\Running;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -59,6 +61,31 @@ final class ResourceSensibleProvisioningAndTenantIsolationTest extends TestCase
                 'enabled' => true,
             ]
         );
+    }
+
+    /**
+     * @param  array<string, mixed>  $versionOverrides
+     */
+    private function createPublishedPlan(array $versionOverrides = []): VpsPlan
+    {
+        /** @var VpsPlan $plan */
+        $plan = VpsPlan::factory()->published()->create();
+
+        /** @var VpsPlanVersion $version */
+        $version = VpsPlanVersion::factory()->published()->create(array_merge([
+            'vps_plan_id' => $plan->id,
+            'version' => 1,
+            'cpu_cores' => 1,
+            'ram_mb' => 1024,
+            'disk_gb' => 10,
+            'instance_type' => 'virtual-machine',
+            'net_download_mbps' => null,
+            'net_upload_mbps' => null,
+        ], $versionOverrides));
+
+        $plan->forceFill(['current_version_id' => $version->id])->save();
+
+        return $plan->fresh();
     }
 
     public function test_exhausted_first_pool_falls_through_to_the_second(): void
@@ -112,14 +139,18 @@ final class ResourceSensibleProvisioningAndTenantIsolationTest extends TestCase
             'is_public' => true,
         ]);
 
-        // Provision VM on this host
-        $response = $this->actingAs($this->customer)->postJson('/api/v1/vms', [
-            'name' => 'fallthrough-vm',
-            'host_id' => $host->id,
+        $plan = $this->createPublishedPlan([
             'instance_type' => 'virtual-machine',
             'cpu_cores' => 2,
             'ram_mb' => 2048,
             'disk_gb' => 20,
+        ]);
+
+        // Provision VM on this host
+        $response = $this->actingAs($this->customer)->postJson('/api/v1/vms', [
+            'name' => 'fallthrough-vm',
+            'host_id' => $host->id,
+            'vps_plan_id' => $plan->id,
             'os_image' => 'images:ubuntu/24.04',
         ]);
 
@@ -334,13 +365,17 @@ final class ResourceSensibleProvisioningAndTenantIsolationTest extends TestCase
             'allocated_at' => now(),
         ]);
 
-        $response = $this->actingAs($this->customer)->postJson('/api/v1/vms', [
-            'name' => 'should-fail-vm',
-            'host_id' => $host->id,
+        $plan = $this->createPublishedPlan([
             'instance_type' => 'virtual-machine',
             'cpu_cores' => 1,
             'ram_mb' => 1024,
             'disk_gb' => 10,
+        ]);
+
+        $response = $this->actingAs($this->customer)->postJson('/api/v1/vms', [
+            'name' => 'should-fail-vm',
+            'host_id' => $host->id,
+            'vps_plan_id' => $plan->id,
             'os_image' => 'images:ubuntu/24.04',
         ]);
 
@@ -374,12 +409,17 @@ final class ResourceSensibleProvisioningAndTenantIsolationTest extends TestCase
             'active' => true,
         ]);
 
-        $resUnhealthy = $this->actingAs($this->customer)->postJson('/api/v1/vms', [
-            'name' => 'vm-on-unhealthy',
-            'host_id' => $unhealthyHost->id,
+        $plan = $this->createPublishedPlan([
+            'instance_type' => 'virtual-machine',
             'cpu_cores' => 1,
             'ram_mb' => 1024,
             'disk_gb' => 10,
+        ]);
+
+        $resUnhealthy = $this->actingAs($this->customer)->postJson('/api/v1/vms', [
+            'name' => 'vm-on-unhealthy',
+            'host_id' => $unhealthyHost->id,
+            'vps_plan_id' => $plan->id,
             'os_image' => 'images:ubuntu/24.04',
         ]);
         $resUnhealthy->assertStatus(422);
@@ -411,9 +451,7 @@ final class ResourceSensibleProvisioningAndTenantIsolationTest extends TestCase
         $resImageless = $this->actingAs($this->customer)->postJson('/api/v1/vms', [
             'name' => 'vm-on-imageless',
             'host_id' => $imagelessHost->id,
-            'cpu_cores' => 1,
-            'ram_mb' => 1024,
-            'disk_gb' => 10,
+            'vps_plan_id' => $plan->id,
             'os_image' => 'images:ubuntu/24.04',
         ]);
         $resImageless->assertStatus(422);

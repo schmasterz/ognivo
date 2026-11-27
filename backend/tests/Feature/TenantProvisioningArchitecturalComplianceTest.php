@@ -13,6 +13,8 @@ use App\Models\PanelCertificate;
 use App\Models\User;
 use App\Models\UserQuota;
 use App\Models\VirtualMachine;
+use App\Models\VpsPlan;
+use App\Models\VpsPlanVersion;
 use App\Services\Hypervisor\Drivers\IncusDriver;
 use App\Services\Hypervisor\InstanceSpecBuilder;
 use App\Services\Hypervisor\TenantProjectProvisioner;
@@ -112,8 +114,8 @@ final class TenantProvisioningArchitecturalComplianceTest extends TestCase
                 && $data['config']['features.storage.volumes'] === 'true'
                 && $data['config']['limits.instances'] === '5'
                 && $data['config']['limits.cpu'] === '4'
-                && $data['config']['limits.memory'] === '8192MB'
-                && $data['config']['limits.disk'] === '100GB';
+                && $data['config']['limits.memory'] === '8192MiB'
+                && $data['config']['limits.disk'] === '100GiB';
         });
     }
 
@@ -231,7 +233,7 @@ final class TenantProvisioningArchitecturalComplianceTest extends TestCase
 
         // Check config
         $this->assertSame('4', $payload['config']['limits.cpu']);
-        $this->assertSame('4096MB', $payload['config']['limits.memory']);
+        $this->assertSame('4096MiB', $payload['config']['limits.memory']);
         $this->assertSame("#cloud-config\nhostname: workload-alpha\nmanage_etc_hosts: true", $payload['config']['cloud-init.user-data']);
 
         // Check devices.root
@@ -239,7 +241,7 @@ final class TenantProvisioningArchitecturalComplianceTest extends TestCase
             'type' => 'disk',
             'pool' => 'nvme-pool',
             'path' => '/',
-            'size' => '50GB',
+            'size' => '50GiB',
         ], $payload['devices']['root']);
 
         // Check devices.eth0 routed interface
@@ -318,11 +320,11 @@ final class TenantProvisioningArchitecturalComplianceTest extends TestCase
 
             return $data['name'] === 'db-instance-01'
                 && $data['type'] === 'container'
-                && $data['devices']['root']['size'] === '25GB'
+                && $data['devices']['root']['size'] === '25GiB'
                 && $data['devices']['eth0']['nictype'] === 'routed'
                 && $data['devices']['eth0']['ipv4.address'] === '10.10.0.8'
                 && $data['config']['limits.cpu'] === '2'
-                && $data['config']['limits.memory'] === '2048MB'
+                && $data['config']['limits.memory'] === '2048MiB'
                 && $data['config']['cloud-init.user-data'] === '#cloud-config';
         });
     }
@@ -368,20 +370,42 @@ final class TenantProvisioningArchitecturalComplianceTest extends TestCase
             $config = $data['config'] ?? [];
 
             return $config['limits.cpu'] === '2'
-                && $config['limits.memory'] === '2048MB'
-                && $config['limits.disk'] === '50GB'
+                && $config['limits.memory'] === '2048MiB'
+                && $config['limits.disk'] === '50GiB'
                 && $config['limits.instances'] === '3';
         });
     }
 
+    private function createPublishedPlan(): VpsPlan
+    {
+        /** @var VpsPlan $plan */
+        $plan = VpsPlan::factory()->published()->create();
+
+        /** @var VpsPlanVersion $version */
+        $version = VpsPlanVersion::factory()->published()->create([
+            'vps_plan_id' => $plan->id,
+            'version' => 1,
+            'cpu_cores' => 1,
+            'ram_mb' => 1024,
+            'disk_gb' => 10,
+            'instance_type' => 'virtual-machine',
+            'net_download_mbps' => null,
+            'net_upload_mbps' => null,
+        ]);
+
+        $plan->forceFill(['current_version_id' => $version->id])->save();
+
+        return $plan->fresh();
+    }
+
     public function test_image_not_in_allowlist_fails_validation(): void
     {
+        $plan = $this->createPublishedPlan();
+
         $response = $this->actingAs($this->user)
             ->postJson('/api/v1/vms', [
                 'name' => 'unapproved-image-vm',
-                'cpu_cores' => 1,
-                'ram_mb' => 1024,
-                'disk_gb' => 10,
+                'vps_plan_id' => $plan->id,
                 'os_image' => 'malicious/unapproved-os:latest',
             ]);
 
@@ -398,12 +422,12 @@ final class TenantProvisioningArchitecturalComplianceTest extends TestCase
             'enabled' => false,
         ]);
 
+        $plan = $this->createPublishedPlan();
+
         $response = $this->actingAs($this->user)
             ->postJson('/api/v1/vms', [
                 'name' => 'disabled-image-vm',
-                'cpu_cores' => 1,
-                'ram_mb' => 1024,
-                'disk_gb' => 10,
+                'vps_plan_id' => $plan->id,
                 'os_image' => 'deprecated/linux:1.0',
             ]);
 
@@ -429,12 +453,12 @@ final class TenantProvisioningArchitecturalComplianceTest extends TestCase
             'is_public' => true,
         ]);
 
+        $plan = $this->createPublishedPlan();
+
         $response = $this->actingAs($this->user)
             ->postJson('/api/v1/vms', [
                 'name' => 'approved-image-vm',
-                'cpu_cores' => 1,
-                'ram_mb' => 1024,
-                'disk_gb' => 10,
+                'vps_plan_id' => $plan->id,
                 'os_image' => 'custom/approved:2.0',
             ]);
 

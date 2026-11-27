@@ -16,13 +16,14 @@ final readonly class CreateVmDTO
      */
     public function __construct(
         public string $name,
-        public int $cpuCores,
-        public int $ramMb,
-        public int $diskGb,
-        public string $osImage,
-        public string $instanceType = 'virtual-machine',
+        public ?int $cpuCores = null,
+        public ?int $ramMb = null,
+        public ?int $diskGb = null,
+        public string $osImage = '',
+        public ?string $instanceType = null,
         public ?int $hostId = null,
         public ?array $cloudInit = null,
+        public ?int $vpsPlanId = null,
     ) {}
 
     /**
@@ -33,20 +34,25 @@ final readonly class CreateVmDTO
         /** @var array<string, mixed>|null $cloudInit */
         $cloudInit = isset($data['cloud_init']) && is_array($data['cloud_init']) ? $data['cloud_init'] : null;
 
+        $instanceType = isset($data['instance_type']) && is_string($data['instance_type']) && $data['instance_type'] !== ''
+            ? $data['instance_type']
+            : null;
+
         return new self(
             name: Cast::string($data['name'] ?? ''),
-            cpuCores: Cast::int($data['cpu_cores'] ?? 1, 1),
-            ramMb: Cast::int($data['ram_mb'] ?? 512, 512),
-            diskGb: Cast::int($data['disk_gb'] ?? 10, 10),
+            cpuCores: Cast::intOrNull($data['cpu_cores'] ?? null),
+            ramMb: Cast::intOrNull($data['ram_mb'] ?? null),
+            diskGb: Cast::intOrNull($data['disk_gb'] ?? null),
             osImage: Cast::string($data['os_image'] ?? ''),
-            instanceType: Cast::string($data['instance_type'] ?? 'virtual-machine', 'virtual-machine'),
+            instanceType: $instanceType,
             hostId: Cast::intOrNull($data['host_id'] ?? null),
             cloudInit: $cloudInit,
+            vpsPlanId: Cast::intOrNull($data['vps_plan_id'] ?? null),
         );
     }
 
     /**
-     * @return array{name: string, cpu_cores: int, ram_mb: int, disk_gb: int, os_image: string, instance_type: string, host_id: int|null, cloud_init: array<string, mixed>|null}
+     * @return array{name: string, cpu_cores: int|null, ram_mb: int|null, disk_gb: int|null, os_image: string, instance_type: string|null, host_id: int|null, cloud_init: array<string, mixed>|null, vps_plan_id: int|null}
      */
     public function toArray(): array
     {
@@ -59,6 +65,7 @@ final readonly class CreateVmDTO
             'instance_type' => $this->instanceType,
             'host_id' => $this->hostId,
             'cloud_init' => $this->cloudInit,
+            'vps_plan_id' => $this->vpsPlanId,
         ];
     }
 }

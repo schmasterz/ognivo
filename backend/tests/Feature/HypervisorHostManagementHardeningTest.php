@@ -9,6 +9,8 @@ use App\Models\Host;
 use App\Models\User;
 use App\Models\UserQuota;
 use App\Models\VirtualMachine;
+use App\Models\VpsPlan;
+use App\Models\VpsPlanVersion;
 use App\Services\Hypervisor\Drivers\FakeHypervisorDriver;
 use App\Services\Hypervisor\HypervisorManager;
 use App\Services\VmProvisioningService;
@@ -52,11 +54,24 @@ final class HypervisorHostManagementHardeningTest extends TestCase
     {
         Host::query()->delete();
 
-        $response = $this->actingAs($this->customer)->postJson('/api/v1/vms', [
-            'name' => 'no-host-vm',
+        /** @var VpsPlan $plan */
+        $plan = VpsPlan::factory()->published()->create();
+        /** @var VpsPlanVersion $version */
+        $version = VpsPlanVersion::factory()->published()->create([
+            'vps_plan_id' => $plan->id,
+            'version' => 1,
             'cpu_cores' => 1,
             'ram_mb' => 1024,
             'disk_gb' => 10,
+            'instance_type' => 'virtual-machine',
+            'net_download_mbps' => null,
+            'net_upload_mbps' => null,
+        ]);
+        $plan->forceFill(['current_version_id' => $version->id])->save();
+
+        $response = $this->actingAs($this->customer)->postJson('/api/v1/vms', [
+            'name' => 'no-host-vm',
+            'vps_plan_id' => $plan->id,
             'os_image' => 'images:alpine/3.20',
         ]);
 
