@@ -68,6 +68,7 @@ export default {
   verifyEmailDesc: "Verifying your email address and activating your account.",
   verifyEmailSuccess: "Your email address has been verified successfully! Your account is now active.",
   verifyEmailError: "This email verification link is invalid or has expired.",
+  verifyEmailNotPending: "This account is no longer pending email verification or cannot be activated.",
   verifyEmailPendingNotice: "Registration successful! A verification link has been sent to your email address. Please verify your account before logging in.",
   resendVerificationTitle: "Resend Verification Email",
   resendVerificationDesc: "Didn't receive the verification email? Enter your address to request a new link.",

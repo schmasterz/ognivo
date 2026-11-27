@@ -50,21 +50,21 @@ function getStatusBadge(status: string, t: TranslateFn) {
       return (
         <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 mr-1.5 animate-pulse" />
-          Running
+          {t("vmStatusRunning")}
         </span>
       );
     case "provisioning":
       return (
         <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
           <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />
-          Provisioning
+          {t("vmStatusProvisioning")}
         </span>
       );
     case "stopped":
       return (
         <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-zinc-200 dark:bg-zinc-700/30 text-zinc-700 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700/50">
           <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 mr-1.5" />
-          Stopped
+          {t("vmStatusStopped")}
         </span>
       );
     case "suspended":
@@ -78,7 +78,7 @@ function getStatusBadge(status: string, t: TranslateFn) {
       return (
         <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20">
           <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />
-          Deleting
+          {t("vmStatusDeleting")}
         </span>
       );
     case "failed":
@@ -86,9 +86,16 @@ function getStatusBadge(status: string, t: TranslateFn) {
         <div className="flex flex-col items-start">
           <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20">
             <AlertCircle className="w-3 h-3 mr-1.5" />
-            Failed
+            {t("vmStatusFailed")}
           </span>
         </div>
+      );
+    case "deleted":
+      return (
+        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-zinc-200/80 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700">
+          <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 mr-1.5" />
+          {t("vmStatusDeleted")}
+        </span>
       );
     default:
       return (
@@ -101,11 +108,21 @@ function getStatusBadge(status: string, t: TranslateFn) {
 
 function renderIpNetworkStatus(vm: VirtualMachine, t: TranslateFn) {
   const ip = vm.network?.primary?.address ?? vm.ipv4_address;
+  const status = vm.network_status ?? vm.network?.primary?.status ?? (ip ? "assigned" : "unassigned");
+
   if (!ip) {
+    if (status === "waiting") {
+      return (
+        <div className="flex flex-col" title={t("networkStatusWaitingHint")}>
+          <div className="flex items-center space-x-1.5 text-amber-600 dark:text-amber-400">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+            <span>{t("networkStatusWaiting")}</span>
+          </div>
+        </div>
+      );
+    }
     return <span className="text-gray-400 italic text-xs">{t("unassignedIp")}</span>;
   }
-
-  const status = vm.network_status ?? vm.network?.primary?.status ?? "assigned";
 
   if (vm.network?.settings?.mode === "manual" && status !== "observed") {
     return (
@@ -145,6 +162,20 @@ function renderIpNetworkStatus(vm: VirtualMachine, t: TranslateFn) {
     );
   }
 
+  if (status === "waiting") {
+    return (
+      <div className="flex flex-col" title={t("networkStatusWaitingHint")}>
+        <div className="flex items-center space-x-1.5 text-gray-800 dark:text-gray-200">
+          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+          <span>{ip}</span>
+        </div>
+        <span className="text-[10px] text-amber-600 dark:text-amber-400 font-sans">
+          {t("networkStatusWaiting")}
+        </span>
+      </div>
+    );
+  }
+
   if (status === "unverified") {
     return (
       <div className="flex flex-col" title="Instance is running but guest agent is not reporting observed address yet.">
@@ -165,6 +196,20 @@ function renderIpNetworkStatus(vm: VirtualMachine, t: TranslateFn) {
           <span>{ip}</span>
         </div>
         <span className="text-[10px] text-red-500 font-sans">IP Mismatch</span>
+      </div>
+    );
+  }
+
+  if (status === "unassigned") {
+    return (
+      <div className="flex flex-col">
+        <div className="flex items-center space-x-1.5 text-gray-500 dark:text-gray-400">
+          <span className="w-2 h-2 rounded-full bg-zinc-400 flex-shrink-0" />
+          <span>{ip}</span>
+        </div>
+        <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-sans">
+          {t("networkStatusUnassigned")}
+        </span>
       </div>
     );
   }
@@ -199,10 +244,19 @@ export const VmTableRow = React.memo(function VmTableRow({
   onOpenDetails,
 }: VmTableRowProps) {
   const { t } = useI18n();
-  const isRunning = vm.status.toLowerCase() === "running";
-  const isStopped = vm.status.toLowerCase() === "stopped";
-  const isSuspended = vm.status.toLowerCase() === "suspended";
-  const isHostUnreachable = vm.host?.status === "unreachable";
+  const statusLower = vm.status.toLowerCase();
+  const isRunning = statusLower === "running";
+  const isStopped = statusLower === "stopped";
+  const isSuspended = statusLower === "suspended";
+  const isNonOperationalStatus = ["provisioning", "failed", "deleting", "deleted"].includes(
+    statusLower
+  );
+  const isCannotDeleteStatus = ["provisioning", "deleting", "deleted"].includes(statusLower);
+  const isHostUnavailable = Boolean(vm.host && vm.host.status !== "ok");
+  const hostUnavailableLabel =
+    vm.host?.status === "unreachable" ? t("hostUnreachable") : t("hostUnavailable");
+  const hostUnavailableTooltip =
+    vm.host?.status === "unreachable" ? t("hostUnreachableTooltip") : t("hostUnavailableTooltip");
 
   return (
     <tr className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition group">
@@ -269,13 +323,13 @@ export const VmTableRow = React.memo(function VmTableRow({
         <div className="flex flex-col items-start gap-1">
           <div className="flex items-center gap-1.5 flex-wrap">
             {getStatusBadge(vm.status, t)}
-            {isHostUnreachable && (
+            {isHostUnavailable && (
               <span
                 className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
-                title={t("hostUnreachableTooltip")}
+                title={hostUnavailableTooltip}
               >
                 <AlertCircle className="w-3 h-3 mr-1" />
-                {t("hostUnreachable")}
+                {hostUnavailableLabel}
               </span>
             )}
           </div>
@@ -343,8 +397,8 @@ export const VmTableRow = React.memo(function VmTableRow({
           {/* Console / Terminal Button */}
           <button
             onClick={() => onOpenConsole(vm)}
-            disabled={isActing || isHostUnreachable}
-            title={isHostUnreachable ? t("hostUnreachableTooltip") : "Open Console"}
+            disabled={isActing || isHostUnavailable || isNonOperationalStatus}
+            title={isHostUnavailable ? hostUnavailableTooltip : t("openConsole")}
             className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition disabled:opacity-50"
           >
             <Terminal className="w-4 h-4" />
@@ -355,8 +409,8 @@ export const VmTableRow = React.memo(function VmTableRow({
             <>
               <button
                 onClick={() => onActionClick(vm, "stop")}
-                disabled={isActing || isHostUnreachable}
-                title={isHostUnreachable ? t("hostUnreachableTooltip") : t("stopInstance")}
+                disabled={isActing || isHostUnavailable}
+                title={isHostUnavailable ? hostUnavailableTooltip : t("stopInstance")}
                 className="p-1.5 rounded-lg bg-gray-100 hover:bg-amber-500/20 dark:bg-gray-800 dark:hover:bg-amber-500/20 text-gray-600 dark:text-gray-300 hover:text-amber-500 transition disabled:opacity-50"
               >
                 {isActing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Square className="w-4 h-4" />}
@@ -364,8 +418,8 @@ export const VmTableRow = React.memo(function VmTableRow({
 
               <button
                 onClick={() => onActionClick(vm, "suspend")}
-                disabled={isActing || isHostUnreachable}
-                title={isHostUnreachable ? t("hostUnreachableTooltip") : t("suspendInstance")}
+                disabled={isActing || isHostUnavailable}
+                title={isHostUnavailable ? hostUnavailableTooltip : t("suspendInstance")}
                 className="p-1.5 rounded-lg bg-gray-100 hover:bg-yellow-500/20 dark:bg-gray-800 dark:hover:bg-yellow-500/20 text-gray-600 dark:text-gray-300 hover:text-yellow-500 transition disabled:opacity-50"
               >
                 <Pause className="w-4 h-4" />
@@ -374,8 +428,8 @@ export const VmTableRow = React.memo(function VmTableRow({
           ) : (
             <button
               onClick={() => onActionClick(vm, "start")}
-              disabled={isActing || isHostUnreachable || vm.status.toLowerCase() === "deleting"}
-              title={isHostUnreachable ? t("hostUnreachableTooltip") : t("startInstance")}
+              disabled={isActing || isHostUnavailable || isNonOperationalStatus}
+              title={isHostUnavailable ? hostUnavailableTooltip : t("startInstance")}
               className="p-1.5 rounded-lg bg-gray-100 hover:bg-emerald-500/20 dark:bg-gray-800 dark:hover:bg-emerald-500/20 text-gray-600 dark:text-gray-300 hover:text-emerald-500 transition disabled:opacity-50"
             >
               {isActing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
@@ -385,8 +439,8 @@ export const VmTableRow = React.memo(function VmTableRow({
           {/* Restart Button with Confirmation */}
           <button
             onClick={() => onActionClick(vm, "restart")}
-            disabled={isActing || isStopped || isSuspended || isHostUnreachable || vm.status.toLowerCase() === "deleting"}
-            title={isHostUnreachable ? t("hostUnreachableTooltip") : t("restartInstance")}
+            disabled={isActing || isStopped || isSuspended || isHostUnavailable || isNonOperationalStatus}
+            title={isHostUnavailable ? hostUnavailableTooltip : t("restartInstance")}
             className="p-1.5 rounded-lg bg-gray-100 hover:bg-blue-500/20 dark:bg-gray-800 dark:hover:bg-blue-500/20 text-gray-600 dark:text-gray-300 hover:text-blue-500 transition disabled:opacity-50"
           >
             <RotateCw className="w-4 h-4" />
@@ -395,8 +449,8 @@ export const VmTableRow = React.memo(function VmTableRow({
           {/* Delete Button with Confirmation */}
           <button
             onClick={() => onActionClick(vm, "delete")}
-            disabled={isActing || isHostUnreachable}
-            title={isHostUnreachable ? t("hostUnreachableTooltip") : t("deleteInstance")}
+            disabled={isActing || isHostUnavailable || isCannotDeleteStatus}
+            title={isHostUnavailable ? hostUnavailableTooltip : t("deleteInstance")}
             className="p-1.5 rounded-lg bg-gray-100 hover:bg-red-500/20 dark:bg-gray-800 dark:hover:bg-red-500/20 text-gray-600 dark:text-gray-300 hover:text-red-500 transition disabled:opacity-50"
           >
             <Trash2 className="w-4 h-4" />
@@ -425,7 +479,7 @@ export function VmTable({
       vm: VirtualMachine,
       action: VmAction
     ) => {
-      if (vm.host?.status === "unreachable") {
+      if (vm.host && vm.host.status !== "ok") {
         return;
       }
       if (onRequestAction) {

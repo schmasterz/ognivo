@@ -250,7 +250,7 @@ export function UserManagementTable({
                     <td className="sticky right-0 z-10 px-4 sm:px-5 lg:px-6 py-3.5 text-right bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800 border-l border-gray-200/80 dark:border-gray-800/80 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)] transition-colors">
                       <div className="flex items-center justify-end space-x-2">
                         {onToggleUserStatus && (
-                          userStatus === "suspended" ? (
+                          userStatus === "suspended" || userStatus === "inactive" ? (
                             <button
                               onClick={() => onToggleUserStatus(u, "active")}
                               disabled={isCurrent}
@@ -259,16 +259,16 @@ export function UserManagementTable({
                             >
                               <PlayCircle className="w-4 h-4" />
                             </button>
-                          ) : (
+                          ) : userStatus === "active" ? (
                             <button
                               onClick={() => onToggleUserStatus(u, "suspended")}
-                              disabled={isCurrent || userStatus === "deleting"}
+                              disabled={isCurrent}
                               title={t("suspendUser")}
                               className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 transition disabled:opacity-30 disabled:pointer-events-none"
                             >
                               <PauseCircle className="w-4 h-4" />
                             </button>
-                          )
+                          ) : null
                         )}
 
                         {onImpersonateUser && !isAdminUser && !isCurrent && userStatus === "active" && (

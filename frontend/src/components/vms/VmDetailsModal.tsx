@@ -98,7 +98,7 @@ export function VmDetailsModal({
   );
 
   const handleActionClick = async (action: (typeof registeredActions)[0]) => {
-    if (!vm || vm.host?.status === "unreachable") return;
+    if (!vm || (vm.host && vm.host.status !== "ok")) return;
     if (action.id === "reinstall") {
       requestConfirm({
         title: t("confirmReinstallTitle"),
@@ -156,7 +156,16 @@ export function VmDetailsModal({
 
   if (!isOpen || !vm) return null;
 
-  const isHostUnreachable = vm.host?.status === "unreachable";
+  const isHostUnavailable = Boolean(vm.host && vm.host.status !== "ok");
+  const hostUnavailableLabel =
+    vm.host?.status === "unreachable" ? t("hostUnreachable") : t("hostUnavailable");
+  const hostUnavailableTooltip =
+    vm.host?.status === "unreachable" ? t("hostUnreachableTooltip") : t("hostUnavailableTooltip");
+  const vmStatusLower = vm.status.toLowerCase();
+  const isNonOperationalStatus = ["provisioning", "failed", "deleting", "deleted"].includes(
+    vmStatusLower
+  );
+  const isCannotActStatus = ["provisioning", "deleting", "deleted"].includes(vmStatusLower);
 
   const activeTab = registeredTabs.find((t) => t.id === activeTabId) || registeredTabs[0];
 
@@ -166,21 +175,21 @@ export function VmDetailsModal({
         return (
           <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse" />
-            Running
+            {t("vmStatusRunning")}
           </span>
         );
       case "provisioning":
         return (
           <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
             <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />
-            Provisioning
+            {t("vmStatusProvisioning")}
           </span>
         );
       case "stopped":
         return (
           <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-zinc-200 dark:bg-zinc-700/30 text-zinc-700 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700/50">
             <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 mr-1.5" />
-            Stopped
+            {t("vmStatusStopped")}
           </span>
         );
       case "suspended":
@@ -188,6 +197,27 @@ export function VmDetailsModal({
           <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
             <Pause className="w-3 h-3 mr-1.5" />
             {t("statusSuspended")}
+          </span>
+        );
+      case "deleting":
+        return (
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20">
+            <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />
+            {t("vmStatusDeleting")}
+          </span>
+        );
+      case "failed":
+        return (
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20">
+            <AlertCircle className="w-3 h-3 mr-1.5" />
+            {t("vmStatusFailed")}
+          </span>
+        );
+      case "deleted":
+        return (
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-zinc-200/80 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700">
+            <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 mr-1.5" />
+            {t("vmStatusDeleted")}
           </span>
         );
       default:
@@ -232,13 +262,13 @@ export function VmDetailsModal({
                   {vm.name}
                 </h3>
                 {getStatusBadge(vm.status)}
-                {isHostUnreachable && (
+                {isHostUnavailable && (
                   <span
                     className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
-                    title={t("hostUnreachableTooltip")}
+                    title={hostUnavailableTooltip}
                   >
                     <AlertCircle className="w-3 h-3 mr-1" />
-                    {t("hostUnreachable")}
+                    {hostUnavailableLabel}
                   </span>
                 )}
                 <span className="text-[11px] px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700/60 font-mono text-zinc-600 dark:text-zinc-400">
@@ -266,8 +296,8 @@ export function VmDetailsModal({
             {onOpenConsole && (
               <button
                 onClick={() => onOpenConsole(vm)}
-                disabled={isHostUnreachable}
-                title={isHostUnreachable ? t("hostUnreachableTooltip") : "Open Console"}
+                disabled={isHostUnavailable || isNonOperationalStatus}
+                title={isHostUnavailable ? hostUnavailableTooltip : t("openConsole")}
                 className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700/60 transition disabled:opacity-50"
               >
                 <Terminal className="w-3.5 h-3.5 text-blue-500" />
@@ -286,8 +316,8 @@ export function VmDetailsModal({
                 <button
                   key={action.id}
                   onClick={() => handleActionClick(action)}
-                  disabled={disabled || confirmDialog.isLoading || isHostUnreachable}
-                  title={isHostUnreachable ? t("hostUnreachableTooltip") : label}
+                  disabled={disabled || confirmDialog.isLoading || isHostUnavailable || isCannotActStatus}
+                  title={isHostUnavailable ? hostUnavailableTooltip : label}
                   className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition disabled:opacity-50 ${
                     isDanger
                       ? "text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 border-red-500/20"
@@ -310,11 +340,11 @@ export function VmDetailsModal({
           </div>
         </div>
 
-        {/* Unreachable Banner */}
-        {isHostUnreachable && (
+        {/* Unavailable Host Banner */}
+        {isHostUnavailable && (
           <div className="px-6 py-2.5 bg-amber-500/10 border-b border-amber-500/20 flex items-center space-x-2 text-xs text-amber-700 dark:text-amber-400 font-medium">
             <AlertCircle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
-            <span>{t("hostUnreachableTooltip")}</span>
+            <span>{hostUnavailableTooltip}</span>
           </div>
         )}
 

@@ -19,6 +19,17 @@ interface EditUserModalProps {
   onSuccess: (updatedUser: AdminUserItem) => void;
 }
 
+type EditableUserStatus = NonNullable<AdminUserItem["status"]>;
+
+const ALLOWED_STATUS_OPTIONS: Record<EditableUserStatus, EditableUserStatus[]> = {
+  pending: ["pending", "active", "suspended", "inactive"],
+  active: ["active", "suspended", "inactive"],
+  suspended: ["suspended", "active", "inactive"],
+  inactive: ["inactive", "active", "suspended"],
+  deleting: ["deleting"],
+  deletion_failed: ["deletion_failed", "inactive", "suspended"],
+};
+
 const USER_QUOTA_DEFAULTS: Partial<QuotaLimitsFormValue> = {
   maxVms: 2,
   maxCpu: 4,
@@ -47,11 +58,7 @@ export function EditUserModal({ user, quotaGroups = [], onClose, onSuccess }: Ed
 
   const initialRole = user.roles.some((r) => r.name === "admin") ? "admin" : "customer";
   const [role, setRole] = useState<"customer" | "admin">(initialRole);
-  const [status, setStatus] = useState<"active" | "suspended" | "inactive" | "pending">(
-    user.status === "active" || user.status === "suspended" || user.status === "pending" || user.status === "inactive"
-      ? user.status
-      : "inactive"
-  );
+  const [status, setStatus] = useState<EditableUserStatus>(user.status ?? "inactive");
 
   const [selectedGroupId, setSelectedGroupId] = useState<number | "custom">(
     user.quota_group_id || "custom"
@@ -74,11 +81,7 @@ export function EditUserModal({ user, quotaGroups = [], onClose, onSuccess }: Ed
       setShowPassword(false);
       const newRole = user.roles.some((r) => r.name === "admin") ? "admin" : "customer";
       setRole(newRole);
-      setStatus(
-        user.status === "active" || user.status === "suspended" || user.status === "pending" || user.status === "inactive"
-          ? user.status
-          : "inactive"
-      );
+      setStatus(user.status ?? "inactive");
       setSelectedGroupId(user.quota_group_id || "custom");
       setQuotaLimits(quotaRecordToFormValue(user.quota, USER_QUOTA_DEFAULTS));
       setError(null);
@@ -115,7 +118,7 @@ export function EditUserModal({ user, quotaGroups = [], onClose, onSuccess }: Ed
         email,
         password: password || undefined,
         role,
-        status,
+        status: status === "deleting" || status === "deletion_failed" ? undefined : status,
         quota_group_id: selectedGroupId === "custom" ? null : selectedGroupId,
         quota: quotaPayload,
       });
@@ -244,13 +247,25 @@ export function EditUserModal({ user, quotaGroups = [], onClose, onSuccess }: Ed
               <div className="relative">
                 <select
                   value={status}
-                  onChange={(e) => setStatus(e.target.value as "active" | "suspended" | "inactive" | "pending")}
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 appearance-none"
+                  onChange={(e) => setStatus(e.target.value as EditableUserStatus)}
+                  disabled={user.status === "deleting"}
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 appearance-none disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  <option value="active">{t("statusActive")}</option>
-                  <option value="pending">{t("statusPending")}</option>
-                  <option value="suspended">{t("statusSuspended")}</option>
-                  <option value="inactive">{t("statusInactive")}</option>
+                  {(ALLOWED_STATUS_OPTIONS[user.status ?? "inactive"] ?? [user.status ?? "inactive"]).map((opt) => {
+                    const labelMap: Record<EditableUserStatus, string> = {
+                      active: t("statusActive"),
+                      pending: t("statusPending"),
+                      suspended: t("statusSuspended"),
+                      inactive: t("statusInactive"),
+                      deleting: t("statusDeleting"),
+                      deletion_failed: t("statusDeletionFailed"),
+                    };
+                    return (
+                      <option key={opt} value={opt}>
+                        {labelMap[opt]}
+                      </option>
+                    );
+                  })}
                 </select>
                 <CheckCircle2 className="w-4 h-4 text-gray-400 absolute left-3.5 top-3 pointer-events-none" />
               </div>

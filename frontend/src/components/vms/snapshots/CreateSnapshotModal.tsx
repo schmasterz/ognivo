@@ -54,7 +54,9 @@ export function CreateSnapshotModal({
 
   const isUnlimited = maxSnapshots === -1;
   const isQuotaExceeded = !isUnlimited && remaining <= 0;
-  const isHostUnreachable = vm.host?.status === "unreachable";
+  const isHostUnavailable = Boolean(vm.host && vm.host.status !== "ok");
+  const hostUnavailableTooltip =
+    vm.host?.status === "unreachable" ? t("hostUnreachableTooltip") : t("hostUnavailableTooltip");
 
   const handleNameChange = (val: string) => {
     const clean = val.toLowerCase().trim();
@@ -76,7 +78,7 @@ export function CreateSnapshotModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (isHostUnreachable) return;
+    if (isHostUnavailable) return;
 
     if (!name.trim()) {
       setNameError(t("snapshotNameInvalid"));
@@ -175,10 +177,10 @@ export function CreateSnapshotModal({
             </div>
           </div>
 
-          {/* Unreachable Host Notice */}
-          {isHostUnreachable && (
+          {/* Unavailable Host Notice */}
+          {isHostUnavailable && (
             <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-600 dark:text-amber-400">
-              {t("hostUnreachableTooltip")}
+              {hostUnavailableTooltip}
             </div>
           )}
 
@@ -233,8 +235,8 @@ export function CreateSnapshotModal({
             </button>
             <button
               type="submit"
-              disabled={loading || !name.trim() || !!nameError || isQuotaExceeded || isHostUnreachable}
-              title={isHostUnreachable ? t("hostUnreachableTooltip") : undefined}
+              disabled={loading || !name.trim() || !!nameError || isQuotaExceeded || isHostUnavailable}
+              title={isHostUnavailable ? hostUnavailableTooltip : undefined}
               className="flex items-center space-x-2 px-5 py-2 rounded-xl text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/25 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (

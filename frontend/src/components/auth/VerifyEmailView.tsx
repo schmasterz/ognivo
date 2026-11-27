@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { Server, MailCheck, AlertCircle, Loader2, CheckCircle2, ArrowLeft, Mail } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { LanguageToggle } from "@/components/layout/LanguageToggle";
@@ -39,7 +39,11 @@ export function VerifyEmailView() {
 
     if (errorParam) {
       queueMicrotask(() => {
-        setErrorMessage(t("verifyEmailError"));
+        setErrorMessage(
+          errorParam === "account_inactive"
+            ? t("verifyEmailNotPending")
+            : t("verifyEmailError")
+        );
         setVerifying(false);
       });
       return;
@@ -66,7 +70,11 @@ export function VerifyEmailView() {
         window.history.replaceState(null, "", "/verify-email");
       })
       .catch((err: unknown) => {
-        setErrorMessage(err instanceof Error ? err.message : t("verifyEmailError"));
+        if (err instanceof ApiError && err.status === 403) {
+          setErrorMessage(t("verifyEmailNotPending"));
+        } else {
+          setErrorMessage(err instanceof Error ? err.message : t("verifyEmailError"));
+        }
       })
       .finally(() => {
         setVerifying(false);

@@ -28,7 +28,10 @@ export function VmOverviewTab({ vm, isAdmin }: VmOverviewTabProps) {
 
   const primaryIp = vm.network?.primary?.address ?? vm.ipv4_address ?? "—";
   const macAddress = vm.network?.primary?.mac_address ?? vm.mac_address ?? "—";
-  const netStatus = vm.network_status ?? vm.network?.primary?.status ?? "unverified";
+  const netStatus =
+    vm.network_status ??
+    vm.network?.primary?.status ??
+    (primaryIp === "—" ? "unassigned" : "unverified");
   const isManualNetwork = vm.network?.settings?.mode === "manual";
   const showOperatorManaged = isManualNetwork && netStatus.toLowerCase() !== "observed";
   const gateway = vm.network?.settings?.gateway ?? "—";
@@ -36,6 +39,24 @@ export function VmOverviewTab({ vm, isAdmin }: VmOverviewTabProps) {
     ? vm.network.settings.dns.join(", ")
     : "—";
   const netMode = vm.network?.settings?.mode ?? "—";
+
+  const getNetworkStatusLabel = (status: string): string => {
+    switch (status.toLowerCase()) {
+      case "assigned":
+        return t("networkStatusAssigned");
+      case "waiting":
+        return t("networkStatusWaiting");
+      case "observed":
+        return t("networkStatusObserved");
+      case "mismatch":
+        return t("networkStatusMismatch");
+      case "unassigned":
+        return t("networkStatusUnassigned");
+      case "unverified":
+      default:
+        return t("networkStatusUnverified");
+    }
+  };
 
   const getNetworkStatusBadge = (status: string) => {
     if (isManualNetwork && status.toLowerCase() !== "observed") {
@@ -54,28 +75,46 @@ export function VmOverviewTab({ vm, isAdmin }: VmOverviewTabProps) {
         return (
           <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5" />
-            Assigned
+            {t("networkStatusAssigned")}
+          </span>
+        );
+      case "waiting":
+        return (
+          <span
+            title={t("networkStatusWaitingHint")}
+            className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse mr-1.5" />
+            {t("networkStatusWaiting")}
           </span>
         );
       case "observed":
         return (
           <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5" />
-            Observed
+            {t("networkStatusObserved")}
           </span>
         );
       case "mismatch":
         return (
           <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20">
             <span className="w-1.5 h-1.5 rounded-full bg-red-500 mr-1.5" />
-            Mismatch
+            {t("networkStatusMismatch")}
           </span>
         );
+      case "unassigned":
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-zinc-100 dark:bg-zinc-800/80 text-zinc-500 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700">
+            <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 mr-1.5" />
+            {t("networkStatusUnassigned")}
+          </span>
+        );
+      case "unverified":
       default:
         return (
           <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700">
             <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 mr-1.5" />
-            Unverified
+            {t("networkStatusUnverified")}
           </span>
         );
     }
@@ -201,8 +240,8 @@ export function VmOverviewTab({ vm, isAdmin }: VmOverviewTabProps) {
 
           <div>
             <div className="text-zinc-400 font-medium mb-1">{t("networkStatus")}</div>
-            <div className={showOperatorManaged ? "font-medium text-zinc-800 dark:text-zinc-200" : "font-medium text-zinc-800 dark:text-zinc-200 capitalize"}>
-              {showOperatorManaged ? t("networkOperatorManaged") : netStatus}
+            <div className="font-medium text-zinc-800 dark:text-zinc-200">
+              {showOperatorManaged ? t("networkOperatorManaged") : getNetworkStatusLabel(netStatus)}
             </div>
           </div>
         </div>

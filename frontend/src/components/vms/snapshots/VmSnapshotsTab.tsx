@@ -297,7 +297,9 @@ export function VmSnapshotsTab({ vm, user, isAdmin }: VmSnapshotsTabProps) {
 
   const isUnlimited = meta.max_snapshots === -1;
   const isQuotaReached = !isUnlimited && meta.remaining <= 0;
-  const isHostUnreachable = vm.host?.status === "unreachable";
+  const isHostUnavailable = Boolean(vm.host && vm.host.status !== "ok");
+  const hostUnavailableTooltip =
+    vm.host?.status === "unreachable" ? t("hostUnreachableTooltip") : t("hostUnavailableTooltip");
 
   return (
     <div className="space-y-4">
@@ -340,10 +342,10 @@ export function VmSnapshotsTab({ vm, user, isAdmin }: VmSnapshotsTabProps) {
           {/* Create Snapshot Button */}
           <button
             onClick={() => setCreateModalOpen(true)}
-            disabled={isQuotaReached || isTransitioningAny || isHostUnreachable}
+            disabled={isQuotaReached || isTransitioningAny || isHostUnavailable}
             title={
-              isHostUnreachable
-                ? t("hostUnreachableTooltip")
+              isHostUnavailable
+                ? hostUnavailableTooltip
                 : isQuotaReached
                 ? t("snapshotQuotaExceeded")
                 : isTransitioningAny
@@ -455,8 +457,8 @@ export function VmSnapshotsTab({ vm, user, isAdmin }: VmSnapshotsTabProps) {
                           {/* Restore Action */}
                           <button
                             onClick={() => setRestoreTarget(snapshot)}
-                            disabled={!isReady || isTransitioningAny || actionLoading || isHostUnreachable}
-                            title={isHostUnreachable ? t("hostUnreachableTooltip") : t("restoreSnapshot")}
+                            disabled={!isReady || isTransitioningAny || actionLoading || isHostUnavailable}
+                            title={isHostUnavailable ? hostUnavailableTooltip : t("restoreSnapshot")}
                             className="p-1.5 rounded-lg bg-zinc-100 hover:bg-indigo-500/20 dark:bg-zinc-800 dark:hover:bg-indigo-500/20 text-zinc-600 dark:text-zinc-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             <RotateCcw className="w-3.5 h-3.5" />
