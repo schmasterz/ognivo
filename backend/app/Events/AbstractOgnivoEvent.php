@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace App\Events;
 
 use App\Audit\AuditContext;
-use App\DTO\Cast;
 use App\Events\Contracts\OgnivoEventInterface;
 use App\Models\User;
+use App\Support\Cast;
 use DateTimeImmutable;
 use DateTimeZone;
 use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;

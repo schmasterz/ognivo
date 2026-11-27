@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Services\Hypervisor;
 
-use App\DTO\Hypervisor\InstanceResourceSpec;
-use App\DTO\Hypervisor\ResourceKind;
-use App\DTO\Hypervisor\ResourceUpdateAssessment;
-use App\DTO\Hypervisor\ResourceUpdateVerdict;
+use App\Enums\Hypervisor\ResourceKind;
+use App\Enums\Hypervisor\ResourceUpdateVerdict;
+use App\ValueObjects\Hypervisor\InstanceResourceSpec;
+use App\ValueObjects\Hypervisor\ResourceUpdateAssessment;
 
 /**
  * Data-driven conservative capability matrix for evaluating whether an instance

@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Audit;
 
-use App\DTO\Cast;
 use App\Models\ServiceToken;
+use App\Support\Cast;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;

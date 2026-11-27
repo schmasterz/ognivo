@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\DTO\Host;
 
-use App\DTO\Cast;
-use App\DTO\ImageSelectionDTO;
+use App\Support\Cast;
+use App\ValueObjects\Image\ImageSelection;
 
 /**
  * Immutable Data Transfer Object for updating an existing host node.
@@ -32,7 +32,7 @@ final readonly class UpdateHostDTO
         public ?string $serverFingerprint = null,
         public ?string $serverPublicKeyPin = null,
         public ?bool $autoAttachImages = null,
-        public ?ImageSelectionDTO $images = null,
+        public ?ImageSelection $images = null,
         public ?float $cpuOvercommit = null,
         public ?float $ramOvercommit = null,
         public ?float $diskOvercommit = null,
@@ -62,7 +62,7 @@ final readonly class UpdateHostDTO
             serverFingerprint: Cast::stringOrNull($data['server_fingerprint'] ?? $data['expected_fingerprint'] ?? null),
             serverPublicKeyPin: Cast::stringOrNull($data['server_public_key_pin'] ?? null),
             autoAttachImages: Cast::boolOrNull($data['auto_attach_images'] ?? null),
-            images: $images !== null ? ImageSelectionDTO::fromArray($images) : null,
+            images: $images !== null ? ImageSelection::fromArray($images) : null,
             cpuOvercommit: isset($data['cpu_overcommit']) && is_numeric($data['cpu_overcommit']) ? (float) $data['cpu_overcommit'] : null,
             ramOvercommit: isset($data['ram_overcommit']) && is_numeric($data['ram_overcommit']) ? (float) $data['ram_overcommit'] : null,
             diskOvercommit: isset($data['disk_overcommit']) && is_numeric($data['disk_overcommit']) ? (float) $data['disk_overcommit'] : null,

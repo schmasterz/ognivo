@@ -4,8 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Metrics;
 
-use App\DTO\Cast;
-use App\DTO\Incus\RawInstanceMetricsDTO;
+use App\DTO\Hypervisor\RawInstanceMetricsDTO;
 use App\Exceptions\FingerprintMismatchException;
 use App\Exceptions\MissingPinException;
 use App\Models\Host;
@@ -15,6 +14,7 @@ use App\States\Host\FingerprintMismatch;
 use App\States\Host\NotTrusted;
 use App\States\Host\Ok;
 use App\States\Host\Unreachable;
+use App\Support\Cast;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;

@@ -59,11 +59,6 @@
       <code><![CDATA[$hostArg]]></code>
     </InvalidArgument>
   </file>
-  <file src="app/DTO/Host/CreateHostDTO.php">
-    <RiskyTruthyFalsyComparison>
-      <code><![CDATA[app()->environment(['local', 'testing'])]]></code>
-    </RiskyTruthyFalsyComparison>
-  </file>
   <file src="app/Events/AdminVirtualMachineStatusUpdated.php">
     <MissingOverrideAttribute>
       <code><![CDATA[public function broadcastOn(): array]]></code>
@@ -105,11 +100,6 @@
   <file src="app/Http/Controllers/Api/V1/Admin/SystemOverviewController.php">
     <RiskyTruthyFalsyComparison>
       <code><![CDATA[empty($recipientInput)]]></code>
-    </RiskyTruthyFalsyComparison>
-  </file>
-  <file src="app/Http/Requests/Admin/CreateHostRequest.php">
-    <RiskyTruthyFalsyComparison>
-      <code><![CDATA[app()->environment(['local', 'testing'])]]></code>
     </RiskyTruthyFalsyComparison>
   </file>
   <file src="app/Http/Requests/Admin/CreateIpPoolRequest.php">

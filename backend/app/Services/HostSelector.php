@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services;
 
-use App\DTO\Cast;
 use App\Models\Host;
 use App\Models\Image;
 use App\Models\IpPool;
@@ -12,6 +11,7 @@ use App\States\Host\FingerprintMismatch;
 use App\States\Host\NotTrusted;
 use App\States\Host\Ok;
 use App\States\Host\Unreachable;
+use App\Support\Cast;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;

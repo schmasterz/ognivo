@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Enums\IpAllocationStatus;
+use App\Enums\QueueName;
 use App\Exceptions\NoHypervisorAvailableException;
-use App\Jobs\Enums\QueueName;
 use App\Models\Host;
 use App\Models\IpAllocation;
 use App\Models\User;

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
-use App\Jobs\Enums\QueueName;
+use App\Enums\QueueName;
 use App\Models\PanelCertificate;
 use App\States\PanelCertificate\Active;
 use Illuminate\Bus\Queueable;

@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1\Admin;
 
-use App\DTO\Cast;
-use App\DTO\ImageSelectionDTO;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\CreateHostRequest;
 use App\Http\Requests\Admin\ImageSelectionRules;
@@ -21,6 +19,8 @@ use App\Services\ImageAttachmentService;
 use App\Services\IncusConnectionChecker;
 use App\Services\IncusTrustService;
 use App\Services\PanelCertificateService;
+use App\Support\Cast;
+use App\ValueObjects\Image\ImageSelection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -187,7 +187,7 @@ final class HostNodeController extends Controller
         if (isset($validated['images']) && is_array($validated['images'])) {
             /** @var array<string, mixed> $imagesPayload */
             $imagesPayload = $validated['images'];
-            $selection = ImageSelectionDTO::fromArray($imagesPayload);
+            $selection = ImageSelection::fromArray($imagesPayload);
             $this->imageAttachmentService->apply($host, $selection);
         }
 
@@ -232,7 +232,7 @@ final class HostNodeController extends Controller
         if (isset($validated['images']) && is_array($validated['images'])) {
             /** @var array<string, mixed> $imagesPayload */
             $imagesPayload = $validated['images'];
-            $selection = ImageSelectionDTO::fromArray($imagesPayload);
+            $selection = ImageSelection::fromArray($imagesPayload);
             $this->imageAttachmentService->apply($host, $selection);
         }
 
@@ -265,7 +265,7 @@ final class HostNodeController extends Controller
         /** @var array<string, mixed> $validated */
         $validated = $request->validate(ImageSelectionRules::forPreviewRequest());
         $imagesPayload = Cast::arrayOrNull($validated['images'] ?? null) ?? [];
-        $selection = ImageSelectionDTO::fromArray($imagesPayload);
+        $selection = ImageSelection::fromArray($imagesPayload);
         $preview = $this->imageAttachmentService->preview($host, $selection);
 
         return response()->json($preview);

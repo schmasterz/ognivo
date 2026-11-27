@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Contracts\BackupTargetInterface;
-use App\Jobs\Enums\QueueName;
+use App\Enums\QueueName;
 use App\Models\VirtualMachine;
 use App\Models\VmSnapshot;
 use App\States\Snapshot\Deleting;

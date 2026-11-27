@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace App\Services;
 
-use App\DTO\Cast;
-use App\DTO\Hypervisor\InstanceResourceSpec;
-use App\DTO\Vps\CapacityCheckResult;
 use App\Models\Host;
 use App\Models\VirtualMachine;
 use App\Services\Vps\ResourceReservationService;
+use App\Support\Cast;
+use App\ValueObjects\Hypervisor\InstanceResourceSpec;
+use App\ValueObjects\Vps\CapacityCheckResult;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 

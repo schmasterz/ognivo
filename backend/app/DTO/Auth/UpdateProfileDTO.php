@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\DTO\Auth;
 
-use App\DTO\Cast;
+use App\Support\Cast;
 
 /**
  * Immutable Data Transfer Object for profile updates and password modification.

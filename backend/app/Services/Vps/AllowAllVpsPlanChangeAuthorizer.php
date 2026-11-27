@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Services\Vps;
 
+use App\Contracts\Data\VpsPlanChangeAuthorizationRequest;
+use App\Contracts\Data\VpsPlanChangeAuthorizationResult;
 use App\Contracts\VpsPlanChangeAuthorizerInterface;
-use App\DTO\Contracts\VpsAuthorizationStatus;
-use App\DTO\Contracts\VpsPlanChangeAuthorizationRequest;
-use App\DTO\Contracts\VpsPlanChangeAuthorizationResult;
+use App\Enums\Vps\VpsAuthorizationStatus;
 use Override;
 
 /**

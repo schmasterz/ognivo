@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\DTO\Cast;
 use App\Models\Host;
 use App\Models\User;
 use App\Models\VirtualMachine;
@@ -13,6 +12,7 @@ use App\Services\Hypervisor\HypervisorManager;
 use App\Services\Metrics\VmMetricsCollectorService;
 use App\Services\Metrics\VmMetricsQueryService;
 use App\States\Host\Ok as HostOk;
+use App\Support\Cast;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;

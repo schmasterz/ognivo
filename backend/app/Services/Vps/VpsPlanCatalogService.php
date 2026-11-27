@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace App\Services\Vps;
 
-use App\DTO\Cast;
 use App\Models\VirtualMachine;
 use App\Models\VpsPlan;
 use App\Models\VpsPlanVersion;
 use App\States\Vm\Deleted as VmDeleted;
 use App\States\VpsPlan\Published as PlanPublished;
+use App\Support\Cast;
 use Closure;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;

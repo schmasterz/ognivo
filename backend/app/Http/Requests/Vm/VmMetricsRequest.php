@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Vm;
 
-use App\DTO\Cast;
 use App\Services\Metrics\VmMetricsConfigService;
+use App\Support\Cast;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;

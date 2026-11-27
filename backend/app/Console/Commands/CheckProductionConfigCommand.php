@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\DTO\Cast;
+use App\Support\Cast;
 use Illuminate\Console\Command;
 use Illuminate\Support\Env;
 

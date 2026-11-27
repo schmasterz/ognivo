@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\DTO\Cast;
 use App\Models\Image;
 use App\Services\Hypervisor\RemoteImageValidatorService;
+use App\Support\Cast;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Collection;
 

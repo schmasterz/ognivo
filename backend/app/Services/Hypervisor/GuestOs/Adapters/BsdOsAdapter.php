@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Hypervisor\GuestOs\Adapters;
 
 use App\Services\Hypervisor\GuestOs\Contracts\GuestOsAdapterInterface;
-use App\Services\Network\NetworkConstants;
+use App\Support\Network\NetworkConstants;
 use Override;
 use Symfony\Component\Yaml\Yaml;
 

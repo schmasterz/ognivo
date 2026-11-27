@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Audit\AuditConfigValidator;
-use App\DTO\Cast;
 use App\Models\AuditLog;
 use App\Models\AuditSeal;
 use App\Services\AuditSealService;
+use App\Support\Cast;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 

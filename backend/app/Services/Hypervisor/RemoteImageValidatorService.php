@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Hypervisor;
 
-use App\DTO\Image\RemoteImageValidationResult;
+use App\ValueObjects\Image\RemoteImageValidationResult;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;

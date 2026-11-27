@@ -23,8 +23,7 @@ final class CreateHostRequest extends FormRequest
      */
     public function rules(): array
     {
-        $allowFake = app()->environment(['local', 'testing']) || (bool) config('app.allow_fake_driver');
-        $allowedDrivers = $allowFake ? ['fake', 'incus', 'lxd'] : ['incus', 'lxd'];
+        $allowedDrivers = $this->allowsFakeDriver() ? ['fake', 'incus', 'lxd'] : ['incus', 'lxd'];
 
         return array_merge([
             'name' => ['required', 'string', 'max:255', 'unique:hosts,name'],
@@ -49,6 +48,12 @@ final class CreateHostRequest extends FormRequest
         /** @var array<string, mixed> $validated */
         $validated = $this->validated();
 
-        return CreateHostDTO::fromArray($validated);
+        return CreateHostDTO::fromArray($validated, $this->allowsFakeDriver() ? 'fake' : 'incus');
+    }
+
+    private function allowsFakeDriver(): bool
+    {
+        return in_array((string) app()->environment(), ['local', 'testing'], true)
+            || (bool) config('app.allow_fake_driver');
     }
 }

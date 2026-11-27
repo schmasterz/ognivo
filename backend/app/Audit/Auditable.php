@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace App\Audit;
 
-use App\DTO\Cast;
 use App\Models\Host;
 use App\Models\IpPool;
 use App\Models\QuotaGroup;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\Models\UserQuota;
+use App\Support\Cast;
 use Closure;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;

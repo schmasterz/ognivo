@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Audit;
 
-use App\DTO\Cast;
+use App\Support\Cast;
 use Closure;
 
 final class RestoreAuditContext

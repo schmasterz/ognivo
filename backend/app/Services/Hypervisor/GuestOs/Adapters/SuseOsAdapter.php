@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Hypervisor\GuestOs\Adapters;
 
-use App\Services\Network\NetworkConstants;
+use App\Support\Network\NetworkConstants;
 use Override;
 
 /**

@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Enums\NetworkStatus;
+use App\Enums\QueueName;
 use App\Jobs\Concerns\InteractsWithHypervisorNetwork;
-use App\Jobs\Enums\QueueName;
 use App\Models\VirtualMachine;
 use App\Services\Hypervisor\HypervisorManager;
 use App\Services\ProvisioningCompensator;

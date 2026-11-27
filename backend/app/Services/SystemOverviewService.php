@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services;
 
-use App\DTO\Cast;
 use App\Enums\IpAllocationStatus;
 use App\Mail\SmtpTestMail;
 use App\Models\Host;
@@ -15,6 +14,7 @@ use App\Models\User;
 use App\Models\VirtualMachine;
 use App\Models\VmSnapshot;
 use App\Services\Metrics\VmMetricsConfigService;
+use App\Support\Cast;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Crypt;
