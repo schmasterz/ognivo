@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use App\DTO\ImageSelectionDTO;
 use App\Models\Host;
 use App\Models\Image;
 use App\Models\User;
@@ -11,85 +10,86 @@ use App\Services\ImageAttachmentService;
 use App\States\Vm\Deleted;
 use App\States\Vm\Running;
 use App\States\Vm\Stopped;
+use App\ValueObjects\Image\ImageSelection;
 use Illuminate\Support\Facades\DB;
 
 test('DTO validation errors on invalid inputs and caps', function (): void {
     // Mode selected requires at least one ID
-    expect(fn () => ImageSelectionDTO::selected([]))
+    expect(fn () => ImageSelection::selected([]))
         ->toThrow(InvalidArgumentException::class, 'Selected mode requires at least one image ID.');
 
     // Mode selected caps at 500 IDs
     $tooManyIds = range(1, 501);
-    expect(fn () => ImageSelectionDTO::selected($tooManyIds))
+    expect(fn () => ImageSelection::selected($tooManyIds))
         ->toThrow(InvalidArgumentException::class, 'Selected mode exceeds maximum of 500 image IDs.');
 
     // Mode filter rejects unknown filter keys
-    expect(fn () => ImageSelectionDTO::filter(['unknown_key' => 'val']))
+    expect(fn () => ImageSelection::filter(['unknown_key' => 'val']))
         ->toThrow(InvalidArgumentException::class, 'Unknown filter key: unknown_key');
 
     // Mode filter caps excludeIds at 500
-    expect(fn () => ImageSelectionDTO::filter([], range(1, 501)))
+    expect(fn () => ImageSelection::filter([], range(1, 501)))
         ->toThrow(InvalidArgumentException::class, 'Exclude IDs exceed maximum of 500.');
 
     // Mode delta caps filterOps at 10
     $tooManyOps = array_fill(0, 11, ['action' => 'attach', 'filter' => ['os_type' => 'linux']]);
-    expect(fn () => ImageSelectionDTO::delta($tooManyOps))
+    expect(fn () => ImageSelection::delta($tooManyOps))
         ->toThrow(InvalidArgumentException::class, 'Delta mode exceeds maximum of 10 filter operations.');
 
     // Mode delta validates filterOp action
-    expect(fn () => ImageSelectionDTO::delta([['action' => 'invalid_action', 'filter' => []]]))
+    expect(fn () => ImageSelection::delta([['action' => 'invalid_action', 'filter' => []]]))
         ->toThrow(InvalidArgumentException::class, "Invalid filter op action: expected 'attach' or 'detach'.");
 
     // Mode delta validates filterOp filter keys
-    expect(fn () => ImageSelectionDTO::delta([['action' => 'attach', 'filter' => ['bad_key' => '1']]]))
+    expect(fn () => ImageSelection::delta([['action' => 'attach', 'filter' => ['bad_key' => '1']]]))
         ->toThrow(InvalidArgumentException::class, 'Unknown filter key: bad_key');
 
     // Mode delta caps attachIds and detachIds at 500
-    expect(fn () => ImageSelectionDTO::delta(attachIds: range(1, 501)))
+    expect(fn () => ImageSelection::delta(attachIds: range(1, 501)))
         ->toThrow(InvalidArgumentException::class, 'Attach IDs exceed maximum of 500.');
-    expect(fn () => ImageSelectionDTO::delta(detachIds: range(1, 501)))
+    expect(fn () => ImageSelection::delta(detachIds: range(1, 501)))
         ->toThrow(InvalidArgumentException::class, 'Detach IDs exceed maximum of 500.');
 
     // fromArray rejects invalid mode
-    expect(fn () => ImageSelectionDTO::fromArray(['mode' => 'non_existent']))
+    expect(fn () => ImageSelection::fromArray(['mode' => 'non_existent']))
         ->toThrow(InvalidArgumentException::class, 'Invalid mode: non_existent');
 
     // Negative or non-numeric IDs are rejected
-    expect(fn () => ImageSelectionDTO::selected([0]))
+    expect(fn () => ImageSelection::selected([0]))
         ->toThrow(InvalidArgumentException::class, 'Image IDs must be positive integers.');
-    expect(fn () => ImageSelectionDTO::selected([-5]))
+    expect(fn () => ImageSelection::selected([-5]))
         ->toThrow(InvalidArgumentException::class, 'Image IDs must be positive integers.');
-    expect(fn () => ImageSelectionDTO::selected(['abc']))
+    expect(fn () => ImageSelection::selected(['abc']))
         ->toThrow(InvalidArgumentException::class, 'Image IDs must be positive integers.');
 
     // isNoop logic
-    expect(ImageSelectionDTO::delta()->isNoop())->toBeTrue();
-    expect(ImageSelectionDTO::all()->isNoop())->toBeFalse();
-    expect(ImageSelectionDTO::selected([1])->isNoop())->toBeFalse();
-    expect(ImageSelectionDTO::delta(attachIds: [1])->isNoop())->toBeFalse();
+    expect(ImageSelection::delta()->isNoop())->toBeTrue();
+    expect(ImageSelection::all()->isNoop())->toBeFalse();
+    expect(ImageSelection::selected([1])->isNoop())->toBeFalse();
+    expect(ImageSelection::delta(attachIds: [1])->isNoop())->toBeFalse();
 });
 
 test('fromArray builds valid DTOs and handles snake_case keys', function (): void {
-    $dtoAll = ImageSelectionDTO::fromArray(['mode' => 'all']);
-    expect($dtoAll->mode)->toBe(ImageSelectionDTO::MODE_ALL);
+    $dtoAll = ImageSelection::fromArray(['mode' => 'all']);
+    expect($dtoAll->mode)->toBe(ImageSelection::MODE_ALL);
 
-    $dtoSelected = ImageSelectionDTO::fromArray([
+    $dtoSelected = ImageSelection::fromArray([
         'mode' => 'selected',
         'ids' => [1, '2', 2, 3],
     ]);
-    expect($dtoSelected->mode)->toBe(ImageSelectionDTO::MODE_SELECTED)
+    expect($dtoSelected->mode)->toBe(ImageSelection::MODE_SELECTED)
         ->and($dtoSelected->ids)->toBe([1, 2, 3]);
 
-    $dtoFilter = ImageSelectionDTO::fromArray([
+    $dtoFilter = ImageSelection::fromArray([
         'mode' => 'filter',
         'filter' => ['os_type' => 'linux', 'enabled' => true],
         'exclude_ids' => [10, 11],
     ]);
-    expect($dtoFilter->mode)->toBe(ImageSelectionDTO::MODE_FILTER)
+    expect($dtoFilter->mode)->toBe(ImageSelection::MODE_FILTER)
         ->and($dtoFilter->filter)->toBe(['os_type' => 'linux', 'enabled' => true])
         ->and($dtoFilter->excludeIds)->toBe([10, 11]);
 
-    $dtoDelta = ImageSelectionDTO::fromArray([
+    $dtoDelta = ImageSelection::fromArray([
         'mode' => 'delta',
         'filter_ops' => [
             ['action' => 'attach', 'filter' => ['protocol' => 'simplestreams']],
@@ -97,7 +97,7 @@ test('fromArray builds valid DTOs and handles snake_case keys', function (): voi
         'attach_ids' => [1, 2],
         'detach_ids' => [3, 4],
     ]);
-    expect($dtoDelta->mode)->toBe(ImageSelectionDTO::MODE_DELTA)
+    expect($dtoDelta->mode)->toBe(ImageSelection::MODE_DELTA)
         ->and($dtoDelta->filterOps)->toHaveCount(1)
         ->and($dtoDelta->attachIds)->toBe([1, 2])
         ->and($dtoDelta->detachIds)->toBe([3, 4]);
@@ -112,7 +112,7 @@ test('apply in all mode attaches every image in catalog', function (): void {
     expect($catalogCount)->toBeGreaterThanOrEqual(3);
 
     $service = app(ImageAttachmentService::class);
-    $result = $service->apply($host, ImageSelectionDTO::all());
+    $result = $service->apply($host, ImageSelection::all());
 
     expect($result['attached'])->toBe($catalogCount)
         ->and($result['detached'])->toBe(0)
@@ -134,7 +134,7 @@ test('apply in selected mode attaches specified ids and detaches others', functi
 
     $service = app(ImageAttachmentService::class);
     // Target state: B and C
-    $result = $service->apply($host, ImageSelectionDTO::selected([$imgB->id, $imgC->id]));
+    $result = $service->apply($host, ImageSelection::selected([$imgB->id, $imgC->id]));
 
     expect($result['attached'])->toBe(1)
         ->and($result['detached'])->toBe(1)
@@ -150,7 +150,7 @@ test('ids for non-existent images are ignored on insert', function (): void {
     $imgA = Image::factory()->create();
 
     $service = app(ImageAttachmentService::class);
-    $result = $service->apply($host, ImageSelectionDTO::selected([$imgA->id, 999999, 888888]));
+    $result = $service->apply($host, ImageSelection::selected([$imgA->id, 999999, 888888]));
 
     expect($result['attached'])->toBe(1)
         ->and($result['detached'])->toBe(0)
@@ -166,10 +166,10 @@ test('idempotency: applying twice results in second result attached=0 detached=0
     $ids = $images->pluck('id')->all();
 
     $service = app(ImageAttachmentService::class);
-    $first = $service->apply($host, ImageSelectionDTO::selected($ids));
+    $first = $service->apply($host, ImageSelection::selected($ids));
     expect($first['attached'])->toBe(2)->and($first['detached'])->toBe(0);
 
-    $second = $service->apply($host, ImageSelectionDTO::selected($ids));
+    $second = $service->apply($host, ImageSelection::selected($ids));
     expect($second['attached'])->toBe(0)
         ->and($second['detached'])->toBe(0)
         ->and($second['attached_ids'])->toBeEmpty()
@@ -191,7 +191,7 @@ test('apply in filter mode attaches matching images and detaches non-matching, r
 
     $service = app(ImageAttachmentService::class);
     // Filter linux minus linux3
-    $selection = ImageSelectionDTO::filter(['os_type' => $osType], excludeIds: [$linux3->id]);
+    $selection = ImageSelection::filter(['os_type' => $osType], excludeIds: [$linux3->id]);
     $result = $service->apply($host, $selection);
 
     expect($result['attached'])->toBe(2)
@@ -209,7 +209,7 @@ test('apply in filter mode escapes search wildcards % and _ correctly', function
     Image::factory()->create(['name' => "ubuntu-22-special-{$suffix}"]);
 
     $service = app(ImageAttachmentService::class);
-    $selection = ImageSelectionDTO::filter(['search' => "22%special-{$suffix}"]);
+    $selection = ImageSelection::filter(['search' => "22%special-{$suffix}"]);
     $result = $service->apply($host, $selection);
 
     expect($result['attached'])->toBe(1)
@@ -236,7 +236,7 @@ test('apply in delta mode executes filterOps in order, then attachIds, then deta
     // 4. attachIds [windows, solaris]
     // 5. detachIds [bsd]
     // End state should have only windows and solaris.
-    $selection = ImageSelectionDTO::delta(
+    $selection = ImageSelection::delta(
         filterOps: [
             ['action' => 'attach', 'filter' => ['os_type' => $osPrefix.'linux']],
             ['action' => 'attach', 'filter' => ['os_type' => $osPrefix.'bsd']],
@@ -268,7 +268,7 @@ test('other hosts rows remain completely untouched during modifications', functi
 
     $service = app(ImageAttachmentService::class);
     // Apply selected on Host A
-    $service->apply($hostA, ImageSelectionDTO::selected([$img1->id]));
+    $service->apply($hostA, ImageSelection::selected([$img1->id]));
 
     expect($hostA->images()->pluck('images.id')->all())->toBe([$img1->id])
         ->and($hostB->images()->pluck('images.id')->sort()->values()->all())->toBe([$img1->id, $img2->id, $img3->id]);
@@ -313,7 +313,7 @@ test('>500 detach via filter works with bulk insert', function (): void {
 
     $service = app(ImageAttachmentService::class);
     // Filter matching nothing -> detaches all 600 images
-    $result = $service->apply($host, ImageSelectionDTO::filter(['os_type' => 'non_matching']));
+    $result = $service->apply($host, ImageSelection::filter(['os_type' => 'non_matching']));
 
     expect($result['detached'])->toBe(600)
         ->and($result['attached'])->toBe(0)
@@ -358,7 +358,7 @@ test('preview returns correct counts, impact on instances, and leaves host_image
 
     $service = app(ImageAttachmentService::class);
     // Preview detaching A and B
-    $preview = $service->preview($host, ImageSelectionDTO::delta(detachIds: [$imgA->id, $imgB->id]));
+    $preview = $service->preview($host, ImageSelection::delta(detachIds: [$imgA->id, $imgB->id]));
 
     expect($preview['attached'])->toBe(0)
         ->and($preview['detached'])->toBe(2)
@@ -402,7 +402,7 @@ test('preview ignores deleted VMs and instances on other hosts', function (): vo
     ]);
 
     $service = app(ImageAttachmentService::class);
-    $preview = $service->preview($hostA, ImageSelectionDTO::delta(detachIds: [$img->id]));
+    $preview = $service->preview($hostA, ImageSelection::delta(detachIds: [$img->id]));
 
     expect($preview['detached'])->toBe(1)
         ->and($preview['total_instances'])->toBe(0)

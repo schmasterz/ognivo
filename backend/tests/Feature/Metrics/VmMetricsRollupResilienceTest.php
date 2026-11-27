@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use App\DTO\Incus\RawInstanceMetricsDTO;
+use App\DTO\Hypervisor\RawInstanceMetricsDTO;
 use App\Models\Host;
 use App\Models\VirtualMachine;
 use App\Services\Hypervisor\Drivers\FakeHypervisorDriver;

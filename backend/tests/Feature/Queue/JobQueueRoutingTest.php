@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
+use App\Enums\QueueName;
 use App\Jobs\CollectHostMetricsJob;
 use App\Jobs\CreateSnapshotJob;
 use App\Jobs\DeleteSnapshotJob;
 use App\Jobs\DeleteUserWorkloadsJob;
 use App\Jobs\DeliverWebhookJob;
-use App\Jobs\Enums\QueueName;
 use App\Jobs\ExecuteVmActionJob;
 use App\Jobs\ProvisionVmJob;
 use App\Jobs\PurgeVmMetricsJob;

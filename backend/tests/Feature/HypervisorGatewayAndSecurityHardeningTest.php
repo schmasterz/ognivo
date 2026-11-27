@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\DTO\Incus\IncusConnectionResult;
+use App\Enums\Hypervisor\ConnectionCheckState;
+use App\Enums\Hypervisor\GatewayMode;
 use App\Exceptions\FingerprintMismatchException;
 use App\Exceptions\MissingPinException;
 use App\Models\Host;
 use App\Models\PanelCertificate;
 use App\Services\Hypervisor\Drivers\IncusDriver;
-use App\Services\Hypervisor\GatewayMode;
 use App\Services\Hypervisor\HypervisorGateway;
 use App\Services\Hypervisor\TlsPeerCertificateFetcher;
 use App\Services\Hypervisor\TlsPeerCertificateFetcherInterface;
@@ -127,7 +127,7 @@ final class HypervisorGatewayAndSecurityHardeningTest extends TestCase
             'endpoint_url' => 'https://198.51.100.11:8443',
             'driver' => 'incus',
             'server_public_key_pin' => null,
-            'status' => IncusConnectionResult::STATE_OK,
+            'status' => ConnectionCheckState::Ok->value,
         ]);
 
         $gateway = app(HypervisorGateway::class);
@@ -140,7 +140,7 @@ final class HypervisorGatewayAndSecurityHardeningTest extends TestCase
         }
 
         $host->refresh();
-        $this->assertEquals(IncusConnectionResult::STATE_NOT_TRUSTED, $host->status->getValue());
+        $this->assertEquals(ConnectionCheckState::NotTrusted->value, $host->status->getValue());
     }
 
     public function test_operational_mode_allows_fake_driver_without_pin(): void
@@ -165,7 +165,7 @@ final class HypervisorGatewayAndSecurityHardeningTest extends TestCase
             'endpoint_url' => 'https://198.51.100.12:8443',
             'driver' => 'incus',
             'server_public_key_pin' => null,
-            'status' => IncusConnectionResult::STATE_OK,
+            'status' => ConnectionCheckState::Ok->value,
         ]);
 
         $gateway = app(HypervisorGateway::class);
@@ -173,7 +173,7 @@ final class HypervisorGatewayAndSecurityHardeningTest extends TestCase
 
         $this->assertInstanceOf(PendingRequest::class, $client);
         $host->refresh();
-        $this->assertEquals(IncusConnectionResult::STATE_OK, $host->status->getValue());
+        $this->assertEquals(ConnectionCheckState::Ok->value, $host->status->getValue());
     }
 
     /**
@@ -222,7 +222,7 @@ final class HypervisorGatewayAndSecurityHardeningTest extends TestCase
                 'endpoint_url' => 'https://'.$serverA['address'],
                 'driver' => 'incus',
                 'server_public_key_pin' => $certB['pin'],
-                'status' => IncusConnectionResult::STATE_OK,
+                'status' => ConnectionCheckState::Ok->value,
             ]);
 
             try {
@@ -238,7 +238,7 @@ final class HypervisorGatewayAndSecurityHardeningTest extends TestCase
 
             // Assert status updated to fingerprint_mismatch
             $hostMismatch->refresh();
-            $this->assertEquals(IncusConnectionResult::STATE_FINGERPRINT_MISMATCH, $hostMismatch->status->getValue());
+            $this->assertEquals(ConnectionCheckState::FingerprintMismatch->value, $hostMismatch->status->getValue());
         } finally {
             $this->stopLocalTlsServer($serverA);
         }
@@ -252,7 +252,7 @@ final class HypervisorGatewayAndSecurityHardeningTest extends TestCase
                 'endpoint_url' => 'https://'.$serverB['address'],
                 'driver' => 'incus',
                 'server_public_key_pin' => $certA['pin'],
-                'status' => IncusConnectionResult::STATE_OK,
+                'status' => ConnectionCheckState::Ok->value,
             ]);
 
             $gateway = app(HypervisorGateway::class);
@@ -265,7 +265,7 @@ final class HypervisorGatewayAndSecurityHardeningTest extends TestCase
             }
 
             $hostWrongServer->refresh();
-            $this->assertEquals(IncusConnectionResult::STATE_FINGERPRINT_MISMATCH, $hostWrongServer->status->getValue());
+            $this->assertEquals(ConnectionCheckState::FingerprintMismatch->value, $hostWrongServer->status->getValue());
         } finally {
             $this->stopLocalTlsServer($serverB);
         }
@@ -293,7 +293,7 @@ final class HypervisorGatewayAndSecurityHardeningTest extends TestCase
                 'endpoint_url' => 'https://'.$server['address'],
                 'driver' => 'incus',
                 'server_public_key_pin' => $secretPinB,
-                'status' => IncusConnectionResult::STATE_OK,
+                'status' => ConnectionCheckState::Ok->value,
             ]);
 
             $gateway = app(HypervisorGateway::class);
@@ -308,7 +308,7 @@ final class HypervisorGatewayAndSecurityHardeningTest extends TestCase
             }
 
             $host->refresh();
-            $this->assertEquals(IncusConnectionResult::STATE_FINGERPRINT_MISMATCH, $host->status->getValue());
+            $this->assertEquals(ConnectionCheckState::FingerprintMismatch->value, $host->status->getValue());
         } finally {
             $this->stopLocalTlsServer($server);
         }

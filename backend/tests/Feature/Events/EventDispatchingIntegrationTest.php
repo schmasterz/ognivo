@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use App\DTO\Host\CreateHostDTO;
 use App\DTO\Host\UpdateHostDTO;
-use App\DTO\ImageSelectionDTO;
 use App\Events\Host\HostMaintenanceEntered;
 use App\Events\Host\HostMaintenanceExited;
 use App\Events\Host\HostRegistered;
@@ -31,6 +30,7 @@ use App\Services\VmSnapshotService;
 use App\States\Vm\Deleted;
 use App\States\Vm\Running;
 use App\States\Vm\Stopped;
+use App\ValueObjects\Image\ImageSelection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
@@ -252,12 +252,12 @@ it('dispatches HostMaintenanceEntered, HostMaintenanceExited, and HostStatusUpda
     Event::assertDispatchedTimes(HostMaintenanceEntered::class, 1);
     Event::assertNotDispatched(HostMaintenanceExited::class);
 
-    // 3. Re-activating host with an ImageSelectionDTO exits maintenance.
+    // 3. Re-activating host with an ImageSelection exits maintenance.
     $host = $hostService->update($host, new UpdateHostDTO(
         name: $host->name,
         endpointUrl: $host->endpoint_url,
         isActive: true,
-        images: ImageSelectionDTO::all(),
+        images: ImageSelection::all(),
     ));
 
     Event::assertDispatched(HostMaintenanceExited::class, fn (HostMaintenanceExited $event): bool => $event->hostId === $host->id);
