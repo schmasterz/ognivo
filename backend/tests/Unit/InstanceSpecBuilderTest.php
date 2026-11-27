@@ -110,7 +110,7 @@ final class InstanceSpecBuilderTest extends TestCase
 
         // Limits
         $this->assertEquals('4', $spec['config']['limits.cpu']);
-        $this->assertEquals('8192MB', $spec['config']['limits.memory']);
+        $this->assertEquals('8192MiB', $spec['config']['limits.memory']);
         $this->assertArrayNotHasKey('migration.stateful', $spec['config']);
         $this->assertArrayNotHasKey('cloud-init.vendor-data', $spec['config']);
         $this->assertEquals("#cloud-config\npackage_update: true", $spec['config']['cloud-init.user-data']);
@@ -119,7 +119,7 @@ final class InstanceSpecBuilderTest extends TestCase
         $this->assertArrayHasKey('devices', $spec);
         $this->assertEquals('disk', $spec['devices']['root']['type']);
         $this->assertEquals('custom-pool', $spec['devices']['root']['pool']);
-        $this->assertEquals('50GB', $spec['devices']['root']['size']);
+        $this->assertEquals('50GiB', $spec['devices']['root']['size']);
         $this->assertSame([
             'type' => 'disk',
             'source' => 'agent:config',

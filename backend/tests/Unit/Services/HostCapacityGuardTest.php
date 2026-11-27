@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Services;
 
+use App\DTO\Hypervisor\InstanceResourceSpec;
 use App\Models\Host;
 use App\Models\User;
 use App\Models\VirtualMachine;
+use App\Models\VpsPlanChange;
+use App\Models\VpsPlanVersion;
 use App\Services\HostCapacityGuard;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Validation\ValidationException;
@@ -254,5 +257,205 @@ final class HostCapacityGuardTest extends TestCase
         // Remaining capacity: 5 CPU, 5120 RAM, 150 Disk
         $this->assertTrue($this->guard->canFit($host, 5, 5120, 150));
         $this->assertFalse($this->guard->canFit($host, 6, 5120, 150));
+    }
+
+    public function test_active_plan_change_reservations_are_included_in_committed_usage_and_batch_queries(): void
+    {
+        $user = User::factory()->create();
+
+        $host1 = Host::create([
+            'name' => 'res-host-1',
+            'endpoint_url' => 'https://10.0.0.7:8443',
+            'total_cpu_cores' => 10,
+            'total_ram_mb' => 10240,
+            'total_storage_gb' => 200,
+            'capacity_source' => 'discovered',
+        ]);
+
+        $host2 = Host::create([
+            'name' => 'res-host-2',
+            'endpoint_url' => 'https://10.0.0.8:8443',
+            'total_cpu_cores' => 8,
+            'total_ram_mb' => 8192,
+            'total_storage_gb' => 100,
+            'capacity_source' => 'discovered',
+        ]);
+
+        $vm1 = VirtualMachine::create([
+            'user_id' => $user->id,
+            'host_id' => $host1->id,
+            'name' => 'res-vm-1',
+            'incus_project' => 'default',
+            'instance_type' => 'container',
+            'status' => 'running',
+            'cpu_cores' => 2,
+            'ram_mb' => 2048,
+            'disk_gb' => 20,
+            'os_image' => 'ubuntu:24.04',
+        ]);
+
+        $vm2 = VirtualMachine::create([
+            'user_id' => $user->id,
+            'host_id' => $host2->id,
+            'name' => 'res-vm-2',
+            'incus_project' => 'default',
+            'instance_type' => 'container',
+            'status' => 'running',
+            'cpu_cores' => 2,
+            'ram_mb' => 2048,
+            'disk_gb' => 20,
+            'os_image' => 'ubuntu:24.04',
+        ]);
+
+        $targetVersion = VpsPlanVersion::factory()->published()->create();
+
+        // Active change on host1 reserves +3 CPU, +3072 RAM, +30 Disk
+        VpsPlanChange::factory()->create([
+            'virtual_machine_id' => $vm1->id,
+            'user_id' => $user->id,
+            'to_version_id' => $targetVersion->id,
+            'old_resources' => ['cpu_cores' => 2, 'ram_mb' => 2048, 'disk_gb' => 20],
+            'new_resources' => ['cpu_cores' => 5, 'ram_mb' => 5120, 'disk_gb' => 50],
+        ]);
+
+        // Completed change on host2 must NOT reserve capacity
+        VpsPlanChange::factory()->completed()->create([
+            'virtual_machine_id' => $vm2->id,
+            'user_id' => $user->id,
+            'to_version_id' => $targetVersion->id,
+            'old_resources' => ['cpu_cores' => 2, 'ram_mb' => 2048, 'disk_gb' => 20],
+            'new_resources' => ['cpu_cores' => 6, 'ram_mb' => 6144, 'disk_gb' => 80],
+        ]);
+
+        $committed1 = $this->guard->getCommittedUsage($host1);
+        $this->assertSame(['cpu' => 5, 'ram' => 5120, 'disk' => 50], $committed1);
+
+        $batch = $this->guard->getCommittedUsageForHostIds([$host1->id, $host2->id]);
+        $this->assertSame([
+            $host1->id => ['cpu' => 5, 'ram' => 5120, 'disk' => 50],
+            $host2->id => ['cpu' => 2, 'ram' => 2048, 'disk' => 20],
+        ], $batch);
+
+        // Remaining on host1 is 5 CPU, 5120 RAM, 150 Disk
+        $this->assertTrue($this->guard->canFit($host1, 5, 5120, 150));
+        $this->assertFalse($this->guard->canFit($host1, 6, 5120, 150));
+    }
+
+    public function test_check_change_handles_downgrades_unknown_capacity_physical_limits_and_reservations(): void
+    {
+        $user = User::factory()->create();
+
+        $unknownHost = Host::create([
+            'name' => 'unknown-change-host',
+            'endpoint_url' => 'https://10.0.0.9:8443',
+            'total_cpu_cores' => 32,
+            'total_ram_mb' => 65536,
+            'total_storage_gb' => 2000,
+            'capacity_source' => 'unknown',
+        ]);
+
+        $vmOnUnknown = VirtualMachine::create([
+            'user_id' => $user->id,
+            'host_id' => $unknownHost->id,
+            'name' => 'unknown-vm',
+            'incus_project' => 'default',
+            'instance_type' => 'container',
+            'status' => 'running',
+            'cpu_cores' => 4,
+            'ram_mb' => 4096,
+            'disk_gb' => 40,
+            'os_image' => 'ubuntu:24.04',
+        ]);
+
+        // Pure downgrade / no-increase skips capacity check even on unknown-capacity host
+        $downgradeSpec = new InstanceResourceSpec(2, 2048, 40, 'container');
+        $this->assertTrue($this->guard->checkChange($unknownHost, $vmOnUnknown, $downgradeSpec)->allowed);
+
+        // Any increase on unknown-capacity host is rejected
+        $upgradeSpec = new InstanceResourceSpec(6, 4096, 40, 'container');
+        $unknownUpgradeResult = $this->guard->checkChange($unknownHost, $vmOnUnknown, $upgradeSpec);
+        $this->assertFalse($unknownUpgradeResult->allowed);
+        $this->assertSame('HOST_CAPACITY_EXCEEDED', $unknownUpgradeResult->reasonCode);
+
+        // Overcommitted host: physical 4 CPU, overcommit 2.0 -> max pool 8.0 CPU, single-VM limit 4 CPU
+        $host = Host::create([
+            'name' => 'change-overcommit-host',
+            'endpoint_url' => 'https://10.0.0.10:8443',
+            'total_cpu_cores' => 4,
+            'total_ram_mb' => 8192,
+            'total_storage_gb' => 200,
+            'cpu_overcommit' => 2.0,
+            'ram_overcommit' => 1.0,
+            'disk_overcommit' => 1.0,
+            'capacity_source' => 'discovered',
+        ]);
+
+        $vmA = VirtualMachine::create([
+            'user_id' => $user->id,
+            'host_id' => $host->id,
+            'name' => 'change-vm-a',
+            'incus_project' => 'default',
+            'instance_type' => 'container',
+            'status' => 'running',
+            'cpu_cores' => 2,
+            'ram_mb' => 2048,
+            'disk_gb' => 40,
+            'os_image' => 'ubuntu:24.04',
+        ]);
+
+        $vmB = VirtualMachine::create([
+            'user_id' => $user->id,
+            'host_id' => $host->id,
+            'name' => 'change-vm-b',
+            'incus_project' => 'default',
+            'instance_type' => 'container',
+            'status' => 'running',
+            'cpu_cores' => 2,
+            'ram_mb' => 2048,
+            'disk_gb' => 40,
+            'os_image' => 'ubuntu:24.04',
+        ]);
+
+        // Exceeding physical single-instance limit (5 > 4 CPU) is rejected even though pool max is 8
+        $exceedsPhysical = new InstanceResourceSpec(5, 2048, 40, 'container');
+        $this->assertFalse($this->guard->checkChange($host, $vmA, $exceedsPhysical)->allowed);
+
+        // Pending change on vmB reserves +2 CPU, +2048 RAM, +40 Disk (committed becomes 6 CPU, 6144 RAM, 120 Disk)
+        $targetVersion = VpsPlanVersion::factory()->published()->create();
+        $changeB = VpsPlanChange::factory()->create([
+            'virtual_machine_id' => $vmB->id,
+            'user_id' => $user->id,
+            'to_version_id' => $targetVersion->id,
+            'old_resources' => ['cpu_cores' => 2, 'ram_mb' => 2048, 'disk_gb' => 40],
+            'new_resources' => ['cpu_cores' => 4, 'ram_mb' => 4096, 'disk_gb' => 80],
+        ]);
+
+        // Increasing vmA from 2 -> 4 CPU, 2048 -> 4096 RAM, 40 -> 80 Disk fits:
+        // committed_after = 6 - 2 + 4 = 8 <= 8 CPU; 6144 - 2048 + 4096 = 8192 <= 8192 RAM; 120 - 40 + 80 = 160 <= 200 Disk
+        $fitsExact = new InstanceResourceSpec(4, 4096, 80, 'container');
+        $this->assertTrue($this->guard->checkChange($host, $vmA, $fitsExact)->allowed);
+
+        // 1 MB RAM over remaining pool capacity (4097) is rejected
+        $oneOverRam = new InstanceResourceSpec(4, 4097, 80, 'container');
+        $this->assertFalse($this->guard->checkChange($host, $vmA, $oneOverRam)->allowed);
+
+        // Checking vmB with excludeChangeId ignores vmB's own pending reservation (no double-counting).
+        // Add another 1 CPU / 1024 RAM VM so double-counting vmB's reservation exceeds 8 CPU / 8192 RAM,
+        // while excluding changeB fits within host limits.
+        VirtualMachine::create([
+            'user_id' => $user->id,
+            'host_id' => $host->id,
+            'name' => 'change-vm-c',
+            'incus_project' => 'default',
+            'instance_type' => 'container',
+            'status' => 'running',
+            'cpu_cores' => 1,
+            'ram_mb' => 1024,
+            'disk_gb' => 10,
+            'os_image' => 'ubuntu:24.04',
+        ]);
+        $vmBTarget = new InstanceResourceSpec(4, 4096, 80, 'container');
+        $this->assertFalse($this->guard->checkChange($host, $vmB, $vmBTarget)->allowed);
+        $this->assertTrue($this->guard->checkChange($host, $vmB, $vmBTarget, excludeChangeId: $changeB->id)->allowed);
     }
 }

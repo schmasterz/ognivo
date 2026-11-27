@@ -58,11 +58,11 @@ class TenantProjectProvisioner
         }
 
         if ($quota->max_ram_mb !== -1) {
-            $limits['limits.memory'] = sprintf('%dMB', $quota->max_ram_mb);
+            $limits['limits.memory'] = sprintf('%dMiB', $quota->max_ram_mb);
         }
 
         if ($quota->max_storage_gb !== -1) {
-            $limits['limits.disk'] = sprintf('%dGB', $quota->max_storage_gb);
+            $limits['limits.disk'] = sprintf('%dGiB', $quota->max_storage_gb);
         }
 
         return $limits;

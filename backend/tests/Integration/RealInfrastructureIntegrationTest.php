@@ -4,6 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Integration;
 
+use App\DTO\Hypervisor\InstanceResourceSpec;
+use App\DTO\Hypervisor\NetworkLimitsSpec;
+use App\DTO\Hypervisor\OperationState;
+use App\DTO\Hypervisor\ResourceKind;
+use App\DTO\Hypervisor\ResourceUpdateStatus;
+use App\DTO\Hypervisor\ResourceUpdateVerdict;
 use App\Enums\IpAllocationStatus;
 use App\Enums\NetworkStatus;
 use App\Exceptions\IpPoolExhaustedException;
@@ -15,18 +21,22 @@ use App\Jobs\ProvisionVmJob;
 use App\Jobs\RestoreSnapshotJob;
 use App\Jobs\SuspendUserWorkloadsJob;
 use App\Models\Host;
+use App\Models\Image;
 use App\Models\IpAllocation;
 use App\Models\IpPool;
 use App\Models\User;
 use App\Models\VirtualMachine;
 use App\Models\VmSnapshot;
+use App\Services\Hypervisor\Drivers\IncusDriver;
 use App\Services\IpManagementService;
+use App\Services\PanelCertificateService;
 use App\Services\VmSnapshotService;
 use App\States\Vm\Deleted;
 use App\States\Vm\Running;
 use App\States\Vm\Stopped;
 use Illuminate\Support\Facades\Cache;
 use ReflectionClass;
+use Throwable;
 
 test('parallel IP allocation under concurrent processes', function (): void {
     skipUnlessRealInfrastructure();
@@ -474,6 +484,158 @@ test('snapshot create, restore and delete flow through a real queue worker', fun
         }
         $vm->delete();
         $host->delete();
+        $user->delete();
+    }
+})->group('integration');
+
+test('live container resize, spec discovery, assessment, and network limits on Incus 6.0 LTS', function (): void {
+    skipUnlessRealInfrastructure();
+
+    $host = Host::where('driver', 'incus')->where('is_active', true)->first();
+    if ($host === null) {
+        test()->markTestSkipped('Incus resize test skipped: no active Incus host configured.');
+    }
+
+    $certService = app(PanelCertificateService::class);
+    if (($certService->getActiveCertificate() ?? $certService->getRetiringCertificate()) === null) {
+        test()->markTestSkipped('Incus resize test skipped: no active panel mTLS certificate found.');
+    }
+
+    $parsed = parse_url($host->endpoint_url);
+    $endpointHost = is_array($parsed) && isset($parsed['host']) ? $parsed['host'] : null;
+    $endpointPort = is_array($parsed) && isset($parsed['port']) ? (int) $parsed['port'] : 8443;
+    if ($endpointHost === null || $endpointHost === '') {
+        test()->markTestSkipped(sprintf('Incus resize test skipped: invalid endpoint URL "%s".', $host->endpoint_url));
+    }
+
+    $socket = @stream_socket_client(sprintf('tcp://%s:%d', $endpointHost, $endpointPort), $errno, $errstr, 3);
+    if ($socket === false) {
+        test()->markTestSkipped(sprintf(
+            'Incus resize test skipped: endpoint %s:%d is not reachable (%s).',
+            $endpointHost,
+            $endpointPort,
+            $errstr !== '' ? $errstr : (string) $errno
+        ));
+    }
+    fclose($socket);
+
+    $pool = IpPool::where('host_id', $host->id)->where('active', true)->first()
+        ?? IpPool::where('active', true)->first();
+    if ($pool === null) {
+        test()->markTestSkipped('Incus resize test skipped: no active IP pool configured.');
+    }
+
+    $image = Image::where('enabled', true)->first();
+    $osImage = $image !== null ? $image->name : 'alpine/3.21';
+
+    $user = User::factory()->create();
+    $vm = VirtualMachine::create([
+        'user_id' => $user->id,
+        'host_id' => $host->id,
+        'name' => 'int-resize-ct-'.uniqid(),
+        'incus_project' => 'default',
+        'instance_type' => 'container',
+        'status' => 'provisioning',
+        'cpu_cores' => 1,
+        'ram_mb' => 256,
+        'disk_gb' => 5,
+        'os_image' => $osImage,
+    ]);
+
+    /** @var IpAllocation|null $allocation */
+    $allocation = null;
+
+    /** @var IncusDriver $driver */
+    $driver = app(IncusDriver::class, ['host' => $host]);
+
+    try {
+        $allocation = app(IpManagementService::class)->allocateIp($pool, $vm, $user);
+        $vm->load('primaryAllocation.pool');
+
+        expect($driver->createInstance($vm))->toBeTrue($driver->getLastError() ?? 'Incus createInstance failed.');
+        expect($driver->startInstance($vm))->toBeTrue($driver->getLastError() ?? 'Incus startInstance failed.');
+
+        $observed = $driver->getInstanceResourceSpec($vm);
+        expect($observed->instanceType)->toBe('container')
+            ->and($observed->cpuCores)->toBe(1)
+            ->and($observed->ramMb)->toBe(256)
+            ->and($observed->diskGb)->toBe(5);
+
+        $diskProbe = new InstanceResourceSpec(
+            cpuCores: 2,
+            ramMb: 512,
+            diskGb: 6,
+            instanceType: 'container',
+            network: new NetworkLimitsSpec(downloadMbps: 100, uploadMbps: 50),
+        );
+
+        $probeAssessment = $driver->assessResourceUpdate($vm, $diskProbe);
+        $diskSupported = $probeAssessment->verdicts[ResourceKind::Disk->value] === ResourceUpdateVerdict::Online;
+
+        $target = new InstanceResourceSpec(
+            cpuCores: 2,
+            ramMb: 512,
+            diskGb: $diskSupported ? 6 : 5,
+            instanceType: 'container',
+            network: new NetworkLimitsSpec(downloadMbps: 100, uploadMbps: 50),
+        );
+
+        $assessment = $driver->assessResourceUpdate($vm, $target);
+        expect($assessment->isApplicable())->toBeTrue()
+            ->and($assessment->requiresStop())->toBeFalse()
+            ->and($assessment->verdicts[ResourceKind::Cpu->value])->toBe(ResourceUpdateVerdict::Online)
+            ->and($assessment->verdicts[ResourceKind::Ram->value])->toBe(ResourceUpdateVerdict::Online)
+            ->and($assessment->verdicts[ResourceKind::NetDownload->value])->toBe(ResourceUpdateVerdict::Online)
+            ->and($assessment->verdicts[ResourceKind::NetUpload->value])->toBe(ResourceUpdateVerdict::Online);
+
+        $applyResult = $driver->applyResourceUpdate($vm, $target);
+        if ($applyResult->status === ResourceUpdateStatus::Accepted && $applyResult->operationId !== null) {
+            $deadline = time() + 30;
+            do {
+                $opStatus = $driver->getOperationStatus($vm, $applyResult->operationId);
+                if ($opStatus->state !== OperationState::Running) {
+                    expect($opStatus->state)->toBe(OperationState::Succeeded);
+                    break;
+                }
+                sleep(1);
+            } while (time() < $deadline);
+        } else {
+            expect($applyResult->status)->toBe(ResourceUpdateStatus::Applied);
+        }
+
+        $afterUpgrade = $driver->getInstanceResourceSpec($vm);
+        expect($afterUpgrade->cpuCores)->toBe(2)
+            ->and($afterUpgrade->ramMb)->toBe(512)
+            ->and($afterUpgrade->diskGb)->toBe($target->diskGb)
+            ->and($afterUpgrade->network?->downloadMbps)->toBe(100)
+            ->and($afterUpgrade->network?->uploadMbps)->toBe(50);
+
+        // Verify removing limits.ingress / limits.egress restores unlimited network
+        $unlimitedTarget = new InstanceResourceSpec(
+            cpuCores: 2,
+            ramMb: 512,
+            diskGb: $target->diskGb,
+            instanceType: 'container',
+            network: new NetworkLimitsSpec(downloadMbps: null, uploadMbps: null),
+        );
+        $clearResult = $driver->applyResourceUpdate($vm, $unlimitedTarget);
+        expect($clearResult->status)->toBeIn([ResourceUpdateStatus::Applied, ResourceUpdateStatus::Accepted]);
+        expect($driver->getInstanceResourceSpec($vm)->network)->toBeNull();
+    } finally {
+        try {
+            $driver->stopInstance($vm, true);
+        } catch (Throwable) {
+        }
+
+        try {
+            $driver->deleteInstance($vm);
+        } catch (Throwable) {
+        }
+
+        if ($allocation !== null) {
+            $allocation->delete();
+        }
+        $vm->delete();
         $user->delete();
     }
 })->group('integration');
