@@ -19,6 +19,7 @@ Artisan::command('inspire', function () {
 Schedule::job(new WarnExpiringPanelCertificateJob)->daily();
 Schedule::command('vm:reconcile')->everyFiveMinutes()->withoutOverlapping(10)->runInBackground();
 Schedule::command('vm:sweep-stale-provisioning')->everyFiveMinutes()->withoutOverlapping();
+Schedule::command('vps:reconcile-plan-changes')->everyFiveMinutes()->withoutOverlapping(10);
 Schedule::command('snapshots:sync')->hourly()->withoutOverlapping(15)->runInBackground();
 Schedule::call(fn (IpManagementService $service) => $service->pruneExpiredCoolingAllocations())
     ->everyMinute()

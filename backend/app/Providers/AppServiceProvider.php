@@ -104,6 +104,9 @@ final class AppServiceProvider extends ServiceProvider
         });
 
         Gate::policy(VirtualMachine::class, VirtualMachinePolicy::class);
+        Gate::define('vps.plans.manage', static fn (User $user): bool => $user->hasRole('admin'));
+        Gate::define('vps.plan_change.manage', static fn (User $user): bool => $user->hasRole('admin'));
+        Gate::define('vps.plan_change.request', static fn (User $user): bool => true);
         Gate::define('viewApiDocs', static function (?User $user = null): bool {
             if (app()->environment('local', 'testing')) {
                 return true;
@@ -179,6 +182,32 @@ final class AppServiceProvider extends ServiceProvider
             $user = $request->user();
             $maxAttempts = max(1, Cast::int(config('metrics.rate_limit_per_minute', 60), 60));
             $key = $user !== null ? 'metrics:user:'.$user->id : 'metrics:ip:'.Cast::string($request->ip());
+
+            return Limit::perMinute($maxAttempts)
+                ->by($key)
+                ->response(static function (Request $request, array $headers): JsonResponse {
+                    $retryAfter = Cast::int($headers['Retry-After'] ?? 60, 60);
+
+                    return response()->json([
+                        'message' => __('messages.vm.rate_limit_exceeded', ['seconds' => $retryAfter]),
+                        'retry_after' => $retryAfter,
+                    ], 429, $headers);
+                });
+        });
+
+        // Configure named rate limiter for plan change preview and target listing endpoints
+        RateLimiter::for('plan-change-preview', static function (Request $request): Limit {
+            /** @var User|null $user */
+            $user = $request->user();
+
+            if ($user !== null && $user->hasRole('admin')) {
+                return Limit::none();
+            }
+
+            $maxAttempts = max(1, Cast::int(config('app.rate_limits.plan_change_preview', 30), 30));
+            $key = $user !== null
+                ? 'plan-change-preview:user:'.$user->id
+                : 'plan-change-preview:ip:'.Cast::string($request->ip());
 
             return Limit::perMinute($maxAttempts)
                 ->by($key)

@@ -4,13 +4,20 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Exceptions\DriverUnavailableException;
 use App\Models\DriftReport;
 use App\Models\Host;
+use App\Models\IpAllocation;
+use App\Models\IpPool;
 use App\Models\User;
 use App\Models\VirtualMachine;
+use App\Models\VpsPlanChange;
+use App\Services\Hypervisor\Contracts\HypervisorDriverInterface;
 use App\Services\Hypervisor\HypervisorManager;
 use App\States\Host\Ok;
 use App\States\Host\Unreachable;
+use App\States\Vm\Running as VmRunning;
+use App\States\Vm\Stopped as VmStopped;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -18,6 +25,10 @@ use Illuminate\Support\Facades\Log;
  */
 class VmReconciliationService
 {
+    private const int BYTES_PER_MIB = 1048576;
+
+    private const int BYTES_PER_GIB = 1073741824;
+
     public static bool $isReconciling = false;
 
     public static function isReconciling(): bool
@@ -123,6 +134,7 @@ class VmReconciliationService
 
         // 2. Gather all active VMs from database
         $dbVms = VirtualMachine::query()
+            ->with(['primaryAllocation.pool'])
             ->where('host_id', $host->id)
             ->whereNotIn('status', ['deleted'])
             ->get();
@@ -214,6 +226,11 @@ class VmReconciliationService
                 continue;
             }
 
+            // Skip VMs with an active VPS plan change so mid-flight state/drift is not overwritten
+            if (VpsPlanChange::query()->where('virtual_machine_id', $vm->id)->active()->exists()) {
+                continue;
+            }
+
             if (! isset($hostInstances[$key])) {
                 if (in_array($vm->incus_project, $failedProjects, true)) {
                     continue;
@@ -253,17 +270,25 @@ class VmReconciliationService
                     ]);
                     $detected++;
                 } else {
-                    // State matches and instance is present: resolve previous open drifts if any
+                    // State matches and instance is present: resolve previous open non-resource drifts if any
                     $updated = DriftReport::query()
                         ->where('host_id', $host->id)
                         ->where('instance_name', $vm->name)
                         ->where('incus_project', $vm->incus_project)
+                        ->where('kind', '!=', 'resource_mismatch')
                         ->whereNull('resolved_at')
                         ->update(['resolved_at' => now()]);
 
                     if ($updated > 0) {
                         $resolved += $updated;
                     }
+                }
+
+                // 6. Verify observed hypervisor resource specification against DB columns for active VMs
+                if ($vm->status->equals(VmRunning::class) || $vm->status->equals(VmStopped::class)) {
+                    $resourceStats = $this->reconcileVmResources($host, $vm, $driver);
+                    $detected += $resourceStats['detected'];
+                    $resolved += $resourceStats['resolved'];
                 }
             }
         }
@@ -272,6 +297,110 @@ class VmReconciliationService
             'drifts_detected' => $detected,
             'drifts_resolved' => $resolved,
         ];
+    }
+
+    /**
+     * Compare observed hypervisor resources against VM DB columns and record or resolve resource_mismatch drift.
+     *
+     * @return array{detected: int, resolved: int}
+     */
+    protected function reconcileVmResources(Host $host, VirtualMachine $vm, HypervisorDriverInterface $driver): array
+    {
+        try {
+            $observed = $driver->getInstanceResourceSpec($vm);
+        } catch (DriverUnavailableException $e) {
+            Log::warning(sprintf('Host [%s] unavailable while reading resource spec for VM [%s]: %s', $host->name, $vm->name, $e->getMessage()));
+
+            return ['detected' => 0, 'resolved' => 0];
+        } catch (\Throwable $e) {
+            Log::warning(sprintf('Failed to inspect resource spec for VM [%s] on host [%s]: %s', $vm->name, $host->name, $e->getMessage()));
+
+            return ['detected' => 0, 'resolved' => 0];
+        }
+
+        /** @var IpAllocation|null $primaryAllocation */
+        $primaryAllocation = $vm->relationLoaded('primaryAllocation')
+            ? $vm->getRelation('primaryAllocation')
+            : $vm->primaryAllocation()->with('pool')->first();
+
+        /** @var IpPool|null $pool */
+        $pool = $primaryAllocation !== null
+            ? ($primaryAllocation->relationLoaded('pool')
+                ? $primaryAllocation->getRelation('pool')
+                : $primaryAllocation->pool()->first())
+            : null;
+
+        $isManualPool = $pool !== null && $pool->network_mode === 'manual';
+
+        $expectedCpu = (int) $vm->cpu_cores;
+        $expectedRamBytes = (int) $vm->ram_mb * self::BYTES_PER_MIB;
+        $expectedDiskBytes = (int) $vm->disk_gb * self::BYTES_PER_GIB;
+        $expectedDownload = $vm->net_download_mbps !== null ? (int) $vm->net_download_mbps : null;
+        $expectedUpload = $vm->net_upload_mbps !== null ? (int) $vm->net_upload_mbps : null;
+
+        $observedRamBytes = $observed->ramMb * self::BYTES_PER_MIB;
+        $observedDiskBytes = $observed->diskGb * self::BYTES_PER_GIB;
+        $observedDownload = $observed->network?->downloadMbps;
+        $observedUpload = $observed->network?->uploadMbps;
+
+        $cpuMatches = $observed->cpuCores === $expectedCpu;
+        $ramMatches = $observedRamBytes === $expectedRamBytes;
+        $diskMatches = $observedDiskBytes === $expectedDiskBytes;
+        $networkMatches = $isManualPool
+            || ($observedDownload === $expectedDownload && $observedUpload === $expectedUpload);
+
+        if ($cpuMatches && $ramMatches && $diskMatches && $networkMatches) {
+            $updated = DriftReport::query()
+                ->where('host_id', $host->id)
+                ->where('virtual_machine_id', $vm->id)
+                ->where('kind', 'resource_mismatch')
+                ->whereNull('resolved_at')
+                ->update(['resolved_at' => now()]);
+
+            return ['detected' => 0, 'resolved' => $updated];
+        }
+
+        $expected = [
+            'cpu_cores' => $expectedCpu,
+            'ram_mb' => (int) $vm->ram_mb,
+            'ram_bytes' => $expectedRamBytes,
+            'disk_gb' => (int) $vm->disk_gb,
+            'disk_bytes' => $expectedDiskBytes,
+            'net_download_mbps' => $isManualPool ? null : $expectedDownload,
+            'net_upload_mbps' => $isManualPool ? null : $expectedUpload,
+        ];
+
+        $actual = [
+            'cpu_cores' => $observed->cpuCores,
+            'ram_mb' => $observed->ramMb,
+            'ram_bytes' => $observedRamBytes,
+            'disk_gb' => $observed->diskGb,
+            'disk_bytes' => $observedDiskBytes,
+            'net_download_mbps' => $observedDownload,
+            'net_upload_mbps' => $observedUpload,
+        ];
+
+        $expectedJson = json_encode($expected);
+        $actualJson = json_encode($actual);
+
+        DriftReport::updateOrCreate([
+            'host_id' => $host->id,
+            'virtual_machine_id' => $vm->id,
+            'kind' => 'resource_mismatch',
+            'resolved_at' => null,
+        ], [
+            'instance_name' => $vm->name,
+            'incus_project' => $vm->incus_project !== '' ? $vm->incus_project : 'default',
+            'expected_state' => is_string($expectedJson) ? $expectedJson : null,
+            'actual_state' => is_string($actualJson) ? $actualJson : null,
+            'details' => [
+                'detected_by' => 'reconcile',
+                'expected' => $expected,
+                'actual' => $actual,
+            ],
+        ]);
+
+        return ['detected' => 1, 'resolved' => 0];
     }
 
     /**
