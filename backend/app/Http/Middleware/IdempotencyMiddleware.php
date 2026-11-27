@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Middleware;
 
 use App\Models\IdempotencyKey;
+use App\Models\User;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -32,7 +33,18 @@ final class IdempotencyMiddleware
             $request->getMethod().'|'.$request->path().'|'.$request->getContent()
         );
 
-        $record = IdempotencyKey::query()->where(['key' => $idempotencyKey])->first();
+        /** @var User|null $user */
+        $user = $request->user();
+        $userId = $user?->id;
+
+        $query = IdempotencyKey::query()->where(['key' => $idempotencyKey]);
+        if ($userId !== null) {
+            $query->where('user_id', $userId);
+        } else {
+            $query->whereNull('user_id');
+        }
+
+        $record = $query->first();
 
         if ($record !== null) {
             if (! $record->matchesChecksum($checksum)) {
@@ -66,6 +78,7 @@ final class IdempotencyMiddleware
             ]);
         } else {
             $record = IdempotencyKey::query()->create([
+                'user_id' => $userId,
                 'key' => $idempotencyKey,
                 'request_hash' => $checksum,
                 'locked_at' => now(),

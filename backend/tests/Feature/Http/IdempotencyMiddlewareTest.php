@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Middleware\IdempotencyMiddleware;
 use App\Models\IdempotencyKey;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -110,4 +111,91 @@ it('returns 409 Conflict when an in-flight request holds an active lock for the 
         ]);
 
     expect($this->executionCount)->toBe(0);
+});
+
+it('isolates identical Idempotency-Key values across different authenticated users and replays per user', function (): void {
+    $userA = User::factory()->create();
+    $userB = User::factory()->create();
+
+    $firstA = $this->actingAs($userA)
+        ->withHeader('Idempotency-Key', 'shared-key-001')
+        ->postJson('/_test/idempotent', ['name' => 'vm-user-a']);
+
+    $firstA->assertStatus(201)
+        ->assertJson(['count' => 1, 'name' => 'vm-user-a'])
+        ->assertHeaderMissing('X-Idempotent-Replay');
+
+    $firstB = $this->actingAs($userB)
+        ->withHeader('Idempotency-Key', 'shared-key-001')
+        ->postJson('/_test/idempotent', ['name' => 'vm-user-b']);
+
+    $firstB->assertStatus(201)
+        ->assertJson(['count' => 2, 'name' => 'vm-user-b'])
+        ->assertHeaderMissing('X-Idempotent-Replay');
+
+    $replayA = $this->actingAs($userA)
+        ->withHeader('Idempotency-Key', 'shared-key-001')
+        ->postJson('/_test/idempotent', ['name' => 'vm-user-a']);
+
+    $replayA->assertStatus(201)
+        ->assertJson(['count' => 1, 'name' => 'vm-user-a'])
+        ->assertHeader('X-Idempotent-Replay', 'true');
+
+    $replayB = $this->actingAs($userB)
+        ->withHeader('Idempotency-Key', 'shared-key-001')
+        ->postJson('/_test/idempotent', ['name' => 'vm-user-b']);
+
+    $replayB->assertStatus(201)
+        ->assertJson(['count' => 2, 'name' => 'vm-user-b'])
+        ->assertHeader('X-Idempotent-Replay', 'true');
+
+    expect($this->executionCount)->toBe(2)
+        ->and(IdempotencyKey::query()->where('key', 'shared-key-001')->count())->toBe(2)
+        ->and(IdempotencyKey::query()->where('key', 'shared-key-001')->where('user_id', $userA->id)->exists())->toBeTrue()
+        ->and(IdempotencyKey::query()->where('key', 'shared-key-001')->where('user_id', $userB->id)->exists())->toBeTrue();
+});
+
+it('does not replay User A cached response to User B even with an identical payload', function (): void {
+    $userA = User::factory()->create();
+    $userB = User::factory()->create();
+
+    $this->actingAs($userA)
+        ->withHeader('Idempotency-Key', 'shared-key-002')
+        ->postJson('/_test/idempotent', ['name' => 'identical-vm'])
+        ->assertStatus(201)
+        ->assertJson(['count' => 1, 'name' => 'identical-vm'])
+        ->assertHeaderMissing('X-Idempotent-Replay');
+
+    $userBResponse = $this->actingAs($userB)
+        ->withHeader('Idempotency-Key', 'shared-key-002')
+        ->postJson('/_test/idempotent', ['name' => 'identical-vm']);
+
+    $userBResponse->assertStatus(201)
+        ->assertJson(['count' => 2, 'name' => 'identical-vm'])
+        ->assertHeaderMissing('X-Idempotent-Replay');
+
+    expect($this->executionCount)->toBe(2);
+});
+
+it('registers the idempotency middleware alias and attaches it to vms.store', function (): void {
+    Route::middleware('idempotency')
+        ->post('/_test/idempotent-alias', fn (Request $request) => response()->json([
+            'ok' => true,
+            'name' => $request->input('name'),
+        ], 201));
+
+    $this->withHeader('Idempotency-Key', 'alias-key-001')
+        ->postJson('/_test/idempotent-alias', ['name' => 'via-alias'])
+        ->assertStatus(201)
+        ->assertHeaderMissing('X-Idempotent-Replay');
+
+    $this->withHeader('Idempotency-Key', 'alias-key-001')
+        ->postJson('/_test/idempotent-alias', ['name' => 'via-alias'])
+        ->assertStatus(201)
+        ->assertHeader('X-Idempotent-Replay', 'true');
+
+    $storeRoute = Route::getRoutes()->getByName('vms.store');
+
+    expect($storeRoute)->not->toBeNull()
+        ->and($storeRoute?->gatherMiddleware())->toContain('idempotency');
 });
