@@ -230,7 +230,7 @@ final class UserService
         $oldRole = $firstRole !== null && isset($firstRole->name) && is_string($firstRole->name) ? $firstRole->name : null;
         $oldStatus = $user->status->getValue();
         $statusChanged = $dto->status !== null && $dto->status !== $oldStatus;
-        $targetStateClass = $statusChanged ? $this->resolveAllowedTransitionTarget($user, (string) $dto->status) : null;
+        $targetStateClass = $statusChanged ? $this->resolveAllowedTransitionTarget($user, $dto->status) : null;
 
         $updatedUser = DB::transaction(function () use ($user, $dto, $oldRole, $oldStatus, $targetStateClass): User {
             $roleChanged = ! $user->hasRole($dto->role);
@@ -250,7 +250,7 @@ final class UserService
             }
 
             if ($passwordChanged) {
-                $this->auth()->applyPassword($user, (string) $dto->password);
+                $this->auth()->applyPassword($user, $dto->password);
             }
 
             if ($targetStateClass !== null) {

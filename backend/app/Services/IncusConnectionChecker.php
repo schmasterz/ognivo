@@ -19,6 +19,7 @@ use App\States\Host\Ok;
 use App\States\PanelCertificate\Active as ActiveCertificate;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Carbon;
 use Throwable;
 
 /**
@@ -54,7 +55,7 @@ final class IncusConnectionChecker
                 details: ['driver' => 'fake', 'endpoint' => $host->endpoint_url]
             );
 
-            $host->last_checked_at = now();
+            $host->last_checked_at = Carbon::now();
 
             $activeCert = $this->certService->getActiveCertificate();
             if ($activeCert !== null && ! $activeCert->isExpired()) {
@@ -77,7 +78,7 @@ final class IncusConnectionChecker
                 message: 'No active panel certificate available. Please generate one before connecting.'
             );
 
-            $host->last_checked_at = now();
+            $host->last_checked_at = Carbon::now();
             if (! $host->status->transitionIfAllowed(Error::class)) {
                 $host->save();
             }
@@ -279,7 +280,7 @@ final class IncusConnectionChecker
         }
 
         if ($host->exists) {
-            $host->last_checked_at = now();
+            $host->last_checked_at = Carbon::now();
 
             $activeCert = $this->certService->getActiveCertificate();
             $isUsingActive = $activeCert !== null

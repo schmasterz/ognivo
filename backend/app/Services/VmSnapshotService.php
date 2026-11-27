@@ -229,18 +229,17 @@ class VmSnapshotService
                 return $lockedSnapshot;
             });
         } catch (\Throwable $e) {
-            /** @var VirtualMachine|null $subjectVm */
-            $subjectVm = isset($vm) ? $vm : ($snapshotOrVm instanceof VirtualMachine ? $snapshotOrVm : $snapshotOrVm->virtualMachine);
+            $subjectVm = $snapshotOrVm instanceof VirtualMachine ? $snapshotOrVm : $snapshotOrVm->virtualMachine;
             $this->logger()->recordIndependent(new AuditEntry(
                 action: AuditAction::VmActionDenied,
                 outcome: AuditOutcome::Denied,
                 subject: $subjectVm,
-                tenantUserId: $subjectVm !== null ? $subjectVm->user_id : null,
+                tenantUserId: $subjectVm->user_id,
                 visibility: 'tenant',
                 context: [
                     'action' => 'snapshot.restore',
                     'name' => $resolvedSnapshot !== null ? $resolvedSnapshot->name : (is_string($snapshot) ? $snapshot : null),
-                    'virtual_machine_id' => $subjectVm !== null ? $subjectVm->id : null,
+                    'virtual_machine_id' => $subjectVm->id,
                     'reason' => $e->getMessage(),
                 ],
             ));

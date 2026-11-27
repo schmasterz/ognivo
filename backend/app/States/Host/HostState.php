@@ -74,6 +74,7 @@ abstract class HostState extends State
         /** @var Host $host */
         $host = $this->getModel();
         if (! $host->exists) {
+            /** @psalm-suppress UnsafeInstantiation */
             $host->status = new $targetStateClass($host);
 
             return true;
