@@ -30,7 +30,7 @@ Extensions targeting `ognivo_version_constraint: "^1.0"` can rely on backward co
 
 ## Developer Preview Contracts (`@experimental`)
 
-The following extension contracts, DTOs, events, and frontend slots are currently in **Developer Preview (`@experimental`)**:
+The following extension contracts, authorization payloads, value objects, events, and frontend slots are currently in **Developer Preview (`@experimental`)**:
 
 - **Service Interfaces (`App\Contracts\*`):**
   - `DnsProviderInterface`
@@ -38,11 +38,10 @@ The following extension contracts, DTOs, events, and frontend slots are currentl
   - `BillingProviderInterface`
   - `VpsPlanChangeAuthorizerInterface`
   - `VpsProvisioningAuthorizerInterface`
-- **Authorization & Hypervisor Resource DTOs (`App\DTO\Contracts\*`, `App\DTO\Hypervisor\*`):**
-  - `VpsPlanChangeAuthorizationRequest`, `VpsPlanChangeAuthorizationResult`
-  - `VpsProvisioningAuthorizationRequest`, `VpsProvisioningAuthorizationResult`
-  - `VpsAuthorizationInitiator`, `VpsAuthorizationStatus`
-  - `InstanceResourceSpec`, `NetworkLimitsSpec`
+- **Authorization Payloads, Status Enum & Hypervisor Resource Specs (`App\Contracts\Data\*`, `App\Enums\Vps\VpsAuthorizationStatus`, `App\ValueObjects\Hypervisor\*`):**
+  - `App\Contracts\Data\*`: `VpsPlanChangeAuthorizationRequest`, `VpsPlanChangeAuthorizationResult`, `VpsProvisioningAuthorizationRequest`, `VpsProvisioningAuthorizationResult`, `VpsAuthorizationInitiator`
+  - `App\Enums\Vps\VpsAuthorizationStatus`
+  - `App\ValueObjects\Hypervisor\*`: `InstanceResourceSpec`, `NetworkLimitsSpec`
 - **VPS Domain Events (`App\Events\Vps\*`):**
   - `vps.plan.*`: `vps.plan.created`, `vps.plan.updated`, `vps.plan.published`, `vps.plan.unpublished`, `vps.plan.archived`, `vps.plan.unarchived`
   - `vps.plan.version.*`: `vps.plan.version.created`, `vps.plan.version.published`
