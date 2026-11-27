@@ -115,6 +115,48 @@ final class ForbidImpersonationActions
             abort(403, 'Deleting accounts is forbidden while impersonating.');
         }
 
+        // 5. Plan-based VM provisioning
+        if ($request->isMethod('POST') && $request->is('api/v1/vms') && $request->input('vps_plan_id') !== null) {
+            $this->auditLogger->recordIndependent(new AuditEntry(
+                action: AuditAction::VmActionDenied,
+                outcome: AuditOutcome::Denied,
+                subject: $user,
+                tenantUserId: $user->id,
+                impersonatorId: $impersonatorId,
+                visibility: 'tenant',
+                context: [
+                    'action' => 'vm.create',
+                    'reason' => 'forbidden_while_impersonating',
+                ],
+            ));
+
+            abort(403, 'Provisioning virtual machines from a plan is forbidden while impersonating.');
+        }
+
+        // 6. VPS plan change request and cancellation
+        if ($request->isMethod('POST') && (
+            $request->is('api/v1/vms/*/plan-change')
+            || $request->is('api/v1/vms/*/plan-changes/*/cancel')
+        )) {
+            $vm = $request->route('vm');
+            $isCancel = $request->is('api/v1/vms/*/plan-changes/*/cancel');
+
+            $this->auditLogger->recordIndependent(new AuditEntry(
+                action: AuditAction::VpsPlanChangeDenied,
+                outcome: AuditOutcome::Denied,
+                subject: $vm instanceof VirtualMachine ? $vm : $user,
+                tenantUserId: $user->id,
+                impersonatorId: $impersonatorId,
+                visibility: 'tenant',
+                context: [
+                    'action' => $isCancel ? 'vps.plan_change.cancel' : 'vps.plan_change.request',
+                    'reason' => 'forbidden_while_impersonating',
+                ],
+            ));
+
+            abort(403, 'Changing or cancelling VPS plans is forbidden while impersonating.');
+        }
+
         return $next($request);
     }
 }

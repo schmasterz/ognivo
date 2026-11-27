@@ -5,16 +5,25 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\DTO\Cast;
+use App\DTO\Hypervisor\InstanceResourceSpec;
+use App\DTO\Vps\CapacityCheckResult;
 use App\Models\Host;
+use App\Models\VirtualMachine;
+use App\Services\Vps\ResourceReservationService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
  * Service enforcing hard capacity boundaries (CPU, RAM, Disk) per compute host,
- * accounting for committed VM allocations, overcommit multipliers, and host overhead reserves.
+ * accounting for committed VM allocations, active plan-change reservations,
+ * overcommit multipliers, and host overhead reserves.
  */
 final class HostCapacityGuard
 {
+    public function __construct(
+        private readonly ResourceReservationService $reservationService = new ResourceReservationService,
+    ) {}
+
     /**
      * Determine whether a host has verified, known capacity.
      */
@@ -30,11 +39,12 @@ final class HostCapacityGuard
     }
 
     /**
-     * Compute committed usage on a host for non-failed, non-deleted VMs (including Provisioning).
+     * Compute committed usage on a host for non-failed, non-deleted VMs (including Provisioning)
+     * plus positive resource reservations held by active VPS plan changes.
      *
      * @return array{cpu: int, ram: int, disk: int}
      */
-    public function getCommittedUsage(Host $host, bool $lock = false): array
+    public function getCommittedUsage(Host $host, bool $lock = false, ?int $excludeChangeId = null): array
     {
         $query = DB::table('virtual_machines')
             ->where('host_id', $host->id)
@@ -48,15 +58,17 @@ final class HostCapacityGuard
         $usage = $query->selectRaw('COALESCE(SUM(cpu_cores), 0) as cpu, COALESCE(SUM(ram_mb), 0) as ram, COALESCE(SUM(disk_gb), 0) as disk')
             ->first();
 
+        $reservations = $this->reservationService->getHostReservations($host->id, $excludeChangeId, $lock);
+
         return [
-            'cpu' => (int) ($usage->cpu ?? 0),
-            'ram' => (int) ($usage->ram ?? 0),
-            'disk' => (int) ($usage->disk ?? 0),
+            'cpu' => (int) ($usage->cpu ?? 0) + $reservations['cpu'],
+            'ram' => (int) ($usage->ram ?? 0) + $reservations['ram'],
+            'disk' => (int) ($usage->disk ?? 0) + $reservations['disk'],
         ];
     }
 
     /**
-     * Compute committed usage for multiple host IDs in a single query.
+     * Compute committed usage (including active plan-change reservations) for multiple host IDs in batch queries.
      *
      * @param  array<int>  $hostIds
      * @return array<int, array{cpu: int, ram: int, disk: int}>
@@ -91,6 +103,16 @@ final class HostCapacityGuard
                 'cpu' => Cast::int($row->cpu),
                 'ram' => Cast::int($row->ram),
                 'disk' => Cast::int($row->disk),
+            ];
+        }
+
+        $reservationsByHost = $this->reservationService->getHostReservationsForHostIds($uniqueHostIds);
+        foreach ($uniqueHostIds as $hostId) {
+            $reservations = $reservationsByHost[$hostId] ?? ['cpu' => 0, 'ram' => 0, 'disk' => 0];
+            $result[$hostId] = [
+                'cpu' => $result[$hostId]['cpu'] + $reservations['cpu'],
+                'ram' => $result[$hostId]['ram'] + $reservations['ram'],
+                'disk' => $result[$hostId]['disk'] + $reservations['disk'],
             ];
         }
 
@@ -207,6 +229,70 @@ final class HostCapacityGuard
             'ram' => Cast::int(config('provisioning.host_ram_reserve_mb', 1024), 1024),
             'disk' => Cast::int(config('provisioning.host_disk_reserve_gb', 0), 0),
         ];
+    }
+
+    /**
+     * Evaluate whether a host can accommodate a proposed VM resource change.
+     *
+     * Skips capacity checks when no resource (CPU, RAM, disk) increases relative to the VM's current allocation.
+     */
+    public function checkChange(
+        Host $host,
+        VirtualMachine $vm,
+        InstanceResourceSpec $target,
+        ?int $excludeChangeId = null,
+        bool $lock = false,
+    ): CapacityCheckResult {
+        $vmCpu = (int) $vm->cpu_cores;
+        $vmRam = (int) $vm->ram_mb;
+        $vmDisk = (int) $vm->disk_gb;
+
+        if ($target->cpuCores <= $vmCpu && $target->ramMb <= $vmRam && $target->diskGb <= $vmDisk) {
+            return new CapacityCheckResult(allowed: true);
+        }
+
+        if (! $this->hasKnownCapacity($host)) {
+            return new CapacityCheckResult(
+                allowed: false,
+                reasonCode: 'HOST_CAPACITY_EXCEEDED',
+                message: Cast::string(__('messages.host.capacity_unknown')),
+            );
+        }
+
+        $physicalLimit = $this->getSingleInstancePhysicalLimit($host);
+        if (
+            $target->cpuCores > $physicalLimit['cpu']
+            || $target->ramMb > $physicalLimit['ram']
+            || $target->diskGb > $physicalLimit['disk']
+        ) {
+            return new CapacityCheckResult(
+                allowed: false,
+                reasonCode: 'HOST_CAPACITY_EXCEEDED',
+                message: Cast::string(__('messages.host.insufficient_capacity')),
+            );
+        }
+
+        $committed = $this->getCommittedUsage($host, $lock, $excludeChangeId);
+        $max = $this->getMaxAllocatable($host);
+
+        $isCountedInCommitted = ! in_array($vm->status->getValue(), ['failed', 'deleted'], true);
+        $currentVmCpu = $isCountedInCommitted ? $vmCpu : 0;
+        $currentVmRam = $isCountedInCommitted ? $vmRam : 0;
+        $currentVmDisk = $isCountedInCommitted ? $vmDisk : 0;
+
+        $afterCpu = $committed['cpu'] - $currentVmCpu + $target->cpuCores;
+        $afterRam = $committed['ram'] - $currentVmRam + $target->ramMb;
+        $afterDisk = $committed['disk'] - $currentVmDisk + $target->diskGb;
+
+        if ($afterCpu > $max['cpu'] || $afterRam > $max['ram'] || $afterDisk > $max['disk']) {
+            return new CapacityCheckResult(
+                allowed: false,
+                reasonCode: 'HOST_CAPACITY_EXCEEDED',
+                message: Cast::string(__('messages.host.insufficient_capacity')),
+            );
+        }
+
+        return new CapacityCheckResult(allowed: true);
     }
 
     /**

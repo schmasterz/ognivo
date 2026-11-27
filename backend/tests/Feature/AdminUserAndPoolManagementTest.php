@@ -12,6 +12,8 @@ use App\Models\SystemSetting;
 use App\Models\User;
 use App\Models\UserQuota;
 use App\Models\VirtualMachine;
+use App\Models\VpsPlan;
+use App\Models\VpsPlanVersion;
 use App\States\Vm\Running;
 use App\States\Vm\Stopped;
 use App\States\Vm\Suspended;
@@ -343,6 +345,31 @@ final class AdminUserAndPoolManagementTest extends TestCase
         $res2->assertJsonPath('settings.allow_containers', true);
     }
 
+    /**
+     * @param  array<string, mixed>  $versionOverrides
+     */
+    private function createPublishedPlan(array $versionOverrides = []): VpsPlan
+    {
+        /** @var VpsPlan $plan */
+        $plan = VpsPlan::factory()->published()->create();
+
+        /** @var VpsPlanVersion $version */
+        $version = VpsPlanVersion::factory()->published()->create(array_merge([
+            'vps_plan_id' => $plan->id,
+            'version' => 1,
+            'cpu_cores' => 1,
+            'ram_mb' => 1024,
+            'disk_gb' => 10,
+            'instance_type' => 'virtual-machine',
+            'net_download_mbps' => null,
+            'net_upload_mbps' => null,
+        ], $versionOverrides));
+
+        $plan->forceFill(['current_version_id' => $version->id])->save();
+
+        return $plan->fresh();
+    }
+
     public function test_user_cannot_provision_disabled_virtualization_mode(): void
     {
         // Disable full VMs on platform
@@ -351,13 +378,17 @@ final class AdminUserAndPoolManagementTest extends TestCase
             'allow_containers' => true,
         ]);
 
-        // Customer attempts to provision full virtual-machine
-        $res = $this->actingAs($this->customer)->postJson('/api/v1/vms', [
-            'name' => 'vm-not-allowed',
+        $vmPlan = $this->createPublishedPlan([
             'instance_type' => 'virtual-machine',
             'cpu_cores' => 1,
             'ram_mb' => 1024,
             'disk_gb' => 10,
+        ]);
+
+        // Customer attempts to provision full virtual-machine
+        $res = $this->actingAs($this->customer)->postJson('/api/v1/vms', [
+            'name' => 'vm-not-allowed',
+            'vps_plan_id' => $vmPlan->id,
             'os_image' => 'ubuntu:24.04',
         ]);
 
@@ -373,13 +404,17 @@ final class AdminUserAndPoolManagementTest extends TestCase
             'active' => true,
         ]);
 
-        // Customer provisions allowed container -> succeeds
-        $resOk = $this->actingAs($this->customer)->postJson('/api/v1/vms', [
-            'name' => 'container-allowed',
+        $containerPlan = $this->createPublishedPlan([
             'instance_type' => 'container',
             'cpu_cores' => 1,
             'ram_mb' => 1024,
             'disk_gb' => 10,
+        ]);
+
+        // Customer provisions allowed container -> succeeds
+        $resOk = $this->actingAs($this->customer)->postJson('/api/v1/vms', [
+            'name' => 'container-allowed',
+            'vps_plan_id' => $containerPlan->id,
             'os_image' => 'ubuntu:24.04',
         ]);
 

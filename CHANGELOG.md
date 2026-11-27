@@ -4,6 +4,18 @@ All notable changes to **Ognivo** are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **VPS Product Catalog & Immutable Plan Versioning:** Added `vps_plans` and `vps_plan_versions` tables with state-machine lifecycles (`draft`, `published`, `archived` for plans; `draft`, `published`, `superseded` for versions), monotonic `MAX+1` version numbering on publish, slug immutability after first publish, `ResourceBounds` validation (`cpu_cores`, `ram_mb`, `disk_gb`, `instance_type`, nullable `net_download_mbps` / `net_upload_mbps`), publish-time host capacity and non-manual IP pool checks, admin management endpoints (`/api/v1/admin/vps/plans/*`), customer catalog endpoints (`/api/v1/vps/plans/*`), and dashboard views (`/plans`, `/admin/plans`).
+- **Online Plan-Change Orchestration & Reconciliation:** Added `vps_plan_changes` state machine (`pending`, `awaiting_authorization`, `applying`, `completed`, `failed`, `cancelled`, `reconciliation_required`), preflight target eligibility (`GET /api/v1/vms/{vm}/plan-change/targets`), preview (`POST /api/v1/vms/{vm}/plan-change/preview`), async execution (`ApplyVpsPlanChangeJob` on `high` queue with ETag conflict retries and post-apply hypervisor verification), cancellation (`POST /api/v1/vms/{vm}/plan-changes/{public_id}/cancel`), `from_version_id = NULL` assignment for custom-sized VMs, disk scale-up only enforcement (`DISK_SHRINK_NOT_SUPPORTED`) with guest filesystem expansion notice (`DISK_GUEST_RESIZE_MAY_BE_REQUIRED`), `manual` network mode restriction (`NETWORK_LIMIT_NOT_SUPPORTED_MODE`), network capacity non-reservation, scheduled sweep (`php artisan vps:reconcile-plan-changes` every 5 minutes via `ReconcileVpsPlanChangeJob`), and administrative triage/resolution (`POST /api/v1/admin/vps/plan-changes/{public_id}/resolve` with `complete`, `fail`, `retry` actions and `AdminPlanChangesView`).
+- **Extension Contracts & Developer Preview (`@experimental`) Hooks:** Added `VpsPlanChangeAuthorizerInterface`, `VpsProvisioningAuthorizerInterface`, authorization DTOs (`VpsPlanChangeAuthorizationRequest`, `VpsPlanChangeAuthorizationResult`, `VpsProvisioningAuthorizationRequest`, `VpsProvisioningAuthorizationResult`, `VpsAuthorizationInitiator`, `VpsAuthorizationStatus`), outside-transaction authorizer invocation bounded by `vps.authorizer_timeout_seconds`, `VpsPlanChangeService::resumeAuthorization()`, hypervisor resource DTOs (`InstanceResourceSpec`, `NetworkLimitsSpec`), 14 `@experimental` `vps.plan.*` / `vps.plan.version.*` / `vps.plan_change.*` domain events, optional plan-change keys (`operation_id`, `from_plan_version_id`, `to_plan_version_id`, `net_download_mbps`, `net_upload_mbps`) on `instance.resized`, and `@experimental` UI slots (`vps.plan.card`, `vps.plan.change.preview`).
+- **Documentation & Reconciliation Runbook:** Added [`docs/features/plans.md`](docs/features/plans.md) and [`docs/operations/vps-plan-reconciliation.md`](docs/operations/vps-plan-reconciliation.md), updated extension guides, `docs/operations/commands.md`, `docs/README.md`, and root `README.md`.
+
+### Changed
+- **Exact `MiB`/`GiB` Unit Alignment:** Standardized memory and disk sizing and hypervisor verification on exact binary units (`1 MiB = 1,048,576 bytes`, `1 GiB = 1,073,741,824 bytes`) across `VpsPlanChangeService::matchesResources()` and hypervisor drivers.
+- **Per-User Idempotency Key Scoping:** Scoped `IdempotencyMiddleware` and `idempotency_keys` lookups by `(user_id, key)` so distinct tenants using the same `Idempotency-Key` header do not collide.
+
 ## [1.0.0-alpha.2] - 2026-12-01
 
 ### Added

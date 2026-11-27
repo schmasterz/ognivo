@@ -11,6 +11,8 @@ use App\Models\QuotaGroup;
 use App\Models\User;
 use App\Models\UserQuota;
 use App\Models\VirtualMachine;
+use App\Models\VpsPlan;
+use App\Models\VpsPlanVersion;
 use App\Services\PanelCertificateService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
@@ -282,13 +284,26 @@ final class HostNodeManagementTest extends TestCase
             'is_active' => true,
         ]);
 
-        // Provision VM on Sofia host
-        $res = $this->actingAs($this->customer)->postJson('/api/v1/vms', [
-            'name' => 'sofia-database',
-            'os_image' => 'ubuntu:24.04',
+        /** @var VpsPlan $plan */
+        $plan = VpsPlan::factory()->published()->create();
+        /** @var VpsPlanVersion $version */
+        $version = VpsPlanVersion::factory()->published()->create([
+            'vps_plan_id' => $plan->id,
+            'version' => 1,
             'cpu_cores' => 2,
             'ram_mb' => 2048,
             'disk_gb' => 20,
+            'instance_type' => 'virtual-machine',
+            'net_download_mbps' => null,
+            'net_upload_mbps' => null,
+        ]);
+        $plan->forceFill(['current_version_id' => $version->id])->save();
+
+        // Provision VM on Sofia host
+        $res = $this->actingAs($this->customer)->postJson('/api/v1/vms', [
+            'name' => 'sofia-database',
+            'vps_plan_id' => $plan->id,
+            'os_image' => 'ubuntu:24.04',
             'host_id' => $this->sofiaHost->id,
         ]);
 

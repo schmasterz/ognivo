@@ -4,6 +4,7 @@ use App\Http\Middleware\EnforceSessionLifetimes;
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Http\Middleware\ForbidImpersonationActions;
+use App\Http\Middleware\IdempotencyMiddleware;
 use App\Http\Middleware\SetAuditContext;
 use App\Http\Middleware\SetImpersonationContext;
 use App\Http\Middleware\SetLocaleMiddleware;
@@ -60,6 +61,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin' => EnsureUserIsAdmin::class,
             'active' => EnsureUserIsActive::class,
             'impersonation' => SetImpersonationContext::class,
+            'idempotency' => IdempotencyMiddleware::class,
         ]);
     })
     ->withBindings([

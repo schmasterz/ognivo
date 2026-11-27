@@ -12,6 +12,7 @@ use Override;
  * Model representing an idempotency key record for deduplicating mutating API requests.
  *
  * @property int $id
+ * @property int|null $user_id
  * @property string $key
  * @property string $request_hash
  * @property int|null $response_status
@@ -30,6 +31,7 @@ final class IdempotencyKey extends Model
      * @var list<string>
      */
     protected $fillable = [
+        'user_id',
         'key',
         'request_hash',
         'response_status',
@@ -48,6 +50,7 @@ final class IdempotencyKey extends Model
     protected function casts(): array
     {
         return [
+            'user_id' => 'integer',
             'response_status' => 'integer',
             'response_headers' => 'array',
             'locked_at' => 'datetime',

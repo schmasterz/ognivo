@@ -10,6 +10,8 @@ use App\Models\Image;
 use App\Models\IpPool;
 use App\Models\User;
 use App\Models\UserQuota;
+use App\Models\VpsPlan;
+use App\Models\VpsPlanVersion;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Spatie\Permission\Models\Role;
@@ -92,6 +94,31 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
         ]);
     }
 
+    /**
+     * @param  array<string, mixed>  $versionOverrides
+     */
+    private function createPublishedPlan(array $versionOverrides = []): VpsPlan
+    {
+        /** @var VpsPlan $plan */
+        $plan = VpsPlan::factory()->published()->create();
+
+        /** @var VpsPlanVersion $version */
+        $version = VpsPlanVersion::factory()->published()->create(array_merge([
+            'vps_plan_id' => $plan->id,
+            'version' => 1,
+            'cpu_cores' => 2,
+            'ram_mb' => 2048,
+            'disk_gb' => 20,
+            'instance_type' => 'virtual-machine',
+            'net_download_mbps' => null,
+            'net_upload_mbps' => null,
+        ], $versionOverrides));
+
+        $plan->forceFill(['current_version_id' => $version->id])->save();
+
+        return $plan->fresh();
+    }
+
     public function test_provisioning_fails_if_image_not_associated_with_chosen_compute_node(): void
     {
         // Image only attached to hostA
@@ -104,14 +131,18 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
         ]);
         $image->hosts()->attach([$this->hostA->id]);
 
+        $plan = $this->createPublishedPlan([
+            'instance_type' => 'virtual-machine',
+            'cpu_cores' => 2,
+            'ram_mb' => 2048,
+            'disk_gb' => 20,
+        ]);
+
         // Attempt to provision on hostB
         $response = $this->actingAs($this->customer)
             ->postJson('/api/v1/vms', [
                 'name' => 'test-foreign-host',
-                'instance_type' => 'virtual-machine',
-                'cpu_cores' => 2,
-                'ram_mb' => 2048,
-                'disk_gb' => 20,
+                'vps_plan_id' => $plan->id,
                 'os_image' => 'debian/dedicated-eu:12',
                 'host_id' => $this->hostB->id,
             ]);
@@ -133,14 +164,18 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
         ]);
         $windowsImage->hosts()->attach([$this->hostA->id]);
 
+        $plan = $this->createPublishedPlan([
+            'instance_type' => 'container',
+            'cpu_cores' => 2,
+            'ram_mb' => 2048,
+            'disk_gb' => 20,
+        ]);
+
         // Attempt to provision as container
         $response = $this->actingAs($this->customer)
             ->postJson('/api/v1/vms', [
                 'name' => 'lxc-windows-test',
-                'instance_type' => 'container',
-                'cpu_cores' => 2,
-                'ram_mb' => 2048,
-                'disk_gb' => 20,
+                'vps_plan_id' => $plan->id,
                 'os_image' => 'windows/server-2025',
                 'host_id' => $this->hostA->id,
             ]);
@@ -161,13 +196,17 @@ final class ImageComputeNodeAndLxcRestrictionTest extends TestCase
         ]);
         $windowsImage->hosts()->attach([$this->hostA->id]);
 
+        $plan = $this->createPublishedPlan([
+            'instance_type' => 'virtual-machine',
+            'cpu_cores' => 2,
+            'ram_mb' => 4096,
+            'disk_gb' => 50,
+        ]);
+
         $response = $this->actingAs($this->customer)
             ->postJson('/api/v1/vms', [
                 'name' => 'vm-windows-test',
-                'instance_type' => 'virtual-machine',
-                'cpu_cores' => 2,
-                'ram_mb' => 4096,
-                'disk_gb' => 50,
+                'vps_plan_id' => $plan->id,
                 'os_image' => 'windows/server-2022-vm',
                 'host_id' => $this->hostA->id,
             ]);

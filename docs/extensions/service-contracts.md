@@ -1,6 +1,6 @@
 # Service Contracts
 
-Ognivo Core defines **4 pluggable PHP interfaces** in `backend/app/Contracts/` to decouple infrastructure orchestration from external DNS, notification, billing, and backup providers.
+Ognivo Core defines **6 pluggable PHP interfaces** in `backend/app/Contracts/` to decouple infrastructure orchestration from external DNS, notification, billing, backup, provisioning authorization, and plan-change authorization providers.
 
 Extensions provide custom behavior by binding implementations of these contracts in Laravel's service container without modifying any core file.
 
@@ -120,6 +120,69 @@ interface BackupTargetInterface
 }
 ```
 
+### 5. `VpsPlanChangeAuthorizerInterface`
+
+> [!NOTE]
+> **Status: Developer Preview (`@experimental`)**  
+> Provided as an architectural preview. Subject to refinement in minor `1.x` releases based on feedback from the first production reference implementations.
+
+Contract: `App\Contracts\VpsPlanChangeAuthorizerInterface` (`backend/app/Contracts/VpsPlanChangeAuthorizerInterface.php`)
+
+Allows an external billing or approval module to allow, deny, or pause (`pending` -> `awaiting_authorization`) a VPS plan-change request before database locks or hypervisor mutations occur:
+
+```php
+interface VpsPlanChangeAuthorizerInterface
+{
+    public function authorize(VpsPlanChangeAuthorizationRequest $request): VpsPlanChangeAuthorizationResult;
+}
+```
+
+### 6. `VpsProvisioningAuthorizerInterface`
+
+> [!NOTE]
+> **Status: Developer Preview (`@experimental`)**  
+> Provided as an architectural preview. Subject to refinement in minor `1.x` releases based on feedback from the first production reference implementations.
+
+Contract: `App\Contracts\VpsProvisioningAuthorizerInterface` (`backend/app/Contracts/VpsProvisioningAuthorizerInterface.php`)
+
+Allows an external module to authorize or deny instance provisioning requests (with or without a `vps_plan_id`):
+
+```php
+interface VpsProvisioningAuthorizerInterface
+{
+    public function authorize(VpsProvisioningAuthorizationRequest $request): VpsProvisioningAuthorizationResult;
+}
+```
+
+### Authorization DTOs & Execution Model (`@experimental`)
+
+Located in `backend/app/DTO/Contracts/`:
+
+| Class / Enum | Properties / Cases |
+| :--- | :--- |
+| `VpsAuthorizationStatus` | `Allowed = 'allowed'`, `Denied = 'denied'`, `Pending = 'pending'` |
+| `VpsAuthorizationInitiator` | `int $id`, `bool $isAdmin` |
+| `VpsPlanChangeAuthorizationRequest` | `string $requestId` (ULID `public_id`), `int $userId`, `int $virtualMachineId`, `?int $fromVersionId`, `int $toVersionId`, `array $oldResources`, `array $newResources`, `VpsAuthorizationInitiator $initiator` |
+| `VpsPlanChangeAuthorizationResult` | `VpsAuthorizationStatus $status`, `?string $reference = null`, `?string $reasonCode = null`, `?string $safeMessage = null` |
+| `VpsProvisioningAuthorizationRequest` | `string $requestId`, `int $userId`, `int $toVersionId`, `VpsAuthorizationInitiator $initiator`, `?int $virtualMachineId = null`, `?int $fromVersionId = null`, `array $oldResources = []`, `array $newResources = []` |
+| `VpsProvisioningAuthorizationResult` | `VpsAuthorizationStatus $status`, `?string $reference = null`, `?string $reasonCode = null`, `?string $safeMessage = null` |
+
+- **Outside-transaction invocation & timeout:** Both `VmProvisioningService::authorizeProvisioning()` and `VpsPlanChangeService::authorizePlanChange()` invoke the authorizer **outside** any `DB::transaction()` or Redis/database row lock so slow external HTTP calls never stall MySQL locks. Execution is bounded by `config('vps.authorizer_timeout_seconds')` (`VPS_AUTHORIZER_TIMEOUT_SECONDS`, default `3` seconds) using `pcntl_alarm` and an `hrtime` wall-clock check; timeouts or thrown exceptions fail closed with HTTP `503` (`EXTENSION_AUTHORIZATION_UNAVAILABLE`).
+- **Asynchronous approval (`VpsPlanChangeService::resumeAuthorization()`):** When `VpsPlanChangeAuthorizerInterface::authorize()` returns `VpsAuthorizationStatus::Pending`, `VpsPlanChangeService::request()` persists the plan change in `awaiting_authorization` (`stage = 'authorization'`). Once external approval or payment settles, the extension calls:
+  ```php
+  app(VpsPlanChangeService::class)->resumeAuthorization(
+      publicId: $publicId,
+      result: new VpsPlanChangeAuthorizationResult(
+          status: VpsAuthorizationStatus::Allowed,
+          reference: 'inv_12345',
+      ),
+  );
+  ```
+  `resumeAuthorization()` acquires a `lockForUpdate()` CAS lock on the `VpsPlanChange` row (`404` if missing, `409` if no longer in `awaiting_authorization`):
+  - `Allowed`: verifies the VM is still `running` or `stopped`, transitions `awaiting_authorization` → `pending`, and dispatches `ApplyVpsPlanChangeJob` (`afterCommit()`).
+  - `Denied`: transitions to `failed` (`stage = 'authorization'`) with `reasonCode` / `safeMessage` (defaults to `EXTENSION_AUTHORIZATION_DENIED`).
+  - `Pending`: updates `authorization_ref` if provided and leaves the change in `awaiting_authorization`.
+
 ---
 
 ## Binding Custom Implementations
@@ -180,5 +243,7 @@ When core services or other extensions inject `DnsProviderInterface` via constru
 | `NotificationChannelInterface` | Anonymous log implementation | `getIdentifier()` returns `'log'`; `isConfigured()` returns `true`; `send()` writes an info entry via `Log::info(...)` and returns `true`. |
 | `BillingProviderInterface` | Anonymous null implementation | `getIdentifier()` returns `'null'`; `recordUsage()` is a no-op. |
 | `BackupTargetInterface` | `App\Services\Backup\LocalSnapshotTarget` | Delegates `create`, `restore`, `delete`, and `list` to the VM's hypervisor driver via `HypervisorManager::driverForVm()`. |
+| `VpsPlanChangeAuthorizerInterface` | `App\Services\Vps\AllowAllVpsPlanChangeAuthorizer` | Unconditionally returns `VpsAuthorizationStatus::Allowed`. |
+| `VpsProvisioningAuthorizerInterface` | `App\Services\Vps\AllowAllVpsProvisioningAuthorizer` | Unconditionally returns `VpsAuthorizationStatus::Allowed`. |
 
 `ExtensionServiceProvider::register()` only binds a fallback when `! $this->app->bound(ContractInterface::class)` is true, ensuring any earlier container binding is never overwritten.

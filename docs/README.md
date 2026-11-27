@@ -23,11 +23,13 @@ Welcome to the **Ognivo** technical documentation. All guides are organized into
 - **[Interactive Web Terminal](features/console.md)** - `xterm.js` terminals through the `console-proxy`, the `exec` and serial `console` drivers, single-use Redis tickets, session limits and idle timeout, the read-only boot log, and strict tenant privacy isolation.
 - **[Virtual Machine Snapshots](features/snapshots.md)** - Point-in-time VM/container snapshots, state machine, concurrency locks, quota enforcement, REST API, and `BackupTargetInterface` extension points.
 - **[Instance Metrics](features/metrics.md)** - Per-instance historical telemetry (`1h`–`30d`), `METRICS_ENABLED` flag, `incus-agent` requirements, 3-tier retention (`12h / 8d / 35d`), storage growth formula, and `mysqldump` backup exclusion.
+- **[VPS Plans & Online Plan Changes](features/plans.md)** - Versioned VPS plan catalog (`draft` / `published` / `archived`, immutable versions), online plan-change flow, disk scale-up rules, network bandwidth limits, and custom-to-plan assignment.
 
 ## 4. Operations & Reference (`docs/operations/`)
 - **[Production Deployment](operations/production.md)** - Building self-contained images, startup safety enforcement, creating the initial administrator, and installing real TLS certificates.
 - **[Configuration Reference](operations/configuration.md)** - Environment variable dictionary with code defaults and production example values, terminal settings, Reverb WebSocket split flow, healthchecks, production safety checks, and `APP_KEY` rotation procedure.
 - **[Commands Reference](operations/commands.md)** - Makefile targets, native Docker Compose commands, Laravel Artisan CLI (setup, hypervisor, audit), scheduled tasks and background daemons, and MySQL/Redis container inspection.
+- **[VPS Plan Change Reconciliation Runbook](operations/vps-plan-reconciliation.md)** - Triage and manual resolution (`complete`, `fail`, `retry`) for `reconciliation_required` plan changes, `vps:reconcile-plan-changes` scheduled sweep, and `config/vps.php` timings.
 - **[Troubleshooting](operations/troubleshooting.md)** - Solutions for common configuration, port binding, database credential, and Nginx reverse-proxy issues.
 
 ## 5. Testing & Quality Assurance (`docs/testing/`)
@@ -37,9 +39,9 @@ Welcome to the **Ognivo** technical documentation. All guides are organized into
 
 ## 6. Extension Points & Developer Guides (`docs/extensions/`)
 - **[Extension Architecture & Manifest](extensions/index.md)** - Architecture overview, `ognivo-extension.json` manifest specification, Composer PSR-4 discovery via `ExtensionRegistry`, and `/api/v1/extensions` API.
-- **[Domain Events Catalog](extensions/events-catalog.md)** - Transaction-safe event dispatching (`ShouldDispatchAfterCommit`), payload schemas, and event catalog for all 17 domain events.
-- **[Service Contracts](extensions/service-contracts.md)** - Core extension interfaces (`DnsProviderInterface`, `NotificationChannelInterface`, `BillingProviderInterface`, `BackupTargetInterface`) and container binding.
-- **[Frontend Slots & Theming](extensions/frontend-slots.md)** - UI slot registry (`slotRegistry.ts`), navigation registry, and theme token customizations.
+- **[Domain Events Catalog](extensions/events-catalog.md)** - Transaction-safe event dispatching (`ShouldDispatchAfterCommit`), payload schemas, 17 core events (including `instance.resized` plan-change keys), and 14 `@experimental` `vps.plan.*` / `vps.plan.version.*` / `vps.plan_change.*` events.
+- **[Service Contracts](extensions/service-contracts.md)** - Core extension interfaces (`DnsProviderInterface`, `NotificationChannelInterface`, `BillingProviderInterface`, `BackupTargetInterface`) plus `@experimental` `VpsPlanChangeAuthorizerInterface` and `VpsProvisioningAuthorizerInterface` authorizer contracts and container binding.
+- **[Frontend Slots & Theming](extensions/frontend-slots.md)** - UI slot registry (`slotRegistry.ts`, including `@experimental` `vps.plan.card` and `vps.plan.change.preview` slots), navigation registry, and theme token customizations.
 - **[Webhooks & Service Tokens](extensions/webhooks-and-tokens.md)** - HMAC-SHA256 webhook delivery, retry policies, and `srv_` service tokens with scoped abilities and system audit logging.
 - **[Idempotency Engine](extensions/idempotency.md)** - `Idempotency-Key` header, request fingerprinting, atomic locks, and replay responses.
 - **[Stability Policy](extensions/stability-policy.md)** - SemVer contract freeze from 1.0.0, deprecation cycle, and breaking change guarantees.

@@ -20,7 +20,9 @@ use App\Models\Host;
 use App\Models\Image;
 use App\Models\User;
 use App\Models\VirtualMachine;
+use App\Models\VpsPlanChange;
 use App\Services\Hypervisor\HypervisorManager;
+use App\Services\Vps\VpsPlanChangeService;
 use App\States\Host\Unreachable;
 use App\States\Vm\Deleted;
 use App\States\Vm\Deleting;
@@ -100,6 +102,41 @@ class VmLifecycleService
 
         $isAdmin = $user !== null && $user->hasRole('admin');
         $actualForce = ($action === 'delete') ? ($isAdmin && $force) : $force;
+
+        $activePlanChange = VpsPlanChange::query()
+            ->where('virtual_machine_id', $vm->id)
+            ->active()
+            ->first();
+
+        if ($activePlanChange !== null) {
+            if (! ($action === 'delete' && $actualForce)) {
+                $this->logger()->recordIndependent(new AuditEntry(
+                    action: AuditAction::VmActionDenied,
+                    outcome: AuditOutcome::Denied,
+                    subject: $vm,
+                    tenantUserId: $vm->user_id,
+                    visibility: 'tenant',
+                    context: [
+                        'action' => $action,
+                        'reason' => 'another_change_in_progress',
+                        'vps_plan_change_id' => $activePlanChange->id,
+                    ],
+                ));
+
+                abort(response()->json([
+                    'message' => 'Another plan change is already in progress for this virtual machine.',
+                    'code' => 'ANOTHER_CHANGE_IN_PROGRESS',
+                ], 409));
+            }
+
+            app(VpsPlanChangeService::class)->markFailed(
+                change: $activePlanChange,
+                errorCode: 'VM_DELETED',
+                errorMessage: 'Virtual machine was force deleted while a plan change was active.',
+                stage: $activePlanChange->stage,
+                actor: $user,
+            );
+        }
 
         if ($vm->host !== null && $vm->host->status->equals(Unreachable::class)) {
             if (! ($action === 'delete' && $actualForce)) {

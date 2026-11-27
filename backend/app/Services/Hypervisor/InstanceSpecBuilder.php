@@ -22,6 +22,7 @@ class InstanceSpecBuilder
 {
     public function __construct(
         protected readonly GuestOsResolver $guestOsResolver = new GuestOsResolver,
+        protected readonly NicDeviceBuilder $nicDeviceBuilder = new NicDeviceBuilder,
     ) {}
 
     /**
@@ -50,7 +51,7 @@ class InstanceSpecBuilder
 
         $config = array_merge([
             'limits.cpu' => (string) $vm->cpu_cores,
-            'limits.memory' => sprintf('%dMB', $vm->ram_mb),
+            'limits.memory' => sprintf('%dMiB', $vm->ram_mb),
         ], $osAdapter->extraInstanceConfig($vm->instance_type));
 
         $userData = $this->extractUserData($vm);
@@ -67,7 +68,7 @@ class InstanceSpecBuilder
                 'type' => 'disk',
                 'pool' => $storagePool,
                 'path' => '/',
-                'size' => sprintf('%dGB', $vm->disk_gb),
+                'size' => sprintf('%dGiB', $vm->disk_gb),
             ],
         ], $osAdapter->extraDevices($vm->instance_type));
 
@@ -78,20 +79,18 @@ class InstanceSpecBuilder
             $macAddress = $allocation?->mac_address;
             $dnsServers = $allocation?->pool?->dns_servers ?? NetworkConstants::DEFAULT_DNS_SERVERS;
             $effectiveMac = $macAddress ?: '02:54:00:00:00:01';
+            $effectiveMode = ($networkMode === 'bridged' || $networkMode === 'macvlan') ? $networkMode : 'routed';
 
-            if ($networkMode === 'bridged' || $networkMode === 'macvlan') {
-                $nic = [
-                    'type' => 'nic',
-                    'nictype' => $networkMode,
-                    'parent' => $parentInterface,
-                ];
+            $devices['eth0'] = $this->nicDeviceBuilder->build(
+                networkMode: $effectiveMode,
+                parentInterface: $parentInterface,
+                ipAddress: $ipAddress,
+                macAddress: $macAddress,
+                downloadMbps: $vm->net_download_mbps,
+                uploadMbps: $vm->net_upload_mbps,
+            );
 
-                if ($macAddress !== null && $macAddress !== '') {
-                    $nic['hwaddr'] = $macAddress;
-                }
-
-                $devices['eth0'] = $nic;
-
+            if ($effectiveMode === 'bridged' || $effectiveMode === 'macvlan') {
                 if ($allocation !== null && $ipAddress !== null && $ipAddress !== '') {
                     $prefix = $this->extractPrefixFromCidr($allocation->pool->cidr ?: $allocation->pool->subnet);
                     $gateway = $allocation->pool->gateway;
@@ -114,23 +113,6 @@ class InstanceSpecBuilder
                     $config['cloud-init.user-data'] = "#cloud-config\nmanage_etc_hosts: true\n";
                 }
             } else {
-                // Default: 'routed' mode
-                $nic = [
-                    'type' => 'nic',
-                    'nictype' => 'routed',
-                    'parent' => $parentInterface,
-                ];
-
-                if ($ipAddress !== null && $ipAddress !== '') {
-                    $nic['ipv4.address'] = $ipAddress;
-                }
-
-                if ($macAddress !== null && $macAddress !== '') {
-                    $nic['hwaddr'] = $macAddress;
-                }
-
-                $devices['eth0'] = $nic;
-
                 // Instances require cloud-init Netplan v2 configuration for DNS nameservers and link-local default route (NetworkConstants::ROUTED_GUEST_GATEWAY)
                 if ($allocation !== null) {
                     $networkConfig = $osAdapter->buildRoutedNetworkConfig(

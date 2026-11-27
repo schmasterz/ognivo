@@ -21,6 +21,20 @@ use App\Events\Storage\SnapshotCreated;
 use App\Events\Storage\VolumeAttached;
 use App\Events\Storage\VolumeCreated;
 use App\Events\Storage\VolumeDetached;
+use App\Events\Vps\VpsPlanArchived;
+use App\Events\Vps\VpsPlanChangeCancelled;
+use App\Events\Vps\VpsPlanChangeCompleted;
+use App\Events\Vps\VpsPlanChangeFailed;
+use App\Events\Vps\VpsPlanChangeReconciliationRequired;
+use App\Events\Vps\VpsPlanChangeRequested;
+use App\Events\Vps\VpsPlanChangeStarted;
+use App\Events\Vps\VpsPlanCreated;
+use App\Events\Vps\VpsPlanPublished;
+use App\Events\Vps\VpsPlanUnarchived;
+use App\Events\Vps\VpsPlanUnpublished;
+use App\Events\Vps\VpsPlanUpdated;
+use App\Events\Vps\VpsPlanVersionCreated;
+use App\Events\Vps\VpsPlanVersionPublished;
 use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
 
 /**
@@ -187,3 +201,208 @@ it('adheres to the Ognivo domain event contract', function (string $eventClass, 
         ->toBeArray()
         ->not->toBeEmpty();
 })->with('domainEvents');
+
+/**
+ * @return array<class-string<AbstractOgnivoEvent>, callable(): AbstractOgnivoEvent>
+ */
+function experimentalVpsDomainEventContractFactories(): array
+{
+    $actor = [
+        'type' => 'system',
+        'id' => null,
+        'label' => 'contract-test',
+    ];
+
+    return [
+        VpsPlanCreated::class => fn (): AbstractOgnivoEvent => new VpsPlanCreated(
+            planId: 1,
+            slug: 'starter',
+            name: 'Starter',
+            status: 'draft',
+            draftVersionId: 10,
+            actor: $actor,
+        ),
+        VpsPlanUpdated::class => fn (): AbstractOgnivoEvent => new VpsPlanUpdated(
+            planId: 1,
+            slug: 'starter',
+            name: 'Starter Plus',
+            sortOrder: 10,
+            status: 'draft',
+            actor: $actor,
+        ),
+        VpsPlanPublished::class => fn (): AbstractOgnivoEvent => new VpsPlanPublished(
+            planId: 1,
+            slug: 'starter',
+            name: 'Starter',
+            currentVersionId: 10,
+            actor: $actor,
+        ),
+        VpsPlanUnpublished::class => fn (): AbstractOgnivoEvent => new VpsPlanUnpublished(
+            planId: 1,
+            slug: 'starter',
+            name: 'Starter',
+            actor: $actor,
+        ),
+        VpsPlanArchived::class => fn (): AbstractOgnivoEvent => new VpsPlanArchived(
+            planId: 1,
+            slug: 'starter',
+            name: 'Starter',
+            actor: $actor,
+        ),
+        VpsPlanUnarchived::class => fn (): AbstractOgnivoEvent => new VpsPlanUnarchived(
+            planId: 1,
+            slug: 'starter',
+            name: 'Starter',
+            actor: $actor,
+        ),
+        VpsPlanVersionCreated::class => fn (): AbstractOgnivoEvent => new VpsPlanVersionCreated(
+            planId: 1,
+            versionId: 10,
+            cpuCores: 2,
+            ramMb: 2048,
+            diskGb: 40,
+            instanceType: 'container',
+            netDownloadMbps: 1000,
+            netUploadMbps: 1000,
+            changeSummary: 'Initial version',
+            actor: $actor,
+        ),
+        VpsPlanVersionPublished::class => fn (): AbstractOgnivoEvent => new VpsPlanVersionPublished(
+            planId: 1,
+            versionId: 11,
+            version: 2,
+            cpuCores: 4,
+            ramMb: 4096,
+            diskGb: 80,
+            instanceType: 'container',
+            netDownloadMbps: 1000,
+            netUploadMbps: 1000,
+            supersededVersionId: 10,
+            actor: $actor,
+        ),
+        VpsPlanChangeRequested::class => fn (): AbstractOgnivoEvent => new VpsPlanChangeRequested(
+            planChangeId: 100,
+            publicId: 'chg_01',
+            virtualMachineId: 5,
+            userId: 42,
+            fromVersionId: 10,
+            toVersionId: 11,
+            oldResources: ['cpu_cores' => 2, 'ram_mb' => 2048, 'disk_gb' => 40],
+            newResources: ['cpu_cores' => 4, 'ram_mb' => 4096, 'disk_gb' => 80],
+            actor: $actor,
+        ),
+        VpsPlanChangeStarted::class => fn (): AbstractOgnivoEvent => new VpsPlanChangeStarted(
+            planChangeId: 100,
+            publicId: 'chg_01',
+            virtualMachineId: 5,
+            userId: 42,
+            fromVersionId: 10,
+            toVersionId: 11,
+            actor: $actor,
+        ),
+        VpsPlanChangeCompleted::class => fn (): AbstractOgnivoEvent => new VpsPlanChangeCompleted(
+            planChangeId: 100,
+            publicId: 'chg_01',
+            virtualMachineId: 5,
+            userId: 42,
+            fromVersionId: 10,
+            toVersionId: 11,
+            oldResources: ['cpu_cores' => 2, 'ram_mb' => 2048, 'disk_gb' => 40],
+            newResources: ['cpu_cores' => 4, 'ram_mb' => 4096, 'disk_gb' => 80],
+            actor: $actor,
+        ),
+        VpsPlanChangeFailed::class => fn (): AbstractOgnivoEvent => new VpsPlanChangeFailed(
+            planChangeId: 100,
+            publicId: 'chg_01',
+            virtualMachineId: 5,
+            userId: 42,
+            fromVersionId: 10,
+            toVersionId: 11,
+            errorCode: 'hypervisor_error',
+            errorMessage: 'Resize failed',
+            stage: 'applying',
+            actor: $actor,
+        ),
+        VpsPlanChangeCancelled::class => fn (): AbstractOgnivoEvent => new VpsPlanChangeCancelled(
+            planChangeId: 100,
+            publicId: 'chg_01',
+            virtualMachineId: 5,
+            userId: 42,
+            fromVersionId: 10,
+            toVersionId: 11,
+            actor: $actor,
+        ),
+        VpsPlanChangeReconciliationRequired::class => fn (): AbstractOgnivoEvent => new VpsPlanChangeReconciliationRequired(
+            planChangeId: 100,
+            publicId: 'chg_01',
+            virtualMachineId: 5,
+            userId: 42,
+            fromVersionId: 10,
+            toVersionId: 11,
+            errorCode: 'reconciliation_required',
+            errorMessage: 'Partial hypervisor state',
+            stage: 'rollback',
+            actor: $actor,
+        ),
+    ];
+}
+
+dataset('experimentalVpsDomainEvents', function (): array {
+    $rows = [];
+
+    foreach (experimentalVpsDomainEventContractFactories() as $eventClass => $factory) {
+        $rows[$eventClass] = [$eventClass, $factory];
+    }
+
+    return $rows;
+});
+
+it('registers all 14 experimental VPS domain events with unique dot-notation event names', function (): void {
+    $factories = experimentalVpsDomainEventContractFactories();
+    $names = array_map(
+        static fn (callable $factory): string => $factory()->getEventName(),
+        $factories,
+    );
+
+    expect($factories)->toHaveCount(14)
+        ->and(array_unique($names))->toHaveCount(14);
+});
+
+/**
+ * @param  class-string<AbstractOgnivoEvent>  $eventClass
+ * @param  callable(): AbstractOgnivoEvent  $factory
+ */
+it('adheres to the Ognivo experimental VPS domain event contract', function (string $eventClass, callable $factory): void {
+    expect(class_exists($eventClass))->toBeTrue()
+        ->and(is_subclass_of($eventClass, AbstractOgnivoEvent::class))->toBeTrue()
+        ->and(is_subclass_of($eventClass, OgnivoEventInterface::class))->toBeTrue()
+        ->and(is_subclass_of($eventClass, ShouldDispatchAfterCommit::class))->toBeTrue();
+
+    $reflection = new ReflectionClass($eventClass);
+    $docComment = $reflection->getDocComment();
+
+    expect($docComment)
+        ->toBeString()
+        ->toContain('@experimental');
+
+    $event = $factory();
+
+    expect($event)
+        ->toBeInstanceOf($eventClass)
+        ->toBeInstanceOf(AbstractOgnivoEvent::class)
+        ->toBeInstanceOf(OgnivoEventInterface::class)
+        ->toBeInstanceOf(ShouldDispatchAfterCommit::class)
+        ->and($event->getEventName())
+        ->toBeString()
+        ->not->toBeEmpty()
+        ->toMatch('/^[a-z0-9_]+(\.[a-z0-9_]+)+$/')
+        ->and($event->getPayload())
+        ->toBeArray()
+        ->not->toBeEmpty()
+        ->and($event->getActor())
+        ->toBe([
+            'type' => 'system',
+            'id' => null,
+            'label' => 'contract-test',
+        ]);
+})->with('experimentalVpsDomainEvents');

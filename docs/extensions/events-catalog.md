@@ -1,6 +1,6 @@
 # Domain Events Catalog
 
-Ognivo Core emits **17 strongly typed domain events** covering instance lifecycles, compute hosts, storage operations, access control, and scheduled maintenance. Extensions can listen to these events in-process via Laravel's event dispatcher or out-of-process via [Webhooks](./webhooks-and-tokens.md).
+Ognivo Core emits **17 stable domain events** covering instance lifecycles, compute hosts, storage operations, access control, and scheduled maintenance, plus **14 `@experimental` VPS plan and plan-change events** (`App\Events\Vps\*`). Extensions can listen to these events in-process via Laravel's event dispatcher or out-of-process via [Webhooks](./webhooks-and-tokens.md).
 
 ---
 
@@ -98,7 +98,7 @@ Namespace: `App\Events\Instance\`
 | `instance.stopped` | `InstanceStopped` | `instance_id` (`int`), `name` (`string`), `status` (`string`, default `"stopped"`) |
 | `instance.rebooted` | `InstanceRebooted` | `instance_id` (`int`), `name` (`string`), `status` (`string`, default `"running"`) |
 | `instance.terminated` | `InstanceTerminated` | `instance_id` (`int`), `name` (`string`) |
-| `instance.resized` | `InstanceResized` | `instance_id` (`int`), `old_specs` (`array{cpu?: int, memory_mb?: int, disk_gb?: int}`), `new_specs` (`array{cpu?: int, memory_mb?: int, disk_gb?: int}`) |
+| `instance.resized` | `InstanceResized` | `instance_id` (`int`), `old_specs` (`array{cpu?: int, memory_mb?: int, disk_gb?: int, net_download_mbps?: int\|null, net_upload_mbps?: int\|null}`), `new_specs` (`array{cpu?: int, memory_mb?: int, disk_gb?: int, net_download_mbps?: int\|null, net_upload_mbps?: int\|null}`), and optional (omitted when `null`): `operation_id` (`string`), `from_plan_version_id` (`int`), `to_plan_version_id` (`int`) |
 
 ### Host Events (4)
 
@@ -133,3 +133,42 @@ Namespace: `App\Events\Access\`
 | `system.maintenance_window_scheduled` | `MaintenanceWindowScheduled` | `title` (`string`), `starts_at` (`string`), `ends_at` (`string`) |
 
 > **Note:** `MaintenanceWindowScheduled` resides in the `App\Events\Access` namespace while returning `"system.maintenance_window_scheduled"` from `getEventName()`. Always filter webhooks and listeners by `getEventName()` or the class FQCN.
+
+---
+
+## Experimental Events (`@experimental` — 14 Events)
+
+> [!NOTE]
+> **Status: Developer Preview (`@experimental`)**  
+> All events under `App\Events\Vps\` are in Developer Preview and may evolve in minor `1.x` releases before freezing under the [Stability Policy](./stability-policy.md). Like core events, they extend `AbstractOgnivoEvent` and implement `ShouldDispatchAfterCommit`.
+
+Namespace: `App\Events\Vps\`
+
+### VPS Plan Events (6)
+
+| Event Name | Class | Payload Keys & Types |
+| --- | --- | --- |
+| `vps.plan.created` | `VpsPlanCreated` | `vps_plan_id` (`int`), `slug` (`string`), `name` (`string`), `status` (`string`), `draft_version_id` (`int\|null`) |
+| `vps.plan.updated` | `VpsPlanUpdated` | `vps_plan_id` (`int`), `slug` (`string`), `name` (`string`), `sort_order` (`int`), `status` (`string`) |
+| `vps.plan.published` | `VpsPlanPublished` | `vps_plan_id` (`int`), `slug` (`string`), `name` (`string`), `current_version_id` (`int`) |
+| `vps.plan.unpublished` | `VpsPlanUnpublished` | `vps_plan_id` (`int`), `slug` (`string`), `name` (`string`) |
+| `vps.plan.archived` | `VpsPlanArchived` | `vps_plan_id` (`int`), `slug` (`string`), `name` (`string`) |
+| `vps.plan.unarchived` | `VpsPlanUnarchived` | `vps_plan_id` (`int`), `slug` (`string`), `name` (`string`) |
+
+### VPS Plan Version Events (2)
+
+| Event Name | Class | Payload Keys & Types |
+| --- | --- | --- |
+| `vps.plan.version.created` | `VpsPlanVersionCreated` | `vps_plan_id` (`int`), `vps_plan_version_id` (`int`), `cpu_cores` (`int`), `ram_mb` (`int`), `disk_gb` (`int`), `instance_type` (`string`), `net_download_mbps` (`int\|null`), `net_upload_mbps` (`int\|null`), `change_summary` (`string\|null`) |
+| `vps.plan.version.published` | `VpsPlanVersionPublished` | `vps_plan_id` (`int`), `vps_plan_version_id` (`int`), `version` (`int`), `superseded_version_id` (`int\|null`), `cpu_cores` (`int`), `ram_mb` (`int`), `disk_gb` (`int`), `instance_type` (`string`), `net_download_mbps` (`int\|null`), `net_upload_mbps` (`int\|null`) |
+
+### VPS Plan Change Events (6)
+
+| Event Name | Class | Payload Keys & Types |
+| --- | --- | --- |
+| `vps.plan_change.requested` | `VpsPlanChangeRequested` | `vps_plan_change_id` (`int`), `public_id` (`string`), `virtual_machine_id` (`int`), `user_id` (`int`), `from_version_id` (`int\|null`), `to_version_id` (`int`), `old_resources` (`array<string, mixed>`), `new_resources` (`array<string, mixed>`) |
+| `vps.plan_change.started` | `VpsPlanChangeStarted` | `vps_plan_change_id` (`int`), `public_id` (`string`), `virtual_machine_id` (`int`), `user_id` (`int`), `from_version_id` (`int\|null`), `to_version_id` (`int`) |
+| `vps.plan_change.completed` | `VpsPlanChangeCompleted` | `vps_plan_change_id` (`int`), `public_id` (`string`), `virtual_machine_id` (`int`), `user_id` (`int`), `from_version_id` (`int\|null`), `to_version_id` (`int`), `old_resources` (`array<string, mixed>`), `new_resources` (`array<string, mixed>`) |
+| `vps.plan_change.failed` | `VpsPlanChangeFailed` | `vps_plan_change_id` (`int`), `public_id` (`string`), `virtual_machine_id` (`int`), `user_id` (`int`), `from_version_id` (`int\|null`), `to_version_id` (`int`), `error_code` (`string\|null`), `error_message` (`string\|null`), `stage` (`string\|null`) |
+| `vps.plan_change.cancelled` | `VpsPlanChangeCancelled` | `vps_plan_change_id` (`int`), `public_id` (`string`), `virtual_machine_id` (`int`), `user_id` (`int`), `from_version_id` (`int\|null`), `to_version_id` (`int`) |
+| `vps.plan_change.reconciliation_required` | `VpsPlanChangeReconciliationRequired` | `vps_plan_change_id` (`int`), `public_id` (`string`), `virtual_machine_id` (`int`), `user_id` (`int`), `from_version_id` (`int\|null`), `to_version_id` (`int`), `error_code` (`string\|null`), `error_message` (`string\|null`), `stage` (`string\|null`) |

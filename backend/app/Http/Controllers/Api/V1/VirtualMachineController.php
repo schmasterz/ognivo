@@ -153,7 +153,7 @@ final class VirtualMachineController extends Controller
     /**
      * Provision a new virtual machine or container under quota constraints.
      */
-    #[Post('', name: 'vms.store', middleware: ['throttle:vm-actions'])]
+    #[Post('', name: 'vms.store', middleware: ['throttle:vm-actions', 'idempotency'])]
     public function store(CreateVmRequest $request): JsonResponse
     {
         /** @var User $user */

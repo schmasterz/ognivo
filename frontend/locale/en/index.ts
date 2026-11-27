@@ -22,6 +22,7 @@ import auditActions from './auditActions.ts'
 import auditUiLabels from './auditUiLabels.ts'
 import hostNodeImageSelection from './hostNodeImageSelection.ts'
 import instanceMetrics from './instanceMetrics.ts'
+import vpsPlans from './vpsPlans.ts'
 
 const messages = {
   ...brandHeader,
@@ -48,6 +49,7 @@ const messages = {
   ...auditUiLabels,
   ...hostNodeImageSelection,
   ...instanceMetrics,
+  ...vpsPlans,
 }
 
 export type Messages = typeof messages

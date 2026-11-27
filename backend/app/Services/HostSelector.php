@@ -37,7 +37,8 @@ class HostSelector
      *     instance_type?: string|null,
      *     cpu_cores?: int|null,
      *     ram_mb?: int|null,
-     *     disk_gb?: int|null
+     *     disk_gb?: int|null,
+     *     requires_network_limits?: bool
      * } $filters
      */
     public function select(array $filters = []): ?Host
@@ -84,11 +85,12 @@ class HostSelector
         $reqCpu = max(1, $filters['cpu_cores'] ?? 1);
         $reqRam = max(1, $filters['ram_mb'] ?? 1024);
         $reqDisk = max(1, $filters['disk_gb'] ?? 10);
+        $requiresNetworkLimits = (bool) ($filters['requires_network_limits'] ?? false);
 
         // Filter candidates that have at least one active pool with free addresses AND sufficient capacity
         $eligibleHosts = [];
         foreach ($candidateHosts as $host) {
-            if ($this->hostHasFreeIpPool($host) && $this->capacityGuard->canFit($host, $reqCpu, $reqRam, $reqDisk)) {
+            if ($this->hostHasFreeIpPool($host, $requiresNetworkLimits) && $this->capacityGuard->canFit($host, $reqCpu, $reqRam, $reqDisk)) {
                 $eligibleHosts[] = $host;
             }
         }
@@ -109,7 +111,8 @@ class HostSelector
      *     instance_type?: string|null,
      *     cpu_cores?: int|null,
      *     ram_mb?: int|null,
-     *     disk_gb?: int|null
+     *     disk_gb?: int|null,
+     *     requires_network_limits?: bool
      * } $filters
      *
      * @throws ValidationException
@@ -168,17 +171,41 @@ class HostSelector
                 'host_id' => [__('messages.host.capacity_unknown')],
             ]);
         }
+
+        $requiresNetworkLimits = (bool) ($filters['requires_network_limits'] ?? false);
+        if ($requiresNetworkLimits && ! $this->hostHasFreeIpPool($host, true)) {
+            if ($this->hostHasFreeIpPool($host, false)) {
+                $exception = ValidationException::withMessages([
+                    'ip_pool' => ['Network bandwidth limits are not supported by any available IP pool on the selected compute node (manual mode).'],
+                ]);
+                $exception->response = response()->json([
+                    'message' => 'Network bandwidth limits are not supported on hosts with only manual-mode IP pools.',
+                    'code' => 'NETWORK_LIMIT_NOT_SUPPORTED_MODE',
+                    'errors' => $exception->errors(),
+                ], 422);
+
+                throw $exception;
+            }
+
+            throw ValidationException::withMessages([
+                'ip_pool' => ['no free IP on this compute node (No available IP addresses in pool)'],
+            ]);
+        }
     }
 
     /**
      * Check if a host has an active IP pool with free addresses.
      */
-    public function hostHasFreeIpPool(Host $host): bool
+    public function hostHasFreeIpPool(Host $host, bool $requiresNetworkLimits = false): bool
     {
-        $activePools = IpPool::where('host_id', $host->id)
-            ->where('active', true)
-            ->orderBy('id', 'asc')
-            ->get();
+        $query = IpPool::where('host_id', $host->id)
+            ->where('active', true);
+
+        if ($requiresNetworkLimits) {
+            $query->where('network_mode', '!=', 'manual');
+        }
+
+        $activePools = $query->orderBy('id', 'asc')->get();
 
         if ($activePools->isEmpty()) {
             return false;

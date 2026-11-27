@@ -8,8 +8,12 @@ use App\Contracts\BackupTargetInterface;
 use App\Contracts\BillingProviderInterface;
 use App\Contracts\DnsProviderInterface;
 use App\Contracts\NotificationChannelInterface;
+use App\Contracts\VpsPlanChangeAuthorizerInterface;
+use App\Contracts\VpsProvisioningAuthorizerInterface;
 use App\Listeners\WebhookEventSubscriber;
 use App\Services\Backup\LocalSnapshotTarget;
+use App\Services\Vps\AllowAllVpsPlanChangeAuthorizer;
+use App\Services\Vps\AllowAllVpsProvisioningAuthorizer;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
@@ -116,6 +120,14 @@ final class ExtensionServiceProvider extends ServiceProvider
 
         if (! $this->app->bound(BackupTargetInterface::class)) {
             $this->app->bind(BackupTargetInterface::class, LocalSnapshotTarget::class);
+        }
+
+        if (! $this->app->bound(VpsPlanChangeAuthorizerInterface::class)) {
+            $this->app->bind(VpsPlanChangeAuthorizerInterface::class, AllowAllVpsPlanChangeAuthorizer::class);
+        }
+
+        if (! $this->app->bound(VpsProvisioningAuthorizerInterface::class)) {
+            $this->app->bind(VpsProvisioningAuthorizerInterface::class, AllowAllVpsProvisioningAuthorizer::class);
         }
     }
 

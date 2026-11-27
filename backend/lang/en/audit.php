@@ -65,6 +65,23 @@ $actions = [
     'impersonation.started' => 'Administrator impersonation session started',
     'impersonation.ended' => 'Administrator impersonation session ended',
     'audit.exported' => 'Audit log archive exported',
+
+    'vps.plan.created' => 'VPS plan created',
+    'vps.plan.updated' => 'VPS plan updated',
+    'vps.plan.published' => 'VPS plan published',
+    'vps.plan.unpublished' => 'VPS plan unpublished',
+    'vps.plan.archived' => 'VPS plan archived',
+    'vps.plan.unarchived' => 'VPS plan unarchived',
+    'vps.plan.version.created' => 'VPS plan draft version created',
+    'vps.plan.version.published' => 'VPS plan version published',
+    'vps.plan.version.discarded' => 'VPS plan draft version discarded',
+
+    'vps.plan_change.requested' => 'VPS plan change requested',
+    'vps.plan_change.denied' => 'VPS plan change denied',
+    'vps.plan_change.completed' => 'VPS plan change completed',
+    'vps.plan_change.failed' => 'VPS plan change failed',
+    'vps.plan_change.cancelled' => 'VPS plan change cancelled',
+    'vps.plan_change.resolved' => 'VPS plan change manually resolved',
 ];
 
 $nested = [];
