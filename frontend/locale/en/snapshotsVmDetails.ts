@@ -5,7 +5,7 @@ export default {
   vmDetailsTitle: "Instance Details",
   vmDetailsSubtitle: "Specifications, network configuration, and point-in-time snapshots",
   close: "Close",
-  cpu: "CPU Cores",
+  cpu: "vCPU",
   ram: "Memory (RAM)",
   disk: "Disk Storage",
   macAddress: "MAC Address",

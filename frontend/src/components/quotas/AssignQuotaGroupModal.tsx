@@ -167,7 +167,7 @@ export function AssignQuotaGroupModal({
                     <div className="pl-6 text-[11px] text-gray-600 dark:text-gray-300 flex items-center space-x-2 font-mono">
                       <span>{formatQuota(g.max_vms)} VMs</span>
                       <span className="text-gray-300 dark:text-gray-700">•</span>
-                      <span>{formatQuota(g.max_cpu_cores)} Cores</span>
+                      <span>{formatQuota(g.max_cpu_cores)} vCPU</span>
                       <span className="text-gray-300 dark:text-gray-700">•</span>
                       <span>{g.max_ram_mb === -1 ? "∞" : `${Math.round(g.max_ram_mb / 1024)}GB`} RAM</span>
                       <span className="text-gray-300 dark:text-gray-700">•</span>

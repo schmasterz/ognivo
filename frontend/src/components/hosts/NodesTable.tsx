@@ -354,8 +354,16 @@ export function NodesTable({
                         <div className="mb-1.5">{renderCapacitySourceBadge(capacitySource)}</div>
                         <div className="grid grid-cols-3 gap-x-3 gap-y-1 text-xs">
                           <div>
-                            <span className="text-[10px] text-gray-400 block">vCPU</span>
-                            <span className="font-mono font-semibold text-gray-900 dark:text-white">
+                            <span
+                              className="text-[10px] text-gray-400 block cursor-help"
+                              title={`${t("nodeTotalVcpus")}: ${t("nodeTotalVcpusHint")}`}
+                            >
+                              {t("nodeTotalVcpus")}
+                            </span>
+                            <span
+                              className="font-mono font-semibold text-gray-900 dark:text-white"
+                              title={t("nodeTotalVcpusHint")}
+                            >
                               {committedCpu} / {host.total_cpu_cores}
                             </span>
                             {(host.cpu_overcommit ?? 1) > 1 && (

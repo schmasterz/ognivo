@@ -10,7 +10,7 @@ export default {
   lxcContainer: "LXC Container",
   lxcDesc: "Fast, lightweight, shared host kernel",
   osImage: "Operating System Image",
-  cpuCores: "CPU Cores",
+  cpuCores: "vCPU",
   ramGb: "RAM (GB)",
   diskGb: "Disk (GB)",
   avail: "avail",

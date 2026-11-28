@@ -11,7 +11,7 @@ export default {
   clusterOverview: "Resource Allocation",
   totalTenants: "Total Tenants",
   globalVms: "Active Workloads",
-  globalCores: "Allocated Cores",
+  globalCores: "Allocated vCPUs",
   globalRam: "Allocated RAM",
   filteredView: "Filtered",
   clearFilters: "Clear Filters",

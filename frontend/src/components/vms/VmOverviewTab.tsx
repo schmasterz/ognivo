@@ -148,7 +148,7 @@ export function VmOverviewTab({ vm, isAdmin }: VmOverviewTabProps) {
               {t("cpu")}
             </div>
             <div className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
-              {vm.cpu_cores} Cores
+              {vm.cpu_cores} vCPU
             </div>
           </div>
         </div>

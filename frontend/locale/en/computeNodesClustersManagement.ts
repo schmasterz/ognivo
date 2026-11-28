@@ -45,4 +45,6 @@ export default {
   cpuOvercommit: "vCPU Overcommit (1.0x – 16.0x)",
   ramOvercommit: "RAM Overcommit (1.0x – 4.0x)",
   diskOvercommit: "Storage Overcommit (1.0x – 4.0x)",
+  nodeTotalVcpus: "Total vCPUs (Logical Threads)",
+  nodeTotalVcpusHint: "Corresponds to the host's logical threads (e.g. nproc / Hyper-Threading threads), not just physical cores.",
 }

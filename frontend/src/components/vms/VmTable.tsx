@@ -347,7 +347,7 @@ export const VmTableRow = React.memo(function VmTableRow({
 
       <td className="px-4 sm:px-6 py-3.5 whitespace-nowrap">
         <div className="flex items-center space-x-4 text-xs text-gray-600 dark:text-gray-300">
-          <div className="flex items-center space-x-1" title="CPU Cores">
+          <div className="flex items-center space-x-1" title="vCPU">
             <Cpu className="w-3.5 h-3.5 text-emerald-500" />
             <span>{vm.cpu_cores} vCPU</span>
           </div>

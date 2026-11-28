@@ -225,8 +225,8 @@ export function UserManagementTable({
                           {formatQuotaLimit(quota?.max_vms)} VMs
                         </span>
                         <span className="text-gray-300 dark:text-gray-700">|</span>
-                        <span title="Max CPU">
-                          {formatQuotaLimit(quota?.max_cpu_cores)} Cores
+                        <span title="Max vCPU">
+                          {formatQuotaLimit(quota?.max_cpu_cores)} vCPU
                         </span>
                         <span className="text-gray-300 dark:text-gray-700">|</span>
                         <span title="Max RAM">

@@ -5,7 +5,7 @@ export default {
   vmDetailsTitle: "Детайли за Инстанцията",
   vmDetailsSubtitle: "Спецификации, мрежова конфигурация и моментни копия",
   close: "Затвори",
-  cpu: "Процесорни ядра",
+  cpu: "vCPU (виртуални ядра)",
   ram: "RAM Памет",
   disk: "Дисково пространство",
   macAddress: "MAC Адрес",

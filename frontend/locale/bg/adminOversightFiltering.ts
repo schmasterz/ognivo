@@ -11,7 +11,7 @@ export default {
   clusterOverview: "Заделени Ресурси",
   totalTenants: "Общо Клиенти",
   globalVms: "Активни Машини",
-  globalCores: "Заделени Ядра",
+  globalCores: "Заделени vCPU",
   globalRam: "Заделена RAM",
   filteredView: "Филтриран",
   clearFilters: "Изчисти Филтрите",

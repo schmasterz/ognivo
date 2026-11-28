@@ -5,7 +5,7 @@ export default {
   metricsRange24h: "24ч",
   metricsRange7d: "7д",
   metricsRange30d: "30д",
-  metricsCpuTitle: "Натоварване на CPU",
+  metricsCpuTitle: "Натоварване на vCPU",
   metricsMemoryTitle: "Използвана памет (RAM)",
   metricsDiskSpaceTitle: "Дисково пространство (/)",
   metricsDiskIoTitle: "Дисков вход/изход (I/O)",
