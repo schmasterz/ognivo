@@ -24,6 +24,7 @@ import auditUiLabels from './auditUiLabels.ts'
 import hostNodeImageSelection from './hostNodeImageSelection.ts'
 import instanceMetrics from './instanceMetrics.ts'
 import vpsPlans from './vpsPlans.ts'
+import rowActions from './rowActions.ts'
 
 // missing or extra key vs en = build error
 const messages: Messages = {
@@ -52,6 +53,7 @@ const messages: Messages = {
   ...hostNodeImageSelection,
   ...instanceMetrics,
   ...vpsPlans,
+  ...rowActions,
 }
 
 export default messages
