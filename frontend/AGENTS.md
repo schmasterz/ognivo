@@ -67,6 +67,7 @@ src/
 │   ├── audit/                        # Unified AuditLogTab, keyset cursor pagination, AuditDetailDrawer
 │   ├── settings/                     # Platform SettingsModal
 │   └── ui/                           # Reusable primitives (ConfirmModal, PaginationBar, SearchableUserSelect)
+│       └── rowActions/               # Unified table row actions (RowActions, ActionMenu, StickyActionsCell, splitRowActions, menuPlacement)
 └── lib/
     ├── api/                          # Typed HTTP client (client.ts, csrf.ts, ApiError) and domain API modules (vms, hosts, images, networking, quotas, snapshots, audit, admin, auth)
     ├── auth/                         # AuthContext.tsx (cookie session state, login/logout, tenant impersonation), legacyStoragePurge.ts, and sanitizeNextPath.ts
@@ -74,6 +75,7 @@ src/
     ├── hooks/
     │   ├── useCachedFetch.ts         # Session-scoped TTL cache with AbortController & force-refetch
     │   ├── useConfirmDialog.ts       # Reusable confirmation dialog state machine
+    │   ├── useDismissableLayer.ts    # Outside-click, capture-scroll, resize, and stacked Escape dismissal for overlays
     │   └── useModalEscape.ts         # Escape-key handling for modals
     ├── images/imageSelection.ts      # Pure helpers for the per-node image selection payload
     ├── registry/vmRegistry.ts        # Registry of VM details tabs
@@ -85,9 +87,12 @@ src/
 tests/
 ├── components/
 │   ├── audit/audit.test.ts
-│   └── networking/
-│       ├── coolingRefresh.test.ts
-│       └── ipStatusFilter.test.ts
+│   ├── networking/
+│   │   ├── coolingRefresh.test.ts
+│   │   └── ipStatusFilter.test.ts
+│   └── ui/rowActions/
+│       ├── menuPlacement.test.ts
+│       └── splitRowActions.test.ts
 └── lib/
     ├── auth/
     │   ├── legacyStoragePurge.test.ts
@@ -122,6 +127,23 @@ tests/
    - Close the session with `DELETE /api/vms/{id}/console/{sessionId}` when the terminal is closed or reconnects.
 8. **Documentation:**
    - When you change user-visible behavior or add UI text, update the matching page in `docs/` and both languages in `frontend/locale/` (`@locale/*`). New translation sections go under `frontend/locale/{en,bg}/<section>.ts`.
+9. **Table Row Actions:**
+   - Table row actions must use `RowActions` (`@/components/ui/rowActions/RowActions`) inside `StickyActionsTh` / `StickyActionsTd` (`@/components/ui/rowActions/StickyActionsCell`) with a required `severity` (`"safe" | "caution" | "disruptive" | "critical"`).
+   - Every `"disruptive"` and `"critical"` action must go through `useConfirmDialog()` / `<ConfirmModal />`.
+   - Never use native `disabled` on row action inline buttons or menu items (use `disabled` and `disabledReason` on `RowAction`, which renders `aria-disabled="true"` so tooltips and keyboard focus remain accessible).
+
+### Overlay Layers (`z-index`)
+New overlay layers must pick an existing tier from this table instead of inventing ad-hoc `z-index` values:
+
+| Layer | Tailwind class | Owner / Examples |
+|---|---|---|
+| Standard modals | `z-50` | `VmDetailsModal`, create/edit modals |
+| Console & drawers | `z-[60]` | `ConsoleModal`, `ImageSelectionDrawer` |
+| Change-plan modal | `z-[70]` | `ChangePlanModal` |
+| Plan-changes resolution modal | `z-[80]` | `AdminPlanChangesView` modal |
+| Row action menu | `z-[90]` | `ActionMenu` (`createPortal` to `document.body`) |
+| Confirmation modal | `z-[100]` | `ConfirmModal` |
+| Toast notifications | `z-[9999]` | `ToastContext` |
 
 ---
 

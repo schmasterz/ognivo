@@ -57,6 +57,21 @@ Open the development panel at **`http://localhost`**.
    - Attempt to open a tenant's console or call `POST /api/v1/vms/{id}/console`.
    - Confirm access is rejected with `403 Forbidden` (*"Console access is restricted to the workload owner only. Administrators are denied guest access."*) and logged in the Audit Log as `vm.action.denied` (`console.ticket`).
 
+### Scenario I: Table Row Actions (Kebab Menu)
+Verify all 12 checks in both **Light** and **Dark** themes and in both **English (`en`)** and **Bulgarian (`bg`)**:
+1. **Viewport flip & portal unclipping:** Open `⋮` on the last row of a table and on a 1–2 row table; confirm the menu portals above card boundaries without clipping and flips upward when space below is insufficient.
+2. **Stacked Escape inside modals:** Open **VM Details** (`VmDetailsModal`) → **Snapshots** tab → `⋮`; confirm the menu renders above the modal (`z-[90]`), pressing **Escape** once closes only the menu, and pressing **Escape** a second time closes `VmDetailsModal`.
+3. **Scroll dismissal vs. internal menu scroll:** Confirm scrolling the page, scrolling a table horizontally, or scrolling a modal body closes an open `⋮` menu, whereas scrolling *inside* a height-clamped `⋮` menu (small viewport) does **not** close it.
+4. **Outside click & trigger toggle:** Confirm clicking outside closes the menu, and clicking the same `⋮` trigger while open closes it cleanly without reopening.
+5. **Close-before-confirm ordering:** Select **Delete**, **Stop**, or **Restore** from `⋮`; confirm the dropdown closes first so `ConfirmModal` (`z-[100]`) opens over a clean page.
+6. **Keyboard & ARIA navigation:** `Tab` to `⋮` and press `Enter` (or `ArrowDown`) to open with focus on the first item; verify `ArrowDown`/`ArrowUp` wrap, `Home`/`End` jump, `Tab` and `Escape` close and return focus to `⋮`, and `aria-disabled="true"` items remain focusable and expose their disabled reason.
+7. **Host-unavailable disabled tooltips:** On an instance whose compute node is unreachable/unavailable, verify disabled inline actions (**Console**, **Details**, **Snapshots**) and disabled `⋮` menu actions display the host-unavailable tooltip.
+8. **Hidden loading indicator on `⋮`:** On **Compute Nodes** (`/nodes`), trigger **Sync from hypervisor** from `⋮`; confirm the `⋮` trigger displays a spinning loader until sync finishes (note: VM **Start** opens `ConfirmModal` and displays its loading spinner inside the confirmation dialog).
+9. **Severity ordering & visual marking:** Confirm destructive `critical` actions (**Delete**, **Restore**, **Force release**) appear last, separated by a divider when preceded by other items, with red icon + red text at rest; `disruptive` actions (**Stop**, **Restart**, **Suspend**) display amber icons with neutral text.
+10. **Sticky Actions column & dark-mode hover:** Narrow the browser window to scroll tables horizontally; confirm the **Actions** column stays pinned with its left border/shadow and that hovering a row in Dark mode shows no background seam between the row and the sticky cell.
+11. **Real-time WebSocket updates while open:** Trigger a real-time VM status change while its `⋮` menu is open; confirm the menu updates in place (or closes cleanly if empty) without console errors.
+12. **Role & status matrix:** Verify expected inline buttons vs. `⋮` menu items across all VM states (`running`, `stopped`, `suspended`, `provisioning`, `failed`, `deleting`, `deleted`, host unreachable), user states (`active`, `suspended`, `inactive`, `pending`, `deleting`, `deletion_failed`, admin/self), compute nodes, admin IP allocations (lone `⋮`), and global/per-VM snapshots (lone `⋮`).
+
 ---
 
 ## 2. API Verification via `curl`
