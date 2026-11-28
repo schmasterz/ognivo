@@ -593,7 +593,10 @@ it('enforces authorization and handles list, show, and resolve endpoints in Admi
         ->getJson('/api/v1/admin/vps/plan-changes/01nonexistentulid0000000000')
         ->assertStatus(404);
 
-    // Index with filters & show
+    // Index with filters & show (including plan_id matching from_version and to_version)
+    $unrelatedPlan = VpsPlan::factory()->create(['status' => PlanPublished::class]);
+    VpsPlanVersion::factory()->published(1)->create(['vps_plan_id' => $unrelatedPlan->id]);
+
     $this->actingAs($env['admin'])
         ->getJson("/api/v1/admin/vps/plan-changes?status=reconciliation_required&user_id={$env['customer']->id}&vm_id={$env['vm']->id}")
         ->assertOk()
@@ -601,6 +604,24 @@ it('enforces authorization and handles list, show, and resolve endpoints in Admi
         ->assertJsonPath('data.0.public_id', $reconcileChange->public_id)
         ->assertJsonPath('data.0.status', 'reconciliation_required')
         ->assertJsonPath('meta.total', 1);
+
+    $this->actingAs($env['admin'])
+        ->getJson("/api/v1/admin/vps/plan-changes?plan_id={$env['fromVersion']->vps_plan_id}")
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.public_id', $reconcileChange->public_id);
+
+    $this->actingAs($env['admin'])
+        ->getJson("/api/v1/admin/vps/plan-changes?plan_id={$env['toVersion']->vps_plan_id}")
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.public_id', $reconcileChange->public_id);
+
+    $this->actingAs($env['admin'])
+        ->getJson("/api/v1/admin/vps/plan-changes?plan_id={$unrelatedPlan->id}")
+        ->assertOk()
+        ->assertJsonCount(0, 'data')
+        ->assertJsonPath('meta.total', 0);
 
     $this->actingAs($env['admin'])
         ->getJson("/api/v1/admin/vps/plan-changes/{$reconcileChange->public_id}")

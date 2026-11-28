@@ -14,6 +14,7 @@ use App\Models\VpsPlanVersion;
 use App\Services\Vps\VpsPlanChangeService;
 use App\States\VpsPlanChange\VpsPlanChangeState;
 use Dedoc\Scramble\Attributes\Group;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -36,13 +37,14 @@ final class AdminVpsPlanChangeController extends Controller
     ) {}
 
     /**
-     * List VPS plan-change operations with optional status, user, and VM filters.
+     * List VPS plan-change operations with optional status, plan, user, and VM filters.
      */
     #[Get('', name: 'admin.vps.plan-changes.index')]
     public function index(Request $request): JsonResponse
     {
         $request->validate([
             'status' => ['nullable', 'string', Rule::in(['all', ...VpsPlanChangeState::values()])],
+            'plan_id' => ['nullable', 'integer', 'min:1'],
             'user_id' => ['nullable', 'integer', 'min:1'],
             'vm_id' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
@@ -63,6 +65,18 @@ final class AdminVpsPlanChangeController extends Controller
             if ($status !== 'all') {
                 $query->where('status', $status);
             }
+        }
+
+        if ($request->filled('plan_id')) {
+            $planId = $request->integer('plan_id');
+            $versionIdsSubquery = VpsPlanVersion::query()
+                ->where('vps_plan_id', $planId)
+                ->select('id');
+
+            $query->where(function (Builder $q) use ($versionIdsSubquery): void {
+                $q->whereIn('from_version_id', $versionIdsSubquery)
+                    ->orWhereIn('to_version_id', $versionIdsSubquery);
+            });
         }
 
         if ($request->filled('user_id')) {
