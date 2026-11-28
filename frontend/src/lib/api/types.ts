@@ -997,6 +997,7 @@ export interface AdminVpsPlanChange {
 
 export interface AdminVpsPlanChangeFilters {
   status?: "all" | VpsPlanChangeStatus | string | null;
+  plan_id?: number | null;
   user_id?: number | null;
   vm_id?: number | null;
   page?: number | null;

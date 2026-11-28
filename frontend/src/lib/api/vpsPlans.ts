@@ -167,6 +167,7 @@ export const vpsPlansApi = {
   ): Promise<MetaPaginatedResponse<AdminVpsPlanChange>> {
     const params = new URLSearchParams();
     if (filters?.status) params.set("status", filters.status);
+    if (filters?.plan_id) params.set("plan_id", String(filters.plan_id));
     if (filters?.user_id) params.set("user_id", String(filters.user_id));
     if (filters?.vm_id) params.set("vm_id", String(filters.vm_id));
     if (filters?.page) params.set("page", String(filters.page));

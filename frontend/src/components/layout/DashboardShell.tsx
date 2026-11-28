@@ -185,8 +185,6 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 ? t("menuNodes")
                 : activeTab === "adminPlans"
                 ? t("menuManageVpsPlans")
-                : activeTab === "adminPlanChanges"
-                ? t("menuAdminPlanChanges")
                 : t("menuActivity")
             }
             onToggleSidebar={() => setSidebarOpen(true)}

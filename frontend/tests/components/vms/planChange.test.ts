@@ -23,6 +23,7 @@ import {
   type SlotId,
 } from "../../../src/lib/registry/slotRegistry.ts";
 import type {
+  AdminVpsPlan,
   AdminVpsPlanChange,
   VirtualMachine,
   VpsPlanChange,
@@ -257,14 +258,18 @@ function loadVmPlanTabModule(): VmPlanTabModule {
 
 const { VmPlanTab } = loadVmPlanTabModule();
 
-interface AdminPlanChangesViewModule {
-  AdminPlanChangesView: React.ComponentType;
+interface PlanChangesModalModule {
+  PlanChangesModal: React.ComponentType<{ plan: AdminVpsPlan; onClose: () => void }>;
   parsePositiveIntFilter: (value: string) => number | null;
+  resolvePlanChangeDirection: (
+    change: Pick<AdminVpsPlanChange, "from_version" | "to_version">,
+    planId: number
+  ) => "incoming" | "outgoing" | "internal";
 }
 
-function loadAdminPlanChangesViewModule(): AdminPlanChangesViewModule {
+function loadPlanChangesModalModule(): PlanChangesModalModule {
   return transpileAndLoad(
-    "../../../src/components/plans/AdminPlanChangesView.tsx",
+    "../../../src/components/plans/PlanChangesModal.tsx",
     (specifier) => {
       if (specifier === "react") return React;
       if (specifier === "lucide-react") return lucideReact;
@@ -282,16 +287,30 @@ function loadAdminPlanChangesViewModule(): AdminPlanChangesViewModule {
       if (specifier === "@/components/ui/PaginationBar") {
         return { PaginationBar: () => null };
       }
+      if (specifier === "@/components/ui/rowActions/RowActions") {
+        return { RowActions: () => null };
+      }
+      if (specifier === "@/components/ui/rowActions/StickyActionsCell") {
+        return { StickyActionsTh: () => null, StickyActionsTd: () => null };
+      }
+      if (specifier === "@/components/ui/rowActions/types") return {};
       if (specifier === "@/lib/i18n/I18nContext") return i18nEnStub;
       if (specifier === "@/lib/toast/ToastContext") return toastStub;
       if (specifier === "@/lib/hooks/useModalEscape") return { useModalEscape: () => {} };
       if (specifier === "@/components/vms/ChangePlanModal") return changePlanModalMod;
-      throw new Error(`Unexpected import in AdminPlanChangesView.tsx: ${specifier}`);
+      if (specifier === "./VpsPlanCard") {
+        return {
+          formatPlanRam: formatPlanRamStub,
+          formatNetworkLimit: formatNetworkLimitStub,
+        };
+      }
+      throw new Error(`Unexpected import in PlanChangesModal.tsx: ${specifier}`);
     }
-  ) as unknown as AdminPlanChangesViewModule;
+  ) as unknown as PlanChangesModalModule;
 }
 
-const { AdminPlanChangesView, parsePositiveIntFilter } = loadAdminPlanChangesViewModule();
+const { PlanChangesModal, parsePositiveIntFilter, resolvePlanChangeDirection } =
+  loadPlanChangesModalModule();
 
 const sampleVm: VirtualMachine = {
   id: 42,
@@ -354,12 +373,12 @@ describe("VPS Plan Change Frontend Tests", () => {
       }
 
       assert.equal(
-        (en as Record<string, string>).menuAdminPlanChanges,
-        enDict.menuAdminPlanChanges
+        (en as Record<string, string>).vpsPlanViewChanges,
+        enDict.vpsPlanViewChanges
       );
       assert.equal(
-        (bg as Record<string, string>).menuAdminPlanChanges,
-        bgDict.menuAdminPlanChanges
+        (bg as Record<string, string>).vpsPlanViewChanges,
+        bgDict.vpsPlanViewChanges
       );
     });
 
@@ -595,6 +614,7 @@ describe("VPS Plan Change Frontend Tests", () => {
         assert.equal(cancelled.status, "cancelled");
 
         const adminList = await vpsPlansApi.listAdminPlanChanges({
+          plan_id: 5,
           status: "reconciliation_required",
           user_id: 7,
           vm_id: 42,
@@ -605,6 +625,7 @@ describe("VPS Plan Change Frontend Tests", () => {
             (c) =>
               c.method === "GET" &&
               c.url.includes("/admin/vps/plan-changes?") &&
+              c.url.includes("plan_id=5") &&
               c.url.includes("status=reconciliation_required") &&
               c.url.includes("user_id=7") &&
               c.url.includes("vm_id=42")
@@ -816,7 +837,7 @@ describe("VPS Plan Change Frontend Tests", () => {
     });
   });
 
-  describe("5. VmPlanTab rendering & AdminPlanChangesView", () => {
+  describe("5. VmPlanTab rendering & PlanChangesModal", () => {
     it("renders current plan, version, network_limits, and Change Plan button", () => {
       const html = renderToStaticMarkup(
         React.createElement(VmPlanTab, {
@@ -857,20 +878,39 @@ describe("VPS Plan Change Frontend Tests", () => {
       assert.match(html, /Change Plan/);
     });
 
-    it("renders AdminPlanChangesView filters and validates positive int filter parser", () => {
+    it("renders PlanChangesModal filters and validates positive int filter & direction helpers", () => {
       assert.equal(parsePositiveIntFilter(""), null);
       assert.equal(parsePositiveIntFilter("0"), null);
       assert.equal(parsePositiveIntFilter("-3"), null);
       assert.equal(parsePositiveIntFilter("abc"), null);
       assert.equal(parsePositiveIntFilter("42"), 42);
 
-      const html = renderToStaticMarkup(React.createElement(AdminPlanChangesView));
-      assert.match(html, /VPS Plan Change Operations/);
+      const modalPlan: AdminVpsPlan = {
+        id: 2,
+        name: "Pro",
+        slug: "pro",
+        description: "Pro plan",
+        status: "published",
+        sort_order: 1,
+        current_version_id: 11,
+        current_version: null,
+        draft_version: null,
+        created_by: 1,
+        updated_by: 1,
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      };
+
+      const html = renderToStaticMarkup(
+        React.createElement(PlanChangesModal, { plan: modalPlan, onClose: () => {} })
+      );
+      assert.match(html, /Plan Changes: Pro/);
+      assert.match(html, /pro/);
       assert.match(html, /All statuses/);
       assert.match(html, /User ID/);
       assert.match(html, /VM ID/);
 
-      // Ensure AdminVpsPlanChange type compatibility
+      // Ensure AdminVpsPlanChange type compatibility & direction resolution
       const sampleAdminOp: AdminVpsPlanChange = {
         id: 1,
         public_id: "01jadmin000000000000000000",
@@ -902,6 +942,18 @@ describe("VPS Plan Change Frontend Tests", () => {
         to_version: { id: 11, vps_plan_id: 2, version: 1, plan_name: "Pro", plan_slug: "pro" },
       };
       assert.equal(sampleAdminOp.status, "reconciliation_required");
+      assert.equal(resolvePlanChangeDirection(sampleAdminOp, 2), "incoming");
+      assert.equal(resolvePlanChangeDirection(sampleAdminOp, 1), "outgoing");
+      assert.equal(
+        resolvePlanChangeDirection(
+          {
+            from_version: { id: 11, vps_plan_id: 2, version: 1, plan_name: "Pro", plan_slug: "pro" },
+            to_version: { id: 12, vps_plan_id: 2, version: 2, plan_name: "Pro", plan_slug: "pro" },
+          },
+          2
+        ),
+        "internal"
+      );
     });
 
     it("registers the built-in plan tab in registerVmBuiltins.ts", () => {

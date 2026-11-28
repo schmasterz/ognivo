@@ -20,7 +20,9 @@ import {
   type SlotId,
 } from "../../../src/lib/registry/slotRegistry.ts";
 import { vpsPlansApi } from "../../../src/lib/api/vpsPlans.ts";
-import type { VpsPlanCatalogItem } from "../../../src/lib/api/types.ts";
+import { splitRowActions } from "../../../src/components/ui/rowActions/splitRowActions.ts";
+import type { RowAction } from "../../../src/components/ui/rowActions/types.ts";
+import type { AdminVpsPlan, VpsPlanCatalogItem } from "../../../src/lib/api/types.ts";
 
 interface VpsPlanCardModule {
   VpsPlanCard: React.ComponentType<{ plan: VpsPlanCatalogItem }>;
@@ -86,6 +88,109 @@ function loadVpsPlanCardModule(): VpsPlanCardModule {
 }
 
 const { VpsPlanCard, formatPlanRam, formatNetworkLimit } = loadVpsPlanCardModule();
+
+interface AdminPlansViewModule {
+  buildAdminPlanRowActions: (
+    plan: AdminVpsPlan,
+    t: (key: string, params?: Record<string, string | number>) => string,
+    busyActionId: string | null,
+    callbacks: {
+      onEdit: (plan: AdminVpsPlan) => void;
+      onOpenPlanChanges: (plan: AdminVpsPlan) => void;
+      onPublish: (plan: AdminVpsPlan) => void;
+      onPublishDraft: (plan: AdminVpsPlan) => void;
+      onUnarchive: (plan: AdminVpsPlan) => void;
+      onUnpublish: (plan: AdminVpsPlan) => void;
+      onArchive: (plan: AdminVpsPlan) => void;
+      onDiscardDraft: (plan: AdminVpsPlan) => void;
+    }
+  ) => RowAction[];
+}
+
+function loadAdminPlansViewModule(): AdminPlansViewModule {
+  const viewPath = fileURLToPath(
+    new URL("../../../src/components/plans/AdminPlansView.tsx", import.meta.url)
+  );
+  const sourceText = fs.readFileSync(viewPath, "utf8");
+  const transpiled = ts.transpileModule(sourceText, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2020,
+      jsx: ts.JsxEmit.React,
+      esModuleInterop: true,
+    },
+  });
+
+  const exportsObj: Record<string, unknown> = {};
+  const moduleObj: { exports: unknown } = { exports: exportsObj };
+
+  const customRequire = (specifier: string) => {
+    if (specifier === "react") return React;
+    if (specifier === "lucide-react") return lucideReact;
+    if (specifier === "@/lib/api") return { vpsPlansApi };
+    if (specifier === "@/lib/api/client") {
+      return {
+        extractPaginationMeta: () => ({ currentPage: 1, lastPage: 1, perPage: 20, total: 0 }),
+      };
+    }
+    if (specifier === "@/components/ui/ConfirmModal") return { ConfirmModal: () => null };
+    if (specifier === "@/components/ui/PaginationBar") return { PaginationBar: () => null };
+    if (specifier === "@/components/ui/rowActions/RowActions") return { RowActions: () => null };
+    if (specifier === "@/components/ui/rowActions/StickyActionsCell") {
+      return { StickyActionsTh: () => null, StickyActionsTd: () => null };
+    }
+    if (specifier === "@/components/ui/rowActions/types") return {};
+    if (specifier === "@/lib/hooks/useConfirmDialog") {
+      return {
+        useConfirmDialog: () => ({
+          confirmDialog: { isOpen: false, title: "", message: "", onConfirm: () => {} },
+          requestConfirm: () => {},
+          closeConfirmDialog: () => {},
+        }),
+      };
+    }
+    if (specifier === "@/lib/i18n/I18nContext") {
+      return {
+        useI18n: () => ({
+          locale: "en",
+          preference: "en",
+          setPreference: () => {},
+          t: (key: string, params?: Record<string, string | number>) =>
+            interpolate((en as Record<string, string>)[key] || key, params),
+        }),
+      };
+    }
+    if (specifier === "@/lib/toast/ToastContext") {
+      return { useToast: () => ({ toast: { success: () => {}, error: () => {}, info: () => {} } }) };
+    }
+    if (specifier === "./PlanChangesModal") return { PlanChangesModal: () => null };
+    if (specifier === "./PlanEditorModal") {
+      return {
+        PlanEditorModal: () => null,
+        extractPlanErrorMessage: (_e: unknown, fb: string) => fb,
+        getPlanStatusBadgeStyle: () => "",
+        getPlanStatusTranslationKey: () => "vpsPlanPublishedBadge",
+      };
+    }
+    if (specifier === "./VpsPlanCard") {
+      return { formatPlanRam, formatNetworkLimit };
+    }
+    throw new Error(`Unexpected import in AdminPlansView.tsx: ${specifier}`);
+  };
+
+  const wrapper = vm.runInThisContext(
+    `(function(exports, require, module) {\n${transpiled.outputText}\n})`
+  ) as (
+    exportsArg: Record<string, unknown>,
+    requireArg: (specifier: string) => unknown,
+    moduleArg: { exports: unknown }
+  ) => void;
+
+  wrapper(exportsObj, customRequire, moduleObj);
+  return moduleObj.exports as AdminPlansViewModule;
+}
+
+const { buildAdminPlanRowActions } = loadAdminPlansViewModule();
 
 describe("VPS Plans Frontend Tests", () => {
   beforeEach(() => {
@@ -349,6 +454,94 @@ describe("VPS Plans Frontend Tests", () => {
       } finally {
         globalThis.fetch = originalFetch;
       }
+    });
+  });
+
+  describe("5. AdminPlansView rowActions & Plan Changes trigger", () => {
+    it("places Edit and Plan Changes inline and splits lifecycle/critical actions into the overflow menu", () => {
+      const tEn = (key: string, params?: Record<string, string | number>) =>
+        interpolate((en as Record<string, string>)[key] || key, params);
+
+      const openedIds: number[] = [];
+      const noop = () => {};
+
+      const publishedWithDraft: AdminVpsPlan = {
+        id: 7,
+        name: "Business 4vCPU",
+        slug: "business-4vcpu",
+        description: null,
+        status: "published",
+        sort_order: 2,
+        current_version_id: 70,
+        current_version: {
+          id: 70,
+          vps_plan_id: 7,
+          version: 1,
+          status: "published",
+          cpu_cores: 4,
+          ram_mb: 8192,
+          disk_gb: 80,
+          instance_type: "virtual-machine",
+          net_download_mbps: 1000,
+          net_upload_mbps: 1000,
+          change_summary: null,
+          created_by: 1,
+          published_by: 1,
+          created_at: "2026-01-01T00:00:00Z",
+          published_at: "2026-01-01T00:00:00Z",
+        },
+        draft_version: {
+          id: 71,
+          vps_plan_id: 7,
+          version: null,
+          status: "draft",
+          cpu_cores: 4,
+          ram_mb: 16384,
+          disk_gb: 100,
+          instance_type: "virtual-machine",
+          net_download_mbps: 2000,
+          net_upload_mbps: 2000,
+          change_summary: "RAM upgrade",
+          created_by: 1,
+          published_by: null,
+          created_at: "2026-01-02T00:00:00Z",
+          published_at: null,
+        },
+        created_by: 1,
+        updated_by: 1,
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-02T00:00:00Z",
+      };
+
+      const actions = buildAdminPlanRowActions(publishedWithDraft, tEn, null, {
+        onEdit: noop,
+        onOpenPlanChanges: (p) => {
+          openedIds.push(p.id);
+        },
+        onPublish: noop,
+        onPublishDraft: noop,
+        onUnarchive: noop,
+        onUnpublish: noop,
+        onArchive: noop,
+        onDiscardDraft: noop,
+      });
+
+      const split = splitRowActions(actions, 2);
+      assert.deepStrictEqual(
+        split.inline.map((a) => a.id),
+        ["edit", "planChanges"]
+      );
+      assert.deepStrictEqual(
+        split.menu.map((a) => a.id),
+        ["publishDraft", "unpublish", "archive", "discardDraft"]
+      );
+      assert.equal(split.dividerBeforeId, "discardDraft");
+
+      const planChangesAction = split.inline.find((a) => a.id === "planChanges");
+      assert.ok(planChangesAction);
+      assert.equal(planChangesAction.label, "Plan Changes");
+      planChangesAction.onSelect();
+      assert.deepStrictEqual(openedIds, [7]);
     });
   });
 });

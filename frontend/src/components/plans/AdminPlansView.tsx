@@ -5,6 +5,7 @@ import {
   AlertCircle,
   Archive,
   ArchiveRestore,
+  ArrowLeftRight,
   CheckCircle2,
   Edit2,
   EyeOff,
@@ -15,12 +16,17 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
-import { AdminVpsPlan, vpsPlansApi } from "@/lib/api";
+import { type AdminVpsPlan, vpsPlansApi } from "@/lib/api";
 import { extractPaginationMeta } from "@/lib/api/client";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { PaginationBar } from "@/components/ui/PaginationBar";
+import { RowActions } from "@/components/ui/rowActions/RowActions";
+import { StickyActionsTd, StickyActionsTh } from "@/components/ui/rowActions/StickyActionsCell";
+import { type RowAction } from "@/components/ui/rowActions/types";
+import { useConfirmDialog } from "@/lib/hooks/useConfirmDialog";
 import { useI18n } from "@/lib/i18n/I18nContext";
 import { useToast } from "@/lib/toast/ToastContext";
+import { PlanChangesModal } from "./PlanChangesModal";
 import {
   PlanEditorModal,
   extractPlanErrorMessage,
@@ -28,6 +34,123 @@ import {
   getPlanStatusTranslationKey,
 } from "./PlanEditorModal";
 import { formatNetworkLimit, formatPlanRam } from "./VpsPlanCard";
+
+export type AdminPlanRowActionId =
+  | "edit"
+  | "planChanges"
+  | "publish"
+  | "publishDraft"
+  | "unarchive"
+  | "unpublish"
+  | "archive"
+  | "discardDraft";
+
+export interface BuildAdminPlanRowActionsCallbacks {
+  onEdit: (plan: AdminVpsPlan) => void;
+  onOpenPlanChanges: (plan: AdminVpsPlan) => void;
+  onPublish: (plan: AdminVpsPlan) => void;
+  onPublishDraft: (plan: AdminVpsPlan) => void;
+  onUnarchive: (plan: AdminVpsPlan) => void;
+  onUnpublish: (plan: AdminVpsPlan) => void;
+  onArchive: (plan: AdminVpsPlan) => void;
+  onDiscardDraft: (plan: AdminVpsPlan) => void;
+}
+
+export function buildAdminPlanRowActions(
+  plan: AdminVpsPlan,
+  t: (key: string, params?: Record<string, string | number>) => string,
+  busyActionId: AdminPlanRowActionId | null,
+  callbacks: BuildAdminPlanRowActionsCallbacks
+): RowAction[] {
+  const rowBusy = busyActionId !== null;
+
+  return [
+    {
+      id: "edit",
+      icon: Edit2,
+      label: t("vpsPlanEditManage"),
+      severity: "safe",
+      tone: "neutral",
+      disabled: rowBusy,
+      onSelect: () => callbacks.onEdit(plan),
+    },
+    {
+      id: "planChanges",
+      icon: ArrowLeftRight,
+      label: t("vpsPlanViewChanges"),
+      severity: "safe",
+      tone: "info",
+      disabled: rowBusy,
+      onSelect: () => callbacks.onOpenPlanChanges(plan),
+    },
+    {
+      id: "publish",
+      icon: CheckCircle2,
+      label: t("vpsPlanPublish"),
+      severity: "caution",
+      tone: "success",
+      hidden: plan.status !== "draft",
+      disabled: rowBusy,
+      loading: busyActionId === "publish",
+      onSelect: () => callbacks.onPublish(plan),
+    },
+    {
+      id: "publishDraft",
+      icon: Rocket,
+      label: t("vpsPlanPublishDraft"),
+      severity: "caution",
+      tone: "info",
+      hidden: !(plan.draft_version && plan.status !== "archived"),
+      disabled: rowBusy,
+      loading: busyActionId === "publishDraft",
+      onSelect: () => callbacks.onPublishDraft(plan),
+    },
+    {
+      id: "unarchive",
+      icon: ArchiveRestore,
+      label: t("vpsPlanUnarchive"),
+      severity: "caution",
+      tone: "accent",
+      hidden: plan.status !== "archived",
+      disabled: rowBusy,
+      loading: busyActionId === "unarchive",
+      onSelect: () => callbacks.onUnarchive(plan),
+    },
+    {
+      id: "unpublish",
+      icon: EyeOff,
+      label: t("vpsPlanUnpublish"),
+      severity: "disruptive",
+      tone: "neutral",
+      hidden: plan.status !== "published",
+      disabled: rowBusy,
+      loading: busyActionId === "unpublish",
+      onSelect: () => callbacks.onUnpublish(plan),
+    },
+    {
+      id: "archive",
+      icon: Archive,
+      label: t("vpsPlanArchive"),
+      severity: "disruptive",
+      tone: "neutral",
+      hidden: plan.status === "archived",
+      disabled: rowBusy,
+      loading: busyActionId === "archive",
+      onSelect: () => callbacks.onArchive(plan),
+    },
+    {
+      id: "discardDraft",
+      icon: Trash2,
+      label: t("vpsPlanDiscardDraft"),
+      severity: "critical",
+      tone: "neutral",
+      hidden: !plan.draft_version,
+      disabled: rowBusy,
+      loading: busyActionId === "discardDraft",
+      onSelect: () => callbacks.onDiscardDraft(plan),
+    },
+  ];
+}
 
 export function AdminPlansView() {
   const { t } = useI18n();
@@ -47,12 +170,15 @@ export function AdminPlansView() {
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorTarget, setEditorTarget] = useState<AdminVpsPlan | null>(null);
-  const [busyPlanId, setBusyPlanId] = useState<number | null>(null);
-
-  const [confirmAction, setConfirmAction] = useState<{
-    type: "archive" | "discardDraft";
-    plan: AdminVpsPlan;
+  const [changesPlanTarget, setChangesPlanTarget] = useState<AdminVpsPlan | null>(null);
+  const [busyAction, setBusyAction] = useState<{
+    planId: number;
+    actionId: AdminPlanRowActionId;
   } | null>(null);
+
+  const { confirmDialog, requestConfirm, closeConfirmDialog } = useConfirmDialog(
+    (msg) => toast.error(msg)
+  );
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -105,19 +231,24 @@ export function AdminPlansView() {
 
   const executeRowAction = async (
     planId: number,
+    actionId: AdminPlanRowActionId,
     fn: () => Promise<unknown>,
-    successMsg: string
+    successMsg: string,
+    options?: { rethrowOnError?: boolean }
   ) => {
     try {
-      setBusyPlanId(planId);
+      setBusyAction({ planId, actionId });
       await fn();
       toast.success(successMsg);
       await fetchPlans();
     } catch (err: unknown) {
-      toast.error(extractPlanErrorMessage(err, t("vpsPlanActionFailed")));
+      const message = extractPlanErrorMessage(err, t("vpsPlanActionFailed"));
+      if (options?.rethrowOnError) {
+        throw new Error(message);
+      }
+      toast.error(message);
     } finally {
-      setBusyPlanId(null);
-      setConfirmAction(null);
+      setBusyAction(null);
     }
   };
 
@@ -215,27 +346,123 @@ export function AdminPlansView() {
             {t("vpsPlanAdminEmpty")}
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto relative">
             <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-gray-100 dark:border-gray-800 text-[11px] font-bold uppercase tracking-wider text-gray-400">
-                  <th className="py-3.5 px-5">{t("vpsPlanColPlan")}</th>
-                  <th className="py-3.5 px-4">{t("vpsPlanColStatus")}</th>
-                  <th className="py-3.5 px-4">{t("vpsPlanColSortOrder")}</th>
-                  <th className="py-3.5 px-4">{t("vpsPlanColCurrentVersion")}</th>
-                  <th className="py-3.5 px-4">{t("vpsPlanColProfile")}</th>
-                  <th className="py-3.5 px-5 text-right">{t("vpsPlanColActions")}</th>
+              <thead className="bg-gray-50 dark:bg-gray-950/60 border-b border-gray-200 dark:border-gray-800 text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                <tr>
+                  <th scope="col" className="py-3.5 px-5">
+                    {t("vpsPlanColPlan")}
+                  </th>
+                  <th scope="col" className="py-3.5 px-4">
+                    {t("vpsPlanColStatus")}
+                  </th>
+                  <th scope="col" className="py-3.5 px-4">
+                    {t("vpsPlanColSortOrder")}
+                  </th>
+                  <th scope="col" className="py-3.5 px-4">
+                    {t("vpsPlanColCurrentVersion")}
+                  </th>
+                  <th scope="col" className="py-3.5 px-4">
+                    {t("vpsPlanColProfile")}
+                  </th>
+                  <StickyActionsTh>{t("vpsPlanColActions")}</StickyActionsTh>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800/80 text-xs">
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-800/80 text-xs">
                 {plans.map((plan) => {
                   const activeProfile = plan.current_version ?? plan.draft_version ?? null;
-                  const rowBusy = busyPlanId === plan.id;
+                  const rowBusyActionId =
+                    busyAction?.planId === plan.id ? busyAction.actionId : null;
+
+                  const actions = buildAdminPlanRowActions(plan, t, rowBusyActionId, {
+                    onEdit: (target) => {
+                      setEditorTarget(target);
+                      setEditorOpen(true);
+                    },
+                    onOpenPlanChanges: (target) => {
+                      setChangesPlanTarget(target);
+                    },
+                    onPublish: (target) => {
+                      void executeRowAction(
+                        target.id,
+                        "publish",
+                        () => vpsPlansApi.publishPlan(target.id),
+                        t("vpsPlanPublishedSuccess")
+                      );
+                    },
+                    onPublishDraft: (target) => {
+                      void executeRowAction(
+                        target.id,
+                        "publishDraft",
+                        () => vpsPlansApi.publishDraftVersion(target.id),
+                        t("vpsPlanDraftPublishedSuccess")
+                      );
+                    },
+                    onUnarchive: (target) => {
+                      void executeRowAction(
+                        target.id,
+                        "unarchive",
+                        () => vpsPlansApi.unarchivePlan(target.id),
+                        t("vpsPlanUnarchivedSuccess")
+                      );
+                    },
+                    onUnpublish: (target) => {
+                      requestConfirm({
+                        title: t("vpsPlanConfirmUnpublishTitle"),
+                        message: `${t("vpsPlanConfirmUnpublishDesc")} "${target.name}"?`,
+                        variant: "warning",
+                        confirmText: t("vpsPlanUnpublish"),
+                        cancelText: t("vpsPlanCancel"),
+                        onConfirm: () =>
+                          executeRowAction(
+                            target.id,
+                            "unpublish",
+                            () => vpsPlansApi.unpublishPlan(target.id),
+                            t("vpsPlanUnpublishedSuccess"),
+                            { rethrowOnError: true }
+                          ),
+                      });
+                    },
+                    onArchive: (target) => {
+                      requestConfirm({
+                        title: t("vpsPlanConfirmArchiveTitle"),
+                        message: `${t("vpsPlanConfirmArchiveDesc")} "${target.name}"?`,
+                        variant: "warning",
+                        confirmText: t("vpsPlanArchive"),
+                        cancelText: t("vpsPlanCancel"),
+                        onConfirm: () =>
+                          executeRowAction(
+                            target.id,
+                            "archive",
+                            () => vpsPlansApi.archivePlan(target.id),
+                            t("vpsPlanArchivedSuccess"),
+                            { rethrowOnError: true }
+                          ),
+                      });
+                    },
+                    onDiscardDraft: (target) => {
+                      requestConfirm({
+                        title: t("vpsPlanConfirmDiscardDraftTitle"),
+                        message: `${t("vpsPlanConfirmDiscardDraftDesc")} "${target.name}"?`,
+                        variant: "danger",
+                        confirmText: t("vpsPlanDiscardDraft"),
+                        cancelText: t("vpsPlanCancel"),
+                        onConfirm: () =>
+                          executeRowAction(
+                            target.id,
+                            "discardDraft",
+                            () => vpsPlansApi.discardDraftVersion(target.id),
+                            t("vpsPlanDraftDiscardedSuccess"),
+                            { rethrowOnError: true }
+                          ),
+                      });
+                    },
+                  });
 
                   return (
                     <tr
                       key={plan.id}
-                      className="hover:bg-gray-50/70 dark:hover:bg-gray-800/30 transition"
+                      className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition group"
                     >
                       <td className="py-4 px-5">
                         <div className="font-bold text-gray-900 dark:text-white">
@@ -312,124 +539,9 @@ export function AdminPlansView() {
                         )}
                       </td>
 
-                      <td className="py-4 px-5">
-                        <div className="flex items-center justify-end flex-wrap gap-1.5">
-                          <button
-                            type="button"
-                            disabled={rowBusy}
-                            onClick={() => {
-                              setEditorTarget(plan);
-                              setEditorOpen(true);
-                            }}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 font-semibold transition disabled:opacity-50"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                            <span>{t("vpsPlanEditManage")}</span>
-                          </button>
-
-                          {plan.status === "draft" && (
-                            <button
-                              type="button"
-                              disabled={rowBusy}
-                              onClick={() =>
-                                void executeRowAction(
-                                  plan.id,
-                                  () => vpsPlansApi.publishPlan(plan.id),
-                                  t("vpsPlanPublishedSuccess")
-                                )
-                              }
-                              title={t("vpsPlanPublish")}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-600 dark:text-emerald-400 font-semibold transition disabled:opacity-50"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>{t("vpsPlanPublish")}</span>
-                            </button>
-                          )}
-
-                          {plan.status === "published" && (
-                            <button
-                              type="button"
-                              disabled={rowBusy}
-                              onClick={() =>
-                                void executeRowAction(
-                                  plan.id,
-                                  () => vpsPlansApi.unpublishPlan(plan.id),
-                                  t("vpsPlanUnpublishedSuccess")
-                                )
-                              }
-                              title={t("vpsPlanUnpublish")}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 font-semibold transition disabled:opacity-50"
-                            >
-                              <EyeOff className="w-3.5 h-3.5" />
-                              <span>{t("vpsPlanUnpublish")}</span>
-                            </button>
-                          )}
-
-                          {plan.draft_version && plan.status !== "archived" && (
-                            <button
-                              type="button"
-                              disabled={rowBusy}
-                              onClick={() =>
-                                void executeRowAction(
-                                  plan.id,
-                                  () => vpsPlansApi.publishDraftVersion(plan.id),
-                                  t("vpsPlanDraftPublishedSuccess")
-                                )
-                              }
-                              title={t("vpsPlanPublishDraft")}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 font-semibold transition disabled:opacity-50"
-                            >
-                              <Rocket className="w-3.5 h-3.5" />
-                              <span>{t("vpsPlanPublishDraft")}</span>
-                            </button>
-                          )}
-
-                          {plan.draft_version && (
-                            <button
-                              type="button"
-                              disabled={rowBusy}
-                              onClick={() =>
-                                setConfirmAction({ type: "discardDraft", plan })
-                              }
-                              title={t("vpsPlanDiscardDraft")}
-                              className="p-1.5 rounded-xl text-red-500 hover:bg-red-500/10 transition disabled:opacity-50"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-
-                          {plan.status !== "archived" ? (
-                            <button
-                              type="button"
-                              disabled={rowBusy}
-                              onClick={() =>
-                                setConfirmAction({ type: "archive", plan })
-                              }
-                              title={t("vpsPlanArchive")}
-                              className="p-1.5 rounded-xl text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-800 transition disabled:opacity-50"
-                            >
-                              <Archive className="w-3.5 h-3.5" />
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              disabled={rowBusy}
-                              onClick={() =>
-                                void executeRowAction(
-                                  plan.id,
-                                  () => vpsPlansApi.unarchivePlan(plan.id),
-                                  t("vpsPlanUnarchivedSuccess")
-                                )
-                              }
-                              title={t("vpsPlanUnarchive")}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 font-semibold transition disabled:opacity-50"
-                            >
-                              <ArchiveRestore className="w-3.5 h-3.5" />
-                              <span>{t("vpsPlanUnarchive")}</span>
-                            </button>
-                          )}
-                        </div>
-                      </td>
+                      <StickyActionsTd>
+                        <RowActions actions={actions} />
+                      </StickyActionsTd>
                     </tr>
                   );
                 })}
@@ -466,41 +578,23 @@ export function AdminPlansView() {
         />
       )}
 
+      {changesPlanTarget && (
+        <PlanChangesModal
+          plan={changesPlanTarget}
+          onClose={() => setChangesPlanTarget(null)}
+        />
+      )}
+
       <ConfirmModal
-        isOpen={confirmAction !== null}
-        title={
-          confirmAction?.type === "discardDraft"
-            ? t("vpsPlanConfirmDiscardDraftTitle")
-            : t("vpsPlanConfirmArchiveTitle")
-        }
-        message={
-          confirmAction?.type === "discardDraft"
-            ? `${t("vpsPlanConfirmDiscardDraftDesc")} "${confirmAction.plan.name}"?`
-            : `${t("vpsPlanConfirmArchiveDesc")} "${confirmAction?.plan.name ?? ""}"?`
-        }
-        variant={confirmAction?.type === "discardDraft" ? "danger" : "warning"}
-        confirmText={
-          confirmAction?.type === "discardDraft"
-            ? t("vpsPlanDiscardDraft")
-            : t("vpsPlanArchive")
-        }
-        isLoading={busyPlanId !== null}
-        onClose={() => setConfirmAction(null)}
-        onConfirm={() => {
-          if (!confirmAction) return;
-          if (confirmAction.type === "discardDraft") {
-            return executeRowAction(
-              confirmAction.plan.id,
-              () => vpsPlansApi.discardDraftVersion(confirmAction.plan.id),
-              t("vpsPlanDraftDiscardedSuccess")
-            );
-          }
-          return executeRowAction(
-            confirmAction.plan.id,
-            () => vpsPlansApi.archivePlan(confirmAction.plan.id),
-            t("vpsPlanArchivedSuccess")
-          );
-        }}
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        variant={confirmDialog.variant}
+        confirmText={confirmDialog.confirmText}
+        cancelText={confirmDialog.cancelText}
+        isLoading={confirmDialog.isLoading}
+        onClose={closeConfirmDialog}
+        onConfirm={confirmDialog.onConfirm}
       />
     </div>
   );
