@@ -1,9 +1,6 @@
 # Ognivo Documentation Hub
 
 Welcome to the **Ognivo** technical documentation. All guides are organized into six categories. For a short overview of the project, see the [main README](../README.md).
-
-![Ognivo Dashboard Overview](assets/dashboard-overview.png)
-
 ---
 
 ## 1. Getting Started (`docs/getting-started/`)
