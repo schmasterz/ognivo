@@ -187,6 +187,6 @@ Requires `vps.plans.manage` (catalog) or `vps.plan_change.manage` (plan-change i
 | `DELETE` | `/api/v1/admin/vps/plans/{plan}/versions/draft` | Discard the plan's draft version |
 | `POST` | `/api/v1/admin/vps/plans/{plan}/versions/draft/publish` | Publish draft version (`MAX+1`), superseding any prior published version |
 | `GET` | `/api/v1/admin/vps/plans/{plan}/usage` | Active (non-deleted) VM counts per plan version |
-| `GET` | `/api/v1/admin/vps/plan-changes` | List all plan changes (`status`, `user_id`, `vm_id`) |
+| `GET` | `/api/v1/admin/vps/plan-changes` | List all plan changes (`status`, `plan_id`, `user_id`, `vm_id`) |
 | `GET` | `/api/v1/admin/vps/plan-changes/{public_id}` | Show full plan-change details |
 | `POST` | `/api/v1/admin/vps/plan-changes/{public_id}/resolve` | Manually resolve `reconciliation_required` (`complete`, `fail`, `retry`) |

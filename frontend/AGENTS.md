@@ -140,7 +140,7 @@ New overlay layers must pick an existing tier from this table instead of inventi
 | Standard modals | `z-50` | `VmDetailsModal`, create/edit modals |
 | Console & drawers | `z-[60]` | `ConsoleModal`, `ImageSelectionDrawer` |
 | Change-plan modal | `z-[70]` | `ChangePlanModal` |
-| Plan-changes resolution modal | `z-[80]` | `AdminPlanChangesView` modal |
+| Plan-changes resolution modal | `z-[80]` | `PlanChangesModal` resolve dialog |
 | Row action menu | `z-[90]` | `ActionMenu` (`createPortal` to `document.body`) |
 | Confirmation modal | `z-[100]` | `ConfirmModal` |
 | Toast notifications | `z-[9999]` | `ToastContext` |

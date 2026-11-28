@@ -23,7 +23,7 @@ While in `reconciliation_required`:
 
 ### 2.1 Inspect the Operation in Admin UI or API
 
-1. **Admin UI:** Open **Plans** (`/admin/plans`) and select the **Plan Changes** tab (`AdminPlanChangesView`), then filter status by **`reconciliation_required`**.
+1. **Admin UI:** Open **Manage Plans** (`/admin/plans`), click the **Plan Changes** row action on the target plan (`PlanChangesModal`), and filter status by **`reconciliation_required`**.
 2. **REST API:**
    ```http
    GET /api/v1/admin/vps/plan-changes?status=reconciliation_required
