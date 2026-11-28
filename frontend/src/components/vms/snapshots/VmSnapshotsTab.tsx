@@ -19,6 +19,9 @@ import { formatBytes } from "@/lib/utils";
 import { getEcho } from "@/lib/echo";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { PaginationBar } from "@/components/ui/PaginationBar";
+import { RowActions } from "@/components/ui/rowActions/RowActions";
+import { type RowAction } from "@/components/ui/rowActions/types";
+import { StickyActionsTh, StickyActionsTd } from "@/components/ui/rowActions/StickyActionsCell";
 import { CreateSnapshotModal } from "./CreateSnapshotModal";
 
 interface VmSnapshotsTabProps {
@@ -371,7 +374,7 @@ export function VmSnapshotsTab({ vm, user, isAdmin }: VmSnapshotsTabProps) {
                 <th className="px-4 py-3">{t("colSnapshotSize")}</th>
                 <th className="px-4 py-3">{t("colSnapshotSource")}</th>
                 <th className="px-4 py-3">{t("colSnapshotCreated")}</th>
-                <th className="sticky right-0 z-20 px-4 py-3 text-right bg-zinc-50 dark:bg-zinc-800 border-l border-zinc-200 dark:border-zinc-800 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)]">{t("colSnapshotActions")}</th>
+                <StickyActionsTh surface="zinc">{t("colSnapshotActions")}</StickyActionsTh>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
@@ -403,6 +406,25 @@ export function VmSnapshotsTab({ vm, user, isAdmin }: VmSnapshotsTabProps) {
                   const status = (snapshot.status || "ready").toLowerCase();
                   const isTransitioning = ["creating", "restoring", "deleting"].includes(status);
                   const isReady = status === "ready";
+                  const actions: RowAction[] = [
+                    {
+                      id: "restore",
+                      icon: RotateCcw,
+                      label: t("restoreSnapshot"),
+                      severity: "critical",
+                      disabled: !isReady || isTransitioningAny || actionLoading || isHostUnavailable,
+                      disabledReason: isHostUnavailable ? hostUnavailableTooltip : undefined,
+                      onSelect: () => setRestoreTarget(snapshot),
+                    },
+                    {
+                      id: "delete",
+                      icon: Trash2,
+                      label: t("deleteSnapshot"),
+                      severity: "critical",
+                      disabled: isTransitioning || isTransitioningAny || actionLoading,
+                      onSelect: () => setDeleteTarget(snapshot),
+                    },
+                  ];
 
                   return (
                     <tr
@@ -452,29 +474,9 @@ export function VmSnapshotsTab({ vm, user, isAdmin }: VmSnapshotsTabProps) {
                       </td>
 
                       {/* Actions */}
-                      <td className="sticky right-0 z-10 px-4 py-3.5 text-right bg-white dark:bg-zinc-900 group-hover:bg-zinc-50 dark:group-hover:bg-zinc-800 border-l border-zinc-200/80 dark:border-zinc-800/80 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)] transition-colors">
-                        <div className="flex items-center justify-end space-x-1.5">
-                          {/* Restore Action */}
-                          <button
-                            onClick={() => setRestoreTarget(snapshot)}
-                            disabled={!isReady || isTransitioningAny || actionLoading || isHostUnavailable}
-                            title={isHostUnavailable ? hostUnavailableTooltip : t("restoreSnapshot")}
-                            className="p-1.5 rounded-lg bg-zinc-100 hover:bg-indigo-500/20 dark:bg-zinc-800 dark:hover:bg-indigo-500/20 text-zinc-600 dark:text-zinc-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                          </button>
-
-                          {/* Delete Action */}
-                          <button
-                            onClick={() => setDeleteTarget(snapshot)}
-                            disabled={isTransitioning || isTransitioningAny || actionLoading}
-                            title={t("deleteSnapshot")}
-                            className="p-1.5 rounded-lg bg-zinc-100 hover:bg-red-500/20 dark:bg-zinc-800 dark:hover:bg-red-500/20 text-zinc-600 dark:text-zinc-300 hover:text-red-600 dark:hover:text-red-400 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
+                      <StickyActionsTd surface="zinc">
+                        <RowActions actions={actions} />
+                      </StickyActionsTd>
                     </tr>
                   );
                 })

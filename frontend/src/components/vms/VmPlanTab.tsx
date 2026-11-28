@@ -373,7 +373,7 @@ export function VmPlanTab({ vm, onVmUpdated }: VmTabComponentProps) {
 
                         <td className="px-4 py-3 align-top text-zinc-600 dark:text-zinc-300 whitespace-nowrap">
                           <div>
-                            {change.old_resources.cpu_cores} &rarr;{" "}
+                            {change.old_resources.cpu_cores} vCPU &rarr;{" "}
                             <span className="font-semibold text-zinc-900 dark:text-zinc-100">
                               {change.new_resources.cpu_cores} vCPU
                             </span>

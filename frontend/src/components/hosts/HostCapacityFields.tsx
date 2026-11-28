@@ -46,7 +46,7 @@ export function HostCapacityFields({
     label: string;
     min: number;
   }> = [
-    { key: "totalCpuCores", label: t("vCpuCores"), min: 1 },
+    { key: "totalCpuCores", label: t("nodeTotalVcpus"), min: 1 },
     { key: "totalRamGb", label: "RAM (GB)", min: 1 },
     { key: "totalStorageGb", label: "Storage (GB)", min: MIN_STORAGE_GB },
   ];
@@ -100,6 +100,11 @@ export function HostCapacityFields({
                   }
                   className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs text-gray-900 dark:text-white"
                 />
+                {field.key === "totalCpuCores" && (
+                  <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 leading-snug">
+                    {t("nodeTotalVcpusHint")}
+                  </p>
+                )}
               </div>
             ))}
           </div>

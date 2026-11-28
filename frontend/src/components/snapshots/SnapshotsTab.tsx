@@ -19,6 +19,9 @@ import { formatBytes } from "@/lib/utils";
 import { getEcho } from "@/lib/echo";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { PaginationBar } from "@/components/ui/PaginationBar";
+import { RowActions } from "@/components/ui/rowActions/RowActions";
+import { type RowAction } from "@/components/ui/rowActions/types";
+import { StickyActionsTh, StickyActionsTd } from "@/components/ui/rowActions/StickyActionsCell";
 
 interface SnapshotsTabProps {
   isAdmin: boolean;
@@ -503,7 +506,7 @@ export function SnapshotsTab({
                   <th className="px-4 sm:px-6 py-3.5 font-semibold">{t("colSnapshotSize")}</th>
                   <th className="px-4 sm:px-6 py-3.5 font-semibold">{t("colSnapshotStatus")}</th>
                   <th className="px-4 sm:px-6 py-3.5 font-semibold">{t("colSnapshotCreated")}</th>
-                  <th className="sticky right-0 z-20 px-4 sm:px-6 py-3.5 font-semibold text-right bg-gray-50 dark:bg-gray-800 border-l border-gray-200 dark:border-gray-800 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)]">{t("colSnapshotActions")}</th>
+                  <StickyActionsTh className="dark:bg-gray-800">{t("colSnapshotActions")}</StickyActionsTh>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -522,6 +525,25 @@ export function SnapshotsTab({
                     snap.status?.toLowerCase() || ""
                   );
                   const isReady = snap.status?.toLowerCase() === "ready";
+                  const actions: RowAction[] = [
+                    {
+                      id: "restore",
+                      icon: RotateCcw,
+                      label: t("confirmRestoreSnapshotBtn"),
+                      severity: "critical",
+                      disabled: !isReady || isTransitioning || actionLoading || isHostUnavailable,
+                      disabledReason: isHostUnavailable ? hostUnavailableTooltip : undefined,
+                      onSelect: () => setRestoreTarget(snap),
+                    },
+                    {
+                      id: "delete",
+                      icon: Trash2,
+                      label: t("confirmDeleteSnapshotBtn"),
+                      severity: "critical",
+                      disabled: isTransitioning || actionLoading,
+                      onSelect: () => setDeleteTarget(snap),
+                    },
+                  ];
 
                   return (
                     <tr
@@ -596,29 +618,9 @@ export function SnapshotsTab({
                       </td>
 
                       {/* Actions */}
-                      <td className="sticky right-0 z-10 px-4 sm:px-6 py-3.5 text-right bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800 border-l border-gray-200/80 dark:border-gray-800/80 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)] transition-colors">
-                        <div className="flex items-center justify-end space-x-1.5">
-                          {/* Restore Button */}
-                          <button
-                            onClick={() => setRestoreTarget(snap)}
-                            disabled={!isReady || isTransitioning || actionLoading || isHostUnavailable}
-                            title={isHostUnavailable ? hostUnavailableTooltip : t("confirmRestoreSnapshotBtn")}
-                            className="p-1.5 rounded-lg bg-gray-100 hover:bg-indigo-500/20 dark:bg-gray-800 dark:hover:bg-indigo-500/20 text-gray-600 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                          </button>
-
-                          {/* Delete Button */}
-                          <button
-                            onClick={() => setDeleteTarget(snap)}
-                            disabled={isTransitioning || actionLoading}
-                            title={t("confirmDeleteSnapshotBtn")}
-                            className="p-1.5 rounded-lg bg-gray-100 hover:bg-red-500/20 dark:bg-gray-800 dark:hover:bg-red-500/20 text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
+                      <StickyActionsTd className="dark:bg-gray-900 dark:group-hover:bg-[color-mix(in_oklab,var(--color-gray-800)_40%,var(--color-gray-900))]">
+                        <RowActions actions={actions} />
+                      </StickyActionsTd>
                     </tr>
                   );
                 })}

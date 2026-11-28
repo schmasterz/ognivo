@@ -10,7 +10,7 @@ export default {
   lxcContainer: "LXC Контейнер",
   lxcDesc: "Бърз, лек, споделено хост ядро",
   osImage: "Операционна Система",
-  cpuCores: "Процесорни Ядра",
+  cpuCores: "vCPU (виртуални ядра)",
   ramGb: "RAM (GB)",
   diskGb: "Диск (GB)",
   avail: "свободни",

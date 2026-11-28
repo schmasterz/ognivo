@@ -5,6 +5,9 @@ import { UserPlus, Sliders, Edit2, Trash2, Shield, User, Layers, Sparkles, Pause
 import { AdminUserItem } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
 import { PaginationBar } from "@/components/ui/PaginationBar";
+import { RowActions } from "@/components/ui/rowActions/RowActions";
+import { type RowAction } from "@/components/ui/rowActions/types";
+import { StickyActionsTh, StickyActionsTd } from "@/components/ui/rowActions/StickyActionsCell";
 
 interface UserManagementTableProps {
   users: AdminUserItem[];
@@ -103,7 +106,7 @@ export function UserManagementTable({
                 <th scope="col" className="px-4 sm:px-5 lg:px-6 py-3.5">{t("colWorkloadsCount")}</th>
                 <th scope="col" className="px-4 sm:px-5 lg:px-6 py-3.5">{t("colIpsCount")}</th>
                 <th scope="col" className="px-4 sm:px-5 lg:px-6 py-3.5">{t("colQuotas")}</th>
-                <th scope="col" className="sticky right-0 z-20 px-4 sm:px-5 lg:px-6 py-3.5 text-right bg-gray-50 dark:bg-gray-950 border-l border-gray-200 dark:border-gray-800 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)]">{t("colActions")}</th>
+                <StickyActionsTh>{t("colActions")}</StickyActionsTh>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-800/60">
@@ -120,6 +123,56 @@ export function UserManagementTable({
                 const quota = u.quota;
                 const group = u.quota_group;
                 const userStatus = u.status || "active";
+
+                const actions: RowAction[] = [
+                  {
+                    id: "edit",
+                    icon: Edit2,
+                    label: t("editUser"),
+                    severity: "safe",
+                    tone: "neutral",
+                    disabled: userStatus === "deleting",
+                    onSelect: () => onEditUser(u),
+                  },
+                  {
+                    id: "impersonate",
+                    icon: LogIn,
+                    label: t("impersonateUser"),
+                    severity: "caution",
+                    tone: "accent",
+                    hidden: !(onImpersonateUser && !isAdminUser && !isCurrent && userStatus === "active"),
+                    onSelect: () => onImpersonateUser?.(u),
+                  },
+                  {
+                    id: "activate",
+                    icon: PlayCircle,
+                    label: t("activateUser"),
+                    severity: "caution",
+                    tone: "success",
+                    hidden: !(onToggleUserStatus && (userStatus === "suspended" || userStatus === "inactive")),
+                    disabled: isCurrent,
+                    onSelect: () => onToggleUserStatus?.(u, "active"),
+                  },
+                  {
+                    id: "suspend",
+                    icon: PauseCircle,
+                    label: t("suspendUser"),
+                    severity: "disruptive",
+                    tone: "neutral",
+                    hidden: !(onToggleUserStatus && userStatus === "active"),
+                    disabled: isCurrent,
+                    onSelect: () => onToggleUserStatus?.(u, "suspended"),
+                  },
+                  {
+                    id: "delete",
+                    icon: Trash2,
+                    label: t("deleteUser"),
+                    severity: "critical",
+                    tone: "neutral",
+                    disabled: isCurrent || userStatus === "deleting",
+                    onSelect: () => onDeleteUser(u.id, u.name),
+                  },
+                ];
 
                 return (
                   <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition group">
@@ -225,8 +278,8 @@ export function UserManagementTable({
                           {formatQuotaLimit(quota?.max_vms)} VMs
                         </span>
                         <span className="text-gray-300 dark:text-gray-700">|</span>
-                        <span title="Max CPU">
-                          {formatQuotaLimit(quota?.max_cpu_cores)} Cores
+                        <span title="Max vCPU">
+                          {formatQuotaLimit(quota?.max_cpu_cores)} vCPU
                         </span>
                         <span className="text-gray-300 dark:text-gray-700">|</span>
                         <span title="Max RAM">
@@ -247,59 +300,9 @@ export function UserManagementTable({
                       </div>
                     </td>
 
-                    <td className="sticky right-0 z-10 px-4 sm:px-5 lg:px-6 py-3.5 text-right bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800 border-l border-gray-200/80 dark:border-gray-800/80 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)] transition-colors">
-                      <div className="flex items-center justify-end space-x-2">
-                        {onToggleUserStatus && (
-                          userStatus === "suspended" || userStatus === "inactive" ? (
-                            <button
-                              onClick={() => onToggleUserStatus(u, "active")}
-                              disabled={isCurrent}
-                              title={t("activateUser")}
-                              className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 transition disabled:opacity-30 disabled:pointer-events-none"
-                            >
-                              <PlayCircle className="w-4 h-4" />
-                            </button>
-                          ) : userStatus === "active" ? (
-                            <button
-                              onClick={() => onToggleUserStatus(u, "suspended")}
-                              disabled={isCurrent}
-                              title={t("suspendUser")}
-                              className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 transition disabled:opacity-30 disabled:pointer-events-none"
-                            >
-                              <PauseCircle className="w-4 h-4" />
-                            </button>
-                          ) : null
-                        )}
-
-                        {onImpersonateUser && !isAdminUser && !isCurrent && userStatus === "active" && (
-                          <button
-                            onClick={() => onImpersonateUser(u)}
-                            title={t("impersonateUser")}
-                            className="p-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 transition"
-                          >
-                            <LogIn className="w-4 h-4" />
-                          </button>
-                        )}
-
-                        <button
-                          onClick={() => onEditUser(u)}
-                          disabled={userStatus === "deleting"}
-                          title={t("editUser")}
-                          className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition disabled:opacity-30 disabled:pointer-events-none"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-
-                        <button
-                          onClick={() => onDeleteUser(u.id, u.name)}
-                          disabled={isCurrent || userStatus === "deleting"}
-                          title={t("deleteUser")}
-                          className="p-1.5 rounded-lg bg-gray-100 hover:bg-red-500/20 dark:bg-gray-800 dark:hover:bg-red-500/20 text-gray-600 dark:text-gray-300 hover:text-red-500 transition disabled:opacity-30 disabled:pointer-events-none"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
+                    <StickyActionsTd>
+                      <RowActions actions={actions} />
+                    </StickyActionsTd>
                   </tr>
                 );
               })

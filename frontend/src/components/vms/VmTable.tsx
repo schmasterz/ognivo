@@ -22,6 +22,9 @@ import {
 import { VirtualMachine } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/I18nContext";
 import { PaginationBar } from "@/components/ui/PaginationBar";
+import { RowActions } from "@/components/ui/rowActions/RowActions";
+import { type RowAction } from "@/components/ui/rowActions/types";
+import { StickyActionsTh, StickyActionsTd } from "@/components/ui/rowActions/StickyActionsCell";
 
 interface VmTableProps {
   vms: VirtualMachine[];
@@ -257,6 +260,97 @@ export const VmTableRow = React.memo(function VmTableRow({
     vm.host?.status === "unreachable" ? t("hostUnreachable") : t("hostUnavailable");
   const hostUnavailableTooltip =
     vm.host?.status === "unreachable" ? t("hostUnreachableTooltip") : t("hostUnavailableTooltip");
+  const disabledReason = isHostUnavailable ? hostUnavailableTooltip : undefined;
+
+  const actions: RowAction[] = [
+    {
+      id: "console",
+      icon: Terminal,
+      label: t("openConsole"),
+      severity: "safe",
+      tone: "neutral",
+      disabled: isActing || isHostUnavailable || isNonOperationalStatus,
+      disabledReason,
+      onSelect: () => onOpenConsole(vm),
+    },
+    {
+      id: "details",
+      icon: Activity,
+      label: t("vmActionDetailsMetrics"),
+      severity: "safe",
+      tone: "info",
+      hidden: !onOpenDetails,
+      disabled: isActing || isHostUnavailable,
+      disabledReason,
+      onSelect: () => onOpenDetails?.(vm, "overview"),
+    },
+    {
+      id: "snapshots",
+      icon: Camera,
+      label: t("tabSnapshots"),
+      severity: "safe",
+      tone: "accent",
+      hidden: !onOpenDetails,
+      disabled: isActing || isHostUnavailable,
+      disabledReason,
+      onSelect: () => onOpenDetails?.(vm, "snapshots"),
+    },
+    {
+      id: "start",
+      icon: Play,
+      label: t("startInstance"),
+      severity: "caution",
+      tone: "success",
+      hidden: isRunning,
+      disabled: isActing || isHostUnavailable || isNonOperationalStatus,
+      disabledReason,
+      loading: isActing,
+      onSelect: () => onActionClick(vm, "start"),
+    },
+    {
+      id: "restart",
+      icon: RotateCw,
+      label: t("restartInstance"),
+      severity: "disruptive",
+      tone: "neutral",
+      disabled: isActing || isStopped || isSuspended || isHostUnavailable || isNonOperationalStatus,
+      disabledReason,
+      onSelect: () => onActionClick(vm, "restart"),
+    },
+    {
+      id: "suspend",
+      icon: Pause,
+      label: t("suspendInstance"),
+      severity: "disruptive",
+      tone: "neutral",
+      hidden: !isRunning,
+      disabled: isActing || isHostUnavailable,
+      disabledReason,
+      onSelect: () => onActionClick(vm, "suspend"),
+    },
+    {
+      id: "stop",
+      icon: Square,
+      label: t("stopInstance"),
+      severity: "disruptive",
+      tone: "neutral",
+      hidden: !isRunning,
+      disabled: isActing || isHostUnavailable,
+      disabledReason,
+      loading: isActing,
+      onSelect: () => onActionClick(vm, "stop"),
+    },
+    {
+      id: "delete",
+      icon: Trash2,
+      label: t("deleteInstance"),
+      severity: "critical",
+      tone: "neutral",
+      disabled: isActing || isHostUnavailable || isCannotDeleteStatus,
+      disabledReason,
+      onSelect: () => onActionClick(vm, "delete"),
+    },
+  ];
 
   return (
     <tr className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition group">
@@ -347,7 +441,7 @@ export const VmTableRow = React.memo(function VmTableRow({
 
       <td className="px-4 sm:px-6 py-3.5 whitespace-nowrap">
         <div className="flex items-center space-x-4 text-xs text-gray-600 dark:text-gray-300">
-          <div className="flex items-center space-x-1" title="CPU Cores">
+          <div className="flex items-center space-x-1" title="vCPU">
             <Cpu className="w-3.5 h-3.5 text-emerald-500" />
             <span>{vm.cpu_cores} vCPU</span>
           </div>
@@ -368,95 +462,9 @@ export const VmTableRow = React.memo(function VmTableRow({
         </span>
       </td>
 
-      <td className="sticky right-0 z-10 px-4 sm:px-6 py-3.5 text-right bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800 border-l border-gray-200/80 dark:border-gray-800/80 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)] transition-colors">
-        <div className="flex items-center justify-end space-x-1.5">
-          {/* Details & Metrics Button */}
-          {onOpenDetails && (
-            <button
-              onClick={() => onOpenDetails(vm, "overview")}
-              disabled={isActing}
-              title={t("vmActionDetailsMetrics")}
-              className="p-1.5 rounded-lg bg-gray-100 hover:bg-blue-500/20 dark:bg-gray-800 dark:hover:bg-blue-500/20 text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition disabled:opacity-50"
-            >
-              <Activity className="w-4 h-4" />
-            </button>
-          )}
-
-          {/* Snapshots Button */}
-          {onOpenDetails && (
-            <button
-              onClick={() => onOpenDetails(vm, "snapshots")}
-              disabled={isActing}
-              title={t("tabSnapshots")}
-              className="p-1.5 rounded-lg bg-gray-100 hover:bg-purple-500/20 dark:bg-gray-800 dark:hover:bg-purple-500/20 text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400 transition disabled:opacity-50"
-            >
-              <Camera className="w-4 h-4" />
-            </button>
-          )}
-
-          {/* Console / Terminal Button */}
-          <button
-            onClick={() => onOpenConsole(vm)}
-            disabled={isActing || isHostUnavailable || isNonOperationalStatus}
-            title={isHostUnavailable ? hostUnavailableTooltip : t("openConsole")}
-            className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition disabled:opacity-50"
-          >
-            <Terminal className="w-4 h-4" />
-          </button>
-
-          {/* Start/Stop Button with Confirmation */}
-          {isRunning ? (
-            <>
-              <button
-                onClick={() => onActionClick(vm, "stop")}
-                disabled={isActing || isHostUnavailable}
-                title={isHostUnavailable ? hostUnavailableTooltip : t("stopInstance")}
-                className="p-1.5 rounded-lg bg-gray-100 hover:bg-amber-500/20 dark:bg-gray-800 dark:hover:bg-amber-500/20 text-gray-600 dark:text-gray-300 hover:text-amber-500 transition disabled:opacity-50"
-              >
-                {isActing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Square className="w-4 h-4" />}
-              </button>
-
-              <button
-                onClick={() => onActionClick(vm, "suspend")}
-                disabled={isActing || isHostUnavailable}
-                title={isHostUnavailable ? hostUnavailableTooltip : t("suspendInstance")}
-                className="p-1.5 rounded-lg bg-gray-100 hover:bg-yellow-500/20 dark:bg-gray-800 dark:hover:bg-yellow-500/20 text-gray-600 dark:text-gray-300 hover:text-yellow-500 transition disabled:opacity-50"
-              >
-                <Pause className="w-4 h-4" />
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={() => onActionClick(vm, "start")}
-              disabled={isActing || isHostUnavailable || isNonOperationalStatus}
-              title={isHostUnavailable ? hostUnavailableTooltip : t("startInstance")}
-              className="p-1.5 rounded-lg bg-gray-100 hover:bg-emerald-500/20 dark:bg-gray-800 dark:hover:bg-emerald-500/20 text-gray-600 dark:text-gray-300 hover:text-emerald-500 transition disabled:opacity-50"
-            >
-              {isActing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-            </button>
-          )}
-
-          {/* Restart Button with Confirmation */}
-          <button
-            onClick={() => onActionClick(vm, "restart")}
-            disabled={isActing || isStopped || isSuspended || isHostUnavailable || isNonOperationalStatus}
-            title={isHostUnavailable ? hostUnavailableTooltip : t("restartInstance")}
-            className="p-1.5 rounded-lg bg-gray-100 hover:bg-blue-500/20 dark:bg-gray-800 dark:hover:bg-blue-500/20 text-gray-600 dark:text-gray-300 hover:text-blue-500 transition disabled:opacity-50"
-          >
-            <RotateCw className="w-4 h-4" />
-          </button>
-
-          {/* Delete Button with Confirmation */}
-          <button
-            onClick={() => onActionClick(vm, "delete")}
-            disabled={isActing || isHostUnavailable || isCannotDeleteStatus}
-            title={isHostUnavailable ? hostUnavailableTooltip : t("deleteInstance")}
-            className="p-1.5 rounded-lg bg-gray-100 hover:bg-red-500/20 dark:bg-gray-800 dark:hover:bg-red-500/20 text-gray-600 dark:text-gray-300 hover:text-red-500 transition disabled:opacity-50"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
-      </td>
+      <StickyActionsTd>
+        <RowActions actions={actions} />
+      </StickyActionsTd>
     </tr>
   );
 });
@@ -532,7 +540,7 @@ export function VmTable({
               <th scope="col" className="px-4 sm:px-6 py-3.5">{t("colIp")}</th>
               <th scope="col" className="px-4 sm:px-6 py-3.5">{t("colSpecs")}</th>
               <th scope="col" className="px-4 sm:px-6 py-3.5">{t("colOs")}</th>
-              <th scope="col" className="sticky right-0 z-20 px-4 sm:px-6 py-3.5 text-right bg-gray-50 dark:bg-gray-950 border-l border-gray-200 dark:border-gray-800 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)]">{t("colActions")}</th>
+              <StickyActionsTh>{t("colActions")}</StickyActionsTh>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-gray-800/60">

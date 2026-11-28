@@ -14,7 +14,7 @@ export default {
   colRoles: "Роля",
   colWorkloadsCount: "Машини",
   colIpsCount: "IP Адреси",
-  colQuotas: "Квоти (VMs / CPU / RAM / Диск / IPs)",
+  colQuotas: "Квоти (VMs / vCPU / RAM / Диск / IPs)",
   unlimitedCheckbox: "Безкрайна (∞)",
   saveUser: "Запази Потребител",
   saveDefaultQuota: "Запази Квотите по Подразбиране",

@@ -5,7 +5,7 @@ export default {
   metricsRange24h: "24h",
   metricsRange7d: "7d",
   metricsRange30d: "30d",
-  metricsCpuTitle: "CPU Usage",
+  metricsCpuTitle: "vCPU Usage",
   metricsMemoryTitle: "Memory Usage",
   metricsDiskSpaceTitle: "Root Filesystem Usage",
   metricsDiskIoTitle: "Disk I/O Throughput",

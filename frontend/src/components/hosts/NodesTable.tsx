@@ -24,6 +24,9 @@ import {
 import { HostNode } from "@/lib/api";
 import { PaginationBar } from "@/components/ui/PaginationBar";
 import { useI18n } from "@/lib/i18n/I18nContext";
+import { RowActions } from "@/components/ui/rowActions/RowActions";
+import { type RowAction } from "@/components/ui/rowActions/types";
+import { StickyActionsTh, StickyActionsTd } from "@/components/ui/rowActions/StickyActionsCell";
 
 export interface NodesTableProps {
   hosts: HostNode[];
@@ -221,12 +224,7 @@ export function NodesTable({
                 <th scope="col" className="px-4 sm:px-5 lg:px-6 py-3.5">
                   {t("colWorkloadsCount")}
                 </th>
-                <th
-                  scope="col"
-                  className="sticky right-0 z-20 px-4 sm:px-5 lg:px-6 py-3.5 text-right bg-gray-50 dark:bg-gray-950 border-l border-gray-200 dark:border-gray-800 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)]"
-                >
-                  {t("colActions")}
-                </th>
+                <StickyActionsTh>{t("colActions")}</StickyActionsTh>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-800/60">
@@ -239,6 +237,49 @@ export function NodesTable({
                 const committedRamGb = Math.round((host.capacity?.ram?.committed ?? 0) / 1024);
                 const totalRamGb = Math.round(host.total_ram_mb / 1024);
                 const committedDisk = host.capacity?.disk?.committed ?? 0;
+
+                const actions: RowAction[] = [
+                  {
+                    id: "edit",
+                    icon: Edit2,
+                    label: t("editNode"),
+                    severity: "safe",
+                    tone: "neutral",
+                    onSelect: () => onEditNode(host),
+                  },
+                  {
+                    id: "verify",
+                    icon: Activity,
+                    label: t("verifyConnection"),
+                    severity: "safe",
+                    tone: "accent",
+                    disabled: isVerifying,
+                    loading: isVerifying,
+                    onSelect: () => {
+                      void onVerifyHost(host.id);
+                    },
+                  },
+                  {
+                    id: "sync",
+                    icon: RefreshCw,
+                    label: t("syncFromHypervisor"),
+                    severity: "caution",
+                    tone: "accent",
+                    disabled: isSyncing,
+                    loading: isSyncing,
+                    onSelect: () => {
+                      void onSyncHostResources(host.id);
+                    },
+                  },
+                  {
+                    id: "delete",
+                    icon: Trash2,
+                    label: t("deleteNode"),
+                    severity: "critical",
+                    tone: "neutral",
+                    onSelect: () => onDeleteNode(host.id, host.name),
+                  },
+                ];
 
                 return (
                   <React.Fragment key={host.id}>
@@ -354,8 +395,16 @@ export function NodesTable({
                         <div className="mb-1.5">{renderCapacitySourceBadge(capacitySource)}</div>
                         <div className="grid grid-cols-3 gap-x-3 gap-y-1 text-xs">
                           <div>
-                            <span className="text-[10px] text-gray-400 block">vCPU</span>
-                            <span className="font-mono font-semibold text-gray-900 dark:text-white">
+                            <span
+                              className="text-[10px] text-gray-400 block cursor-help"
+                              title={`${t("nodeTotalVcpus")}: ${t("nodeTotalVcpusHint")}`}
+                            >
+                              {t("nodeTotalVcpus")}
+                            </span>
+                            <span
+                              className="font-mono font-semibold text-gray-900 dark:text-white"
+                              title={t("nodeTotalVcpusHint")}
+                            >
                               {committedCpu} / {host.total_cpu_cores}
                             </span>
                             {(host.cpu_overcommit ?? 1) > 1 && (
@@ -414,55 +463,9 @@ export function NodesTable({
                       </td>
 
                       {/* Sticky Right Actions */}
-                      <td className="sticky right-0 z-10 px-4 sm:px-5 lg:px-6 py-3.5 align-top text-right bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800 border-l border-gray-200/80 dark:border-gray-800/80 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)] transition-colors">
-                        <div className="flex items-center justify-end space-x-1.5">
-                          <button
-                            type="button"
-                            onClick={() => onSyncHostResources(host.id)}
-                            disabled={isSyncing}
-                            title={t("syncFromHypervisor") || "Sync from hypervisor"}
-                            className="p-1.5 rounded-lg bg-gray-100 hover:bg-indigo-500/15 dark:bg-gray-800 dark:hover:bg-indigo-500/20 text-gray-600 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition disabled:opacity-40 disabled:pointer-events-none"
-                          >
-                            {isSyncing ? (
-                              <Loader2 className="w-4 h-4 animate-spin text-indigo-600 dark:text-indigo-400" />
-                            ) : (
-                              <RefreshCw className="w-4 h-4" />
-                            )}
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => onVerifyHost(host.id)}
-                            disabled={isVerifying}
-                            title={t("verifyConnection") || "Verify connection"}
-                            className="p-1.5 rounded-lg bg-gray-100 hover:bg-indigo-500/15 dark:bg-gray-800 dark:hover:bg-indigo-500/20 text-gray-600 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition disabled:opacity-40 disabled:pointer-events-none"
-                          >
-                            {isVerifying ? (
-                              <Loader2 className="w-4 h-4 animate-spin text-indigo-600 dark:text-indigo-400" />
-                            ) : (
-                              <Activity className="w-4 h-4" />
-                            )}
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => onEditNode(host)}
-                            title={t("editNode")}
-                            className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => onDeleteNode(host.id, host.name)}
-                            title={t("deleteNode")}
-                            className="p-1.5 rounded-lg bg-gray-100 hover:bg-red-500/20 dark:bg-gray-800 dark:hover:bg-red-500/20 text-gray-600 dark:text-gray-300 hover:text-red-500 transition"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
+                      <StickyActionsTd className="align-top">
+                        <RowActions actions={actions} />
+                      </StickyActionsTd>
                     </tr>
 
                     {host.needs_retrust && (

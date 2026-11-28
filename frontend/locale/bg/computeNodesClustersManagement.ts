@@ -45,4 +45,6 @@ export default {
   cpuOvercommit: "vCPU Overcommit (1.0x – 16.0x)",
   ramOvercommit: "RAM Overcommit (1.0x – 4.0x)",
   diskOvercommit: "Сторидж Overcommit (1.0x – 4.0x)",
+  nodeTotalVcpus: "Общо vCPU (логически нишки)",
+  nodeTotalVcpusHint: "Съответства на логическите нишки на хоста (напр. nproc / Hyper-Threading нишки), а не само на физическите ядра.",
 }

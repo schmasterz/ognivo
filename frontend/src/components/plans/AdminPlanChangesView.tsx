@@ -383,7 +383,7 @@ export function AdminPlanChangesView() {
 
                         <td className="px-5 py-3.5 align-top text-gray-600 dark:text-gray-300 whitespace-nowrap">
                           <div>
-                            {change.old_resources.cpu_cores} &rarr;{" "}
+                            {change.old_resources.cpu_cores} vCPU &rarr;{" "}
                             <span className="font-semibold text-gray-900 dark:text-gray-100">
                               {change.new_resources.cpu_cores} vCPU
                             </span>

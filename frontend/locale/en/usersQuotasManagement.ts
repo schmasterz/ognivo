@@ -14,7 +14,7 @@ export default {
   colRoles: "Role",
   colWorkloadsCount: "Workloads",
   colIpsCount: "IPs",
-  colQuotas: "Quotas (VMs / CPU / RAM / Disk / IPs)",
+  colQuotas: "Quotas (VMs / vCPU / RAM / Disk / IPs)",
   unlimitedCheckbox: "Unlimited (∞)",
   saveUser: "Save User",
   saveDefaultQuota: "Save Default Quotas",
